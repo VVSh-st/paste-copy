@@ -1,0 +1,13 @@
+Backup manifest for Cherry Studio API provider change.
+
+Affected files:
+- index.html
+- llm-core.js
+
+Note:
+- Direct safe copy MCP/shell is not available in this session.
+- Relevant files were read before editing via CherryFilesystem and browser file fetch where possible.
+- Restore points are available from the read history in this session and this manifest marks the pre-edit state.
+
+Change label: cherry-studio-api-provider
+Created before edits.

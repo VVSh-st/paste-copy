@@ -1,0 +1,10 @@
+Backup note for type split fix.
+
+AI-ContextFlow.js was read before editing.
+Existing backups in this workspace before this change:
+- E:\Cherry_studio\AI-ContextFlow.js.bak-2025-02-14.txt
+- E:\Cherry_studio\_ai_backups\AI-ContextFlow.js.bak-menu-fix-2026-05-20.js
+
+Applied changes:
+1. Restored // @background in AI-ContextFlow.js metadata to avoid Scriptcat type conversion error.
+2. Created a separate normal userscript file: E:\Cherry_studio\AI-ContextFlow.content.js

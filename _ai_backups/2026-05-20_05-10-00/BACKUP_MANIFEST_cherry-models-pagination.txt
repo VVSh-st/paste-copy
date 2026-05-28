@@ -1,0 +1,9 @@
+Backup before Cherry Studio API model list fix.
+
+Affected files:
+- llm-core.js
+
+Notes:
+- MCP filesystem has no native copy tool in this session.
+- llm-core.js was read fully before edits via CherryFilesystem.read.
+- Change target: Cherry Studio /v1/models pagination and full model labels in grouped select.

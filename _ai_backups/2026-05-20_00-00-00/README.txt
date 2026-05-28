@@ -1,0 +1,1 @@
+Backup note: before editing gist-sync.js, styles.css, storage.js and app.js in this MCP session, files were read via CherryFilesystem. Direct binary copy tool is not available in this environment; changes were applied only after reads and can be reverted from project VCS or this session transcript.
