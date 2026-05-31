@@ -505,7 +505,7 @@ window.LLMFeatures = (() => {
       const n = newToks.length;
 
       if (m * n > 150_000) {
-        return [{ type: 'del', text: a }, { type: 'ins', text: b }];
+        return computeByLine(a, b);
       }
 
       const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
@@ -534,6 +534,84 @@ window.LLMFeatures = (() => {
       }
       ops.reverse();
       return ops;
+    }
+
+    function splitLinesPreserveBreaks(text) {
+      const source = String(text ?? '');
+      if (!source) return [];
+      return source.match(/[^\n]*\n|[^\n]+/g) || [];
+    }
+
+    function computeByLine(oldText, newText) {
+      const oldLines = splitLinesPreserveBreaks(oldText);
+      const newLines = splitLinesPreserveBreaks(newText);
+      const m = oldLines.length;
+      const n = newLines.length;
+
+      if (!m && !n) return [];
+      if (m * n > 80_000) {
+        return trimCommonEdgesFallback(oldText, newText);
+      }
+
+      const dp = Array.from({ length: m + 1 }, () => new Int16Array(n + 1));
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          dp[i][j] =
+            oldLines[i - 1] === newLines[j - 1]
+              ? dp[i - 1][j - 1] + 1
+              : Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+      }
+
+      const ops = [];
+      let i = m, j = n;
+      while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+          ops.push({ type: 'eq', text: oldLines[i - 1] });
+          i--; j--;
+        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+          ops.push({ type: 'ins', text: newLines[j - 1] });
+          j--;
+        } else {
+          ops.push({ type: 'del', text: oldLines[i - 1] });
+          i--;
+        }
+      }
+      ops.reverse();
+      return mergeAdjacentOps(ops);
+    }
+
+    function trimCommonEdgesFallback(oldText, newText) {
+      const a = String(oldText ?? '');
+      const b = String(newText ?? '');
+      let start = 0;
+      const minLen = Math.min(a.length, b.length);
+      while (start < minLen && a[start] === b[start]) start++;
+
+      let oldEnd = a.length;
+      let newEnd = b.length;
+      while (oldEnd > start && newEnd > start && a[oldEnd - 1] === b[newEnd - 1]) {
+        oldEnd--;
+        newEnd--;
+      }
+
+      const ops = [];
+      if (start > 0) ops.push({ type: 'eq', text: a.slice(0, start) });
+      if (oldEnd > start) ops.push({ type: 'del', text: a.slice(start, oldEnd) });
+      if (newEnd > start) ops.push({ type: 'ins', text: b.slice(start, newEnd) });
+      if (oldEnd < a.length) ops.push({ type: 'eq', text: a.slice(oldEnd) });
+      return ops;
+    }
+
+    function mergeAdjacentOps(ops) {
+      const merged = [];
+      for (const op of ops) {
+        if (!op.text) continue;
+        const prev = merged[merged.length - 1];
+        if (prev && prev.type === op.type) prev.text += op.text;
+        else merged.push({ ...op });
+      }
+      return merged;
     }
 
     const MATRIX_CHARS = 'абвгдежзийклмнопрстуфхцчшщьыъэюяABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
