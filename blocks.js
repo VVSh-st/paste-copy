@@ -546,39 +546,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       const groomMenu = document.createElement('nav');
       groomMenu.className = 'dropdown-menu llm-groom-menu';
-      groomMenu.style.minWidth = b.type === 'text' ? '232px' : '175px';
+      groomMenu.style.minWidth = b.type === 'text' ? '184px' : '175px';
       groomMenu.setAttribute('aria-label', 'Режим причёсывания');
-      const llmLayout = State.getLayout()?.llm ?? {};
-      const diffMode = llmLayout.diffMode === 'matrix' ? 'matrix' : 'classic';
-      const diffEffectMs = Math.max(1000, Math.min(10000, Math.round((parseInt(llmLayout.diffEffectMs, 10) || 3500) / 50) * 50));
       const textLint = window.TextLinter;
-      const lintSettings = textLint?.getSettings?.() ?? {};
-      const lintMeta = textLint?.getSettingMeta?.() ?? [
-        { key: 'trimLines', label: 'Обрезать края строк' },
-        { key: 'collapseSpaces', label: 'Схлопывать лишние пробелы' },
-        { key: 'punctuationSpacing', label: 'Пробелы у знаков препинания' },
-        { key: 'normalizeAbbreviations', label: 'Нормализовать сокращения: т. д., т. п.' },
-        { key: 'compactAbbreviations', label: 'Компактные сокращения: т.д., т.п.', risky: true },
-        { key: 'collapseBlankLines', label: 'Убирать лишние пустые строки' },
-        { key: 'showHints', label: 'Показывать подсказки без автоправки' },
-      ];
-      const lintOptionsHtml = b.type === 'text'
-        ? lintMeta.map(item =>
-            `<label class="text-lint-option${item.risky ? ' text-lint-option-risky' : ''}" title="${item.hint || (item.risky ? 'Осторожная опция: применяй осознанно' : 'Безопасная настройка')}">` +
-              `<input type="checkbox" data-lint-setting="${item.key}"${lintSettings[item.key] ? ' checked' : ''}>` +
-              `<span>${item.label}${item.risky ? ' ⚠' : ''}${item.hint ? ' · ?' : ''}</span>` +
-            `</label>`
-          ).join('')
-        : '';
 
       groomMenu.innerHTML =
         (b.type === 'text'
           ? `<div class="menu-section-label">Локальная причёска</div>` +
             `<button type="button" class="text-lint-local-action" data-lint-action="quick"${textLint ? '' : ' disabled title="text-linter.js ещё не загружен"'}>🪮 Быстро причесать</button>` +
             `<button type="button" data-lint-action="preview"${textLint ? '' : ' disabled title="text-linter.js ещё не загружен"'}>👁 Показать diff и подсказки</button>` +
-            `<div class="text-lint-menu-note">Без LLM: чистит пробелы, переносы и очевидную пунктуацию. Запятые только подсказывает. Код, URL, {{переменные}} и !бро — в бронежилете. Стиль «т.д.» можно включить ниже.</div>` +
-            `<div class="menu-section-label">Настройки</div>` +
-            `<div class="text-lint-settings-wrap">${lintOptionsHtml}</div>` +
             `<div class="menu-sep"></div>`
           : '') +
         `<div class="menu-section-label">LLM-редактура</div>` +
@@ -597,20 +573,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         `<button type="button" data-groom="tech">💻 Технический</button>` +
         `<button type="button" data-groom="friendly">🤝 Дружелюбный</button>` +
         `<div class="menu-sep"></div>` +
-        `<button type="button" data-groom="positive_instr">➕ Позитивные инструкции</button>` +
-        `<div class="menu-sep"></div>` +
-        `<div class="menu-section-label">Предпросмотр</div>` +
-        `<label class="llm-groom-diff-row" title="Выбор обычного diff или Matrix-diff для панели ответа">` +
-          `<span>Diff</span>` +
-          `<select data-diff-mode aria-label="Режим diff предпросмотра">` +
-            `<option value="classic"${diffMode === 'classic' ? ' selected' : ''}>Обычный</option>` +
-            `<option value="matrix"${diffMode === 'matrix' ? ' selected' : ''}>Matrix-diff</option>` +
-          `</select>` +
-        `</label>` +
-        `<label class="llm-groom-diff-row" title="Длительность Matrix-diff: 1–10 секунд, шаг 50 мс">` +
-          `<span>Время</span>` +
-          `<input type="number" data-diff-effect-ms min="1000" max="10000" step="50" value="${diffEffectMs}" aria-label="Длительность Matrix-diff в миллисекундах">` +
-        `</label>`;
+        `<button type="button" data-groom="positive_instr">➕ Позитивные инструкции</button>`;
 
       const setGroomOpen = open => {
         groomDd.classList.toggle('open', open);
@@ -636,39 +599,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         });
       });
 
-      groomMenu.querySelectorAll('[data-lint-setting]').forEach(input => {
-        if (!window.TextLinter?.setSetting) input.disabled = true;
-        input.addEventListener('change', e => {
-          e.stopPropagation();
-          window.TextLinter?.setSetting?.(input.dataset.lintSetting, input.checked);
-          textLintBadgeCache.clear();
-        });
-      });
-
       groomMenu.querySelectorAll('[data-groom]').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
           setGroomOpen(false);
           window.LLMFeatures?.groomBlock(b.id, btn.dataset.groom);
         });
-      });
-
-      groomMenu.querySelector('[data-diff-mode]')?.addEventListener('change', e => {
-        e.stopPropagation();
-        const mode = e.target.value === 'matrix' ? 'matrix' : 'classic';
-        const lay = State.getLayout();
-        State.setLayout({ llm: { ...(lay?.llm ?? {}), diffMode: mode } });
-        Storage?.save?.(State.serialize());
-      });
-
-      groomMenu.querySelector('[data-diff-effect-ms]')?.addEventListener('change', e => {
-        e.stopPropagation();
-        const raw = parseInt(e.target.value, 10);
-        const ms = Math.max(1000, Math.min(10000, Math.round((Number.isFinite(raw) ? raw : 3500) / 50) * 50));
-        e.target.value = ms;
-        const lay = State.getLayout();
-        State.setLayout({ llm: { ...(lay?.llm ?? {}), diffEffectMs: ms } });
-        Storage?.save?.(State.serialize());
       });
 
       groomDd.appendChild(groomTrigger);
@@ -1881,7 +1817,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  return { render, applyLayout, setupColumns };
+  function clearTextLintBadgeCache() {
+    textLintBadgeCache.clear();
+  }
+
+  return { render, applyLayout, setupColumns, clearTextLintBadgeCache };
 })();
 
 window.Blocks = Blocks;

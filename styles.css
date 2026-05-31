@@ -1441,7 +1441,7 @@ textarea.block-textarea:focus {
 
 .llm-tabs {
   display: flex; gap: 0; border-bottom: 1px solid var(--border);
-  flex-shrink: 0; background: rgba(255,255,255,0.02);
+  flex-shrink: 0; background: rgba(255,255,255,0.02); overflow-x: auto;
 }
 .llm-tab {
   padding: 10px 18px; border: none; background: none; cursor: pointer;
@@ -1608,6 +1608,38 @@ textarea.block-textarea:focus {
   min-height: 30px; border-radius: var(--radius-sm); border-color: var(--border);
   background: var(--bg0); color: var(--text0);
 }
+.llm-misc-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px; align-items: start;
+}
+.llm-misc-fold { padding-bottom: 10px; }
+.llm-misc-note {
+  margin: 0 0 8px; color: var(--text2); font-size: 11px; line-height: 1.45;
+}
+.llm-compact-settings {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+  gap: 6px; min-width: 0;
+}
+.llm-compact-settings .settings-item {
+  min-height: 30px; margin: 0; padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,0.055); border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.025);
+}
+.llm-compact-settings .settings-item-row > input[type="number"],
+.llm-compact-settings .settings-item-row > select {
+  width: 116px; flex-basis: 116px;
+}
+.llm-compact-option {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  padding: 6px 8px; border: 1px solid rgba(255,255,255,0.055);
+  border-radius: var(--radius-sm); background: rgba(255,255,255,0.025);
+  color: var(--text1); font-size: 11px; line-height: 1.25; cursor: pointer;
+}
+.llm-compact-option:hover { border-color: var(--border2); background: var(--surface2); color: var(--text0); }
+.llm-compact-option input { flex-shrink: 0; accent-color: var(--green); }
+.llm-compact-option span { min-width: 0; overflow-wrap: anywhere; }
+.llm-compact-option-risky { color: var(--orange); }
+.llm-compact-option-risky input { accent-color: var(--orange); }
 .llm-range-row { min-width: 0; display: flex; align-items: center; gap: 6px; }
 .llm-range-row input[type="range"] { min-width: 80px; max-width: 100%; }
 .confirm-pending,

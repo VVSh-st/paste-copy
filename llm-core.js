@@ -818,6 +818,7 @@ window.LLMCore = (() => {
       _renderBroTags();
       _renderPromptFnList();
       _syncGeneral();
+      _renderTextLintSettings();
       _syncAutoPoet();
       if (tabName) _switchTab(tabName);
       if (!_bound) { _bindEvents(); _bound = true; }
@@ -978,6 +979,31 @@ window.LLMCore = (() => {
       const stats = LLMCache.stats();
       const statsEl = document.getElementById('llm-cache-stats');
       if (statsEl) statsEl.textContent = `${stats.count} записей · ~${stats.estimatedKb} KB`;
+    }
+    function _getTextLintMeta() {
+      return window.TextLinter?.getSettingMeta?.() ?? [
+        { key: 'trimLines', label: 'Обрезать края строк' },
+        { key: 'collapseSpaces', label: 'Схлопывать лишние пробелы' },
+        { key: 'punctuationSpacing', label: 'Пробелы у знаков препинания' },
+        { key: 'normalizeAbbreviations', label: 'Нормализовать сокращения: т. д., т. п.' },
+        { key: 'compactAbbreviations', label: 'Компактные сокращения: т.д., т.п.', risky: true },
+        { key: 'collapseBlankLines', label: 'Убирать лишние пустые строки' },
+        { key: 'showHints', label: 'Показывать подсказки без автоправки' },
+      ];
+    }
+    function _renderTextLintSettings() {
+      const box = document.getElementById('llm-text-lint-settings');
+      if (!box) return;
+      const api = window.TextLinter;
+      const settings = api?.getSettings?.() ?? {};
+      const disabled = !api?.setSetting;
+      const meta = _getTextLintMeta();
+      box.innerHTML = meta.map(item =>
+        `<label class="llm-compact-option${item.risky ? ' llm-compact-option-risky' : ''}" title="${_esc(item.hint || (item.risky ? 'Осторожная опция: применяй осознанно' : 'Безопасная настройка'))}">` +
+          `<input type="checkbox" data-llm-lint-setting="${_esc(item.key)}"${settings[item.key] ? ' checked' : ''}${disabled ? ' disabled' : ''}>` +
+          `<span>${_esc(item.label)}${item.risky ? ' ⚠' : ''}</span>` +
+        `</label>`
+      ).join('') + (disabled ? '<span class="settings-hint">text-linter.js ещё не загружен</span>' : '');
     }
     function _syncAutoPoet() {
       const ghost = _State.getLayout()?.llm?.ghost ?? {};
@@ -1733,6 +1759,12 @@ tags.push({
       document.getElementById('llm-prompt-test-run')?.addEventListener('click', _testPrompt);
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
       ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
+      document.getElementById('llm-text-lint-settings')?.addEventListener('change', e => {
+        const input = e.target.closest('[data-llm-lint-setting]');
+        if (!input) return;
+        window.TextLinter?.setSetting?.(input.dataset.llmLintSetting, input.checked);
+        window.Blocks?.clearTextLintBadgeCache?.();
+      });
       ['llm-ap-enabled','llm-ap-profile','llm-ap-strategy','llm-ap-debounce','llm-ap-lines','llm-ap-acceptkey','llm-ap-minchars','llm-ap-nocode','llm-ap-novars','llm-ap-matrix','llm-ap-matrix-ms'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveAutoPoet));
       document.getElementById('llm-bro-depth')?.addEventListener('change', _saveBroDepth);
       document.getElementById('llm-builtin-tags-body')?.addEventListener('change', e => { if (e.target.classList.contains('llm-tag-profile-sel')) _saveBroTags(); });

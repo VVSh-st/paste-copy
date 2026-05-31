@@ -1018,6 +1018,8 @@
 
           <button type="button" class="llm-tab"        data-ltab="prompts"  role="tab" aria-selected="false" aria-controls="ltab-prompts">Системные промпты</button>
 
+          <button type="button" class="llm-tab"        data-ltab="misc"     role="tab" aria-selected="false" aria-controls="ltab-misc">Разное</button>
+
         </div>
 
 
@@ -1136,14 +1138,6 @@
                       </select>
                     </label>
                     <p class="llm-profile-hint">В режиме «Авто» <code>/no_think</code> добавляется только для локальных reasoning-моделей вроде Qwen/DeepSeek.</p>
-                  </details>
-
-                  <details class="llm-settings-fold" open>
-                    <summary>Глобально</summary>
-                    <label class="settings-item"><input id="llm-enabled" type="checkbox"> LLM включён</label>
-                    <label class="settings-item"><input id="llm-auto-snapshot" type="checkbox" checked> Авто-снапшот до операций</label>
-                    <label class="settings-item"><input id="llm-save-results" type="checkbox" checked> Сохранять результаты в [LLM]-снапшоты</label>
-                    <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
                   </details>
 
                   <details class="llm-settings-fold" open>
@@ -1282,19 +1276,6 @@
               <label class="settings-item settings-item-row" title="Длительность Matrix-эффекта подсказок AutoPoet">
                 Matrix AutoPoet (мс)
                 <input id="llm-ap-matrix-ms" type="number" min="1000" max="10000" step="50" value="3500" style="width:92px">
-              </label>
-
-              <label class="settings-item settings-item-row" title="Как показывать изменения в панели ответа LLM после форматирования и других режимов причёсывания">
-                Diff предпросмотр
-                <select id="llm-diff-mode" style="width:118px">
-                  <option value="classic">Обычный</option>
-                  <option value="matrix">Matrix-diff</option>
-                </select>
-              </label>
-
-              <label class="settings-item settings-item-row" title="Длительность проявления слов в Matrix-diff">
-                Matrix-diff (мс)
-                <input id="llm-diff-effect-ms" type="number" min="1000" max="10000" step="50" value="3500" style="width:92px">
               </label>
 
             </div>
@@ -1471,6 +1452,51 @@
               </details>
 
             </div>
+
+          </div>
+
+        </div>
+
+
+        <!-- ── РАЗНОЕ ───────────────────────────────────────────────────────-->
+
+        <div id="ltab-misc" class="llm-tab-panel" role="tabpanel">
+
+          <div class="llm-misc-grid">
+
+            <details class="llm-settings-fold llm-misc-fold" open>
+              <summary>Локальная причёска</summary>
+              <p class="llm-misc-note">Без LLM: чистит пробелы, переносы и очевидную пунктуацию. Запятые только подсказывает. Код, URL, {{переменные}} и !бро — в бронежилете.</p>
+              <div id="llm-text-lint-settings" class="llm-compact-settings" aria-live="polite"></div>
+            </details>
+
+            <details class="llm-settings-fold llm-misc-fold" open>
+              <summary>Предпросмотр</summary>
+              <div class="llm-compact-settings">
+                <label class="settings-item settings-item-row" title="Как показывать изменения в панели ответа LLM после форматирования и локальной причёски">
+                  Diff
+                  <select id="llm-diff-mode">
+                    <option value="classic">Обычный</option>
+                    <option value="matrix">Matrix-diff</option>
+                  </select>
+                </label>
+
+                <label class="settings-item settings-item-row" title="Длительность проявления слов в Matrix-diff">
+                  Matrix-diff (мс)
+                  <input id="llm-diff-effect-ms" type="number" min="1000" max="10000" step="50" value="3500">
+                </label>
+              </div>
+            </details>
+
+            <details class="llm-settings-fold llm-misc-fold" open>
+              <summary>Общее</summary>
+              <div class="llm-compact-settings">
+                <label class="settings-item"><input id="llm-enabled" type="checkbox"> LLM включён</label>
+                <label class="settings-item"><input id="llm-auto-snapshot" type="checkbox" checked> Авто-снапшот до операций</label>
+                <label class="settings-item"><input id="llm-save-results" type="checkbox" checked> Сохранять результаты в [LLM]-снапшоты</label>
+                <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
+              </div>
+            </details>
 
           </div>
 
