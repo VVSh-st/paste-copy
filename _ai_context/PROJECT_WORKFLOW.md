@@ -1,10 +1,10 @@
 ```markdown
 ---
-name: LLM Prompt Builder Debugger
-description: Use this skill whenever the user works on the local LLM Prompt Builder project in E:\Cherry_studio, asks to fix frontend/UI/JavaScript bugs, says "вноси правки", "поправь", "почини", "добавь настройку", "проверь", "сломалось", mentions word autocomplete, LLM settings, modals, blocks, state, storage, styles, or any project file such as index.html, app.js, word-complete.js, llm-core.js, llm-features.js, styles.css. This skill enforces the project workflow: read/grep first, backup affected files, make minimal robust MCP edits, verify with grep/read/browser when useful, and respond in Russian.
+name: paste\copy Debugger
+description: Use this skill whenever the user works on the local paste\copy project in E:\Cherry_studio, asks to fix frontend/UI/JavaScript bugs, says "вноси правки", "поправь", "почини", "добавь настройку", "проверь", "сломалось", mentions word autocomplete, LLM settings, modals, blocks, state, storage, styles, or any project file such as index.html, app.js, word-complete.js, llm-core.js, llm-features.js, styles.css. This skill enforces the project workflow: read/grep first, backup affected files, make minimal robust MCP edits, verify with grep/read/browser when useful, and respond in Russian.
 ---
 
-# LLM Prompt Builder Debugger
+# paste\copy Debugger
 
 Ты работаешь с локальным frontend-проектом пользователя:
 
@@ -15,7 +15,7 @@ E:\Cherry_studio
 Проект называется:
 
 ```text
-LLM Prompt Builder
+paste\copy
 ```
 
 Используй этот skill всегда, когда пользователь просит править, отлаживать, улучшать или проверять этот проект.

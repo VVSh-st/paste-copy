@@ -262,7 +262,7 @@
       updatedAt: now(),
       source: 'memory-sync',
       app: {
-        title: document.title || 'LLM Prompt Builder'
+        title: document.title || 'paste\\copy'
       },
       userMemory,
       projectGraph
@@ -303,7 +303,7 @@
       source: 'memory-sync',
       updatedAt: now(),
       app: {
-        title: document.title || 'LLM Prompt Builder'
+        title: document.title || 'paste\\copy'
       },
       userMemory: stable.userMemory,
       projectGraph: stable.projectGraph

@@ -11,9 +11,9 @@ const GistSync = (() => {
 'use strict';
 // ═══ Constants ═══════════════════════════════════════════════════════════
 const CLIENT_ID     = 'Ov23lilZq46oMUFQ55qd';
-const GIST_FILE     = 'llm-prompt-builder.json';
+const GIST_FILE     = 'paste-copy.json';
 const WORDLIST_FILE = 'llm-wordlist.json';
-const GIST_DESC     = 'llm-prompt-builder-sync';
+const GIST_DESC     = 'paste-copy-sync';
 const K_TOKEN      = 'gs_token';
 const K_GIST_ID    = 'gs_gist_id';
 const K_LAST_SYNC  = 'gs_last_sync';
@@ -1119,7 +1119,7 @@ if (!st.isConnected && _connectingCode) {
             action="javascript:void(0)" onsubmit="return false;">
          <label for="gs-pat-input" class="gs-hint">
            <strong>Personal Access Token</strong>
-          ( <a href="https://github.com/settings/tokens/new?description=llm-prompt-builder&scopes=gist"
+          ( <a href="https://github.com/settings/tokens/new?description=paste-copy&scopes=gist"
               target="_blank" rel="noopener" class="gs-link">создать ↗</a>,
           scope:  <code>gist</code>)
          </label>

@@ -14,7 +14,7 @@ window.LLMCore = (() => {
     openrouter: {
       label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api', requiresKey: true,
       modelsPath: '/v1/models', chatPath: '/v1/chat/completions', parseModels: 'openrouter',
-      extraHeaders: { 'HTTP-Referer': 'llm-prompt-builder', 'X-Title': 'LLM Prompt Builder' },
+      extraHeaders: { 'HTTP-Referer': 'paste-copy', 'X-Title': 'paste\\copy' },
     },
   };
 

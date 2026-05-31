@@ -1112,15 +1112,46 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       State.update(() => { b.pasteCursor = _getPasteCursorMode() === 'start' ? 'end' : 'start'; });
     };
 
+    function _jumpBlockScroll(toEnd) {
+      const pos = toEnd ? ta.value.length : 0;
+      ta.focus({ preventScroll: true });
+      ta.setSelectionRange(pos, pos);
+      ta.scrollTop = toEnd ? ta.scrollHeight : 0;
+    }
+
+    const scrollTopBtn = mkBtn('font-ctrl-btn block-scroll-btn block-scroll-up', '', 'Прокрутить блок вверх');
+    scrollTopBtn.innerHTML = '<span class="block-scroll-triangle" aria-hidden="true"></span>';
+    scrollTopBtn.setAttribute('aria-label', 'Прокрутить блок вверх');
+    scrollTopBtn.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      _jumpBlockScroll(false);
+    };
+
+    const scrollBottomBtn = mkBtn('font-ctrl-btn block-scroll-btn block-scroll-down', '', 'Прокрутить блок вниз');
+    scrollBottomBtn.innerHTML = '<span class="block-scroll-triangle" aria-hidden="true"></span>';
+    scrollBottomBtn.setAttribute('aria-label', 'Прокрутить блок вниз');
+    scrollBottomBtn.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      _jumpBlockScroll(true);
+    };
+
     const counterSpan = document.createElement('span');
     counterSpan.className = 'block-counter-badge';
     body._counterSpan = counterSpan;
     updateBlockCounter(ta, b, body);
 
+    const scrollControls = document.createElement('div');
+    scrollControls.className = 'block-scroll-controls';
+    scrollControls.appendChild(scrollTopBtn);
+    scrollControls.appendChild(scrollBottomBtn);
+    scrollControls.appendChild(counterSpan);
+
     footer.appendChild(fDecBtn);
     footer.appendChild(fIncBtn);
     footer.appendChild(pasteCursorBtn);
-    footer.appendChild(counterSpan);
+    footer.appendChild(scrollControls);
     body.appendChild(footer);
   }
 
@@ -1184,7 +1215,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   function _insertBroTagItem(ta, item, bangStart, pos) {
     const tagText = String(item?.tag || '').trim();
     if (!tagText) return;
-    ta.setRangeText(tagText + ' ', bangStart, pos, 'end');
+    const triggerText = ta.value.slice(bangStart, pos);
+    const tagName = tagText.replace(/^!+/, '');
+    const insertText = (triggerText.startsWith('!!') ? '!!' : '!') + tagName;
+    ta.setRangeText(insertText + ' ', bangStart, pos, 'end');
     ta.dispatchEvent(new Event('input'));
     State.snapshot();
     _closeSlashPalette();
@@ -1337,7 +1371,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const pos = ta.selectionStart;
     const before = ta.value.slice(0, pos);
     const slashMatch = before.match(/(^|[\n\s])\/([^\s\n]*)$/);
-    const broMatch = before.match(/(^|[\n\s])!([^\s\n!]*)$/);
+    const broMatch = before.match(/(^|[\n\s])(!{1,2})([^\s\n!]*)$/);
 
     if (slashMatch) {
       const query = slashMatch[2].toLowerCase();
@@ -1349,7 +1383,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     if (broMatch) {
-      const query = broMatch[2].toLowerCase();
+      const query = broMatch[3].toLowerCase();
       const bangStart = pos - broMatch[0].length + broMatch[1].length;
       const filtered = _broTagFilterItems(query);
       if (!filtered.length) { _closeSlashPalette(); return; }

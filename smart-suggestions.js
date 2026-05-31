@@ -217,12 +217,27 @@
   function positionMenu() {
     if (!menuButton || !menuPanel || menuPanel.hidden) return;
     const rect = menuButton.getBoundingClientRect();
-    const width = Math.min(360, window.innerWidth - 24);
-    const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width));
-    const top = Math.max(12, Math.min(window.innerHeight - 80, rect.bottom + 8));
+    const margin = 12;
+    const gap = 8;
+    const width = Math.min(360, Math.max(220, window.innerWidth - margin * 2));
+    const left = Math.max(margin, Math.min(window.innerWidth - width - margin, rect.right - width));
+
     menuPanel.style.width = width + 'px';
     menuPanel.style.left = left + 'px';
-    menuPanel.style.top = top + 'px';
+    menuPanel.style.maxHeight = '';
+
+    const desiredHeight = Math.min(menuPanel.scrollHeight || menuPanel.offsetHeight || 0, 420);
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - margin - gap);
+    const spaceAbove = Math.max(0, rect.top - margin - gap);
+    const openAbove = spaceBelow < Math.min(desiredHeight, 180) && spaceAbove > spaceBelow;
+    const available = Math.max(96, openAbove ? spaceAbove : spaceBelow);
+    const finalHeight = Math.min(desiredHeight, available);
+    const top = openAbove
+      ? Math.max(margin, rect.top - gap - finalHeight)
+      : Math.min(window.innerHeight - margin - finalHeight, rect.bottom + gap);
+
+    menuPanel.style.maxHeight = Math.floor(available) + 'px';
+    menuPanel.style.top = Math.max(margin, top) + 'px';
   }
 
   function updateMenu(suggestions = [], ctx = null) {

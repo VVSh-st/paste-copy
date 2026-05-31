@@ -3,14 +3,20 @@
 
 const Storage = (() => {
 
-  const KEY     = 'llm-prompt-builder-v3';
-  const KEY_OLD = 'llm-prompt-builder-v2';
-  const KEY_TPL = 'llm-prompt-builder-tpl';
+  const KEY     = 'paste-copy-v3';
+  const KEY_OLD = 'paste-copy-v2';
+  const KEY_TPL = 'paste-copy-tpl';
+  const LEGACY_SLUG = ['llm', 'prompt', 'builder'].join('-');
+  const LEGACY_KEY     = `${LEGACY_SLUG}-v3`;
+  const LEGACY_KEY_OLD = `${LEGACY_SLUG}-v2`;
+  const LEGACY_KEY_TPL = `${LEGACY_SLUG}-tpl`;
 
-  const KEY_LLM_CACHE   = 'llm-pb-cache';
-  const KEY_LLM_HISTORY = 'llm-pb-history';
+  const KEY_LLM_CACHE   = 'paste-copy-cache';
+  const KEY_LLM_HISTORY = 'paste-copy-history';
+  const LEGACY_KEY_LLM_CACHE   = 'llm-pb-cache';
+  const LEGACY_KEY_LLM_HISTORY = 'llm-pb-history';
 
-  const IDB_DB    = 'llm-prompt-builder-db';
+  const IDB_DB    = 'paste-copy-db';
   const IDB_STORE = 'kv';
   const MODE_KEY  = KEY + ':mode';
   const SNAP_INDEX_KEY = 'emergency:index';
@@ -151,9 +157,9 @@ const Storage = (() => {
       // Если localStorage пуст, пробуем большую копию из IndexedDB.
       if (!raw) raw = await _idbGet(KEY);
 
-      // Если нет — пробуем старый ключ (миграция v2 → v3).
+      // Если нет — пробуем старые ключи (миграция v2 → v3 и прежний slug → новый).
       if (!raw) {
-        raw = _get(KEY_OLD);
+        raw = _get(KEY_OLD) || _get(LEGACY_KEY) || _get(LEGACY_KEY_OLD);
         if (raw) migrated = true;
       }
 
@@ -165,6 +171,8 @@ const Storage = (() => {
       if (migrated) {
         save(parsed);
         _remove(KEY_OLD);
+        _remove(LEGACY_KEY);
+        _remove(LEGACY_KEY_OLD);
       }
 
       return parsed;
@@ -248,10 +256,17 @@ const Storage = (() => {
 
   function loadTemplates() {
     try {
-      const raw = _get(KEY_TPL);
+      let raw = _get(KEY_TPL);
+      const migrated = !raw && _get(LEGACY_KEY_TPL);
+      if (!raw && migrated) raw = migrated;
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : null;
+      if (!Array.isArray(parsed)) return null;
+      if (migrated) {
+        _set(KEY_TPL, JSON.stringify(parsed));
+        _remove(LEGACY_KEY_TPL);
+      }
+      return parsed;
     } catch (e) {
       _warn('loadTemplates', e);
       return null;
@@ -274,11 +289,17 @@ const Storage = (() => {
 
   function loadLLMCache() {
     try {
-      const raw = _get(KEY_LLM_CACHE);
+      let raw = _get(KEY_LLM_CACHE);
+      const migrated = !raw && _get(LEGACY_KEY_LLM_CACHE);
+      if (!raw && migrated) raw = migrated;
       if (!raw) return { entries: {}, order: [] };
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed.entries !== 'object' || !Array.isArray(parsed.order)) {
         return { entries: {}, order: [] };
+      }
+      if (migrated) {
+        _set(KEY_LLM_CACHE, JSON.stringify(parsed));
+        _remove(LEGACY_KEY_LLM_CACHE);
       }
       return parsed;
     } catch (e) {
@@ -289,6 +310,7 @@ const Storage = (() => {
 
   function clearLLMCache() {
     _remove(KEY_LLM_CACHE);
+    _remove(LEGACY_KEY_LLM_CACHE);
   }
 
   // =LLM Request History=
@@ -303,10 +325,17 @@ const Storage = (() => {
 
   function loadLLMHistory() {
     try {
-      const raw = _get(KEY_LLM_HISTORY);
+      let raw = _get(KEY_LLM_HISTORY);
+      const migrated = !raw && _get(LEGACY_KEY_LLM_HISTORY);
+      if (!raw && migrated) raw = migrated;
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      if (migrated) {
+        _set(KEY_LLM_HISTORY, JSON.stringify(parsed));
+        _remove(LEGACY_KEY_LLM_HISTORY);
+      }
+      return parsed;
     } catch (e) {
       _warn('loadLLMHistory', e);
       return [];

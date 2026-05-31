@@ -85,19 +85,40 @@
   function getHelpMarkup() {
     return `
       <div class="help-shell" role="document">
-        <header class="help-topbar">
-          <div class="help-title-wrap">
-            <span class="help-logo" aria-hidden="true">?</span>
-            <div>
-              <p class="help-eyebrow">LLM Prompt Builder · справка</p>
-              <h1 id="help-title">Быстрый ввод в управление без ритуального чтения мануала</h1>
+        <div class="help-sticky-head">
+          <header class="help-topbar">
+            <div class="help-title-wrap">
+              <span class="help-logo" aria-hidden="true">?</span>
+              <div>
+                <p class="help-eyebrow">paste\\copy · справка</p>
+                <h1 id="help-title">Быстрый ввод в управление без ритуального чтения мануала</h1>
+              </div>
             </div>
+            <div class="help-actions">
+              <button type="button" class="help-chip help-chip-hotkey" data-help-filter="hotkeys">F2 · открыть/закрыть</button>
+              <button type="button" class="help-close" data-help-close aria-label="Закрыть справку">✕</button>
+            </div>
+          </header>
+
+          <div class="help-controlbar">
+            <label class="help-search-wrap" for="${HELP_SEARCH_ID}">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.5"></circle>
+                <path d="M11.5 11.5l2.5 2.5"></path>
+              </svg>
+              <input id="${HELP_SEARCH_ID}" type="search" placeholder="Найти: хоткеи, БРО, LLM, экспорт..." autocomplete="off" spellcheck="false">
+            </label>
+            <nav class="help-filterbar" aria-label="Фильтры справки">
+              <button type="button" class="active" data-help-filter="all">Всё</button>
+              <button type="button" data-help-filter="start">Старт</button>
+              <button type="button" data-help-filter="hotkeys">Хоткеи</button>
+              <button type="button" data-help-filter="blocks">Блоки</button>
+              <button type="button" data-help-filter="llm">LLM</button>
+              <button type="button" data-help-filter="bro">БРО</button>
+              <button type="button" data-help-filter="trouble">Проблемы</button>
+            </nav>
           </div>
-          <div class="help-actions">
-            <button type="button" class="help-chip help-chip-hotkey" data-help-filter="hotkeys">F2 · открыть/закрыть</button>
-            <button type="button" class="help-close" data-help-close aria-label="Закрыть справку">✕</button>
-          </div>
-        </header>
+        </div>
 
         <div class="help-hero" data-help-card data-help-category="start" data-help-tags="старт быстро промпт превью копировать новичок">
           <div class="help-hero-main">
@@ -112,25 +133,6 @@
             <li><b>4</b><span>Запусти аудит/сжатие, если нужно</span></li>
             <li><b>5</b><span>Копируй результат и иди побеждать хаос</span></li>
           </ol>
-        </div>
-
-        <div class="help-controlbar">
-          <label class="help-search-wrap" for="${HELP_SEARCH_ID}">
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
-              <circle cx="7" cy="7" r="4.5"></circle>
-              <path d="M11.5 11.5l2.5 2.5"></path>
-            </svg>
-            <input id="${HELP_SEARCH_ID}" type="search" placeholder="Найти: хоткеи, БРО, LLM, экспорт..." autocomplete="off" spellcheck="false">
-          </label>
-          <nav class="help-filterbar" aria-label="Фильтры справки">
-            <button type="button" class="active" data-help-filter="all">Всё</button>
-            <button type="button" data-help-filter="start">Старт</button>
-            <button type="button" data-help-filter="hotkeys">Хоткеи</button>
-            <button type="button" data-help-filter="blocks">Блоки</button>
-            <button type="button" data-help-filter="llm">LLM</button>
-            <button type="button" data-help-filter="bro">БРО</button>
-            <button type="button" data-help-filter="trouble">Проблемы</button>
-          </nav>
         </div>
 
         <main class="help-content" tabindex="-1">
