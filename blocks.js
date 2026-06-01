@@ -1024,6 +1024,37 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     lineWrap.appendChild(lineHighlight);
     lineWrap.appendChild(ta);
 
+    let lineMirror = null;
+    const lineMirrorProps = [
+      'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+      'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariantLigatures',
+      'fontFeatureSettings', 'fontKerning', 'letterSpacing', 'lineHeight',
+      'textTransform', 'textIndent', 'wordBreak', 'overflowWrap', 'tabSize',
+    ];
+
+    function getLineMirror(cs) {
+      if (!lineMirror) {
+        lineMirror = document.createElement('div');
+        lineMirror.style.position = 'absolute';
+        lineMirror.style.visibility = 'hidden';
+        lineMirror.style.pointerEvents = 'none';
+        lineMirror.style.top = '0';
+        lineMirror.style.left = '0';
+        lineMirror.style.overflow = 'hidden';
+        lineMirror.style.whiteSpace = 'pre-wrap';
+        lineMirror.style.wordWrap = 'break-word';
+        lineWrap.appendChild(lineMirror);
+      }
+
+      for (const prop of lineMirrorProps) lineMirror.style[prop] = cs[prop];
+      const pl = parseFloat(cs.paddingLeft) || 0;
+      const pr = parseFloat(cs.paddingRight) || 0;
+      lineMirror.style.boxSizing = 'content-box';
+      lineMirror.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
+      return lineMirror;
+    }
+
     function updateCurrentLineHighlight() {
       const lay = State.getLayout();
       const enabled = lay.currentLineHighlight === true && document.activeElement === ta;
@@ -1032,12 +1063,21 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       const cs = getComputedStyle(ta);
       const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
-      const before = ta.value.slice(0, ta.selectionStart);
-      const lineIndex = before.split('\n').length - 1;
-      const top = (parseFloat(cs.borderTopWidth) || 0) +
-        (parseFloat(cs.paddingTop) || 0) +
-        lineIndex * lineHeight -
-        ta.scrollTop;
+      const mirror = getLineMirror(cs);
+      mirror.textContent = '';
+
+      const before = document.createElement('span');
+      before.textContent = ta.value.substring(0, ta.selectionStart);
+      const marker = document.createElement('span');
+      marker.textContent = ta.value.substring(ta.selectionStart, ta.selectionStart + 1) || '.';
+      mirror.appendChild(before);
+      mirror.appendChild(marker);
+
+      const markerRect = marker.getBoundingClientRect();
+      const mirrorRect = mirror.getBoundingClientRect();
+      const taRect = ta.getBoundingClientRect();
+      const wrapRect = lineWrap.getBoundingClientRect();
+      const top = (taRect.top - wrapRect.top) + (markerRect.top - mirrorRect.top) - ta.scrollTop;
 
       lineHighlight.style.top = top + 'px';
       lineHighlight.style.height = lineHeight + 'px';
@@ -1047,9 +1087,16 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     ['focus', 'click', 'keyup', 'select', 'input', 'scroll'].forEach(evt => {
-      ta.addEventListener(evt, () => requestAnimationFrame(updateCurrentLineHighlight));
+      ta.addEventListener(evt, () => {
+        requestAnimationFrame(updateCurrentLineHighlight);
+        requestAnimationFrame(() => requestAnimationFrame(updateCurrentLineHighlight));
+      });
     });
-    ta.addEventListener('blur', updateCurrentLineHighlight);
+    ta.addEventListener('blur', () => {
+      updateCurrentLineHighlight();
+      if (lineMirror?.parentNode) lineMirror.parentNode.removeChild(lineMirror);
+      lineMirror = null;
+    });
 
     body.appendChild(lineWrap);
 
