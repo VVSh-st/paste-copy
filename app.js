@@ -136,6 +136,12 @@
     // Sync ninja cursor checkbox with persisted layout flag
     const optNinja = $id('opt-ninja-cursor');
     if (optNinja) optNinja.checked = lay.ninjaCursor === true;
+
+    const optCurrentLine = $id('opt-current-line-highlight-misc');
+    if (optCurrentLine) optCurrentLine.checked = lay.currentLineHighlight === true;
+
+    const optCurrentLineColor = $id('opt-current-line-color-misc');
+    if (optCurrentLineColor) optCurrentLineColor.value = lay.currentLineColor || 'rgba(79,142,247,0.18)';
   }
 
   State.onChange(fullRender);
@@ -352,6 +358,29 @@
       'success',
     );
   };
+
+  const optCurrentLine = $id('opt-current-line-highlight-misc');
+  if (optCurrentLine) optCurrentLine.onchange = e => {
+    const enabled = e.target.checked;
+    State.setLayout({ currentLineHighlight: enabled });
+    Blocks.render();
+    scheduleSave();
+    Toast.show(enabled ? 'Подсветка строки включена' : 'Подсветка строки выключена', 'success');
+  };
+
+  const optCurrentLineColor = $id('opt-current-line-color-misc');
+  if (optCurrentLineColor) {
+    const saveLineColor = e => {
+      const value = String(e.target.value || '').trim() || 'rgba(79,142,247,0.18)';
+      State.setLayout({ currentLineColor: value });
+      document.querySelectorAll('.current-line-highlight').forEach(el => {
+        el.style.background = value;
+      });
+      scheduleSave();
+    };
+    optCurrentLineColor.oninput = saveLineColor;
+    optCurrentLineColor.onchange = saveLineColor;
+  }
 
   function _applyTooltipState(enabled) {
     if (!enabled) {

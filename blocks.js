@@ -1017,7 +1017,41 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       State.snapshot();
     });
 
-    body.appendChild(ta);
+    const lineWrap = document.createElement('div');
+    lineWrap.className = 'current-line-wrap';
+    const lineHighlight = document.createElement('div');
+    lineHighlight.className = 'current-line-highlight';
+    lineWrap.appendChild(lineHighlight);
+    lineWrap.appendChild(ta);
+
+    function updateCurrentLineHighlight() {
+      const lay = State.getLayout();
+      const enabled = lay.currentLineHighlight === true && document.activeElement === ta;
+      lineWrap.classList.toggle('current-line-enabled', enabled);
+      if (!enabled) return;
+
+      const cs = getComputedStyle(ta);
+      const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+      const before = ta.value.slice(0, ta.selectionStart);
+      const lineIndex = before.split('\n').length - 1;
+      const top = (parseFloat(cs.borderTopWidth) || 0) +
+        (parseFloat(cs.paddingTop) || 0) +
+        lineIndex * lineHeight -
+        ta.scrollTop;
+
+      lineHighlight.style.top = top + 'px';
+      lineHighlight.style.height = lineHeight + 'px';
+      lineHighlight.style.left = (parseFloat(cs.borderLeftWidth) || 0) + 'px';
+      lineHighlight.style.right = (parseFloat(cs.borderRightWidth) || 0) + 'px';
+      lineHighlight.style.background = lay.currentLineColor || 'rgba(79,142,247,0.18)';
+    }
+
+    ['focus', 'click', 'keyup', 'select', 'input', 'scroll'].forEach(evt => {
+      ta.addEventListener(evt, () => requestAnimationFrame(updateCurrentLineHighlight));
+    });
+    ta.addEventListener('blur', updateCurrentLineHighlight);
+
+    body.appendChild(lineWrap);
 
     // Футер с кнопками размера шрифта и счётчиком
     const footer = document.createElement('div');

@@ -194,6 +194,11 @@ body {
   color: var(--text0); border-radius: 5px; padding: 2px 6px;
   font-size: 11px; text-align: center; outline: none;
 }
+.settings-item input[type="text"] {
+  flex: 0 1 150px; min-width: 0; background: var(--bg0); border: 1px solid var(--border);
+  color: var(--text0); border-radius: 5px; padding: 3px 7px;
+  font-size: 11px; font-family: var(--mono); outline: none;
+}
 .settings-action {
   width: calc(100% - 12px); margin: 2px 6px; border: 1px solid transparent;
   background: transparent; font: inherit; text-align: left;
@@ -452,6 +457,30 @@ textarea.block-textarea {
 }
 textarea.block-textarea:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow2); background: #0a0f15;
+}
+.current-line-wrap {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg0);
+  border-radius: var(--radius-sm);
+}
+.current-line-wrap .block-textarea {
+  position: relative;
+  z-index: 1;
+}
+.current-line-wrap.current-line-enabled .block-textarea,
+.current-line-wrap.current-line-enabled .block-textarea:focus {
+  background: transparent;
+}
+.current-line-highlight {
+  position: absolute;
+  z-index: 0;
+  display: none;
+  pointer-events: none;
+  border-radius: 4px;
+}
+.current-line-enabled .current-line-highlight {
+  display: block;
 }
 
 /* ===== ITEMS (Snippets / Commands) ===== */

@@ -15,6 +15,8 @@ const State = (() => {
     previewWrap:     true,
     previewMarkdown: false,
     previewHeaders:  true,
+    currentLineHighlight: false,
+    currentLineColor:     'rgba(79,142,247,0.18)',
     blockHeights:    {},
 
     llm: {
