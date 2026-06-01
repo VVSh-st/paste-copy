@@ -3213,10 +3213,10 @@ textarea.llm-bro-processing {
 }
 
 .gs-hist-actions .gs-btn-sm {
-  width: auto;
-  min-width: 108px;
+  width: 34px;
+  min-width: 34px;
   height: 30px;
-  padding: 0 10px;
+  padding: 0;
   justify-content: center;
   border-radius: 9px;
   overflow: hidden;
@@ -4284,10 +4284,10 @@ textarea.llm-bro-processing {
   .gs-hist-actions .gs-btn-sm,
   .gs-hist-actions .gs-btn-compare,
   .gs-hist-actions .gs-btn-restore {
-    width: auto !important;
-    min-width: 0 !important;
+    width: 34px !important;
+    min-width: 34px !important;
     height: 26px !important;
-    padding: 0 9px !important;
+    padding: 0 !important;
     border-radius: 9px !important;
     overflow: visible !important;
     color: var(--text1) !important;
@@ -4298,11 +4298,11 @@ textarea.llm-bro-processing {
   }
 
   .gs-hist-actions .gs-btn-compare {
-    flex: 0 0 78px !important;
+    flex: 0 0 34px !important;
   }
 
   .gs-hist-actions .gs-btn-restore {
-    flex: 0 0 72px !important;
+    flex: 0 0 34px !important;
   }
 
   .gs-hist-actions .gs-btn-ico {
@@ -4310,7 +4310,7 @@ textarea.llm-bro-processing {
     align-items: center !important;
     justify-content: center !important;
     width: 14px !important;
-    margin-right: 5px !important;
+    margin-right: 0 !important;
     color: var(--text2) !important;
     font-size: 13px !important;
     line-height: 1 !important;
