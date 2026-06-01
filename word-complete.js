@@ -672,6 +672,16 @@ const WordAcceptEffect = (() => {
   }
 
   function textareaBackground(ta) {
+    const lineBg = ta
+      ?.closest?.('.current-line-wrap.current-line-enabled')
+      ?.querySelector?.('.current-line-highlight');
+    if (lineBg) {
+      const lineCs = window.getComputedStyle(lineBg);
+      if (lineCs.backgroundColor && lineCs.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+        return lineCs.backgroundColor;
+      }
+    }
+
     const cs = window.getComputedStyle(ta);
     return cs.backgroundColor && cs.backgroundColor !== 'rgba(0, 0, 0, 0)'
       ? cs.backgroundColor
