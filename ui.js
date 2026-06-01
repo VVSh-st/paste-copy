@@ -67,6 +67,9 @@ const Tabs = (() => {
 
   bar.setAttribute('role', 'tablist');
 
+  let lastTabClickId = null;
+  let lastTabClickAt = 0;
+
   // Делегированная клавиатурная навигация (WAI-ARIA Tabs Pattern)
   bar.addEventListener('keydown', e => {
     // Не перехватываем события от полей ввода и contenteditable
@@ -135,8 +138,8 @@ const Tabs = (() => {
       name.title = tab.name || '';
 
       // dblclick — inline-переименование
-      name.ondblclick = e => {
-        e.stopPropagation();
+      const startRename = e => {
+        if (e) e.stopPropagation();
         if (el.querySelector('.tab-rename-input')) return;
         const inp = document.createElement('input');
         inp.className   = 'tab-rename-input';
@@ -159,6 +162,8 @@ const Tabs = (() => {
         name.replaceWith(inp);
         requestAnimationFrame(() => { inp.focus(); inp.select(); });
       };
+
+      name.ondblclick = startRename;
 
       // --- Счётчик заполненных блоков ---
       const count = document.createElement('span');
@@ -210,7 +215,17 @@ const Tabs = (() => {
       };
 
       // --- События вкладки ---
-      el.onclick = () => State.setActive(tab.id);
+      el.onclick = e => {
+        if (e.target.closest('.tab-close, .tab-count, .tab-rename-input')) return;
+
+        const now = Date.now();
+        const isSecondClick = lastTabClickId === tab.id && now - lastTabClickAt < 450;
+        lastTabClickId = tab.id;
+        lastTabClickAt = now;
+
+        if (e.detail >= 2 || isSecondClick) { startRename(e); return; }
+        State.setActive(tab.id);
+      };
       el.onmousedown = e => {
         if (e.button === 1) { e.preventDefault(); State.closeTab(tab.id); }
       };
