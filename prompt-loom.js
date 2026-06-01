@@ -638,17 +638,17 @@
     card.style.setProperty('--pl-color', source.color);
     card.setAttribute('role', 'listitem');
     const cardTip = buildItemTitle(item);
-    if (cardTip) card.dataset.plTip = cardTip;
+    const sourceTip = cardTip ? ` data-pl-tip="${escapeHtml(cardTip)}"` : '';
     card.innerHTML = `
       <div class="pl-card-top">
-        <span class="pl-source">${source.icon}<b>${source.label}</b></span>
+        <span class="pl-source"><span class="pl-source-icon"${sourceTip}>${source.icon}</span><b>${source.label}</b></span>
         <span class="pl-kind" style="--kind-color:${kind.color}">${escapeHtml(kind.label)}</span>
         ${item.seen > 1 ? `<span class="pl-seen" title="Похожее встречалось ${item.seen} раз">≈${item.seen}</span>` : ''}
         ${item.uses ? `<span class="pl-uses" title="Использовано ${item.uses} раз">×${item.uses}</span>` : ''}
         <span class="pl-time">${formatTime(item.updatedAt || item.createdAt)}</span>
         <button type="button" class="pl-icon-btn ${item.pinned ? 'active' : ''}" data-pl-pin title="${item.pinned ? 'Открепить' : 'Закрепить'}" aria-label="${item.pinned ? 'Открепить' : 'Закрепить'}" aria-pressed="${item.pinned ? 'true' : 'false'}">${iconPin()}</button>
       </div>
-      <pre class="pl-preview" data-pl-tip="${escapeHtml(item.text)}"></pre>
+      <pre class="pl-preview"></pre>
       <div class="pl-actions">
         <button type="button" data-pl-insert title="Вставить">${iconInsert()}<span>Вставить</span></button>
         <button type="button" data-pl-pretty title="Вставить красиво">${iconWand()}<span>Красиво</span></button>
@@ -1890,6 +1890,7 @@
       .pl-tools button.active, .pl-icon-btn.active { color: #fbbf24; background: rgba(251,191,36,.13); border-color: rgba(251,191,36,.38); box-shadow: 0 0 0 1px rgba(251,191,36,.14) inset, 0 0 12px rgba(251,191,36,.08); }
       .pl-tools button.danger-armed, .pl-more button.danger-armed { color: #fff; background: rgba(239,68,68,.32); border-color: rgba(239,68,68,.72); }
       .pl-tools svg, .pl-icon-btn svg, .pl-pal-foot svg, .pl-source svg, .pl-more svg, .pl-variants svg { width: 15px; height: 15px; stroke: currentColor; fill: none; }
+      .pl-source-icon { display: inline-flex; align-items: center; justify-content: center; }
       .pl-search-row { display: flex; }
       .pl-search { width: 100%; min-height: 32px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg0); color: var(--text0); padding: 6px 10px; outline: none; font: inherit; }
       .pl-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow2); }
