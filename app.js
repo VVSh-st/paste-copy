@@ -24,7 +24,6 @@
   const $id = id => document.getElementById(id);
   const onClick = (id, fn) => { const el = $id(id); if (el) el.onclick = fn; };
   const onEvent = (id, evt, fn) => { const el = $id(id); if (el) el.addEventListener(evt, fn); };
-
   // ── Schedule auto-save ──────────────────────────────────────────────────
   function scheduleSave() {
     clearTimeout(saveTimer);
@@ -103,27 +102,27 @@
     const optSep = $id('opt-separator');
     if (optSep) optSep.value = _sepToKey(currentSep);
 
-    const optHints = $id('opt-hints');
+    const optHints = $id('opt-wc-enabled-misc');
     if (optHints) optHints.checked = wc.enabled;
 
-    const optMinLen = $id('opt-wc-minlen');
+    const optMinLen = $id('opt-wc-minchars-misc');
     if (optMinLen) optMinLen.value = wc.minLen;
 
-    const optMaxSug = $id('opt-wc-maxsug');
+    const optMaxSug = $id('opt-wc-maxsug-misc');
     if (optMaxSug) optMaxSug.value = wc.maxSuggest;
 
-    const optWcAcceptEffect = $id('opt-wc-accept-effect');
+    const optWcAcceptEffect = $id('opt-wc-accept-effect-misc');
     if (optWcAcceptEffect) optWcAcceptEffect.checked = wc.acceptEffect !== false;
 
-    const optWcEffectMs = $id('opt-wc-effect-ms');
+    const optWcEffectMs = $id('opt-wc-effect-ms-misc');
     if (optWcEffectMs) optWcEffectMs.value = wc.acceptEffectMs;
 
     const smartList = lay.smartList !== false;
-    const optSmart = $id('opt-smart-list');
+    const optSmart = $id('opt-wc-enter-numbering-misc');
     if (optSmart) optSmart.checked = smartList;
     window._smartListEnabled = smartList;
 
-    const optWlSave = $id('opt-wordlist-save');
+    const optWlSave = $id('opt-wordlist-save-misc');
     if (optWlSave) optWlSave.checked = WordDict.getTempSaveEnabled();
 
     const tooltips = lay.tooltips !== false;
@@ -259,7 +258,7 @@
     State.update(t => { t.separator = sep; });
   };
 
-  const optHints = $id('opt-hints');
+  const optHints = $id('opt-wc-enabled-misc');
   if (optHints) optHints.onchange = e => {
     WordDict.setConfig({ enabled: e.target.checked });
     State.setLayout({ hintsEnabled: e.target.checked });
@@ -267,7 +266,7 @@
     scheduleSave();
   };
 
-  const optMinLen = $id('opt-wc-minlen');
+  const optMinLen = $id('opt-wc-minchars-misc');
   if (optMinLen) optMinLen.oninput = e => {
     const v = parseInt(e.target.value, 10);
     if (v >= 2 && v <= 8) {
@@ -277,7 +276,7 @@
     }
   };
 
-  const optMaxSug = $id('opt-wc-maxsug');
+  const optMaxSug = $id('opt-wc-maxsug-misc');
   if (optMaxSug) optMaxSug.oninput = e => {
     const v = parseInt(e.target.value, 10);
     if (v >= 1 && v <= 10) {
@@ -287,7 +286,7 @@
     }
   };
 
-  const optWcAcceptEffect = $id('opt-wc-accept-effect');
+  const optWcAcceptEffect = $id('opt-wc-accept-effect-misc');
   if (optWcAcceptEffect) optWcAcceptEffect.onchange = e => {
     const enabled = e.target.checked;
     WordDict.setConfig({ acceptEffect: enabled });
@@ -295,7 +294,7 @@
     scheduleSave();
   };
 
-  const optWcEffectMs = $id('opt-wc-effect-ms');
+  const optWcEffectMs = $id('opt-wc-effect-ms-misc');
   if (optWcEffectMs) optWcEffectMs.onchange = e => {
     const raw = parseInt(e.target.value, 10);
     if (!Number.isFinite(raw)) return;
@@ -307,14 +306,14 @@
     scheduleSave();
   };
 
-  const optSmartList = $id('opt-smart-list');
+  const optSmartList = $id('opt-wc-enter-numbering-misc');
   if (optSmartList) optSmartList.onchange = e => {
     window._smartListEnabled = e.target.checked;
     State.setLayout({ smartList: e.target.checked });
     scheduleSave();
   };
 
-  const optWordlistSave = $id('opt-wordlist-save');
+  const optWordlistSave = $id('opt-wordlist-save-misc');
   if (optWordlistSave) optWordlistSave.onchange = e => {
     WordDict.setTempSaveEnabled(e.target.checked);
     State.setLayout({ wordlistSave: e.target.checked });

@@ -1273,6 +1273,7 @@ if (st.history.length  > 0) {
       const timeStr = esc(new Date(entry.ts).toLocaleString('ru'));
       const immortal = !!entry.immortal;
       const targetStats = `${entry.tabsCount || 0} вкл. / ${entry.blocksTotal || 0} бл. / ${fmtNum(entry.charTotal || 0)} симв.`;
+      const compactStats = `${entry.tabsCount || 0}/${entry.blocksTotal || 0}/${fmtNum(entry.charTotal || 0)}`;
       const sizeStats = entry.rawSize ? `JSON ${fmtBytes(entry.rawSize)}${entry.gistSize ? ` · Gist ${fmtBytes(entry.gistSize)}` : ''}` : 'Размер старых записей не сохранён';
       html += `
        <li class="gist-history-row${immortal ? ' gs-history-immortal' : ''}">
@@ -1281,17 +1282,17 @@ if (st.history.length  > 0) {
                  aria-label="${immortal ? 'Снять бессмертность сохранения' : 'Сделать сохранение бессмертным'}"
                  title="${immortal ? 'Снять защиту от вытеснения' : 'Защитить сохранение от вытеснения'}">☠</button>
          <span class="gs-hist-main">
-           <span class="gs-hist-meta">${timeStr} — <em>${esc(entry.label || 'Сохранение')}</em></span>
-           <span class="gs-hist-stats gs-tip" data-tip="${esc(sizeStats)}">${targetStats}</span>
+           <span class="gs-hist-meta" title="${timeStr} — ${esc(entry.label || 'Сохранение')}">${timeStr} — <em>${esc(entry.label || 'Сохранение')}</em></span>
+           <span class="gs-hist-stats gs-tip" data-tip="${esc(targetStats)} · ${esc(sizeStats)}">${compactStats}</span>
          </span>
          <span class="gs-hist-actions">
            <button type="button" class="gs-btn gs-btn-sm gs-btn-compare gs-tip"
                    data-ts="${entry.ts}" data-tabs="${entry.tabsCount || 0}"
                    data-blocks="${entry.blocksTotal || 0}" data-chars="${entry.charTotal || 0}"
                    data-label="${esc(entry.label || 'Сохранение')}" data-time="${timeStr}"
-                   data-tip="Показать разницу по вкладкам, блокам и символам.">Сравнить</button>
+                   data-tip="Показать разницу по вкладкам, блокам и символам."><span class="gs-btn-ico" aria-hidden="true">≋</span><span></span></button>
           ${entry.gistVersion
-            ? ` <button type="button" class="gs-btn gs-btn-sm gs-btn-restore gs-tip" data-sha="${esc(entry.gistVersion)}" data-ts="${entry.ts}" data-stats="${esc(targetStats)}" data-tip="Восстановить эту версию. Перед опасным откатом будет предложена защита.">Восстановить</button>`
+            ? ` <button type="button" class="gs-btn gs-btn-sm gs-btn-restore gs-tip" data-sha="${esc(entry.gistVersion)}" data-ts="${entry.ts}" data-stats="${esc(targetStats)}" data-tip="Восстановить эту версию. Перед опасным откатом будет предложена защита."><span class="gs-btn-ico" aria-hidden="true">↩</span><span></span></button>`
             : ' <span class="gs-hist-nosha">—</span>'}
          </span>
        </li>`;

@@ -2603,11 +2603,19 @@ const AutoPoet = (() => {
     function clearHistory() {
       stop();
       _history    = [];
+      _inputHistory = [];
       _streaming  = false;
       _historyIdx = -1;
       _draftInput = '';
       const el = _msgsEl();
       if (el) el.innerHTML = '';
+      const inputEl = _inputEl();
+      if (inputEl) {
+        inputEl.value = '';
+        _resizeInput();
+      }
+      const ctxEl = document.getElementById('llm-chat-ctx');
+      if (ctxEl) ctxEl.textContent = '';
     }
 
     function addSystemMessage(text) { _appendMsg('system', text); }

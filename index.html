@@ -652,74 +652,6 @@
 
         <div class="menu-sep"></div>
 
-        <div class="settings-section">Автодополнение слов</div>
-
-        <label class="settings-item">
-
-          <input type="checkbox" id="opt-hints" checked>
-
-          Включить подсказки
-
-        </label>
-
-        <div class="settings-item settings-item-row">
-
-          <label for="opt-wc-minlen">Мин. букв для подсказки</label>
-
-          <input type="number" id="opt-wc-minlen" min="2" max="8" value="3" class="settings-input-sm">
-
-        </div>
-
-        <div class="settings-item settings-item-row">
-
-          <label for="opt-wc-maxsug">Макс. вариантов</label>
-
-          <input type="number" id="opt-wc-maxsug" min="1" max="10" value="3" class="settings-input-sm">
-
-        </div>
-
-        <label class="settings-item" title="При принятии подсказки буквы быстро проявляются в случайном порядке">
-
-          <input type="checkbox" id="opt-wc-accept-effect" checked>
-
-          Matrix-эффект принятия
-
-        </label>
-
-        <div class="settings-item settings-item-row" title="Длительность визуального проявления принятой подсказки">
-
-          <label for="opt-wc-effect-ms">Время эффекта (мс)</label>
-
-          <input type="number" id="opt-wc-effect-ms" min="1000" max="10000" step="50" value="3500" class="settings-input-sm">
-
-        </div>
-
-        <div class="menu-sep"></div>
-
-        <div class="settings-section">Умные списки</div>
-
-        <label class="settings-item">
-
-          <input type="checkbox" id="opt-smart-list" checked>
-
-          Авто-нумерация Enter
-
-        </label>
-
-        <div class="menu-sep"></div>
-
-        <div class="settings-section">Словарь</div>
-
-        <label class="settings-item">
-
-          <input type="checkbox" id="opt-wordlist-save" checked>
-
-          Сохранять словарь сессии
-
-        </label>
-
-        <div class="menu-sep"></div>
-
         <div class="settings-section">Интерфейс</div>
 
         <label class="settings-item">
@@ -1464,37 +1396,63 @@
 
           <div class="llm-misc-grid">
 
-            <details class="llm-settings-fold llm-misc-fold" open>
+            <details class="llm-settings-fold llm-misc-fold llm-misc-lint" open>
               <summary>Локальная причёска</summary>
               <p class="llm-misc-note">Без LLM: чистит пробелы, переносы и очевидную пунктуацию. Запятые только подсказывает. Код, URL, {{переменные}} и !бро — в бронежилете.</p>
               <div id="llm-text-lint-settings" class="llm-compact-settings" aria-live="polite"></div>
             </details>
 
-            <details class="llm-settings-fold llm-misc-fold" open>
-              <summary>Предпросмотр</summary>
-              <div class="llm-compact-settings">
-                <label class="settings-item settings-item-row" title="Как показывать изменения в панели ответа LLM после форматирования и локальной причёски">
-                  Diff
-                  <select id="llm-diff-mode">
-                    <option value="classic">Обычный</option>
-                    <option value="matrix">Matrix-diff</option>
-                  </select>
-                </label>
+            <div class="llm-misc-col llm-misc-col-middle">
+              <details class="llm-settings-fold llm-misc-fold llm-misc-preview" open>
+                <summary>Предпросмотр</summary>
+                <div class="llm-compact-settings">
+                  <label class="settings-item settings-item-row" title="Как показывать изменения в панели ответа LLM после форматирования и локальной причёски">
+                    Diff
+                    <select id="llm-diff-mode">
+                      <option value="classic">Обычный</option>
+                      <option value="matrix">Matrix-diff</option>
+                    </select>
+                  </label>
 
-                <label class="settings-item settings-item-row" title="Длительность проявления слов в Matrix-diff">
-                  Matrix-diff (мс)
-                  <input id="llm-diff-effect-ms" type="number" min="1000" max="10000" step="50" value="3500">
-                </label>
-              </div>
-            </details>
+                  <label class="settings-item settings-item-row" title="Длительность проявления слов в Matrix-diff">
+                    Matrix-diff (мс)
+                    <input id="llm-diff-effect-ms" type="number" min="1000" max="10000" step="50" value="3500">
+                  </label>
+                </div>
+              </details>
 
-            <details class="llm-settings-fold llm-misc-fold" open>
-              <summary>Общее</summary>
+              <details class="llm-settings-fold llm-misc-fold llm-misc-general" open>
+                <summary>Общее</summary>
+                <div class="llm-compact-settings">
+                  <label class="settings-item"><input id="llm-enabled" type="checkbox"> LLM включён</label>
+                  <label class="settings-item"><input id="llm-auto-snapshot" type="checkbox" checked> Авто-снапшот до операций</label>
+                  <label class="settings-item"><input id="llm-save-results" type="checkbox" checked> Сохранять результаты в [LLM]-снапшоты</label>
+                  <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
+                </div>
+              </details>
+            </div>
+
+            <details class="llm-settings-fold llm-misc-fold llm-misc-wordcomplete" open>
+              <summary>Автозавершение слов</summary>
               <div class="llm-compact-settings">
-                <label class="settings-item"><input id="llm-enabled" type="checkbox"> LLM включён</label>
-                <label class="settings-item"><input id="llm-auto-snapshot" type="checkbox" checked> Авто-снапшот до операций</label>
-                <label class="settings-item"><input id="llm-save-results" type="checkbox" checked> Сохранять результаты в [LLM]-снапшоты</label>
-                <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
+                <label class="settings-item"><input id="opt-wc-enabled-misc" type="checkbox" checked> Включено</label>
+                <label class="settings-item settings-item-row" title="Сколько символов нужно набрать перед показом подсказки">
+                  Мин. символов
+                  <input type="number" id="opt-wc-minchars-misc" min="1" max="12" value="2">
+                </label>
+                <label class="settings-item settings-item-row" title="Максимум одновременно показанных вариантов">
+                  Макс. вариантов
+                  <input type="number" id="opt-wc-maxsug-misc" min="1" max="10" value="3">
+                </label>
+                <label class="settings-item" title="При принятии подсказки буквы быстро проявляются в случайном порядке">
+                  <input type="checkbox" id="opt-wc-accept-effect-misc" checked> Matrix-эффект принятия
+                </label>
+                <label class="settings-item settings-item-row" title="Длительность визуального проявления принятой подсказки">
+                  Время эффекта (мс)
+                  <input type="number" id="opt-wc-effect-ms-misc" min="1000" max="10000" step="50" value="3500">
+                </label>
+                <label class="settings-item"><input type="checkbox" id="opt-wc-enter-numbering-misc"> Авто-нумерация Enter</label>
+                <label class="settings-item"><input type="checkbox" id="opt-wordlist-save-misc" checked> Сохранять словарь сессии</label>
               </div>
             </details>
 
