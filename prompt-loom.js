@@ -669,6 +669,7 @@
     const preview = card.querySelector('.pl-preview');
     const previewValue = previewLines(item.text, item.kind, 3, 260);
     preview.textContent = previewValue.text;
+    preview.classList.toggle('pl-preview-one-line', previewValue.lineCount === 1);
     if (previewValue.clipped) preview.dataset.plTip = item.text;
     bindCardActions(card, item);
     return card;
@@ -1726,14 +1727,29 @@
   function buildItemTitle(item) {
     const meta = item?.meta || {};
     const parts = [];
-    if (meta.via) parts.push('via: ' + meta.via);
-    if (meta.lastVia && meta.lastVia !== meta.via) parts.push('last: ' + meta.lastVia);
-    if (item?.lastUsedVia) parts.push('used: ' + item.lastUsedVia);
-    if (meta.featureKey) parts.push('feature: ' + meta.featureKey);
-    if (meta.mode) parts.push('mode: ' + meta.mode);
-    if (meta.blockId) parts.push('block: ' + meta.blockId);
-    if (meta.prompt) parts.push('prompt: ' + previewText(meta.prompt, 'text', 120));
+    if (meta.via) parts.push('Добавлено: ' + describeLoomSource(meta.via));
+    if (meta.lastVia && meta.lastVia !== meta.via) parts.push('Последнее обновление: ' + describeLoomSource(meta.lastVia));
+    if (item?.lastUsedVia) parts.push('Использовано: ' + describeLoomSource(item.lastUsedVia));
+    if (meta.featureKey) parts.push('Функция: ' + meta.featureKey);
+    if (meta.mode) parts.push('Режим: ' + meta.mode);
+    if (meta.blockId) parts.push('Блок: ' + meta.blockId);
+    if (meta.prompt) parts.push('Промпт: ' + previewText(meta.prompt, 'text', 120));
     return parts.length ? parts.join('\n') : '';
+  }
+
+  function describeLoomSource(value) {
+    const map = {
+      'clipboard.writeText': 'копирование через приложение',
+      'copy-event': 'копирование пользователем',
+      'paste-event': 'вставка пользователем',
+      'block-copy': 'копирование блока',
+      'loom-copy': 'скопировано из Loom',
+      'loom-insert': 'вставлено из Loom',
+      'loom-pretty': 'вставлено красиво из Loom',
+      'loom-quick': 'быстрая вставка из Loom',
+      'loom-variant': 'выбран вариант из Loom'
+    };
+    return map[value] || String(value || '').replace(/[-_.]/g, ' ');
   }
 
   function previewText(text, kind, max) {
@@ -1753,7 +1769,8 @@
     const clipped = clippedByLines || clippedByChars;
     return {
       text: clipped ? out.replace(/\s+$/g, '') + '...' : out,
-      clipped
+      clipped,
+      lineCount: Math.max(1, out.split('\n').length)
     };
   }
 
@@ -1928,9 +1945,13 @@
       .pl-time { color: var(--text3); cursor: default; font-size: 10px; }
       .pl-preview { margin: 7px 0; min-height: calc(1.45em * 1); max-height: calc(1.45em * 3); overflow: hidden; white-space: pre-wrap; color: var(--text1); font: 11px/1.45 var(--mono); }
       .pl-kind-instruction .pl-preview, .pl-kind-text .pl-preview, .pl-kind-llmAnswer .pl-preview { font-family: inherit; font-size: 12px; }
+      .pl-preview.pl-preview-one-line { font-size: 12px; }
+      .pl-kind-instruction .pl-preview.pl-preview-one-line, .pl-kind-text .pl-preview.pl-preview-one-line, .pl-kind-llmAnswer .pl-preview.pl-preview-one-line { font-size: 13px; }
       .pl-actions button:not(.pl-icon-btn) { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.045); color: var(--text1); padding: 4px 8px; font-size: 11px; cursor: pointer; transition: var(--trans); }
+      .pl-actions button:not(.pl-icon-btn) span { color: color-mix(in srgb, var(--text2) 70%, transparent); }
       .pl-actions button:not(.pl-icon-btn) svg { width: 13px; height: 13px; stroke: currentColor; fill: none; }
       .pl-actions button:hover { background: var(--surface2); color: var(--text0); border-color: var(--border2); }
+      .pl-actions button:not(.pl-icon-btn):hover span { color: var(--text1); }
       .pl-actions .pl-icon-btn { margin-left: auto; }
       .pl-actions .pl-icon-btn + .pl-icon-btn { margin-left: 0; }
       .pl-icon-btn.has-suggestions { color: #d7c47a; border-color: rgba(251,191,36,.28); background: rgba(251,191,36,.1); box-shadow: 0 0 0 1px rgba(251,191,36,.08) inset; }
@@ -1948,6 +1969,7 @@
       #prompt-loom-panel.compact .pl-title span:last-child, #prompt-loom-panel.compact .pl-actions button:not(.pl-icon-btn) span, #prompt-loom-panel.compact .pl-more span { display: none; }
       #prompt-loom-panel.compact .pl-card { padding: 7px; border-radius: 11px; }
       #prompt-loom-panel.compact .pl-preview { max-height: calc(1.45em * 3); margin: 5px 0; font-size: 11px; }
+      #prompt-loom-panel.compact .pl-preview.pl-preview-one-line { font-size: 12px; }
       #prompt-loom-panel.compact .pl-actions button:not(.pl-icon-btn) { width: 28px; height: 26px; padding: 0; }
       #prompt-loom-panel.compact .pl-more { grid-template-columns: repeat(4, 28px); justify-content: end; }
       .prompt-loom-open:has(#prompt-loom-panel.compact) #prompt-loom-toggle { transform: translateX(-330px); }
