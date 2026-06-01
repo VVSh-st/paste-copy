@@ -639,27 +639,30 @@
     card.setAttribute('role', 'listitem');
     const cardTip = buildItemTitle(item);
     const sourceTip = cardTip ? ` data-pl-tip="${escapeHtml(cardTip)}"` : '';
+    const timeLabel = formatTime(item.updatedAt || item.createdAt);
     card.innerHTML = `
       <div class="pl-card-top">
         <span class="pl-source"><span class="pl-source-icon"${sourceTip}>${source.icon}</span><b>${source.label}</b></span>
         <span class="pl-kind" style="--kind-color:${kind.color}">${escapeHtml(kind.label)}</span>
         ${item.seen > 1 ? `<span class="pl-seen" title="Похожее встречалось ${item.seen} раз">≈${item.seen}</span>` : ''}
         ${item.uses ? `<span class="pl-uses" title="Использовано ${item.uses} раз">×${item.uses}</span>` : ''}
-        <span class="pl-time">${formatTime(item.updatedAt || item.createdAt)}</span>
-        <button type="button" class="pl-icon-btn ${item.pinned ? 'active' : ''}" data-pl-pin title="${item.pinned ? 'Открепить' : 'Закрепить'}" aria-label="${item.pinned ? 'Открепить' : 'Закрепить'}" aria-pressed="${item.pinned ? 'true' : 'false'}">${iconPin()}</button>
+        <span class="pl-card-tools">
+          <span class="pl-icon-btn pl-time" title="${escapeHtml(timeLabel)}" aria-label="${escapeHtml(timeLabel)}">${iconClock()}</span>
+          <button type="button" class="pl-icon-btn ${item.pinned ? 'active' : ''}" data-pl-pin title="${item.pinned ? 'Открепить' : 'Закрепить'}" aria-label="${item.pinned ? 'Открепить' : 'Закрепить'}" aria-pressed="${item.pinned ? 'true' : 'false'}">${iconPin()}</button>
+          <button type="button" class="pl-icon-btn" data-pl-delete title="Удалить" aria-label="Удалить">${iconTrash()}</button>
+        </span>
       </div>
       <pre class="pl-preview"></pre>
       <div class="pl-actions">
         <button type="button" data-pl-insert title="Вставить">${iconInsert()}<span>Вставить</span></button>
         <button type="button" data-pl-pretty title="Вставить красиво">${iconWand()}<span>Красиво</span></button>
         <button type="button" data-pl-snippet title="Сделать сниппетом">${iconBolt()}<span>Сниппет</span></button>
+        <button type="button" class="pl-icon-btn" data-pl-copy title="Копировать" aria-label="Копировать">${iconCopy()}</button>
         <button type="button" class="pl-icon-btn" data-pl-more title="Ещё" aria-label="Ещё">${iconDots()}</button>
       </div>
       <div class="pl-more" hidden>
         <button type="button" data-pl-var>${iconText()}<span>Переменная</span></button>
-        <button type="button" data-pl-copy>${iconCopy()}<span>Копировать</span></button>
         <button type="button" data-pl-variants ${Array.isArray(item.variants) && item.variants.length ? '' : 'hidden'}>${iconLayers()}<span>Варианты</span></button>
-        <button type="button" data-pl-delete>${iconTrash()}<span>Удалить</span></button>
       </div>
     `;
     const preview = card.querySelector('.pl-preview');
@@ -1895,7 +1898,7 @@
       }
       .pl-tools button:hover, .pl-icon-btn:hover, .pl-pal-foot button:hover { color: var(--text0); background: var(--surface2); border-color: var(--border2); }
       .pl-tools button.active, .pl-icon-btn.active { color: #fbbf24; background: rgba(251,191,36,.13); border-color: rgba(251,191,36,.38); box-shadow: 0 0 0 1px rgba(251,191,36,.14) inset, 0 0 12px rgba(251,191,36,.08); }
-      .pl-tools button.danger-armed, .pl-more button.danger-armed { color: #fff; background: rgba(239,68,68,.32); border-color: rgba(239,68,68,.72); }
+      .pl-tools button.danger-armed, .pl-icon-btn.danger-armed, .pl-more button.danger-armed { color: #fff; background: rgba(239,68,68,.32); border-color: rgba(239,68,68,.72); }
       .pl-tools svg, .pl-icon-btn svg, .pl-pal-foot svg, .pl-source svg, .pl-more svg, .pl-variants svg { width: 15px; height: 15px; stroke: currentColor; fill: none; }
       .pl-source-icon { display: inline-flex; align-items: center; justify-content: center; }
       .pl-search-row { display: flex; }
@@ -1920,8 +1923,8 @@
       .pl-kind { font-size: 10px; color: var(--kind-color); border: 1px solid color-mix(in srgb, var(--kind-color) 40%, transparent); background: color-mix(in srgb, var(--kind-color) 10%, transparent); border-radius: 999px; padding: 1px 6px; }
       .pl-seen, .pl-uses { color: #86efac; border: 1px solid rgba(52,211,153,.22); background: rgba(52,211,153,.08); border-radius: 999px; padding: 1px 5px; font-size: 10px; line-height: 1.3; }
       .pl-seen { margin-left: auto; color: #fde68a; border-color: rgba(251,191,36,.24); background: rgba(251,191,36,.08); }
-      .pl-seen + .pl-uses, .pl-uses + .pl-time, .pl-seen + .pl-time { margin-left: 0; }
-      .pl-time { margin-left: auto; color: var(--text3); font-size: 10px; }
+      .pl-card-tools { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
+      .pl-time { color: var(--text3); cursor: default; }
       .pl-preview { margin: 7px 0; min-height: calc(1.45em * 1); max-height: calc(1.45em * 3); overflow: hidden; white-space: pre-wrap; color: var(--text1); font: 11px/1.45 var(--mono); }
       .pl-kind-instruction .pl-preview, .pl-kind-text .pl-preview, .pl-kind-llmAnswer .pl-preview { font-family: inherit; font-size: 12px; }
       .pl-actions button:not(.pl-icon-btn) { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.045); color: var(--text1); padding: 4px 8px; font-size: 11px; cursor: pointer; transition: var(--trans); }
@@ -2059,6 +2062,7 @@
   function iconCode() { return '<svg viewBox="0 0 16 16"><path d="M6 4L2.5 8 6 12M10 4l3.5 4L10 12"/></svg>'; }
   function iconRuler() { return '<svg viewBox="0 0 16 16"><path d="M2 11l9-9 3 3-9 9H2z"/><path d="M9 4l1 1M7 6l1 1M5 8l1 1"/></svg>'; }
   function iconTrash() { return '<svg viewBox="0 0 16 16"><path d="M3 4h10M6 4V2.5h4V4M5 6v7M8 6v7M11 6v7"/></svg>'; }
+  function iconClock() { return '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.2 1.4"/></svg>'; }
   function iconX() { return '<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg>'; }
   function iconPin() { return '<svg viewBox="0 0 16 16"><path d="M6 2h4l-.5 4 2.5 2v1H4V8l2.5-2z"/><path d="M8 9v5"/></svg>'; }
   function iconDots() { return '<svg viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01" stroke-width="2.8"/></svg>'; }
