@@ -662,7 +662,10 @@
         <button type="button" data-pl-delete>${iconTrash()}<span>Удалить</span></button>
       </div>
     `;
-    card.querySelector('.pl-preview').textContent = previewLines(item.text, item.kind, 3, 260);
+    const preview = card.querySelector('.pl-preview');
+    const previewValue = previewLines(item.text, item.kind, 3, 260);
+    preview.textContent = previewValue.text;
+    if (previewValue.clipped) preview.dataset.plTip = item.text;
     bindCardActions(card, item);
     return card;
   }
@@ -1743,7 +1746,11 @@
     let out = lines.slice(0, maxLines).join('\n');
     const clippedByChars = out.length > maxChars;
     if (clippedByChars) out = out.slice(0, Math.max(1, maxChars - 3)).trimEnd();
-    return (clippedByLines || clippedByChars) ? out.replace(/\s+$/g, '') + '...' : out;
+    const clipped = clippedByLines || clippedByChars;
+    return {
+      text: clipped ? out.replace(/\s+$/g, '') + '...' : out,
+      clipped
+    };
   }
 
   function highlightQuery(text, query) {
