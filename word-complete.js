@@ -672,13 +672,36 @@ const WordAcceptEffect = (() => {
   }
 
   function textareaBackground(ta) {
+    const parseRgb = color => {
+      const m = String(color || '').match(/^rgba?\(([^)]+)\)$/i);
+      if (!m) return null;
+      const parts = m[1].split(',').map(v => parseFloat(v.trim()));
+      if (parts.length < 3 || parts.some((v, i) => i < 3 && !Number.isFinite(v))) return null;
+      return {
+        r: Math.max(0, Math.min(255, parts[0])),
+        g: Math.max(0, Math.min(255, parts[1])),
+        b: Math.max(0, Math.min(255, parts[2])),
+        a: Number.isFinite(parts[3]) ? Math.max(0, Math.min(1, parts[3])) : 1,
+      };
+    };
+
+    const blend = (fgColor, bgColor) => {
+      const fg = parseRgb(fgColor);
+      const bg = parseRgb(bgColor);
+      if (!fg) return fgColor;
+      if (fg.a >= 1 || !bg) return `rgb(${Math.round(fg.r)}, ${Math.round(fg.g)}, ${Math.round(fg.b)})`;
+      const a = fg.a;
+      return `rgb(${Math.round(fg.r * a + bg.r * (1 - a))}, ${Math.round(fg.g * a + bg.g * (1 - a))}, ${Math.round(fg.b * a + bg.b * (1 - a))})`;
+    };
+
     const lineBg = ta
       ?.closest?.('.current-line-wrap.current-line-enabled')
       ?.querySelector?.('.current-line-highlight');
     if (lineBg) {
       const lineCs = window.getComputedStyle(lineBg);
       if (lineCs.backgroundColor && lineCs.backgroundColor !== 'rgba(0, 0, 0, 0)') {
-        return lineCs.backgroundColor;
+        const wrapBg = window.getComputedStyle(ta.closest('.current-line-wrap')).backgroundColor;
+        return blend(lineCs.backgroundColor, wrapBg);
       }
     }
 

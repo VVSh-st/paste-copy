@@ -1231,9 +1231,9 @@ textarea.block-textarea:focus {
 .wc-accept-letter,
 .wc-accept-space {
   display: inline-block;
-  background: var(--wc-mask-bg, var(--bg0));
   line-height: inherit;
 }
+.wc-accept-letter { background: var(--wc-mask-bg, var(--bg0)); }
 .wc-accept-letter {
   overflow: hidden;
   text-align: center;
