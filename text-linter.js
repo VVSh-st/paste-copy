@@ -738,8 +738,8 @@ window.TextLinter = (() => {
         `<span class="llm-result-stats text-lint-result-stats">${formatStats(result)}${scope.hasSelection ? ' · выделение' : ''}${risky ? ' · осторожные опции: ' + risky : ''}</span>` +
         (result.changed ? renderDiffSizeControls(diffScale) : '') +
         (result.changed ? `<button type="button" class="btn-sm" data-action="copy" title="Скопировать исправленный вариант" aria-label="Скопировать исправленный вариант">⧉</button>` : '') +
-        (result.changed ? `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓ Принять</button>` : '') +
-        `<button type="button" class="btn-sm" data-action="reject">✕ ${result.changed ? 'Оставить хаос' : 'Закрыть'}</button>` +
+        (result.changed ? `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓ </button>` : '') +
+        `<button type="button" class="btn-sm" data-action="reject">✕ ${result.changed ? '' : 'Закрыть'}</button>` +
       `</div>` +
       (result.changed ? `<div class="text-lint-preview-labels" aria-hidden="true"><span>Было</span><span>Стало</span></div><div class="llm-result-content llm-result-content--${mode} text-lint-result-content">${diffHtml}</div>` : `<div class="text-lint-no-changes">Автоправок нет. Только подсказки — руками, аккуратно, без запятой-рулетки.</div>`) +
       hintsHtml;
