@@ -4702,7 +4702,16 @@ body.help-open {
 }
 
 .help-grid-priority {
-  grid-template-columns: 1fr 1.32fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: start;
+}
+
+.help-grid-priority .help-card-hotkeys {
+  grid-column: span 2;
+}
+
+.help-grid-priority .help-card-hotkeys .help-kbd-grid {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
 }
 
 .help-section {
@@ -4847,6 +4856,10 @@ body.help-open {
   background: rgba(0,0,0,0.14);
   color: var(--text1);
   font-size: 11.5px;
+}
+
+.help-kbd-row > span:last-child {
+  min-width: 0;
 }
 
 .help-kbd-combo {
@@ -5022,6 +5035,10 @@ body.help-open {
 @media (max-width: 1180px) {
   .help-grid-priority {
     grid-template-columns: 1fr;
+  }
+
+  .help-grid-priority .help-card-hotkeys {
+    grid-column: auto;
   }
 
   .help-hero {
