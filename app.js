@@ -172,10 +172,18 @@
   onClick('btn-search', () => Search.open());
   onClick('btn-notepad', () => Notepad.create());
 
+  /* ── Close all dropdowns helper ────────────────────────────────────────*/
+  function closeAllDropdowns(except) {
+    document.querySelectorAll('.dropdown.open').forEach(d => {
+      if (d !== except) d.classList.remove('open');
+    });
+  }
+
   /* ── Add-block dropdown ─────────────────────────────────────────────────*/
   const addDd = $id('add-dropdown');
   onClick('btn-add-block', e => {
     e.stopPropagation();
+    closeAllDropdowns(addDd);
     addDd?.classList.toggle('open');
   });
 
@@ -195,13 +203,16 @@
   const tplDd = $id('tpl-dropdown');
   onClick('btn-templates', e => {
     e.stopPropagation();
+    closeAllDropdowns(tplDd);
     tplDd?.classList.toggle('open');
   });
 
   /* ── Settings dropdown ──────────────────────────────────────────────────*/
   onClick('btn-settings', e => {
     e.stopPropagation();
-    $id('settings-dropdown')?.classList.toggle('open');
+    const sd = $id('settings-dropdown');
+    closeAllDropdowns(sd);
+    sd?.classList.toggle('open');
   });
 
   onClick('btn-intelligence-save-version', e => {
@@ -705,6 +716,7 @@
     const llmDropdown = $id('llm-dropdown');
     onEvent('btn-llm', 'click', e => {
       e.stopPropagation();
+      closeAllDropdowns(llmDropdown);
       llmDropdown?.classList.toggle('open');
     });
 
@@ -719,6 +731,7 @@
     const profileBar = $id('llm-profile-bar');
     onEvent('btn-llm-profile', 'click', e => {
       e.stopPropagation();
+      closeAllDropdowns(profileBar);
       profileBar?.classList.toggle('open');
     });
 
@@ -749,7 +762,7 @@
     document.addEventListener('keydown', e => {
       if (!e.altKey) return;
       switch (e.key.toLowerCase()) {
-        case 'l': e.preventDefault(); llmDropdown?.classList.toggle('open'); break;
+        case 'l': e.preventDefault(); closeAllDropdowns(llmDropdown); llmDropdown?.classList.toggle('open'); break;
         case 't': e.preventDefault(); LLMFeatures.handleAction('thesaurus'); break;
         case '/': e.preventDefault(); LLMFeatures.AutoPoet?.nextVariant(document.activeElement); break;
       }
