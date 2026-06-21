@@ -1564,6 +1564,15 @@ textarea.block-textarea:focus {
   margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border);
   border-radius: var(--radius-md); background: rgba(255,255,255,0.035);
 }
+details.llm-prompts-help { cursor: pointer; }
+details.llm-prompts-help summary {
+  list-style: none; cursor: pointer; user-select: none;
+}
+details.llm-prompts-help summary::-webkit-details-marker { display: none; }
+details.llm-prompts-help summary::before {
+  content: '▸'; display: inline-block; margin-right: 6px; transition: transform .15s;
+}
+details.llm-prompts-help[open] summary::before { transform: rotate(90deg); }
 .llm-profiles-help p,
 .llm-prompts-help p { margin: 3px 0; color: var(--text2); font-size: 12px; line-height: 1.55; }
 #ltab-profiles.active { display: flex; flex-direction: column; overflow: hidden; }
@@ -1888,7 +1897,7 @@ textarea.block-textarea:focus {
   background: rgba(0,0,0,0.11);
 }
 .llm-storage-list-pane {
-  padding: 8px; max-height: 540px; overflow: hidden; display: flex; flex-direction: column;
+  padding: 8px; max-height: 540px; overflow-y: auto; display: flex; flex-direction: column;
 }
 .llm-storage-list {
   display: flex; flex-direction: column; gap: 5px; overflow-y: auto; min-height: 140px; padding-right: 2px;

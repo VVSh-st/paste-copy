@@ -1366,66 +1366,6 @@ window.LLMCore = (() => {
       _renderStorageEditor();
       window.Toast?.show('Запись удалена ✓', 'success');
     }
-    function _openStoragePicker() {
-      const ed = document.getElementById('llm-prompt-editor');
-      const key = ed?.dataset?.key;
-      if (!key || key === STORAGE_GROUP_KEY) {
-        window.Toast?.show('Сначала выберите функцию слева', 'error');
-        return;
-      }
-      const entries = _getStorageEntries();
-      if (!entries.length) {
-        window.Toast?.show('Хранилище пусто', 'error');
-        return;
-      }
-      let picker = document.getElementById('llm-storage-picker-modal');
-      if (!picker) {
-        picker = document.createElement('div');
-        picker.id = 'llm-storage-picker-modal';
-        picker.className = 'modal-overlay';
-        picker.setAttribute('role', 'dialog');
-        picker.setAttribute('aria-modal', 'true');
-        picker.innerHTML = `
-          <div class="modal-box modal-box-md">
-            <div class="modal-header">
-              <span class="modal-title">📦 Выберите промпт из хранилища</span>
-              <button type="button" class="modal-close" id="llm-picker-close" aria-label="Закрыть">✕</button>
-            </div>
-            <div class="modal-body">
-              <div id="llm-picker-list" class="modal-list" role="listbox" aria-label="Хранилище промптов"></div>
-            </div>
-          </div>`;
-        document.body.appendChild(picker);
-        picker.addEventListener('click', e => { if (e.target === picker) picker.style.display = 'none'; });
-        document.getElementById('llm-picker-close')?.addEventListener('click', () => { picker.style.display = 'none'; });
-      }
-      const list = document.getElementById('llm-picker-list');
-      if (!list) return;
-      list.innerHTML = '';
-      entries.forEach(entry => {
-        const meta = _storageEntryMeta(entry);
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'snap-row';
-        btn.style.textAlign = 'left';
-        btn.style.width = '100%';
-        const preview = (entry.prompt || '').slice(0, 120).replace(/\n/g, ' ');
-        btn.innerHTML = `<div class="snap-info"><span class="snap-name">${_esc(meta.title)}</span><span class="snap-date">${_esc(meta.modelHint || 'без привязки')} · ${meta.uses} использований</span><span style="font-size:11px;color:var(--text3);margin-top:2px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(preview)}</span></div>`;
-        btn.addEventListener('click', () => {
-          const custom = _State.getLayout()?.llm?.customPrompts ?? {};
-          custom[key] = entry.prompt || '';
-          _State.setLayout({ llm: { ...(_State.getLayout()?.llm ?? {}), customPrompts: custom } });
-          ed.value = entry.prompt || '';
-          _updatePromptStatus();
-          const next = entries.map(e => e.id === entry.id ? { ...e, uses: (parseInt(e.uses, 10) || 0) + 1, updatedAt: Date.now() } : e);
-          _saveStorageEntries(next);
-          picker.style.display = 'none';
-          window.Toast?.show('Промпт загружен из хранилища ✓', 'success');
-        });
-        list.appendChild(btn);
-      });
-      picker.style.display = 'flex';
-    }
     function _renderPromptFnList() {
       const list = document.getElementById('llm-prompt-fn-list');
       if (!list) return;
@@ -1813,7 +1753,6 @@ tags.push({
       document.getElementById('llm-storage-create-tag')?.addEventListener('click', _createBroTagFromStorage);
       document.getElementById('llm-storage-delete')?.addEventListener('click', _deleteStorageEntry);
       document.getElementById('llm-storage-apply')?.addEventListener('click', _applyStorageToCurrentPrompt);
-      document.getElementById('llm-prompt-from-storage')?.addEventListener('click', _openStoragePicker);
       document.getElementById('llm-prompt-copy-default')?.addEventListener('click', _copyDefaultPrompt);
       document.getElementById('llm-prompt-reset')?.addEventListener('click', _resetPrompt);
       document.getElementById('llm-prompt-reset-all')?.addEventListener('click', _resetAllPrompts);

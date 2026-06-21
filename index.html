@@ -1286,12 +1286,12 @@
 
         <div id="ltab-prompts" class="llm-tab-panel" role="tabpanel">
 
-          <div class="llm-prompts-help">
-            <div class="settings-section">Advanced-настройка</div>
+          <details class="llm-prompts-help">
+            <summary class="settings-section">Advanced-настройка</summary>
             <p>Здесь редактируются системные инструкции встроенных LLM-функций. Если не уверены — оставьте по умолчанию.</p>
             <p>Для своих быстрых команд используйте вкладку <b>БРО-теги</b>. Для выбора модели, endpoint и параметров генерации используйте <b>Профили</b>.</p>
             <p>Не удаляйте обязательные переменные вроде <code>{N}</code>, <code>{word}</code>, <code>{instruction}</code>: они подставляются приложением перед запросом.</p>
-          </div>
+          </details>
 
           <div class="llm-prompts-layout">
 
@@ -1362,8 +1362,6 @@
                 <div id="llm-prompt-warnings" class="llm-prompt-warnings" aria-live="polite"></div>
 
                 <div class="llm-prompt-actions">
-
-                  <button type="button" id="llm-prompt-from-storage" class="btn-sm" title="Загрузить промпт из хранилища">📦 Из хранилища</button>
 
                   <button type="button" id="llm-prompt-copy-default" class="btn-sm">⧉ Скопировать дефолт</button>
 
