@@ -1946,6 +1946,12 @@ textarea.block-textarea:focus {
 .llm-storage-inline-actions .btn-icon {
   width: 32px; height: 32px; border-radius: 9px;
 }
+.llm-storage-inline-actions .btn-icon-accent {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.llm-storage-inline-actions .btn-icon-accent:hover {
+  filter: brightness(1.15);
+}
 .llm-storage-title-input,
 .llm-storage-model-input,
 .llm-storage-notes {

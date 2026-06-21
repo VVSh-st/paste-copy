@@ -1335,6 +1335,7 @@
                         <div class="llm-storage-editor-topbar">
                           <input id="llm-storage-title" type="text" class="modal-input llm-storage-title-input" placeholder="Название записи" aria-label="Название записи">
                           <div class="llm-storage-inline-actions" aria-label="Действия записи">
+                            <button type="button" id="llm-storage-apply" class="btn-icon btn-icon-accent" title="Применить промпт к выбранной функции" aria-label="Применить промпт к функции">✓</button>
                             <button type="button" id="llm-storage-copy" class="btn-icon" title="Копировать промпт" aria-label="Копировать промпт">⎘</button>
                             <button type="button" id="llm-storage-duplicate" class="btn-icon" title="Дублировать запись" aria-label="Дублировать запись">⧉</button>
                             <button type="button" id="llm-storage-create-tag" class="btn-icon" title="Создать БРО-тег" aria-label="Создать БРО-тег">!</button>
@@ -1361,6 +1362,8 @@
                 <div id="llm-prompt-warnings" class="llm-prompt-warnings" aria-live="polite"></div>
 
                 <div class="llm-prompt-actions">
+
+                  <button type="button" id="llm-prompt-from-storage" class="btn-sm" title="Загрузить промпт из хранилища">📦 Из хранилища</button>
 
                   <button type="button" id="llm-prompt-copy-default" class="btn-sm">⧉ Скопировать дефолт</button>
 
