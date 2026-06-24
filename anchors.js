@@ -191,24 +191,24 @@ const Anchors = (() => {
   }
 
   function _measurePos(ta, charPos) {
-    const mirror = _getMirror(ta);
-    const text = ta.value.substring(0, charPos);
-    if (!text) {
-      const cs = getComputedStyle(ta);
-      return { x: parseFloat(cs.paddingLeft) || 0, y: parseFloat(cs.paddingTop) || 0 };
-    }
-    mirror.textContent = text;
-    const contentY = mirror.scrollHeight;
-
-    const lastNewline = text.lastIndexOf('\n');
-    const lineText = lastNewline >= 0 ? text.substring(lastNewline + 1) : text;
     const cs = getComputedStyle(ta);
-    const ctx = _measureCtx || (_measureCtx = document.createElement('canvas').getContext('2d'));
-    ctx.font = cs.fontSize + ' ' + cs.fontFamily;
     const pt = parseFloat(cs.paddingTop) || 0;
     const pl = parseFloat(cs.paddingLeft) || 0;
+    if (charPos <= 0) return { x: pl, y: pt };
+
+    const text = ta.value.substring(0, charPos);
+    const lastNewline = text.lastIndexOf('\n');
+    const prevLines = lastNewline >= 0 ? text.substring(0, lastNewline + 1) : '';
+
+    const mirror = _getMirror(ta);
+    mirror.textContent = prevLines;
+    const y = pt + mirror.scrollHeight;
+
+    const lineText = lastNewline >= 0 ? text.substring(lastNewline + 1) : text;
+    const ctx = _measureCtx || (_measureCtx = document.createElement('canvas').getContext('2d'));
+    ctx.font = cs.fontSize + ' ' + cs.fontFamily;
     const x = pl + ctx.measureText(lineText).width;
-    return { x: x, y: pt + contentY };
+    return { x: x, y: y };
   }
 
   /* ---- char width measurement ---- */
