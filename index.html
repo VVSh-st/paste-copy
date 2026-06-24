@@ -1438,6 +1438,22 @@
               </details>
             </div>
 
+            <details class="llm-settings-fold llm-misc-fold" open>
+              <summary>Якоря</summary>
+              <div class="llm-compact-settings">
+                <label class="settings-item">
+                  <input type="checkbox" id="opt-anchor-line-markers" checked> Линии-маркеры
+                </label>
+                <label class="settings-item">
+                  <input type="checkbox" id="opt-anchor-bg-highlight" checked> Подсветка фона
+                </label>
+                <label class="settings-item settings-item-row" title="Цвет маркеров якорей">
+                  Цвет маркеров
+                  <input type="color" id="opt-anchor-color" value="#4f8ef7" aria-label="Цвет маркеров якорей">
+                </label>
+              </div>
+            </details>
+
             <details class="llm-settings-fold llm-misc-fold llm-misc-wordcomplete" open>
               <summary>Автозавершение слов</summary>
               <div class="llm-compact-settings">
@@ -1728,6 +1744,8 @@
   <script src="ui.js"></script>
 
   <script src="blocks.js"></script>
+
+  <script src="anchors.js"></script>
 
   <script src="word-complete.js"></script>
 

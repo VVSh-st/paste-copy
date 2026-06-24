@@ -1,6 +1,0 @@
-Backup note for word-complete.js before AI changes.
-Full original file was read via MCP before edits.
-Affected file: E:\Cherry_studio\word-complete.js
-Timestamp: 2026-05-20_00-10-00
-
-MCP filesystem in this environment has no native copy operation; edits below were made only after read/grep inspection.

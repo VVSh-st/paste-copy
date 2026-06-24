@@ -1,6 +1,0 @@
-Backup before WordComplete accept effect alignment/noise fix.
-Affected files:
-- E:\Cherry_studio\word-complete.js
-- E:\Cherry_studio\styles.css
-
-Note: MCP filesystem toolset in this session has no shell/copy command. Relevant files were read before editing; this manifest marks the backup point.

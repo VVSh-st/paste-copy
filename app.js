@@ -73,6 +73,9 @@
     scheduleSave();
     Templates.renderDropdown();
     WordDict.scheduleBuild();
+    requestAnimationFrame(() => {
+      if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
+    });
   }
 
   function liveRender() {
@@ -393,6 +396,38 @@
     optCurrentLineColor.onchange = saveLineColor;
   }
 
+  /* ── Anchor settings ──────────────────────────────────────────────────*/
+  const anchorSettings = Anchors?.getMarkerSettings?.() || { lineMarkers: true, bgHighlight: true, color: '#4f8ef7' };
+
+  const optAnchorLines = $id('opt-anchor-line-markers');
+  if (optAnchorLines) {
+    optAnchorLines.checked = anchorSettings.lineMarkers;
+    optAnchorLines.onchange = e => {
+      Anchors.setMarkerSetting('lineMarkers', e.target.checked);
+      Toast.show(e.target.checked ? 'Линии-маркеры якорей включены' : 'Линии-маркеры якорей выключены', 'success');
+    };
+  }
+
+  const optAnchorBg = $id('opt-anchor-bg-highlight');
+  if (optAnchorBg) {
+    optAnchorBg.checked = anchorSettings.bgHighlight;
+    optAnchorBg.onchange = e => {
+      Anchors.setMarkerSetting('bgHighlight', e.target.checked);
+      Toast.show(e.target.checked ? 'Подсветка фона якорей включена' : 'Подсветка фона якорей выключена', 'success');
+    };
+  }
+
+  const optAnchorColor = $id('opt-anchor-color');
+  if (optAnchorColor) {
+    optAnchorColor.value = anchorSettings.color;
+    const saveAnchorColor = e => {
+      const value = String(e.target.value || '').trim() || '#4f8ef7';
+      Anchors.setMarkerSetting('color', value);
+    };
+    optAnchorColor.oninput = saveAnchorColor;
+    optAnchorColor.onchange = saveAnchorColor;
+  }
+
   function _applyTooltipState(enabled) {
     if (!enabled) {
       document.querySelectorAll('[title]').forEach(el => {
@@ -699,6 +734,7 @@
 
   if (typeof GistSync !== 'undefined') GistSync.init();
   if (window.MemorySync?.init) window.MemorySync.init();
+  if (typeof Anchors !== 'undefined') Anchors.init();
 
   window.addEventListener('beforeunload', () => Storage.save(State.serialize()));
 

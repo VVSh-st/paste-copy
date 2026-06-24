@@ -12,7 +12,7 @@ if %errorlevel%==0 (
 start "" /b python -m http.server 8080
 
 :: Даём серверу секунду подняться
-timeout /t 1 /nobreak >nul
+timeout /t 2 /nobreak >nul
 
 :: Открываем браузер
 start "" "http://localhost:8080"

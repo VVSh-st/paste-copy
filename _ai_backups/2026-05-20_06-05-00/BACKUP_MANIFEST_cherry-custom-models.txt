@@ -1,4 +1,0 @@
-Backup before Cherry custom models loading fix.
-Affected file: llm-core.js
-Original file was read via CherryFilesystem and opened via CherryBrowser before editing.
-Reason: CherryFilesystem has no native copy_file tool in this session; full text was inspected before targeted edits.

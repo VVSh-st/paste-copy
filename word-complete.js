@@ -739,12 +739,12 @@ const WordAcceptEffect = (() => {
 
     Object.assign(el.style, {
       left: Math.round(left) + 'px',
-      top: snapshot.top + 'px',
+      top: (snapshot.top + 0) + 'px', // - 1 поднимет Matrix-эффект на 1px, + 1 опустит
       maxWidth: snapshot.maxWidth || 'none',
       fontFamily: snapshot.fontFamily,
       fontSize: snapshot.fontSize,
       fontWeight: snapshot.fontWeight,
-      lineHeight: snapshot.lineHeight,
+      lineHeight: (parseFloat(snapshot.lineHeight) - 1) + 'px',  // - 1 поднимет высоту букв/маски на 1px, + 1 опустит
       letterSpacing: snapshot.letterSpacing,
     });
     el.style.setProperty('--wc-mask-bg', textareaBackground(ta));

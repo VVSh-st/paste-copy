@@ -317,6 +317,7 @@ const State = (() => {
       blocks: defaultBlocks(),
       history: [], historyIdx: -1,
       namedSnapshots: [],
+      anchors: [],
     };
     tabs.push(tab);
     activeTabId = tab.id;
@@ -593,6 +594,7 @@ const State = (() => {
         history:        [],
         historyIdx:     -1,
         namedSnapshots: Array.isArray(t.namedSnapshots) ? t.namedSnapshots : [],
+        anchors:        Array.isArray(t.anchors) ? t.anchors : [],
       }));
 
       tabs.forEach(t => {
@@ -645,6 +647,7 @@ const State = (() => {
         separator:      t.separator,
         blocks:         t.blocks,
         namedSnapshots: t.namedSnapshots || [],
+        anchors:        t.anchors || [],
       })),
       activeTabId,
       layout: {
@@ -845,7 +848,7 @@ const State = (() => {
     undo, redo, canUndo, canRedo,
     blockSnapshot, blockUndo, blockRedo, canBlockUndo, canBlockRedo,
     saveNamedSnapshot, restoreNamedSnapshot, deleteNamedSnapshot, getNamedSnapshots,
-    update, updateLive, snapshot,
+    update, updateLive, snapshot, emit,
     getLayout, setLayout,
     load, serialize, onChange, onLive, onSnapshot, uid,
     searchAll, replaceAll, getAllSnippetsAndCommands,
