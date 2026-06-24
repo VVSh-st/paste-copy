@@ -160,17 +160,51 @@ const Anchors = (() => {
     document.body.appendChild(_palette);
 
     anchors.forEach((a, idx) => {
-      const row = document.createElement('button');
-      row.type = 'button';
+      const row = document.createElement('div');
       row.className = 'slash-item' + (idx === _navIdx ? ' focused' : '');
       row.setAttribute('role', 'option');
-      const preview = (a.snippet || '').slice(0, 20) + ((a.snippet || '').length > 20 ? '...' : '');
-      const tabLabel = a._tabName ? ' [' + escHtml(a._tabName) + ']' : '';
-      row.innerHTML =
-        '<span class="slash-hotkey">' + escHtml(String(idx + 1)) + '</span>' +
-        '<span class="slash-kind">⚓</span>' +
-        '<span class="slash-text">' + escHtml(preview) + tabLabel + '</span>';
-      row.onmousedown = ev => { ev.preventDefault(); _navIdx = idx; _jumpToAnchor(a); _closePalette(); };
+
+      const hotkey = document.createElement('span');
+      hotkey.className = 'slash-hotkey';
+      hotkey.textContent = String(idx + 1);
+
+      const kind = document.createElement('span');
+      kind.className = 'slash-kind';
+      kind.textContent = '⚓';
+
+      const text = document.createElement('span');
+      text.className = 'slash-text';
+      text.textContent = (a.snippet || '').slice(0, 20) + ((a.snippet || '').length > 20 ? '...' : '');
+
+      const del = document.createElement('span');
+      del.className = 'anchor-palette-del';
+      del.textContent = '✕';
+      del.title = 'Двойное нажатие — удалить';
+      let delClicks = 0;
+      let delTimer = null;
+      del.addEventListener('click', ev => {
+        ev.stopPropagation();
+        delClicks++;
+        if (delClicks >= 2) {
+          clearTimeout(delTimer);
+          removeAnchorById(a.id);
+          _closePalette();
+          Toast.show('Якорь удалён', 'success');
+          return;
+        }
+        del.classList.add('anchor-palette-del-pending');
+        clearTimeout(delTimer);
+        delTimer = setTimeout(() => { delClicks = 0; del.classList.remove('anchor-palette-del-pending'); }, 600);
+      });
+
+      row.addEventListener('click', ev => {
+        if (ev.target === del) return;
+        _navIdx = idx;
+        _jumpToAnchor(a);
+        _closePalette();
+      });
+
+      row.append(hotkey, kind, text, del);
       _palette.appendChild(row);
     });
 
