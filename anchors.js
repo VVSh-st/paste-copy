@@ -228,6 +228,21 @@ const Anchors = (() => {
     });
   }
 
+  let _measureEl = null;
+  function _measureCharWidth(ta) {
+    if (!_measureEl) {
+      _measureEl = document.createElement('span');
+      _measureEl.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:inherit;letter-spacing:inherit;';
+      document.body.appendChild(_measureEl);
+    }
+    const cs = getComputedStyle(ta);
+    _measureEl.style.fontFamily = cs.fontFamily;
+    _measureEl.style.fontSize = cs.fontSize;
+    _measureEl.style.letterSpacing = cs.letterSpacing;
+    _measureEl.textContent = 'MMMMMMMMMM';
+    return _measureEl.offsetWidth / 10;
+  }
+
   function _renderMarkers(blockEl, ta) {
     blockEl.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
     const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
@@ -245,7 +260,9 @@ const Anchors = (() => {
     const cs = getComputedStyle(ta);
     const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
     const paddingTop = parseFloat(cs.paddingTop) || 0;
+    const paddingLeft = parseFloat(cs.paddingLeft) || 0;
     const scrollY = ta.scrollTop;
+    const charW = _measureCharWidth(ta);
 
     blockAnchors.forEach((anchor) => {
       const textBefore = ta.value.slice(0, anchor.start);
@@ -253,6 +270,8 @@ const Anchors = (() => {
       const lineIdx = lines.length - 1;
       const topPx = paddingTop + lineIdx * lineHeight - scrollY;
       const blockAnchorIdx = anchors.indexOf(anchor);
+
+      if (topPx + lineHeight < 0 || topPx > wrap.clientHeight) return;
 
       if (settings.lineMarkers) {
         const marker = document.createElement('div');
@@ -270,10 +289,8 @@ const Anchors = (() => {
         const lineText = lines[lineIdx] || '';
         const charsBefore = lineText.length;
         const selLen = anchor.end - anchor.start;
-        const fontSize = parseFloat(cs.fontSize) || 12;
-        const monoCharW = fontSize * 0.602;
-        const leftPx = parseFloat(cs.paddingLeft || 0) + charsBefore * monoCharW;
-        const selWidth = Math.max(4, selLen * monoCharW);
+        const leftPx = paddingLeft + charsBefore * charW;
+        const selWidth = Math.max(4, selLen * charW);
         const bg = document.createElement('div');
         bg.className = 'anchor-marker-gutter';
         bg.style.cssText =
@@ -284,6 +301,17 @@ const Anchors = (() => {
         wrap.appendChild(bg);
       }
     });
+  }
+
+  /* ---- scroll sync ---- */
+  function _attachScrollListener(blockId, blockEl, ta) {
+    ta.addEventListener('scroll', () => {
+      if (_scrollRaf.has(blockId)) return;
+      _scrollRaf.set(blockId, requestAnimationFrame(() => {
+        _scrollRaf.delete(blockId);
+        _renderMarkers(blockEl, ta);
+      }));
+    }, { passive: true });
   }
 
   /* ---- block button creation ---- */
@@ -362,14 +390,12 @@ const Anchors = (() => {
 
     const blockEl = ta.closest('.block[data-id]');
     if (blockEl) {
-      ta.addEventListener('scroll', () => {
-        const key = blockId;
-        if (_scrollRaf.has(key)) return;
-        _scrollRaf.set(key, requestAnimationFrame(() => {
-          _scrollRaf.delete(key);
-          _renderMarkers(blockEl, ta);
-        }));
-      }, { passive: true });
+      _attachScrollListener(blockId, blockEl, ta);
+    } else {
+      requestAnimationFrame(() => {
+        const bel = ta.closest('.block[data-id]');
+        if (bel) _attachScrollListener(blockId, bel, ta);
+      });
     }
 
     return group;
