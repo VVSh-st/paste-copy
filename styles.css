@@ -5351,6 +5351,6 @@ body.help-open {
   left: 3px;
   right: 0;
   pointer-events: none;
-  z-index: 0;
+  z-index: 3;
   border-radius: 2px;
 }
