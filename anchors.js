@@ -72,11 +72,7 @@ const Anchors = (() => {
       _navIdx = t.anchors.length - 1;
     });
     Toast.show(`Якорь #${_getAnchors().length} установлен ✓`, 'success');
-    const blockEl = document.querySelector('.block[data-id="' + blockId + '"]');
-    if (blockEl) requestAnimationFrame(() => {
-      _renderMarkers(blockEl, ta);
-      Blocks.refreshAllAnchorCounts();
-    });
+    requestAnimationFrame(() => Blocks.refreshAllAnchorCounts());
   }
 
   function navigateAnchor(delta) {
@@ -422,7 +418,9 @@ const Anchors = (() => {
   /* ---- init ---- */
   function init() {
     _setupHotkeys();
-    State.onChange(() => _renderMarkersAll());
+    const rerender = () => _renderMarkersAll();
+    State.onChange(rerender);
+    State.onLive(rerender);
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {

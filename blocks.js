@@ -1211,8 +1211,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
   function refreshAllAnchorCounts() {
     document.querySelectorAll('.block[data-id]').forEach(el => {
-      if (el._anchorCountEl) {
-        _updateAnchorCount(el.dataset.id, el._anchorCountEl);
+      const body = el.querySelector('.block-body');
+      if (body && body._anchorCountEl) {
+        _updateAnchorCount(el.dataset.id, body._anchorCountEl);
       }
     });
   }
