@@ -228,19 +228,19 @@ const Anchors = (() => {
     });
   }
 
-  let _measureEl = null;
+  let _measureCanvas = null;
+  let _cachedFontStr = '';
+  let _cachedCharW = 0;
+
   function _measureCharWidth(ta) {
-    if (!_measureEl) {
-      _measureEl = document.createElement('span');
-      _measureEl.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:inherit;letter-spacing:inherit;';
-      document.body.appendChild(_measureEl);
-    }
     const cs = getComputedStyle(ta);
-    _measureEl.style.fontFamily = cs.fontFamily;
-    _measureEl.style.fontSize = cs.fontSize;
-    _measureEl.style.letterSpacing = cs.letterSpacing;
-    _measureEl.textContent = 'MMMMMMMMMM';
-    return _measureEl.offsetWidth / 10;
+    const fontStr = cs.fontSize + ' ' + cs.fontFamily;
+    if (fontStr === _cachedFontStr && _cachedCharW) return _cachedCharW;
+    if (!_measureCanvas) _measureCanvas = document.createElement('canvas').getContext('2d');
+    _measureCanvas.font = cs.fontSize + ' ' + cs.fontFamily;
+    _cachedCharW = _measureCanvas.measureText('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM').width / 40;
+    _cachedFontStr = fontStr;
+    return _cachedCharW;
   }
 
   function _renderMarkers(blockEl, ta) {
@@ -259,8 +259,10 @@ const Anchors = (() => {
 
     const cs = getComputedStyle(ta);
     const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
-    const paddingTop = parseFloat(cs.paddingTop) || 0;
-    const paddingLeft = parseFloat(cs.paddingLeft) || 0;
+    const borderTop = parseFloat(cs.borderTopWidth) || 0;
+    const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
+    const paddingTop = borderTop + (parseFloat(cs.paddingTop) || 0);
+    const paddingLeft = borderLeft + (parseFloat(cs.paddingLeft) || 0);
     const scrollY = ta.scrollTop;
     const charW = _measureCharWidth(ta);
 
