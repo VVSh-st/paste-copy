@@ -50,7 +50,7 @@ const Anchors = (() => {
     const end = ta.selectionEnd;
     const snippet = (ta.value || '').slice(start, Math.min(start + 30, end || start + 30)).replace(/\n/g, ' ');
 
-    const anchor = {
+    anchors.push({
       id: uid(),
       tabId: tab.id,
       blockId: blockId,
@@ -59,9 +59,7 @@ const Anchors = (() => {
       end: end,
       snippet: snippet || '(пусто)',
       createdAt: Date.now(),
-    };
-
-    anchors.push(anchor);
+    });
     _navIdx = anchors.length - 1;
     State.emit();
     Toast.show(`Якорь #${anchors.length} установлен ✓`, 'success');
@@ -71,10 +69,8 @@ const Anchors = (() => {
   function navigateAnchor(delta) {
     const anchors = _getAnchors();
     if (!anchors.length) { Toast.show('Нет якорей', 'info'); return; }
-
     _navIdx = (_navIdx + delta + anchors.length) % anchors.length;
-    const anchor = anchors[_navIdx];
-    _jumpToAnchor(anchor);
+    _jumpToAnchor(anchors[_navIdx]);
     Toast.show(`Якорь ${_navIdx + 1}/${anchors.length}`, 'success');
   }
 
@@ -97,17 +93,14 @@ const Anchors = (() => {
       requestAnimationFrame(() => _jumpToAnchor(anchor));
       return;
     }
-
     const blk = _findBlockById(tab.blocks, anchor.blockId);
     if (!blk) { Toast.show('Блок не найден', 'error'); return; }
-
     if (blk.collapsed) State.update(() => { blk.collapsed = false; });
     if (anchor.subtabIdx != null) State.updateLive(() => { blk.activeSubtab = anchor.subtabIdx; });
 
     requestAnimationFrame(() => {
       const blockEl = document.querySelector(`.block[data-id="${anchor.blockId}"]`);
       if (!blockEl) return;
-
       blockEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       blockEl.classList.remove('anchor-flash');
       void blockEl.offsetWidth;
@@ -137,7 +130,7 @@ const Anchors = (() => {
     _renderMarkersAll();
   }
 
-  /* ---- palette (long-press menu on button 2) ---- */
+  /* ---- palette ---- */
   function _closePalette() {
     if (_palette) { _palette.remove(); _palette = null; }
   }
@@ -150,7 +143,6 @@ const Anchors = (() => {
     _palette = document.createElement('div');
     _palette.className = 'anchor-palette';
     _palette.setAttribute('role', 'listbox');
-    _palette.setAttribute('aria-label', 'Якоря');
     document.body.appendChild(_palette);
 
     anchors.forEach((a, idx) => {
@@ -158,49 +150,44 @@ const Anchors = (() => {
       row.type = 'button';
       row.className = 'slash-item' + (idx === _navIdx ? ' focused' : '');
       row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', idx === _navIdx ? 'true' : 'false');
-
-      const hotkey = String(idx + 1);
       const preview = (a.snippet || '').slice(0, 20) + ((a.snippet || '').length > 20 ? '...' : '');
-
       row.innerHTML =
-        '<span class="slash-hotkey" aria-hidden="true">' + escHtml(hotkey) + '</span>' +
-        '<span class="slash-kind" aria-hidden="true">⚓</span>' +
+        '<span class="slash-hotkey">' + escHtml(String(idx + 1)) + '</span>' +
+        '<span class="slash-kind">⚓</span>' +
         '<span class="slash-text">' + escHtml(preview) + '</span>';
-
-      row.onmousedown = ev => {
-        ev.preventDefault();
-        _navIdx = idx;
-        _jumpToAnchor(a);
-        _closePalette();
-      };
-
+      row.onmousedown = ev => { ev.preventDefault(); _navIdx = idx; _jumpToAnchor(a); _closePalette(); };
       _palette.appendChild(row);
     });
 
     const rect = btn.getBoundingClientRect();
     _palette.style.left = rect.left + 'px';
     _palette.style.top = (rect.bottom + 4) + 'px';
-
     requestAnimationFrame(() => {
       if (!_palette) return;
       const pr = _palette.getBoundingClientRect();
-      if (pr.right > window.innerWidth - 8)
-        _palette.style.left = Math.max(4, window.innerWidth - pr.width - 8) + 'px';
-      if (pr.bottom > window.innerHeight - 8)
-        _palette.style.top = Math.max(4, rect.top - pr.height - 4) + 'px';
+      if (pr.right > window.innerWidth - 8) _palette.style.left = Math.max(4, window.innerWidth - pr.width - 8) + 'px';
+      if (pr.bottom > window.innerHeight - 8) _palette.style.top = Math.max(4, rect.top - pr.height - 4) + 'px';
     });
-
-    setTimeout(() => {
-      document.addEventListener('click', _handlePaletteOutsideClick, { once: true });
-    }, 0);
+    setTimeout(() => document.addEventListener('click', _closePalette, { once: true }), 0);
   }
 
-  function _handlePaletteOutsideClick(e) {
-    if (_palette && !_palette.contains(e.target)) _closePalette();
+  /* ---- char width measurement ---- */
+  let _measureCtx = null;
+  let _cachedFont = '';
+  let _cachedCharW = 0;
+
+  function _charW(ta) {
+    const cs = getComputedStyle(ta);
+    const f = cs.fontSize + ' ' + cs.fontFamily;
+    if (f === _cachedFont && _cachedCharW) return _cachedCharW;
+    if (!_measureCtx) _measureCtx = document.createElement('canvas').getContext('2d');
+    _measureCtx.font = f;
+    _cachedCharW = _measureCtx.measureText('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM').width / 40;
+    _cachedFont = f;
+    return _cachedCharW;
   }
 
-  /* ---- marker rendering ---- */
+  /* ---- marker rendering (DOM overlay inside current-line-wrap) ---- */
   const MARKER_KEY = 'anchor-markers-enabled';
   const MARKER_BG_KEY = 'anchor-bg-enabled';
   const MARKER_COLOR_KEY = 'anchor-marker-color';
@@ -227,75 +214,60 @@ const Anchors = (() => {
     });
   }
 
-  let _measureCanvas = null;
-  let _cachedFontStr = '';
-  let _cachedCharW = 0;
-
-  function _measureCharWidth(ta) {
-    const cs = getComputedStyle(ta);
-    const fontStr = cs.fontSize + ' ' + cs.fontFamily;
-    if (fontStr === _cachedFontStr && _cachedCharW) return _cachedCharW;
-    if (!_measureCanvas) _measureCanvas = document.createElement('canvas').getContext('2d');
-    _measureCanvas.font = cs.fontSize + ' ' + cs.fontFamily;
-    _cachedCharW = _measureCanvas.measureText('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM').width / 40;
-    _cachedFontStr = fontStr;
-    return _cachedCharW;
-  }
-
   function _renderMarkers(blockEl, ta) {
+    blockEl.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
+
     const anchors = _getAnchors();
     const settings = getMarkerSettings();
     const blockId = blockEl.dataset.id;
     const blockAnchors = anchors.filter(a => a.blockId === blockId);
+    if (!blockAnchors.length) return;
 
-    const bgColor = getComputedStyle(ta).backgroundColor || '#0d1117';
-
-    if (!blockAnchors.length) {
-      ta.style.background = bgColor;
-      return;
-    }
+    const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
+    if (!wrap) return;
+    wrap.style.position = 'relative';
 
     const cs = getComputedStyle(ta);
-    const rawLineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
     const padTop = parseFloat(cs.paddingTop) || 0;
     const padLeft = parseFloat(cs.paddingLeft) || 0;
     const padBottom = parseFloat(cs.paddingBottom) || 0;
-    const charW = _measureCharWidth(ta);
+    const rawLH = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
     const totalLines = (ta.value || '').split('\n').length;
-    const lineHeight = totalLines > 1
-      ? (ta.scrollHeight - padTop - padBottom) / totalLines
-      : rawLineHeight;
+    const lineHeight = totalLines > 1 ? (ta.scrollHeight - padTop - padBottom) / totalLines : rawLH;
+    const cw = _charW(ta);
 
-    const layers = [bgColor];
-
-    blockAnchors.forEach((anchor) => {
+    blockAnchors.forEach(anchor => {
       const textBefore = ta.value.slice(0, anchor.start);
       const lines = textBefore.split('\n');
       const lineIdx = lines.length - 1;
-      const topPx = padTop + lineIdx * lineHeight;
+      const topPx = padTop + lineIdx * lineHeight - ta.scrollTop;
+
+      if (topPx + lineHeight < -lineHeight || topPx > wrap.clientHeight + lineHeight) return;
+
+      const idx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {
-        layers.push(
-          'linear-gradient(to right,' + settings.color + 'dd 3px,transparent 3px) no-repeat local 0 ' + topPx + 'px / 100% ' + lineHeight + 'px'
-        );
+        const m = document.createElement('div');
+        m.className = 'anchor-marker-line';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + lineHeight + 'px;top:' + topPx + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:2;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
+        wrap.appendChild(m);
       }
 
       if (settings.bgHighlight && anchor.start !== anchor.end) {
-        const lineText = lines[lineIdx] || '';
-        const charsBefore = lineText.length;
+        const charsBefore = lines[lineIdx].length;
         const selLen = anchor.end - anchor.start;
-        const leftPx = padLeft + charsBefore * charW;
-        const selWidth = Math.max(2, selLen * charW);
-        layers.push(
-          'linear-gradient(to right,transparent ' + leftPx + 'px,' + settings.color + '33 ' + leftPx + 'px,' + settings.color + '33 ' + (leftPx + selWidth) + 'px,transparent ' + (leftPx + selWidth) + 'px) no-repeat local 0 ' + topPx + 'px / 100% ' + lineHeight + 'px'
-        );
+        const leftPx = padLeft + charsBefore * cw;
+        const selW = Math.max(2, selLen * cw);
+        const g = document.createElement('div');
+        g.className = 'anchor-marker-gutter';
+        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + topPx + 'px;pointer-events:none;z-index:0;background:' + settings.color + '33;border-radius:2px;left:' + leftPx + 'px;width:' + selW + 'px;';
+        wrap.appendChild(g);
       }
     });
-
-    ta.style.background = layers.join(',');
   }
 
-  /* ---- block button creation ---- */
+  /* ---- block buttons ---- */
   const SVG_ANCHOR = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="4.5" r="2.5"/><line x1="10" y1="7" x2="10" y2="18"/><path d="M6 12.5H4a8 8 0 0 0 12 0h-2"/></svg>';
 
   function createBlockAnchorButtons(blockId, ta) {
@@ -306,69 +278,41 @@ const Anchors = (() => {
     setBtn.type = 'button';
     setBtn.className = 'block-tool-btn anchor-btn';
     setBtn.title = 'Установить якорь';
-    setBtn.setAttribute('aria-label', 'Установить якорь');
     setBtn.innerHTML = SVG_ANCHOR;
-    setBtn.onclick = e => {
-      e.stopPropagation();
-      setAnchor(ta, blockId);
-    };
+    setBtn.onclick = e => { e.stopPropagation(); setAnchor(ta, blockId); };
 
     const navBtn = document.createElement('button');
     navBtn.type = 'button';
     navBtn.className = 'block-tool-btn anchor-btn';
     navBtn.title = 'Навигация по якорям · Длинное нажатие — список';
-    navBtn.setAttribute('aria-label', 'Навигация по якорям');
     navBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a6 6 0 0 1 12 0"/><polyline points="4 10 1 7"/><polyline points="16 10 19 7"/></svg>';
 
     let longPressStarted = false;
     navBtn.addEventListener('mousedown', e => {
-      longPressStarted = true;
-      _longPressTriggered = false;
-      _longPressTimer = setTimeout(() => {
-        if (longPressStarted) {
-          _longPressTriggered = true;
-          _showPalette(navBtn);
-        }
-      }, 500);
+      longPressStarted = true; _longPressTriggered = false;
+      _longPressTimer = setTimeout(() => { if (longPressStarted) { _longPressTriggered = true; _showPalette(navBtn); } }, 500);
     });
-    navBtn.addEventListener('mouseup', () => {
-      longPressStarted = false;
-      clearTimeout(_longPressTimer);
-    });
-    navBtn.addEventListener('mouseleave', () => {
-      longPressStarted = false;
-      clearTimeout(_longPressTimer);
-    });
-    navBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      if (_longPressTriggered) return;
-      navigateAnchor(1);
-    });
+    navBtn.addEventListener('mouseup', () => { longPressStarted = false; clearTimeout(_longPressTimer); });
+    navBtn.addEventListener('mouseleave', () => { longPressStarted = false; clearTimeout(_longPressTimer); });
+    navBtn.addEventListener('click', e => { e.stopPropagation(); if (!_longPressTriggered) navigateAnchor(1); });
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
     clearBtn.className = 'block-tool-btn anchor-btn anchor-btn-danger';
     clearBtn.title = 'Удалить все якоря';
-    clearBtn.setAttribute('aria-label', 'Удалить все якоря');
     clearBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l12 12"/><path d="M16 4L4 16"/></svg>';
     let clearPending = false, clearTimer = null;
     clearBtn.onclick = e => {
       e.stopPropagation();
       if (!clearPending) {
-        clearPending = true;
-        clearBtn.classList.add('anchor-clear-pending');
+        clearPending = true; clearBtn.classList.add('anchor-clear-pending');
         clearTimer = setTimeout(() => { clearPending = false; clearBtn.classList.remove('anchor-clear-pending'); }, 2500);
-      } else {
-        clearTimeout(clearTimer);
-        clearBtn.classList.remove('anchor-clear-pending');
-        clearAnchors();
-      }
+      } else { clearTimeout(clearTimer); clearBtn.classList.remove('anchor-clear-pending'); clearAnchors(); }
     };
 
     group.appendChild(setBtn);
     group.appendChild(navBtn);
     group.appendChild(clearBtn);
-
     return group;
   }
 
@@ -378,28 +322,25 @@ const Anchors = (() => {
       if (!e.shiftKey || !(e.ctrlKey || e.metaKey)) return;
       if (e.key === '1') {
         e.preventDefault();
-        const activeTa = document.querySelector('textarea.block-textarea:focus') ||
-                         document.querySelector('.block:hover textarea.block-textarea');
-        if (activeTa) {
-          const blockEl = activeTa.closest('.block[data-id]');
-          if (blockEl) setAnchor(activeTa, blockEl.dataset.id);
-        } else {
-          Toast.show('Кликните в текстовый блок', 'info');
-        }
-      } else if (e.key === '2') {
-        e.preventDefault();
-        navigateAnchor(1);
-      } else if (e.key === '3') {
-        e.preventDefault();
-        clearAnchors();
-      }
+        const ta = document.querySelector('textarea.block-textarea:focus') || document.querySelector('.block:hover textarea.block-textarea');
+        if (ta) { const bel = ta.closest('.block[data-id]'); if (bel) setAnchor(ta, bel.dataset.id); }
+        else Toast.show('Кликните в текстовый блок', 'info');
+      } else if (e.key === '2') { e.preventDefault(); navigateAnchor(1); }
+      else if (e.key === '3') { e.preventDefault(); clearAnchors(); }
     });
   }
 
   /* ---- init ---- */
   function init() {
     _setupHotkeys();
-    State.onChange(() => { _renderMarkersAll(); });
+    State.onChange(() => _renderMarkersAll());
+    document.addEventListener('scroll', e => {
+      const ta = e.target;
+      if (ta.classList && ta.classList.contains('block-textarea')) {
+        const bel = ta.closest('.block[data-id]');
+        if (bel) _renderMarkers(bel, ta);
+      }
+    }, true);
   }
 
   return {
