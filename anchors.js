@@ -248,9 +248,10 @@ const Anchors = (() => {
     const blockId = blockEl.dataset.id;
     const blockAnchors = anchors.filter(a => a.blockId === blockId);
 
+    const bgColor = getComputedStyle(ta).backgroundColor || '#0d1117';
+
     if (!blockAnchors.length) {
-      ta.style.removeProperty('background-image');
-      ta.style.removeProperty('background-attachment');
+      ta.style.background = bgColor;
       return;
     }
 
@@ -265,7 +266,7 @@ const Anchors = (() => {
       ? (ta.scrollHeight - padTop - padBottom) / totalLines
       : rawLineHeight;
 
-    const layers = [];
+    const layers = [bgColor];
 
     blockAnchors.forEach((anchor) => {
       const textBefore = ta.value.slice(0, anchor.start);
@@ -291,8 +292,7 @@ const Anchors = (() => {
       }
     });
 
-    ta.style.backgroundImage = layers.length ? layers.join(',') : 'none';
-    ta.style.backgroundAttachment = 'local';
+    ta.style.background = layers.join(',');
   }
 
   /* ---- block button creation ---- */
