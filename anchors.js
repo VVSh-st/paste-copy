@@ -325,26 +325,27 @@ const Anchors = (() => {
 
     blockAnchors.forEach(anchor => {
       const pos = _measurePos(ta, anchor.start);
-      const topPx = pos.y - scrollY;
-
-      if (topPx + lineHeight < -lineHeight || topPx > wrap.clientHeight + lineHeight) return;
+      const rawTop = pos.y - scrollY;
+      const wrapH = wrap.clientHeight;
 
       const idx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {
+        const clampedTop = Math.max(0, Math.min(rawTop, wrapH - lineHeight));
         const m = document.createElement('div');
         m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + lineHeight + 'px;top:' + topPx + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:2;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + lineHeight + 'px;top:' + clampedTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:2;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
 
       if (settings.bgHighlight && anchor.start !== anchor.end) {
+        if (rawTop + lineHeight < -lineHeight || rawTop > wrapH + lineHeight) return;
         const endPos = _measurePos(ta, anchor.end);
         const selW = Math.max(2, endPos.x - pos.x);
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + topPx + 'px;pointer-events:none;z-index:0;background:' + settings.color + '33;border-radius:2px;left:' + pos.x + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + rawTop + 'px;pointer-events:none;z-index:0;background:' + settings.color + '33;border-radius:2px;left:' + pos.x + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });
