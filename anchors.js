@@ -63,7 +63,8 @@ const Anchors = (() => {
     _navIdx = anchors.length - 1;
     State.emit();
     Toast.show(`Якорь #${anchors.length} установлен ✓`, 'success');
-    _renderMarkersAll();
+    const blockEl = document.querySelector('.block[data-id="' + blockId + '"]');
+    if (blockEl) _renderMarkers(blockEl, ta);
   }
 
   function navigateAnchor(delta) {
@@ -83,7 +84,10 @@ const Anchors = (() => {
     _navIdx = -1;
     State.emit();
     Toast.show(`Удалено ${count} якорей ✓`, 'success');
-    _renderMarkersAll();
+    document.querySelectorAll('.block[data-id]').forEach(el => {
+      const ta = el.querySelector('textarea.block-textarea');
+      if (ta) el.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
+    });
   }
 
   function _jumpToAnchor(anchor) {
@@ -214,6 +218,11 @@ const Anchors = (() => {
     });
   }
 
+  function _getLineHeight(ta) {
+    const cs = getComputedStyle(ta);
+    return parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+  }
+
   function _renderMarkers(blockEl, ta) {
     blockEl.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
 
@@ -230,10 +239,7 @@ const Anchors = (() => {
     const cs = getComputedStyle(ta);
     const padTop = parseFloat(cs.paddingTop) || 0;
     const padLeft = parseFloat(cs.paddingLeft) || 0;
-    const padBottom = parseFloat(cs.paddingBottom) || 0;
-    const rawLH = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
-    const totalLines = (ta.value || '').split('\n').length;
-    const lineHeight = totalLines > 1 ? (ta.scrollHeight - padTop - padBottom) / totalLines : rawLH;
+    const lineHeight = _getLineHeight(ta);
     const cw = _charW(ta);
 
     blockAnchors.forEach(anchor => {
