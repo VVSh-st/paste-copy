@@ -30,6 +30,14 @@ const Anchors = (() => {
     return tab.anchors;
   }
 
+  function _getAllAnchors() {
+    return State.getAll().flatMap(t => (t.anchors || []).map(a => ({ ...a, _tabName: t.name })));
+  }
+
+  function _findTabForAnchor(anchor) {
+    return State.getAll().find(t => t.id === anchor.tabId) || null;
+  }
+
   function _findBlockById(blocks, id) {
     for (const b of blocks) {
       if (b.id === id) return b;
@@ -69,7 +77,7 @@ const Anchors = (() => {
   }
 
   function navigateAnchor(delta) {
-    const anchors = _getAnchors();
+    const anchors = _getAllAnchors();
     if (!anchors.length) { Toast.show('Нет якорей', 'info'); return; }
     _navIdx = (_navIdx + delta + anchors.length) % anchors.length;
     _jumpToAnchor(anchors[_navIdx]);
@@ -77,12 +85,12 @@ const Anchors = (() => {
   }
 
   function clearAnchors() {
-    const tab = State.getActive();
-    if (!tab) return;
-    const count = (tab.anchors || []).length;
-    if (!count) { Toast.show('Нет якорей', 'info'); return; }
+    const allAnchors = _getAllAnchors();
+    if (!allAnchors.length) { Toast.show('Нет якорей', 'info'); return; }
+    const count = allAnchors.length;
     _navIdx = -1;
     State.updateLive(t => { t.anchors = []; });
+    State.getAll().forEach(t => { if (t !== State.getActive()) t.anchors = []; });
     Toast.show(`Удалено ${count} якорей ✓`, 'success');
     document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
   }
@@ -123,11 +131,16 @@ const Anchors = (() => {
   }
 
   function removeAnchorById(anchorId) {
-    const anchors = _getAnchors();
-    const idx = anchors.findIndex(a => a.id === anchorId);
-    if (idx < 0) return;
-    State.updateLive(t => { t.anchors.splice(idx, 1); });
-    if (_navIdx >= _getAnchors().length) _navIdx = _getAnchors().length - 1;
+    for (const tab of State.getAll()) {
+      const anchors = tab.anchors || [];
+      const idx = anchors.findIndex(a => a.id === anchorId);
+      if (idx >= 0) {
+        anchors.splice(idx, 1);
+        break;
+      }
+    }
+    const all = _getAllAnchors();
+    if (_navIdx >= all.length) _navIdx = all.length - 1;
     _renderMarkersAll();
   }
 
@@ -138,7 +151,7 @@ const Anchors = (() => {
 
   function _showPalette(btn) {
     _closePalette();
-    const anchors = _getAnchors();
+    const anchors = _getAllAnchors();
     if (!anchors.length) { Toast.show('Нет якорей', 'info'); return; }
 
     _palette = document.createElement('div');
@@ -152,10 +165,11 @@ const Anchors = (() => {
       row.className = 'slash-item' + (idx === _navIdx ? ' focused' : '');
       row.setAttribute('role', 'option');
       const preview = (a.snippet || '').slice(0, 20) + ((a.snippet || '').length > 20 ? '...' : '');
+      const tabLabel = a._tabName ? ' [' + escHtml(a._tabName) + ']' : '';
       row.innerHTML =
         '<span class="slash-hotkey">' + escHtml(String(idx + 1)) + '</span>' +
         '<span class="slash-kind">⚓</span>' +
-        '<span class="slash-text">' + escHtml(preview) + '</span>';
+        '<span class="slash-text">' + escHtml(preview) + tabLabel + '</span>';
       row.onmousedown = ev => { ev.preventDefault(); _navIdx = idx; _jumpToAnchor(a); _closePalette(); };
       _palette.appendChild(row);
     });
