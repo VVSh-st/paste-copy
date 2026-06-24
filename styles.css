@@ -5343,7 +5343,7 @@ body.help-open {
   left: 0;
   width: 3px;
   pointer-events: none;
-  z-index: 2;
+  z-index: 4;
   border-radius: 0 2px 2px 0;
 }
 .anchor-marker-gutter {
