@@ -10,7 +10,6 @@ const Anchors = (() => {
   let _palette = null;
   let _longPressTimer = null;
   let _longPressTriggered = false;
-  const _scrollRaf = new Map();
 
   /* ---- helpers ---- */
   function uid() {
@@ -244,83 +243,56 @@ const Anchors = (() => {
   }
 
   function _renderMarkers(blockEl, ta) {
-    blockEl.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
-    const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
-    if (!wrap) return;
-
     const anchors = _getAnchors();
     const settings = getMarkerSettings();
     const blockId = blockEl.dataset.id;
-
     const blockAnchors = anchors.filter(a => a.blockId === blockId);
-    if (!blockAnchors.length) return;
 
-    wrap.style.position = 'relative';
+    if (!blockAnchors.length) {
+      ta.style.removeProperty('background-image');
+      ta.style.removeProperty('background-attachment');
+      return;
+    }
 
     const cs = getComputedStyle(ta);
     const rawLineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
-    const borderTop = parseFloat(cs.borderTopWidth) || 0;
-    const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
     const padTop = parseFloat(cs.paddingTop) || 0;
     const padLeft = parseFloat(cs.paddingLeft) || 0;
     const padBottom = parseFloat(cs.paddingBottom) || 0;
-    const paddingTop = borderTop + padTop;
-    const paddingLeft = borderLeft + padLeft;
-    const scrollY = ta.scrollTop;
     const charW = _measureCharWidth(ta);
     const totalLines = (ta.value || '').split('\n').length;
     const lineHeight = totalLines > 1
       ? (ta.scrollHeight - padTop - padBottom) / totalLines
       : rawLineHeight;
 
+    const layers = [];
+
     blockAnchors.forEach((anchor) => {
       const textBefore = ta.value.slice(0, anchor.start);
       const lines = textBefore.split('\n');
       const lineIdx = lines.length - 1;
-      const topPx = paddingTop + lineIdx * lineHeight - scrollY;
-      const blockAnchorIdx = anchors.indexOf(anchor);
-
-      if (topPx + lineHeight < 0 || topPx > wrap.clientHeight) return;
+      const topPx = padTop + lineIdx * lineHeight;
 
       if (settings.lineMarkers) {
-        const marker = document.createElement('div');
-        marker.className = 'anchor-marker-line';
-        marker.style.cssText =
-          'position:absolute;left:0;width:3px;height:' + lineHeight + 'px;' +
-          'top:' + topPx + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:2;' +
-          'background:' + settings.color + ';opacity:0.85;' +
-          'box-shadow:0 0 6px ' + settings.color + '44;';
-        marker.title = 'Якорь #' + (blockAnchorIdx + 1) + ': ' + (anchor.snippet || '');
-        wrap.appendChild(marker);
+        layers.push(
+          'linear-gradient(to right,' + settings.color + 'dd 3px,transparent 3px) no-repeat local 0 ' + topPx + 'px / 100% ' + lineHeight + 'px'
+        );
       }
 
       if (settings.bgHighlight && anchor.start !== anchor.end) {
         const lineText = lines[lineIdx] || '';
         const charsBefore = lineText.length;
         const selLen = anchor.end - anchor.start;
-        const leftPx = paddingLeft + charsBefore * charW;
-        const selWidth = Math.max(4, selLen * charW);
-        const bg = document.createElement('div');
-        bg.className = 'anchor-marker-gutter';
-        bg.style.cssText =
-          'position:absolute;height:' + lineHeight + 'px;' +
-          'top:' + topPx + 'px;pointer-events:none;z-index:0;' +
-          'background:' + settings.color + '20;border-radius:2px;' +
-          'left:' + leftPx + 'px;width:' + selWidth + 'px;';
-        wrap.appendChild(bg);
+        const leftPx = padLeft + charsBefore * charW;
+        const selWidth = Math.max(2, selLen * charW);
+        layers.push(
+          'linear-gradient(to right,transparent ' + leftPx + 'px,' + settings.color + '33 ' + leftPx + 'px,' + settings.color + '33 ' + (leftPx + selWidth) + 'px,transparent ' + (leftPx + selWidth) + 'px) no-repeat local 0 ' + topPx + 'px / 100% ' + lineHeight + 'px'
+        );
       }
     });
-  }
 
-  /* ---- scroll sync ---- */
-  function _attachScrollListener(blockId, blockEl, ta) {
-    ta.addEventListener('scroll', () => {
-      if (_scrollRaf.has(blockId)) return;
-      _scrollRaf.set(blockId, requestAnimationFrame(() => {
-        _scrollRaf.delete(blockId);
-        _renderMarkers(blockEl, ta);
-      }));
-    }, { passive: true });
+    ta.style.backgroundImage = layers.length ? layers.join(',') : 'none';
+    ta.style.backgroundAttachment = 'local';
   }
 
   /* ---- block button creation ---- */
@@ -396,16 +368,6 @@ const Anchors = (() => {
     group.appendChild(setBtn);
     group.appendChild(navBtn);
     group.appendChild(clearBtn);
-
-    const blockEl = ta.closest('.block[data-id]');
-    if (blockEl) {
-      _attachScrollListener(blockId, blockEl, ta);
-    } else {
-      requestAnimationFrame(() => {
-        const bel = ta.closest('.block[data-id]');
-        if (bel) _attachScrollListener(blockId, bel, ta);
-      });
-    }
 
     return group;
   }
