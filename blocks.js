@@ -902,7 +902,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       Toast.show('Скопировано ✓', 'success');
     });
 
-    [undoBtn, redoBtn, cutBtn, copyBtn, pasteBtn, makeDivider(), insertBtn, loomBtn, makeDivider(), clearBtn, saveBtn, transferBtn]
+    [undoBtn, redoBtn, cutBtn, copyBtn, pasteBtn, makeDivider(), insertBtn, loomBtn, makeDivider(), clearBtn, saveBtn, transferBtn, makeDivider(), Anchors.createBlockAnchorButtons(b.id, ta)]
       .forEach(el => tools.appendChild(el));
     body.appendChild(tools);
 
@@ -1077,7 +1077,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const mirrorRect = mirror.getBoundingClientRect();
       const taRect = ta.getBoundingClientRect();
       const wrapRect = lineWrap.getBoundingClientRect();
-      const glyphOffset = Math.max(0, (lineHeight - markerRect.height) / 2);
+      const glyphOffset = Math.max(0, (lineHeight - markerRect.height) / 2) - 1;
       const top = (taRect.top - wrapRect.top) +
         (markerRect.top - mirrorRect.top) -
         glyphOffset -
