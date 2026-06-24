@@ -171,39 +171,44 @@ const Anchors = (() => {
     setTimeout(() => document.addEventListener('click', _closePalette, { once: true }), 0);
   }
 
-  /* ---- mirror for precise line measurement ---- */
+  /* ---- mirror for line-wrap measurement ---- */
   let _mirror = null;
 
   function _getMirror(ta) {
     if (!_mirror) {
       _mirror = document.createElement('div');
-      _mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;pointer-events:none;z-index:-1;';
+      _mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;word-break;break-all;overflow:hidden;pointer-events:none;z-index:-1;box-sizing:content-box;border:none;padding:0;margin:0;';
       document.body.appendChild(_mirror);
     }
     const cs = getComputedStyle(ta);
     _mirror.style.font = cs.font;
     _mirror.style.letterSpacing = cs.letterSpacing;
     _mirror.style.lineHeight = cs.lineHeight;
-    _mirror.style.paddingTop = cs.paddingTop;
-    _mirror.style.paddingLeft = cs.paddingLeft;
-    _mirror.style.paddingRight = cs.paddingRight;
-    _mirror.style.paddingBottom = cs.paddingBottom;
-    _mirror.style.width = ta.clientWidth + 'px';
+    const pl = parseFloat(cs.paddingLeft) || 0;
+    const pr = parseFloat(cs.paddingRight) || 0;
+    _mirror.style.width = (ta.clientWidth - pl - pr) + 'px';
     return _mirror;
   }
 
   function _measurePos(ta, charPos) {
     const mirror = _getMirror(ta);
     const text = ta.value.substring(0, charPos);
+    if (!text) {
+      const cs = getComputedStyle(ta);
+      return { x: parseFloat(cs.paddingLeft) || 0, y: parseFloat(cs.paddingTop) || 0 };
+    }
     mirror.textContent = text;
-    const y = mirror.scrollHeight;
+    const contentY = mirror.scrollHeight;
+
     const lastNewline = text.lastIndexOf('\n');
     const lineText = lastNewline >= 0 ? text.substring(lastNewline + 1) : text;
     const cs = getComputedStyle(ta);
     const ctx = _measureCtx || (_measureCtx = document.createElement('canvas').getContext('2d'));
     ctx.font = cs.fontSize + ' ' + cs.fontFamily;
-    const x = parseFloat(cs.paddingLeft || 0) + ctx.measureText(lineText).width;
-    return { x: x, y: y };
+    const pt = parseFloat(cs.paddingTop) || 0;
+    const pl = parseFloat(cs.paddingLeft) || 0;
+    const x = pl + ctx.measureText(lineText).width;
+    return { x: x, y: pt + contentY };
   }
 
   /* ---- char width measurement ---- */
