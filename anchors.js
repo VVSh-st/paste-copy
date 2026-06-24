@@ -10,6 +10,7 @@ const Anchors = (() => {
   let _palette = null;
   let _longPressTimer = null;
   let _longPressTriggered = false;
+  const _scrollRaf = new Map();
 
   /* ---- helpers ---- */
   function uid() {
@@ -153,8 +154,6 @@ const Anchors = (() => {
     _palette.setAttribute('aria-label', 'Якоря');
     document.body.appendChild(_palette);
 
-    const tab = State.getActive();
-
     anchors.forEach((a, idx) => {
       const row = document.createElement('button');
       row.type = 'button';
@@ -202,7 +201,7 @@ const Anchors = (() => {
     if (_palette && !_palette.contains(e.target)) _closePalette();
   }
 
-  /* ---- marker rendering in textarea ---- */
+  /* ---- marker rendering ---- */
   const MARKER_KEY = 'anchor-markers-enabled';
   const MARKER_BG_KEY = 'anchor-bg-enabled';
   const MARKER_COLOR_KEY = 'anchor-marker-color';
@@ -243,14 +242,16 @@ const Anchors = (() => {
 
     wrap.style.position = 'relative';
 
-    blockAnchors.forEach((anchor, idx) => {
-      const pos = anchor.start;
-      const textBefore = ta.value.slice(0, pos);
+    const cs = getComputedStyle(ta);
+    const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+    const paddingTop = parseFloat(cs.paddingTop) || 0;
+    const scrollY = ta.scrollTop;
+
+    blockAnchors.forEach((anchor) => {
+      const textBefore = ta.value.slice(0, anchor.start);
       const lines = textBefore.split('\n');
       const lineIdx = lines.length - 1;
-      const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || (parseFloat(getComputedStyle(ta).fontSize) || 12) * 1.65;
-      const topPx = lineIdx * lineHeight - ta.scrollTop - lineHeight * 0.5;
-
+      const topPx = paddingTop + lineIdx * lineHeight - scrollY;
       const blockAnchorIdx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {
@@ -260,26 +261,34 @@ const Anchors = (() => {
           'position:absolute;left:0;width:3px;height:' + lineHeight + 'px;' +
           'top:' + topPx + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:2;' +
           'background:' + settings.color + ';opacity:0.85;' +
-          'box-shadow:0 0 6px ' + settings.color + '44;transition:top 0.15s ease;';
+          'box-shadow:0 0 6px ' + settings.color + '44;';
         marker.title = 'Якорь #' + (blockAnchorIdx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(marker);
       }
 
-      if (settings.bgHighlight) {
+      if (settings.bgHighlight && anchor.start !== anchor.end) {
+        const lineText = lines[lineIdx] || '';
+        const charsBefore = lineText.length;
+        const selLen = anchor.end - anchor.start;
+        const fontSize = parseFloat(cs.fontSize) || 12;
+        const monoCharW = fontSize * 0.602;
+        const leftPx = parseFloat(cs.paddingLeft || 0) + charsBefore * monoCharW;
+        const selWidth = Math.max(4, selLen * monoCharW);
         const bg = document.createElement('div');
         bg.className = 'anchor-marker-gutter';
         bg.style.cssText =
-          'position:absolute;left:0;right:0;height:' + lineHeight + 'px;' +
+          'position:absolute;height:' + lineHeight + 'px;' +
           'top:' + topPx + 'px;pointer-events:none;z-index:0;' +
-          'background:' + settings.color + '12;border-radius:2px;transition:top 0.15s ease;';
+          'background:' + settings.color + '20;border-radius:2px;' +
+          'left:' + leftPx + 'px;width:' + selWidth + 'px;';
         wrap.appendChild(bg);
       }
     });
   }
 
-
-
   /* ---- block button creation ---- */
+  const SVG_ANCHOR = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="4.5" r="2.5"/><line x1="10" y1="7" x2="10" y2="18"/><path d="M6 12.5H4a8 8 0 0 0 12 0h-2"/></svg>';
+
   function createBlockAnchorButtons(blockId, ta) {
     const group = document.createElement('span');
     group.className = 'anchor-btn-group anchor-btn-block';
@@ -289,7 +298,7 @@ const Anchors = (() => {
     setBtn.className = 'block-tool-btn anchor-btn';
     setBtn.title = 'Установить якорь';
     setBtn.setAttribute('aria-label', 'Установить якорь');
-    setBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v10"/><circle cx="10" cy="14" r="3"/><path d="M7 12h6"/></svg>';
+    setBtn.innerHTML = SVG_ANCHOR;
     setBtn.onclick = e => {
       e.stopPropagation();
       setAnchor(ta, blockId);
@@ -351,6 +360,18 @@ const Anchors = (() => {
     group.appendChild(navBtn);
     group.appendChild(clearBtn);
 
+    const blockEl = ta.closest('.block[data-id]');
+    if (blockEl) {
+      ta.addEventListener('scroll', () => {
+        const key = blockId;
+        if (_scrollRaf.has(key)) return;
+        _scrollRaf.set(key, requestAnimationFrame(() => {
+          _scrollRaf.delete(key);
+          _renderMarkers(blockEl, ta);
+        }));
+      }, { passive: true });
+    }
+
     return group;
   }
 
@@ -358,7 +379,6 @@ const Anchors = (() => {
   function _setupHotkeys() {
     document.addEventListener('keydown', e => {
       if (!e.shiftKey || !(e.ctrlKey || e.metaKey)) return;
-      const inField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
       if (e.key === '1') {
         e.preventDefault();
         const activeTa = document.querySelector('textarea.block-textarea:focus') ||
