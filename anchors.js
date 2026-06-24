@@ -261,14 +261,16 @@ const Anchors = (() => {
     const rawLineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
     const borderTop = parseFloat(cs.borderTopWidth) || 0;
     const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
-    const paddingTop = borderTop + (parseFloat(cs.paddingTop) || 0);
-    const paddingLeft = borderLeft + (parseFloat(cs.paddingLeft) || 0);
-    const paddingBottom = (parseFloat(cs.borderBottomWidth) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const padTop = parseFloat(cs.paddingTop) || 0;
+    const padLeft = parseFloat(cs.paddingLeft) || 0;
+    const padBottom = parseFloat(cs.paddingBottom) || 0;
+    const paddingTop = borderTop + padTop;
+    const paddingLeft = borderLeft + padLeft;
     const scrollY = ta.scrollTop;
     const charW = _measureCharWidth(ta);
     const totalLines = (ta.value || '').split('\n').length;
     const lineHeight = totalLines > 1
-      ? (ta.scrollHeight - paddingTop - paddingBottom) / totalLines
+      ? (ta.scrollHeight - padTop - padBottom) / totalLines
       : rawLineHeight;
 
     blockAnchors.forEach((anchor) => {
