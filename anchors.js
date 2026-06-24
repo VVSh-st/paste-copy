@@ -73,7 +73,10 @@ const Anchors = (() => {
     });
     Toast.show(`Якорь #${_getAnchors().length} установлен ✓`, 'success');
     const blockEl = document.querySelector('.block[data-id="' + blockId + '"]');
-    if (blockEl) requestAnimationFrame(() => _renderMarkers(blockEl, ta));
+    if (blockEl) requestAnimationFrame(() => {
+      _renderMarkers(blockEl, ta);
+      Blocks.refreshAllAnchorCounts();
+    });
   }
 
   function navigateAnchor(delta) {
@@ -93,6 +96,7 @@ const Anchors = (() => {
     State.getAll().forEach(t => { if (t !== State.getActive()) t.anchors = []; });
     Toast.show(`Удалено ${count} якорей ✓`, 'success');
     document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
+    Blocks.refreshAllAnchorCounts();
   }
 
   function _jumpToAnchor(anchor) {
@@ -142,6 +146,7 @@ const Anchors = (() => {
     const all = _getAllAnchors();
     if (_navIdx >= all.length) _navIdx = all.length - 1;
     _renderMarkersAll();
+    Blocks.refreshAllAnchorCounts();
   }
 
   /* ---- palette ---- */

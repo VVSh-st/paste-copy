@@ -1163,10 +1163,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body._counterSpan = counterSpan;
     updateBlockCounter(ta, b, body);
 
+    const anchorCountEl = document.createElement('span');
+    anchorCountEl.className = 'block-anchor-count';
+    anchorCountEl.title = 'Якоря в блоке';
+    body._anchorCountEl = anchorCountEl;
+    _updateAnchorCount(b.id, anchorCountEl);
+
     const scrollControls = document.createElement('div');
     scrollControls.className = 'block-scroll-controls';
     scrollControls.appendChild(scrollTopBtn);
     scrollControls.appendChild(scrollBottomBtn);
+    scrollControls.appendChild(anchorCountEl);
     scrollControls.appendChild(counterSpan);
 
     footer.appendChild(fDecBtn);
@@ -1188,6 +1195,26 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const lines = text ? text.split('\n').length : 0;
     const kb    = (_byteLen(text) / 1024).toFixed(1);
     span.textContent = chars + '/' + lines + '/' + kb + 'KB';
+  }
+
+  const ANCHOR_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="4.5" r="2.5"/><line x1="10" y1="7" x2="10" y2="18"/><path d="M6 12.5H4a8 8 0 0 0 12 0h-2"/></svg>';
+
+  function _updateAnchorCount(blockId, el) {
+    if (!el) return;
+    const tab = State.getActive();
+    const anchors = (tab && tab.anchors) || [];
+    const count = anchors.filter(a => a.blockId === blockId).length;
+    el.innerHTML = ANCHOR_SVG + (count > 0 ? '<span>' + count + '</span>' : '');
+    el.classList.toggle('has-anchors', count > 0);
+    el.title = count ? count + ' якорей в блоке' : 'Нет якорей';
+  }
+
+  function refreshAllAnchorCounts() {
+    document.querySelectorAll('.block[data-id]').forEach(el => {
+      if (el._anchorCountEl) {
+        _updateAnchorCount(el.dataset.id, el._anchorCountEl);
+      }
+    });
   }
 
   /* ================================================================
@@ -1906,7 +1933,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     textLintBadgeCache.clear();
   }
 
-  return { render, applyLayout, setupColumns, clearTextLintBadgeCache };
+  return { render, applyLayout, setupColumns, clearTextLintBadgeCache, refreshAllAnchorCounts };
 })();
 
 window.Blocks = Blocks;
