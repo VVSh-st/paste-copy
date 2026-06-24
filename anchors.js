@@ -165,14 +165,10 @@ const Anchors = (() => {
       const hotkey = String(idx + 1);
       const preview = (a.snippet || '').slice(0, 20) + ((a.snippet || '').length > 20 ? '...' : '');
 
-      const blk = tab ? _findBlockById(tab.blocks, a.blockId) : null;
-      const blkTitle = blk ? blk.title : '?';
-
       row.innerHTML =
         '<span class="slash-hotkey" aria-hidden="true">' + escHtml(hotkey) + '</span>' +
         '<span class="slash-kind" aria-hidden="true">⚓</span>' +
-        '<span class="slash-text">' + escHtml(preview) + '</span>' +
-        '<span class="anchor-palette-block">' + escHtml(blkTitle) + '</span>';
+        '<span class="slash-text">' + escHtml(preview) + '</span>';
 
       row.onmousedown = ev => {
         ev.preventDefault();
@@ -253,7 +249,7 @@ const Anchors = (() => {
       const lines = textBefore.split('\n');
       const lineIdx = lines.length - 1;
       const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || (parseFloat(getComputedStyle(ta).fontSize) || 12) * 1.65;
-      const topPx = lineIdx * lineHeight - ta.scrollTop;
+      const topPx = lineIdx * lineHeight - ta.scrollTop - lineHeight * 0.5;
 
       const blockAnchorIdx = anchors.indexOf(anchor);
 
@@ -273,7 +269,7 @@ const Anchors = (() => {
         const bg = document.createElement('div');
         bg.className = 'anchor-marker-gutter';
         bg.style.cssText =
-          'position:absolute;left:3px;right:0;height:' + lineHeight + 'px;' +
+          'position:absolute;left:0;right:0;height:' + lineHeight + 'px;' +
           'top:' + topPx + 'px;pointer-events:none;z-index:0;' +
           'background:' + settings.color + '12;border-radius:2px;transition:top 0.15s ease;';
         wrap.appendChild(bg);
@@ -290,7 +286,7 @@ const Anchors = (() => {
 
     const setBtn = document.createElement('button');
     setBtn.type = 'button';
-    setBtn.className = 'tb-btn tb-btn-icon-only anchor-btn';
+    setBtn.className = 'block-tool-btn anchor-btn';
     setBtn.title = 'Установить якорь';
     setBtn.setAttribute('aria-label', 'Установить якорь');
     setBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v10"/><circle cx="10" cy="14" r="3"/><path d="M7 12h6"/></svg>';
@@ -301,7 +297,7 @@ const Anchors = (() => {
 
     const navBtn = document.createElement('button');
     navBtn.type = 'button';
-    navBtn.className = 'tb-btn tb-btn-icon-only anchor-btn';
+    navBtn.className = 'block-tool-btn anchor-btn';
     navBtn.title = 'Навигация по якорям · Длинное нажатие — список';
     navBtn.setAttribute('aria-label', 'Навигация по якорям');
     navBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a6 6 0 0 1 12 0"/><polyline points="4 10 1 7"/><polyline points="16 10 19 7"/></svg>';
@@ -333,7 +329,7 @@ const Anchors = (() => {
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
-    clearBtn.className = 'tb-btn tb-btn-icon-only anchor-btn anchor-btn-danger';
+    clearBtn.className = 'block-tool-btn anchor-btn anchor-btn-danger';
     clearBtn.title = 'Удалить все якоря';
     clearBtn.setAttribute('aria-label', 'Удалить все якоря');
     clearBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l12 12"/><path d="M16 4L4 16"/></svg>';
