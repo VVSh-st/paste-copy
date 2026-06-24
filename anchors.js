@@ -44,27 +44,28 @@ const Anchors = (() => {
   /* ---- core actions ---- */
   function setAnchor(ta, blockId) {
     if (!ta) return;
-    const anchors = _getAnchors();
     const tab = State.getActive();
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     const snippet = (ta.value || '').slice(start, Math.min(start + 30, end || start + 30)).replace(/\n/g, ' ');
 
-    anchors.push({
-      id: uid(),
-      tabId: tab.id,
-      blockId: blockId,
-      subtabIdx: null,
-      start: start,
-      end: end,
-      snippet: snippet || '(пусто)',
-      createdAt: Date.now(),
+    State.updateLive(t => {
+      if (!t.anchors) t.anchors = [];
+      t.anchors.push({
+        id: uid(),
+        tabId: tab.id,
+        blockId: blockId,
+        subtabIdx: null,
+        start: start,
+        end: end,
+        snippet: snippet || '(пусто)',
+        createdAt: Date.now(),
+      });
+      _navIdx = t.anchors.length - 1;
     });
-    _navIdx = anchors.length - 1;
-    State.emit();
-    Toast.show(`Якорь #${anchors.length} установлен ✓`, 'success');
+    Toast.show(`Якорь #${_getAnchors().length} установлен ✓`, 'success');
     const blockEl = document.querySelector('.block[data-id="' + blockId + '"]');
-    if (blockEl) _renderMarkers(blockEl, ta);
+    if (blockEl) requestAnimationFrame(() => _renderMarkers(blockEl, ta));
   }
 
   function navigateAnchor(delta) {
@@ -80,14 +81,10 @@ const Anchors = (() => {
     if (!tab) return;
     const count = (tab.anchors || []).length;
     if (!count) { Toast.show('Нет якорей', 'info'); return; }
-    tab.anchors = [];
     _navIdx = -1;
-    State.emit();
+    State.updateLive(t => { t.anchors = []; });
     Toast.show(`Удалено ${count} якорей ✓`, 'success');
-    document.querySelectorAll('.block[data-id]').forEach(el => {
-      const ta = el.querySelector('textarea.block-textarea');
-      if (ta) el.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
-    });
+    document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
   }
 
   function _jumpToAnchor(anchor) {
@@ -128,9 +125,8 @@ const Anchors = (() => {
     const anchors = _getAnchors();
     const idx = anchors.findIndex(a => a.id === anchorId);
     if (idx < 0) return;
-    anchors.splice(idx, 1);
-    if (_navIdx >= anchors.length) _navIdx = anchors.length - 1;
-    State.emit();
+    State.updateLive(t => { t.anchors.splice(idx, 1); });
+    if (_navIdx >= _getAnchors().length) _navIdx = _getAnchors().length - 1;
     _renderMarkersAll();
   }
 
@@ -173,6 +169,41 @@ const Anchors = (() => {
       if (pr.bottom > window.innerHeight - 8) _palette.style.top = Math.max(4, rect.top - pr.height - 4) + 'px';
     });
     setTimeout(() => document.addEventListener('click', _closePalette, { once: true }), 0);
+  }
+
+  /* ---- mirror for precise line measurement ---- */
+  let _mirror = null;
+
+  function _getMirror(ta) {
+    if (!_mirror) {
+      _mirror = document.createElement('div');
+      _mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;pointer-events:none;z-index:-1;';
+      document.body.appendChild(_mirror);
+    }
+    const cs = getComputedStyle(ta);
+    _mirror.style.font = cs.font;
+    _mirror.style.letterSpacing = cs.letterSpacing;
+    _mirror.style.lineHeight = cs.lineHeight;
+    _mirror.style.paddingTop = cs.paddingTop;
+    _mirror.style.paddingLeft = cs.paddingLeft;
+    _mirror.style.paddingRight = cs.paddingRight;
+    _mirror.style.paddingBottom = cs.paddingBottom;
+    _mirror.style.width = ta.clientWidth + 'px';
+    return _mirror;
+  }
+
+  function _measurePos(ta, charPos) {
+    const mirror = _getMirror(ta);
+    const text = ta.value.substring(0, charPos);
+    mirror.textContent = text;
+    const y = mirror.scrollHeight;
+    const lastNewline = text.lastIndexOf('\n');
+    const lineText = lastNewline >= 0 ? text.substring(lastNewline + 1) : text;
+    const cs = getComputedStyle(ta);
+    const ctx = _measureCtx || (_measureCtx = document.createElement('canvas').getContext('2d'));
+    ctx.font = cs.fontSize + ' ' + cs.fontFamily;
+    const x = parseFloat(cs.paddingLeft || 0) + ctx.measureText(lineText).width;
+    return { x: x, y: y };
   }
 
   /* ---- char width measurement ---- */
@@ -219,8 +250,7 @@ const Anchors = (() => {
   }
 
   function _getLineHeight(ta) {
-    const cs = getComputedStyle(ta);
-    return parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+    return parseFloat(getComputedStyle(ta).lineHeight) || (parseFloat(getComputedStyle(ta).fontSize) || 12) * 1.65;
   }
 
   function _renderMarkers(blockEl, ta) {
@@ -236,17 +266,12 @@ const Anchors = (() => {
     if (!wrap) return;
     wrap.style.position = 'relative';
 
-    const cs = getComputedStyle(ta);
-    const padTop = parseFloat(cs.paddingTop) || 0;
-    const padLeft = parseFloat(cs.paddingLeft) || 0;
     const lineHeight = _getLineHeight(ta);
-    const cw = _charW(ta);
+    const scrollY = ta.scrollTop;
 
     blockAnchors.forEach(anchor => {
-      const textBefore = ta.value.slice(0, anchor.start);
-      const lines = textBefore.split('\n');
-      const lineIdx = lines.length - 1;
-      const topPx = padTop + lineIdx * lineHeight - ta.scrollTop;
+      const pos = _measurePos(ta, anchor.start);
+      const topPx = pos.y - scrollY;
 
       if (topPx + lineHeight < -lineHeight || topPx > wrap.clientHeight + lineHeight) return;
 
@@ -261,13 +286,11 @@ const Anchors = (() => {
       }
 
       if (settings.bgHighlight && anchor.start !== anchor.end) {
-        const charsBefore = lines[lineIdx].length;
-        const selLen = anchor.end - anchor.start;
-        const leftPx = padLeft + charsBefore * cw;
-        const selW = Math.max(2, selLen * cw);
+        const endPos = _measurePos(ta, anchor.end);
+        const selW = Math.max(2, endPos.x - pos.x);
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + topPx + 'px;pointer-events:none;z-index:0;background:' + settings.color + '33;border-radius:2px;left:' + leftPx + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + topPx + 'px;pointer-events:none;z-index:0;background:' + settings.color + '33;border-radius:2px;left:' + pos.x + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });
