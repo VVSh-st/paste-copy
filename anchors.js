@@ -114,9 +114,10 @@ const Anchors = (() => {
         const s = Math.min(anchor.start, ta.value.length);
         const e = Math.min(anchor.end, ta.value.length);
         ta.setSelectionRange(s, e);
-        const linesBefore = ta.value.slice(0, s).split('\n').length - 1;
-        const lineHeight = parseInt(getComputedStyle(ta).lineHeight, 10) || 18;
-        ta.scrollTop = Math.max(0, linesBefore * lineHeight - ta.clientHeight / 2);
+        const pos = _measurePos(ta, s);
+        const cs = getComputedStyle(ta);
+        const pt = parseFloat(cs.paddingTop) || 0;
+        ta.scrollTop = Math.max(0, pos.y - pt - ta.clientHeight / 2);
       }
     });
   }
