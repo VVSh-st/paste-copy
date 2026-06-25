@@ -1061,12 +1061,10 @@ const Ember = (() => {
     window.addEventListener('focus', () => { browserFocused = true; });
     window.addEventListener('blur', () => {
       browserFocused = false;
-      mouseInZone = false;
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         browserFocused = false;
-        mouseInZone = false;
       } else {
         browserFocused = true;
       }
