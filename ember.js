@@ -75,6 +75,14 @@ const Ember = (() => {
   let shimmerEnd = 0;
   let nextShimmerCheck = 0;
 
+  // отслеживание курсора
+  const mouse = { x: 0, y: 0, lastSampleX: 0, lastSampleY: 0, lastSampleTime: 0, speed: 0, active: false };
+  const caret = { x: 0, y: 0, active: false, typing: false, lastTypingEnd: 0 };
+  const cursorLean = { x: 0, y: 0, squish: 0 };
+  let cursorReactionCooldown = 0;
+  let mouseEnterTime = 0;
+  let mouseInZone = false;
+
   // ПКМ тестирование
   let testMode = false;
   let testQueue = [];
@@ -470,12 +478,134 @@ const Ember = (() => {
     }
   }
 
+  // ---------- отслеживание курсора ----------
+
+  const CURSOR_SAMPLE_INTERVAL = 80;
+  const CURSOR_ZONE_RADIUS = 200;
+  const CARET_SAMPLE_INTERVAL = 100;
+  let nextMouseSample = 0;
+  let nextCaretSample = 0;
+
+  function sampleMousePosition(now) {
+    if (now < nextMouseSample) return;
+    nextMouseSample = now + CURSOR_SAMPLE_INTERVAL;
+    const dx = mouse.x - mouse.lastSampleX;
+    const dy = mouse.y - mouse.lastSampleY;
+    const dt = now - mouse.lastSampleTime || 1;
+    mouse.speed = Math.sqrt(dx * dx + dy * dy) / (dt / 16.7);
+    mouse.lastSampleX = mouse.x;
+    mouse.lastSampleY = mouse.y;
+    mouse.lastSampleTime = now;
+  }
+
+  function sampleCaretPosition(now) {
+    if (now < nextCaretSample) return;
+    nextCaretSample = now + CARET_SAMPLE_INTERVAL;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) { caret.active = false; return; }
+    const range = sel.getRangeAt(0);
+    if (range.collapsed) {
+      const rect = range.getBoundingClientRect();
+      caret.x = rect.left + rect.width / 2;
+      caret.y = rect.top;
+      caret.active = rect.width > 0 || rect.height > 0;
+    } else {
+      caret.active = false;
+    }
+  }
+
+  function getEmberCenter() {
+    if (!root) return { x: 0, y: 0 };
+    const rect = root.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }
+
+  function updateCursorLean(now, dt) {
+    const ember = getEmberCenter();
+
+    // мышь в зоне?
+    const mDx = mouse.x - ember.x;
+    const mDy = mouse.y - ember.y;
+    const mDist = Math.sqrt(mDx * mDx + mDy * mDy);
+    const mInZone = mDist < CURSOR_ZONE_RADIUS;
+
+    // входим в зону — решаем реагировать или нет
+    if (mInZone && !mouseInZone) {
+      mouseInZone = true;
+      mouseEnterTime = now;
+      cursorReactionCooldown = now + rand(300, 1200);
+      if (Math.random() < (1 - intensity) * 0.4) {
+        cursorReactionCooldown = now + rand(4000, 10000);
+      }
+    } else if (!mInZone) {
+      mouseInZone = false;
+    }
+
+    // цель для наклона — от позиции мыши
+    let targetLeanX = 0, targetLeanY = 0, targetSquish = 0;
+    if (mInZone && now > cursorReactionCooldown) {
+      const normX = clamp(mDx / CURSOR_ZONE_RADIUS, -1, 1);
+      const normY = clamp(mDy / CURSOR_ZONE_RADIUS, -1, 1);
+      const proximity = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
+      const strength = proximity * proximity;
+      targetLeanX = normX * strength * 3.5;
+      targetLeanY = normY * strength * 2.5;
+      // сжатие когда курсор внизу
+      if (normY > 0.3) targetSquish = (normY - 0.3) * 0.25 * strength;
+    }
+
+    // typing approach — подхожу к каретке
+    if (caret.active && caret.typing) {
+      const cDx = caret.x - ember.x;
+      const cDy = caret.y - ember.y;
+      const cDist = Math.sqrt(cDx * cDx + cDy * cDy);
+      if (cDist > 15 && cDist < 500) {
+        const cNormX = clamp(cDx / cDist, -1, 1);
+        const cNormY = clamp(cDy / cDist, -1, 1);
+        const cStrength = clamp(1 - cDist / 500, 0, 0.6);
+        targetLeanX += cNormX * cStrength * 2;
+        targetLeanY += cNormY * cStrength * 1.5;
+      }
+    }
+
+    // dodge — быстрое движение мыши
+    if (mouse.speed > 12 && mInZone && mDist < 80) {
+      const dodgeX = -normDX(mDx, mDist) * Math.min(mouse.speed * 0.08, 2);
+      const dodgeY = -normDY(mDy, mDist) * Math.min(mouse.speed * 0.06, 1.5);
+      targetLeanX += dodgeX;
+      targetLeanY += dodgeY;
+    }
+
+    // startle — резкое появление мыши
+    if (mInZone && mouse.speed > 8 && now - mouseEnterTime < 300) {
+      targetLeanX += (Math.random() < 0.5 ? 1 : -1) * 1.5;
+      targetLeanY -= 1;
+    }
+
+    // плавная интерполяция
+    const lerpSpeed = clamp(dt * 0.0025, 0, 1);
+    cursorLean.x += (targetLeanX - cursorLean.x) * lerpSpeed;
+    cursorLean.y += (targetLeanY - cursorLean.y) * lerpSpeed;
+    cursorLean.squish += (targetSquish - cursorLean.squish) * lerpSpeed;
+
+    // gaze following — тепловые зоны следят за курсором
+    if (mInZone && now > cursorReactionCooldown) {
+      const gStr = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
+      heatTargetX += normDX(mDx, mDist) * gStr * 0.3;
+      heatTargetY += normDY(mDy, mDist) * gStr * 0.3;
+    }
+  }
+
+  function normDX(dx, dist) { return dist > 0 ? dx / dist : 0; }
+  function normDY(dy, dist) { return dist > 0 ? dy / dist : 0; }
+
   // ---------- ПКМ тестирование ----------
 
   const TEST_EFFECTS = [
     'sigh', 'calmBurn', 'wiggle', 'tilt', 'microShift',
     'crackle', 'stretch', 'glint', 'sleepySag',
     'smolder', 'heatRadiance', 'glowPulse', 'ashDrift',
+    'cursorLean', 'typingApproach', 'startle', 'playfulDodge',
   ];
 
   function startTestMode() {
@@ -511,6 +641,8 @@ const Ember = (() => {
       sleepySag: [3000, 5000],
       smolder: [3000, 4000], heatRadiance: [2500, 3500],
       glowPulse: [2000, 3000], ashDrift: [3000, 4000],
+      cursorLean: [2000, 3000], typingApproach: [3000, 4000],
+      startle: [1500, 2000], playfulDodge: [1200, 1800],
     };
     const extra = type === 'tilt' ? { target: rand(-1, 1) }
       : type === 'microShift' ? { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }
@@ -534,6 +666,36 @@ const Ember = (() => {
       for (let i = 0; i < 8; i++) setTimeout(() => spawnAshParticle(), i * 200);
     }
 
+    // курсорные эффекты — имитируем позицию мыши
+    if (type === 'cursorLean') {
+      cursorReactionCooldown = 0;
+      mouseInZone = true;
+      mouseEnterTime = performance.now() - 5000;
+      mouse.x = getEmberCenter().x + rand(-120, 120);
+      mouse.y = getEmberCenter().y + rand(30, 150);
+    }
+    if (type === 'typingApproach') {
+      caret.typing = true;
+      caret.active = true;
+      caret.x = getEmberCenter().x + rand(-100, 100);
+      caret.y = getEmberCenter().y + rand(-50, 50);
+      setTimeout(() => { caret.typing = false; }, 2000);
+    }
+    if (type === 'startle') {
+      mouseInZone = false;
+      mouseEnterTime = performance.now();
+      mouse.x = getEmberCenter().x + rand(-200, 200);
+      mouse.y = getEmberCenter().y + rand(-200, 200);
+      mouse.speed = rand(15, 30);
+    }
+    if (type === 'playfulDodge') {
+      mouseInZone = true;
+      mouseEnterTime = performance.now() - 2000;
+      mouse.x = getEmberCenter().x + rand(-60, 60);
+      mouse.y = getEmberCenter().y + rand(-60, 60);
+      mouse.speed = rand(15, 25);
+    }
+
     setTimeout(runNextTest, 2500);
   }
 
@@ -541,6 +703,10 @@ const Ember = (() => {
 
   function update(now, dt) {
     intensity = calcIntensity();
+
+    sampleMousePosition(now);
+    sampleCaretPosition(now);
+    updateCursorLean(now, dt);
 
     // спавн
     const since = now - spawnStart;
@@ -692,6 +858,10 @@ const Ember = (() => {
     root.style.setProperty('--glowScale', (1 + hoverVal * 0.08 + radianceGlow * 0.15).toFixed(3));
     root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
 
+    root.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(2));
+    root.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(2));
+    root.style.setProperty('--cursorSquish', cursorLean.squish.toFixed(3));
+
     root.style.setProperty('--spawnCore', spawnCore.toFixed(3));
     root.style.setProperty('--spawnGlow', spawnGlow.toFixed(3));
     root.style.setProperty('--spawnRing', spawnRing.toFixed(3));
@@ -789,6 +959,32 @@ const Ember = (() => {
 
     document.addEventListener('input', (e) => {
       if (isEditable(e.target)) handleInput();
+    });
+
+    // отслеживание мыши
+    document.addEventListener('mousemove', (e) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+    });
+
+    // отслеживание каретки — через selectionchange
+    document.addEventListener('selectionchange', () => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) { caret.active = false; return; }
+      const range = sel.getRangeAt(0);
+      caret.active = range.collapsed;
+    });
+
+    // отслеживание набора текста
+    document.addEventListener('input', (e) => {
+      if (isEditable(e.target)) {
+        caret.typing = true;
+        clearTimeout(caret._typingTimer);
+        caret._typingTimer = setTimeout(() => {
+          caret.typing = false;
+          caret.lastTypingEnd = performance.now();
+        }, 1500);
+      }
     });
   }
 

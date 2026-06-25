@@ -5529,6 +5529,9 @@ body.help-open {
   --spawnCore: 1;
   --spawnGlow: 1;
   --spawnRing: 1;
+  --cursorLeanX: 0;
+  --cursorLeanY: 0;
+  --cursorSquish: 0;
 
   position: relative;
   width: 38px;
@@ -5594,10 +5597,11 @@ body.help-open {
   transform:
     translate(var(--shiftX), var(--shiftY))
     scale(
-      calc(var(--breathScale) * var(--scaleX) * var(--spawnCore)),
-      calc(var(--breathScale) * var(--scaleY) * var(--spawnCore))
+      calc((var(--breathScale) - var(--cursorSquish) * 0.3) * var(--scaleX) * var(--spawnCore)),
+      calc((var(--breathScale) + var(--cursorSquish) * 0.15) * var(--scaleY) * var(--spawnCore))
     )
-    rotate(calc(var(--rotation) * 0.4));
+    rotate(calc(var(--rotation) * 0.4))
+    translate(calc(var(--cursorLeanX) * 1px), calc(var(--cursorLeanY) * 1px));
   filter: brightness(var(--brightness));
   opacity: var(--spawnCore);
 }
@@ -5652,7 +5656,7 @@ body.help-open {
   );
   filter: blur(var(--glowBlur));
   opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
-  transform: scale(var(--glowScale)) rotateX(var(--tiltX)) rotateY(var(--tiltY));
+  transform: scale(var(--glowScale)) rotateX(calc(var(--tiltX) + var(--cursorLeanY) * 1.5deg)) rotateY(calc(var(--tiltY) - var(--cursorLeanX) * 1.5deg));
   z-index: -1;
   pointer-events: none;
 }
