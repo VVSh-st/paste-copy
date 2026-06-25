@@ -1,0 +1,266 @@
+/* ===== УГОЛЁК — CSS (временный файл для доработки) ===== */
+
+.ember-slot {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 0 0;
+}
+
+.ember {
+  --heat: 1;
+  --glow: 1;
+  --intensity: 1;
+  --hover: 0;
+  --shiftX: 0px;
+  --shiftY: 0px;
+  --breathScale: 1;
+  --rotation: 0deg;
+  --tiltX: 0deg;
+  --tiltY: 0deg;
+  --scaleX: 1;
+  --scaleY: 1;
+  --brightness: 1;
+  --glowOpacity: 1;
+  --glowBlur: 5px;
+  --glowScale: 1;
+  --ringOpacity: 1;
+  --spawnCore: 1;
+  --spawnGlow: 1;
+  --spawnRing: 1;
+  --cursorLeanX: 0;
+  --cursorLeanY: 0;
+  --cursorSquish: 0;
+  --cursorScale: 1;
+  --cursorTiltX: 0;
+  --cursorTiltY: 0;
+
+  position: relative;
+  width: 38px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 220px;
+  cursor: default;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transform: translate(calc(var(--cursorLeanX) * 1px), calc(var(--cursorLeanY) * 1px))
+             scale(var(--cursorScale))
+             rotateX(calc(var(--cursorTiltX) * 0.6deg))
+             rotateY(calc(var(--cursorTiltY) * 0.6deg));
+}
+
+.ember-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%) rotate(var(--rotation));
+  opacity: calc(0.06 + var(--ringOpacity) * 0.78 * var(--spawnRing));
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.segment {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4.5px;
+  height: 1.8px;
+  margin-top: -0.9px;
+  margin-left: -2.25px;
+  border-radius: 2px;
+  background: rgba(80, 40, 20, 0.4);
+  transform:
+    rotate(calc(var(--i, 0) * 30deg + var(--seg-tilt, 0deg)))
+    translateY(-14px);
+  opacity: calc(0.3 + var(--seg-flash, 0) * 0.7 - var(--seg-dim, 0) * 0.3);
+  filter:
+    brightness(calc(1 + var(--seg-brightness, 0)))
+    drop-shadow(0 0 calc(var(--seg-flash, 0) * 4px) rgba(255, 140, 50, calc(var(--seg-flash, 0) * 0.8)));
+  transition:
+    opacity 0.3s ease,
+    background-color 0.3s ease,
+    filter 0.3s ease;
+  transition-delay: calc(var(--reveal-delay, 0) * 1ms);
+}
+
+.segment.active {
+  background: linear-gradient(90deg, rgba(255, 160, 60, 0.9), rgba(255, 120, 30, 0.95));
+  opacity: calc(1 + var(--seg-flash, 0) * 0.5 - var(--seg-dim, 0) * 0.5);
+  filter:
+    brightness(calc(1.3 + var(--seg-brightness, 0) * 0.8))
+    drop-shadow(0 0 calc(2px + var(--seg-flash, 0) * 5px) rgba(255, 110, 35, calc(0.75 + var(--seg-flash, 0) * 0.25)));
+}
+
+.ember-core {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%;
+  transform:
+    translate(var(--shiftX), var(--shiftY))
+    translate(var(--eggX, 0px), var(--eggY, 0px))
+    scale(
+      calc((var(--breathScale) - var(--cursorSquish) * 0.3 - var(--eggSquish, 0) * 0.3) * var(--scaleX) * var(--spawnCore) * var(--eggScale, 1)),
+      calc((var(--breathScale) + var(--cursorSquish) * 0.15 + var(--eggSquish, 0) * 0.15) * var(--scaleY) * var(--spawnCore) * var(--eggScale, 1))
+    )
+    rotate(calc(var(--rotation) * 0.4))
+    rotateX(var(--eggTiltX, 0deg))
+    rotateY(var(--eggTiltY, 0deg));
+  filter: brightness(var(--brightness));
+  opacity: var(--spawnCore);
+  box-shadow:
+    inset 0 0 3px rgba(30, 10, 0, 0.6),
+    0 0 2px rgba(60, 20, 0, 0.4);
+  animation: emberDeform 4s ease-in-out infinite;
+}
+
+.heat-zone {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  mix-blend-mode: screen;
+  will-change: background;
+}
+
+.zone1 {
+  background: radial-gradient(
+    ellipse at var(--cx, 45%) var(--cy, 50%),
+    rgba(255, 230, 150, calc(var(--heat) * 1)) 0%,
+    rgba(255, 170, 70, calc(var(--heat) * 0.85)) 30%,
+    rgba(220, 90, 25, calc(var(--heat) * 0.5)) 55%,
+    rgba(120, 30, 5, calc(var(--heat) * 0.15)) 75%,
+    transparent 90%
+  );
+}
+
+.zone2 {
+  background: radial-gradient(
+    ellipse at var(--cx, 55%) var(--cy, 55%),
+    rgba(255, 140, 50, calc(var(--heat) * 0.8)) 0%,
+    rgba(200, 70, 20, calc(var(--heat) * 0.5)) 40%,
+    rgba(100, 25, 5, calc(var(--heat) * 0.15)) 70%,
+    transparent 85%
+  );
+}
+
+.zone3 {
+  background: radial-gradient(
+    ellipse at var(--cx, 50%) var(--cy, 65%),
+    rgba(170, 50, 15, calc(var(--heat) * 0.45)) 0%,
+    rgba(100, 25, 5, calc(var(--heat) * 0.2)) 40%,
+    rgba(50, 12, 2, calc(var(--heat) * 0.08)) 65%,
+    transparent 80%
+  );
+}
+
+@keyframes emberDeform {
+  0%, 100% { border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%; }
+  25% { border-radius: 52% 48% 55% 45% / 46% 54% 50% 50%; }
+  50% { border-radius: 45% 55% 50% 50% / 52% 48% 48% 52%; }
+  75% { border-radius: 50% 50% 48% 52% / 48% 52% 50% 50%; }
+}
+
+.ember-glow {
+  position: absolute;
+  inset: -10px;
+  border-radius: 46% 54% 48% 52% / 50% 48% 52% 50%;
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 180, 90, 0.9) 0%,
+    rgba(255, 120, 40, 0.5) 30%,
+    rgba(200, 60, 15, 0.2) 55%,
+    rgba(120, 30, 5, 0.05) 75%,
+    transparent 90%
+  );
+  filter: blur(var(--glowBlur));
+  opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
+  transform: scale(var(--glowScale)) rotateX(var(--tiltX)) rotateY(var(--tiltY));
+  z-index: -1;
+  pointer-events: none;
+  animation: glowFlicker 3s ease-in-out infinite;
+}
+
+@keyframes glowFlicker {
+  0%, 100% { filter: blur(var(--glowBlur)) brightness(1); }
+  33% { filter: blur(var(--glowBlur)) brightness(0.92); }
+  66% { filter: blur(var(--glowBlur)) brightness(1.08); }
+}
+
+.ember:focus-visible {
+  outline: 1px dashed rgba(255, 150, 70, 0.5);
+  outline-offset: 3px;
+}
+
+/* ===== Частицы ===== */
+.ember-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 10;
+}
+
+.ember-ash {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(200, 140, 80, 0.9);
+  box-shadow: 0 0 4px rgba(255, 150, 70, 0.6), 0 0 8px rgba(255, 120, 40, 0.3);
+  opacity: 0;
+  transition: left 0.06s linear, top 0.06s linear;
+}
+
+.ember-ash:nth-child(3n) {
+  width: 1.5px;
+  height: 1.5px;
+  background: rgba(100, 60, 30, 0.8);
+  box-shadow: 0 0 3px rgba(180, 100, 40, 0.4);
+}
+
+.ember-spark {
+  position: absolute;
+  width: 2px;
+  height: 3.5px;
+  border-radius: 50%;
+  background: linear-gradient(to top, rgba(255, 180, 80, 1), rgba(255, 220, 140, 1));
+  box-shadow: 0 0 6px rgba(255, 200, 100, 1), 0 0 14px rgba(255, 150, 50, 0.7), 0 0 22px rgba(255, 100, 20, 0.3);
+  animation: sparkRise 0.7s ease-out forwards;
+}
+
+@keyframes sparkRise {
+  0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+  40% { opacity: 0.95; }
+  100% { transform: translateY(-10px) rotate(45deg) scale(0.15); opacity: 0; }
+}
+
+/* ===== Дрожание воздуха ===== */
+.ember-shimmer {
+  animation: shimmerPulse 3s ease-in-out;
+}
+
+@keyframes shimmerPulse {
+  0%, 100% { backdrop-filter: none; }
+  30% { backdrop-filter: blur(0.3px); }
+  60% { backdrop-filter: blur(0.4px); }
+  80% { backdrop-filter: blur(0.2px); }
+}
+
+/* ===== Тестовый режим (ПКМ) ===== */
+.ember-test-label {
+  position: absolute;
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  font-family: var(--mono);
+  color: rgba(255, 180, 100, 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+  transition: opacity 0.3s ease;
+}
