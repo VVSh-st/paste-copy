@@ -5603,11 +5603,14 @@ body.help-open {
   border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%;
   transform:
     translate(var(--shiftX), var(--shiftY))
+    translate(var(--eggX, 0px), var(--eggY, 0px))
     scale(
-      calc((var(--breathScale) - var(--cursorSquish) * 0.3) * var(--scaleX) * var(--spawnCore)),
-      calc((var(--breathScale) + var(--cursorSquish) * 0.15) * var(--scaleY) * var(--spawnCore))
+      calc((var(--breathScale) - var(--cursorSquish) * 0.3 - var(--eggSquish, 0) * 0.3) * var(--scaleX) * var(--spawnCore) * var(--eggScale, 1)),
+      calc((var(--breathScale) + var(--cursorSquish) * 0.15 + var(--eggSquish, 0) * 0.15) * var(--scaleY) * var(--spawnCore) * var(--eggScale, 1))
     )
-    rotate(calc(var(--rotation) * 0.4));
+    rotate(calc(var(--rotation) * 0.4))
+    rotateX(var(--eggTiltX, 0deg))
+    rotateY(var(--eggTiltY, 0deg));
   filter: brightness(var(--brightness));
   opacity: var(--spawnCore);
   box-shadow:

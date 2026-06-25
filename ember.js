@@ -97,12 +97,8 @@ const Ember = (() => {
     lookCount: 0, triggeredToday: false,
   };
   const EGG_STORAGE_KEY = 'ember-egg-date';
-  const EGG_WORDS_KEY = 'ember-egg-words';
-  const EGG_WORDS_THRESHOLD = 30;
-  const EGG_TIME_THRESHOLD = 120000;
-  let eggWordBuffer = 0;
-  let eggFirstTyped = 0;
-  let eggLastWord = 0;
+  const EGG_CHARS_THRESHOLD = 1000;
+  let eggCharCount = 0;
 
   let channel = null;
   let rafId = null;
@@ -644,9 +640,7 @@ const Ember = (() => {
       const saved = localStorage.getItem(EGG_STORAGE_KEY);
       if (saved === today) { egg.triggeredToday = true; return false; }
     } catch {}
-    const wordCount = eggWordBuffer;
-    const typingDuration = eggFirstTyped ? performance.now() - eggFirstTyped : 0;
-    if (wordCount >= EGG_WORDS_THRESHOLD || typingDuration > EGG_TIME_THRESHOLD) {
+    if (eggCharCount >= EGG_CHARS_THRESHOLD) {
       egg.triggeredToday = true;
       try { localStorage.setItem(EGG_STORAGE_KEY, today); } catch {}
       return true;
@@ -678,8 +672,7 @@ const Ember = (() => {
     egg.caretX = targetX - ember.x;
     egg.caretY = targetY - ember.y;
     egg.lookCount = 0;
-    eggWordBuffer = 0;
-    eggFirstTyped = 0;
+    eggCharCount = 0;
   }
 
   function updateEgg(now) {
@@ -866,18 +859,30 @@ const Ember = (() => {
 
     if (egg.active) {
       updateEgg(now);
-      root.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(1));
-      root.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(1));
-      root.style.setProperty('--cursorSquish', cursorLean.squish.toFixed(3));
-      root.style.setProperty('--cursorScale', cursorLean.scale.toFixed(3));
-      root.style.setProperty('--cursorTiltX', cursorLean.tiltX.toFixed(1));
-      root.style.setProperty('--cursorTiltY', cursorLean.tiltY.toFixed(1));
+      root.style.setProperty('--cursorLeanX', '0');
+      root.style.setProperty('--cursorLeanY', '0');
+      root.style.setProperty('--cursorSquish', '0');
+      root.style.setProperty('--cursorScale', '1');
+      root.style.setProperty('--cursorTiltX', '0');
+      root.style.setProperty('--cursorTiltY', '0');
+      coreEl.style.setProperty('--eggX', cursorLean.x.toFixed(1) + 'px');
+      coreEl.style.setProperty('--eggY', cursorLean.y.toFixed(1) + 'px');
+      coreEl.style.setProperty('--eggScale', cursorLean.scale.toFixed(3));
+      coreEl.style.setProperty('--eggSquish', cursorLean.squish.toFixed(3));
+      coreEl.style.setProperty('--eggTiltX', cursorLean.tiltX.toFixed(1) + 'deg');
+      coreEl.style.setProperty('--eggTiltY', cursorLean.tiltY.toFixed(1) + 'deg');
       applySegments();
       advanceSegEffects(dt);
       applySegEffects();
       updateParticles(now);
       return;
     }
+    coreEl.style.removeProperty('--eggX');
+    coreEl.style.removeProperty('--eggY');
+    coreEl.style.removeProperty('--eggScale');
+    coreEl.style.removeProperty('--eggSquish');
+    coreEl.style.removeProperty('--eggTiltX');
+    coreEl.style.removeProperty('--eggTiltY');
 
     updateCursorLean(now, dt);
 
@@ -1127,18 +1132,7 @@ const Ember = (() => {
     resetTimer = setTimeout(() => { typedChars = 0; }, 2000);
 
     if (!egg.triggeredToday) {
-      const now = performance.now();
-      const text = document.activeElement?.value || document.activeElement?.textContent || '';
-      const words = text.trim().split(/\s+/).filter(Boolean).length;
-      if (eggWordBuffer === 0 || words > eggWordBuffer) {
-        eggWordBuffer = words;
-        if (!eggFirstTyped) eggFirstTyped = now;
-        eggLastWord = now;
-      }
-      if (now - eggLastWord > 3000) {
-        eggWordBuffer = 0;
-        eggFirstTyped = 0;
-      }
+      eggCharCount++;
       if (checkEggTrigger()) startEgg();
     }
   }
