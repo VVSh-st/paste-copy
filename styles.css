@@ -5507,6 +5507,7 @@ body.help-open {
   align-items: center;
   margin: 0 4px 0 0;
 }
+
 .ember {
   --heat: 1;
   --glow: 1;
@@ -5518,108 +5519,136 @@ body.help-open {
   --rotation: 0deg;
   --tiltX: 0deg;
   --tiltY: 0deg;
+  --scaleX: 1;
+  --scaleY: 1;
   --brightness: 1;
-  --glowBoost: 0;
-  --finalScale: 1;
-  --cx1: 30%;
-  --cy1: 35%;
-  --cx2: 55%;
-  --cy2: 50%;
-  --cx3: 45%;
-  --cy3: 70%;
+  --glowOpacity: 1;
+  --glowBlur: 5px;
+  --glowScale: 1;
+  --ringOpacity: 1;
+  --spawnCore: 1;
+  --spawnGlow: 1;
+  --spawnRing: 1;
 
   position: relative;
   width: 38px;
   height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 220px;
   cursor: default;
-  transform: scale(var(--finalScale)) rotate(var(--rotation)) perspective(200px) rotateX(var(--tiltX)) rotateY(var(--tiltY));
-  transition: filter 0.3s ease;
-  flex-shrink: 0;
-}
-.ember:focus-visible {
-  outline: 2px solid rgba(79,142,247,0.5);
-  outline-offset: 3px;
-  border-radius: 50%;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* -- Ring -- */
 .ember-ring {
   position: absolute;
-  inset: 2px;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  opacity: 0.08;
-}
-.ember-ring .segment {
-  position: absolute;
-  width: 3px;
-  height: 5px;
-  background: rgba(255,160,80,0.6);
-  border-radius: 1px;
+  top: 50%;
   left: 50%;
-  top: 0;
-  transform-origin: 50% 15px;
-  transform: translateX(-50%) rotate(calc(var(--i) * 30deg));
-  opacity: 0;
+  width: 31px;
+  height: 31px;
+  transform: translate(-50%, -50%) rotate(var(--rotation));
+  opacity: calc(0.08 + var(--ringOpacity) * 0.84 * var(--spawnRing));
   transition: opacity 0.4s ease;
-}
-.ember-ring .segment.active {
-  opacity: calc(0.4 + var(--heat) * 0.6);
+  pointer-events: none;
 }
 
-/* -- Core -- */
-.ember-core {
+.segment {
   position: absolute;
-  inset: 8px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at var(--cx1) var(--cy1),
-    rgba(255,120,30,1) 0%,
-    rgba(255,80,10,calc(0.75 * var(--heat))) 50%,
-    rgba(180,40,0,calc(0.35 * var(--heat))) 100%
-  );
-  transform: scale(var(--breathScale)) translate(var(--shiftX), var(--shiftY));
-  transition: background 3s ease;
+  top: 50%;
+  left: 50%;
+  width: 4.5px;
+  height: 1.6px;
+  margin-top: -0.8px;
+  margin-left: -2.25px;
+  border-radius: 1px;
+  background: rgba(130, 70, 45, 0.5);
+  transform: rotate(calc(var(--i, 0) * 30deg)) translateY(-14px);
+  opacity: 0.35;
+  filter: brightness(1) drop-shadow(0 0 0 rgba(255, 120, 40, 0));
+  transition:
+    opacity 0.35s ease,
+    background-color 0.35s ease,
+    filter 0.35s ease;
+  transition-delay: calc(var(--reveal-delay, 0) * 1ms);
 }
 
-/* -- Heat zones -- */
+.segment.active {
+  background: rgba(255, 150, 70, 0.95);
+  opacity: 1;
+  filter: brightness(1.35) drop-shadow(0 0 2.5px rgba(255, 120, 40, 0.8));
+}
+
+.ember-core {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  transform:
+    translate(var(--shiftX), var(--shiftY))
+    scale(
+      calc(var(--breathScale) * var(--scaleX) * var(--spawnCore)),
+      calc(var(--breathScale) * var(--scaleY) * var(--spawnCore))
+    )
+    rotate(calc(var(--rotation) * 0.4));
+  filter: brightness(var(--brightness));
+  opacity: var(--spawnCore);
+}
+
 .heat-zone {
   position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  transition: opacity 3s ease, transform 3s ease;
-}
-.heat-zone.zone1 {
   inset: 0;
-  background: radial-gradient(circle at var(--cx1) var(--cy1), rgba(255,140,40,0.9) 0%, transparent 70%);
-  opacity: calc(var(--heat));
-}
-.heat-zone.zone2 {
-  inset: 2px;
-  background: radial-gradient(circle at var(--cx2) var(--cy2), rgba(255,90,20,0.7) 0%, transparent 65%);
-  opacity: calc(var(--heat) * 0.75);
-}
-.heat-zone.zone3 {
-  inset: 4px;
-  background: radial-gradient(circle at var(--cx3) var(--cy3), rgba(220,60,10,0.4) 0%, transparent 60%);
-  opacity: calc(var(--heat) * 0.35);
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  transition: background 1.6s ease;
+  will-change: background;
 }
 
-/* -- Glow -- */
+.zone1 {
+  background: radial-gradient(
+    circle at var(--cx, 45%) var(--cy, 50%),
+    rgba(255, 238, 205, calc(var(--heat) * 1)) 0%,
+    rgba(255, 185, 95, calc(var(--heat) * 0.85)) 38%,
+    transparent 72%
+  );
+}
+
+.zone2 {
+  background: radial-gradient(
+    circle at var(--cx, 55%) var(--cy, 55%),
+    rgba(255, 140, 60, calc(var(--heat) * 0.75)) 0%,
+    rgba(214, 80, 30, calc(var(--heat) * 0.45)) 48%,
+    transparent 78%
+  );
+}
+
+.zone3 {
+  background: radial-gradient(
+    circle at var(--cx, 50%) var(--cy, 65%),
+    rgba(170, 50, 20, calc(var(--heat) * 0.4)) 0%,
+    transparent 80%
+  );
+}
+
 .ember-glow {
   position: absolute;
-  inset: -6px;
+  inset: -9px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,100,20,0.35) 0%, transparent 70%);
-  opacity: calc(var(--glow) * 0.5 + var(--glowBoost) * 0.5);
-  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    circle,
+    rgba(255, 165, 85, 0.95) 0%,
+    rgba(255, 95, 35, 0.45) 45%,
+    transparent 75%
+  );
+  filter: blur(var(--glowBlur));
+  opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
+  transform: scale(var(--glowScale)) rotateX(var(--tiltX)) rotateY(var(--tiltY));
+  z-index: -1;
   pointer-events: none;
 }
 
-/* -- Hover lift -- */
-.ember:hover {
-  transform: scale(calc(var(--finalScale) * 1.05)) rotate(var(--rotation)) perspective(200px) rotateX(var(--tiltX)) rotateY(var(--tiltY)) translateY(-0.5px);
+.ember:focus-visible {
+  outline: 1px dashed rgba(255, 150, 70, 0.5);
+  outline-offset: 3px;
 }

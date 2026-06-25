@@ -1,4 +1,9 @@
 // file_name: ember.js
+//
+// "Уголёк" — живой индикатор состояния проекта.
+// Один rAF-цикл: update() -> applyVariables() -> requestAnimationFrame.
+// Все случайные эффекты идут через единый менеджер с приоритетом и
+// лимитом в 2 одновременных эффекта (со взаимным вытеснением слотов).
 
 const Ember = (() => {
   'use strict';
@@ -7,6 +12,12 @@ const Ember = (() => {
   const STORAGE_KEY = 'ember-state';
   const BROADCAST_KEY = 'ember-sync';
 
+  // --- приоритет эффектов: меньше число = выше приоритет ---
+  // typing и hover — не "события" из пула, а постоянные модификаторы,
+  // они всегда применяются и ничего не вытесняют и не вытесняются.
+  const PRIORITY = { sigh: 1, calmBurn: 2, wiggle: 3, tilt: 4, microShift: 5 };
+  const MAX_EFFECTS = 2;
+
   let state = null;
   let root = null;
   let segments = [];
@@ -14,83 +25,58 @@ const Ember = (() => {
   let glowEl = null;
   let ringEl = null;
   let coreEl = null;
+
   let hover = false;
   let hoverVal = 0;
+
   let intensity = 1;
-  let breathScale = 1;
-  let breathDir = 1;
-  let breathSpeed = 0.0008;
-  let heatOffsetX = 0;
-  let heatOffsetY = 0;
-  let heatTargetX = 0;
-  let heatTargetY = 0;
+
+  // дыхание
+  let breathPhase = 0;
+
+  // блуждание горячей точки
+  let heatOffsetX = 0, heatOffsetY = 0;
+  let heatTargetX = 0, heatTargetY = 0;
   let nextHeatShift = 0;
   let heatPhase = 0;
-  let heatPhaseSpeed = 0.003;
+  const heatPhaseSpeed = 0.0009;
 
-  let nextCalmBurn = 0;
-  let calmBurnActive = false;
-  let calmBurnEnd = 0;
-  let calmBurnPhase = 0;
-
-  let nextSigh = 0;
-  let sighActive = false;
-  let sighEnd = 0;
-  let sighPhase = 0;
-
-  let nextWiggle = 0;
-  let wiggleActive = false;
-  let wiggleEnd = 0;
-  let wigglePhase = 0;
-  let wigglePoints = null;
-
-  let nextTilt = 0;
-  let tiltActive = false;
-  let tiltEnd = 0;
-  let tiltPhase = 0;
-  let tiltTarget = 0;
-  let tiltCurrent = 0;
-
-  let nextMicroShift = 0;
-  let microShiftActive = false;
-  let microShiftEnd = 0;
-  let microShiftPhase = 0;
-
+  // реакция на печать
   let typedChars = 0;
   let heatBoost = 0;
-  let heatBoostTarget = 0;
-  let heatBoostDecay = 0;
+  let resetTimer = null;
 
-  let spawnPhase = 0;
-  let spawned = false;
-  let spawnComplete = false;
+  // сегменты (часы активности)
+  let prevRemaining = 12;
 
-  let activeEffects = 0;
-  const MAX_EFFECTS = 2;
+  // спавн при загрузке страницы
+  let spawnStart = 0;
+
+  // активные эффекты пула: Map<type, {phase, durMs, ...extra}>
+  const active = new Map();
+  let nextDue = {}; // type -> timestamp когда можно пробовать запустить снова
+
+  let tiltCurrent = 0;
+  let tiltTarget = 0;
 
   let channel = null;
   let rafId = null;
   let lastFrame = 0;
 
-  function rand(min, max) {
-    return min + Math.random() * (max - min);
+  // ---------- утилиты ----------
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function easeOutQuad(t) { return t * (2 - t); }
+  function easeInQuad(t) { return t * t; }
+  // плавный треугольный импульс 0->1->0 по фазе t∈[0,1]
+  function bump(t, riseEnd, holdEnd) {
+    if (t < riseEnd) return easeOutQuad(t / riseEnd);
+    if (t < holdEnd) return 1;
+    return 1 - easeInQuad((t - holdEnd) / (1 - holdEnd));
   }
 
-  function clamp(v, lo, hi) {
-    return Math.max(lo, Math.min(hi, v));
-  }
-
-  function easeInOut(t) {
-    return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-  }
-
-  function easeOutQuad(t) {
-    return t * (2 - t);
-  }
-
-  function easeInQuad(t) {
-    return t * t;
-  }
+  // ---------- состояние / синхронизация между вкладками ----------
 
   function loadState() {
     try {
@@ -100,26 +86,33 @@ const Ember = (() => {
         if (parsed && typeof parsed.lastEditTime === 'number') return parsed;
       }
     } catch {}
-    return { lastEditTime: Date.now(), lastActiveTab: null };
+    return { lastEditTime: Date.now() };
   }
 
   function saveState() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
   }
 
   function broadcast() {
+    try { channel && channel.postMessage({ type: 'update', state }); } catch {}
+  }
+
+  function setupBroadcast() {
     try {
-      if (channel) channel.postMessage({ type: 'update', state });
+      channel = new BroadcastChannel(BROADCAST_KEY);
+      channel.onmessage = (e) => {
+        if (e.data?.type === 'update' && e.data?.state) state = e.data.state;
+      };
     } catch {}
   }
 
-  function updateLastEdit() {
+  function notifyEdit() {
     state.lastEditTime = Date.now();
     saveState();
     broadcast();
   }
+
+  // ---------- расчёт жизни угля ----------
 
   function calcIntensity() {
     const age = Date.now() - state.lastEditTime;
@@ -127,45 +120,33 @@ const Ember = (() => {
     return Math.pow(1 - t, 1.7);
   }
 
-  function calcHoursWithoutActivity() {
-    return (Date.now() - state.lastEditTime) / (60 * 60 * 1000);
+  function hoursWithoutActivity() {
+    return (Date.now() - state.lastEditTime) / 3_600_000;
   }
 
-  function getRemainingSegments() {
-    const hours = calcHoursWithoutActivity();
-    return 12 - Math.floor(hours / 2);
+  function remainingSegments() {
+    return clamp(12 - Math.floor(hoursWithoutActivity() / 2), 0, 12);
   }
 
   function isSleeping() {
-    const hours = calcHoursWithoutActivity();
-    return hours > 5 * 24;
+    return hoursWithoutActivity() > 5 * 24;
   }
 
-  function effectFrequencyMult() {
+  // 1x обычный темп, до 2x медленнее в глубоком сне (5-7 дней)
+  function sleepSlowdown() {
     if (!isSleeping()) return 1;
-    const hours = calcHoursWithoutActivity();
-    return 0.5 + (1 - clamp((hours - 5 * 24) / (2 * 24), 0, 1)) * 0.5;
+    const h = hoursWithoutActivity();
+    const t = clamp((h - 5 * 24) / (2 * 24), 0, 1);
+    return 1 + t; // 1 -> 2
   }
 
-  function canAddEffect() {
-    return activeEffects < MAX_EFFECTS;
-  }
-
-  function startEffect(type) {
-    if (!canAddEffect()) return false;
-    activeEffects++;
-    return true;
-  }
-
-  function endEffect() {
-    activeEffects = Math.max(0, activeEffects - 1);
-  }
+  // ---------- DOM ----------
 
   function createDOM() {
     root = document.createElement('div');
     root.className = 'ember';
     root.setAttribute('role', 'img');
-    root.setAttribute('aria-label', 'Индикатор состояния');
+    root.setAttribute('aria-label', 'Индикатор состояния проекта');
     root.tabIndex = 0;
 
     ringEl = document.createElement('div');
@@ -180,13 +161,12 @@ const Ember = (() => {
 
     coreEl = document.createElement('div');
     coreEl.className = 'ember-core';
-
-    for (let i = 1; i <= 3; i++) {
-      const zone = document.createElement('div');
-      zone.className = `heat-zone zone${i}`;
-      coreEl.appendChild(zone);
-      zones.push(zone);
-    }
+    ['zone1', 'zone2', 'zone3'].forEach((cls) => {
+      const z = document.createElement('div');
+      z.className = `heat-zone ${cls}`;
+      coreEl.appendChild(z);
+      zones.push(z);
+    });
 
     glowEl = document.createElement('div');
     glowEl.className = 'ember-glow';
@@ -194,399 +174,277 @@ const Ember = (() => {
 
     root.appendChild(ringEl);
     root.appendChild(coreEl);
-
     return root;
   }
 
+  // ---------- сегменты: каскадное появление ----------
+
   function applySegments() {
-    const remaining = clamp(getRemainingSegments(), 0, 12);
+    const remaining = remainingSegments();
+
+    if (remaining > prevRemaining) {
+      // новая активность открыла дополнительные сегменты — зажигаем
+      // их по очереди в окне 300-500мс, а не все мгновенно
+      const added = remaining - prevRemaining;
+      const totalWindow = clamp(300 + added * 20, 300, 500);
+      const step = totalWindow / added;
+      for (let i = prevRemaining; i < remaining; i++) {
+        const delay = (i - prevRemaining) * step;
+        segments[i].style.setProperty('--reveal-delay', delay.toFixed(0));
+      }
+    }
+
     segments.forEach((seg, i) => {
-      const active = i < remaining;
-      seg.classList.toggle('active', active);
+      seg.classList.toggle('active', i < remaining);
     });
+
+    prevRemaining = remaining;
   }
 
-  function applyHeatVariables() {
-    const i = intensity;
-    const boost = heatBoost;
-    const finalIntensity = clamp(i + boost * 0.25, 0, 1);
-    const heat = clamp(finalIntensity, 0, 1);
-    const glow = clamp(finalIntensity, 0, 1);
+  // ---------- блуждание тепловых зон ----------
 
-    root.style.setProperty('--heat', heat.toFixed(3));
-    root.style.setProperty('--glow', glow.toFixed(3));
-    root.style.setProperty('--intensity', finalIntensity.toFixed(3));
-    root.style.setProperty('--hover', hoverVal.toFixed(3));
-    root.style.setProperty('--breathScale', breathScale.toFixed(4));
-    root.style.setProperty('--shiftX', heatOffsetX.toFixed(2) + 'px');
-    root.style.setProperty('--shiftY', heatOffsetY.toFixed(2) + 'px');
-    root.style.setProperty('--tiltX', tiltCurrent.toFixed(2) + 'deg');
-    root.style.setProperty('--tiltY', (tiltCurrent * 0.5).toFixed(2) + 'deg');
-  }
+  function updateHeatZones(dt) {
+    if (Date.now() > nextHeatShift) {
+      heatTargetX = rand(-3, 3);
+      heatTargetY = rand(-3, 3);
+      nextHeatShift = Date.now() + rand(2000, 4000);
+    }
+    heatOffsetX += (heatTargetX - heatOffsetX) * clamp(0.003 * dt, 0, 1);
+    heatOffsetY += (heatTargetY - heatOffsetY) * clamp(0.003 * dt, 0, 1);
+    heatPhase += heatPhaseSpeed * dt;
 
-  function updateZones() {
-    const baseX = 30 + heatOffsetX * 3;
-    const baseY = 35 + heatOffsetY * 3;
-    zones.forEach((zone, i) => {
-      const offsetX = baseX + Math.sin(heatPhase + i * 2.1) * 10;
-      const offsetY = baseY + Math.cos(heatPhase + i * 1.7) * 10;
-      zone.style.setProperty('--cx', clamp(offsetX, 15, 85) + '%');
-      zone.style.setProperty('--cy', clamp(offsetY, 15, 85) + '%');
-    });
-  }
-
-  function scheduleRandomEvents() {
-    const freq = effectFrequencyMult();
-    const sleeping = isSleeping();
-
-    const calmBase = sleeping ? 180 : 45;
-    const calmMax = sleeping ? 360 : 90;
-    nextCalmBurn = Date.now() + rand(calmBase, calmMax) * 1000 * (1 / freq);
-
-    const sighBase = sleeping ? 240 : 60;
-    const sighMax = sleeping ? 480 : 120;
-    nextSigh = Date.now() + rand(sighBase, sighMax) * 1000 * (1 / freq);
-
-    const wiggleBase = sleeping ? 180 : 45;
-    const wiggleMax = sleeping ? 360 : 90;
-    nextWiggle = Date.now() + rand(wiggleBase, wiggleMax) * 1000 * (1 / freq);
-
-    const tiltBase = sleeping ? 240 : 60;
-    const tiltMax = sleeping ? 480 : 120;
-    nextTilt = Date.now() + rand(tiltBase, tiltMax) * 1000 * (1 / freq);
-
-    const microBase = sleeping ? 240 : 60;
-    const microMax = sleeping ? 480 : 120;
-    nextMicroShift = Date.now() + rand(microBase, microMax) * 1000 * (1 / freq);
-
-    nextHeatShift = Date.now() + rand(2000, 4000);
-  }
-
-  function scheduleNextCalmBurn() {
-    const sleeping = isSleeping();
-    const base = sleeping ? 180 : 45;
-    const max = sleeping ? 360 : 90;
-    const freq = effectFrequencyMult();
-    nextCalmBurn = Date.now() + rand(base, max) * 1000 * (1 / freq);
-  }
-
-  function scheduleNextSigh() {
-    const sleeping = isSleeping();
-    const base = sleeping ? 240 : 60;
-    const max = sleeping ? 480 : 120;
-    const freq = effectFrequencyMult();
-    nextSigh = Date.now() + rand(base, max) * 1000 * (1 / freq);
-  }
-
-  function scheduleNextWiggle() {
-    const sleeping = isSleeping();
-    const base = sleeping ? 180 : 45;
-    const max = sleeping ? 360 : 90;
-    const freq = effectFrequencyMult();
-    nextWiggle = Date.now() + rand(base, max) * 1000 * (1 / freq);
-  }
-
-  function scheduleNextTilt() {
-    const sleeping = isSleeping();
-    const base = sleeping ? 240 : 60;
-    const max = sleeping ? 480 : 120;
-    const freq = effectFrequencyMult();
-    nextTilt = Date.now() + rand(base, max) * 1000 * (1 / freq);
-  }
-
-  function scheduleNextMicroShift() {
-    const sleeping = isSleeping();
-    const base = sleeping ? 240 : 60;
-    const max = sleeping ? 480 : 120;
-    const freq = effectFrequencyMult();
-    nextMicroShift = Date.now() + rand(base, max) * 1000 * (1 / freq);
-  }
-
-  function startCalmBurn() {
-    calmBurnActive = true;
-    calmBurnEnd = Date.now() + rand(2000, 3000);
-    calmBurnPhase = 0;
-  }
-
-  function startSigh() {
-    sighActive = true;
-    sighEnd = Date.now() + rand(4000, 5000);
-    sighPhase = 0;
-  }
-
-  function startWiggle() {
-    if (intensity <= 0.5) return;
-    wiggleActive = true;
-    wiggleEnd = Date.now() + rand(700, 1000);
-    wigglePhase = 0;
-    wigglePoints = [
-      { sx: 1, sy: 1 },
-      { sx: 0.98, sy: 1.02 },
-      { sx: 1.01, sy: 0.99 },
-      { sx: 1, sy: 1 },
+    const cxBase = 50 + heatOffsetX * 3;
+    const cyBase = 50 + heatOffsetY * 3;
+    // примерные опорные точки из задания: 30/35, 55/50, 45/70 — но они "блуждают"
+    const wander = [
+      { dx: -20, dy: -15, fx: 2.1, fy: 1.7 },
+      { dx: 5, dy: 0, fx: 1.4, fy: 2.3 },
+      { dx: -5, dy: 20, fx: 1.9, fy: 1.1 },
     ];
+    zones.forEach((zone, i) => {
+      const w = wander[i];
+      const cx = cxBase + w.dx + Math.sin(heatPhase * w.fx + i) * 8;
+      const cy = cyBase + w.dy + Math.cos(heatPhase * w.fy + i) * 8;
+      zone.style.setProperty('--cx', clamp(cx, 15, 85).toFixed(1) + '%');
+      zone.style.setProperty('--cy', clamp(cy, 15, 85).toFixed(1) + '%');
+    });
   }
 
-  function startTilt() {
-    tiltActive = true;
-    tiltEnd = Date.now() + 2000;
-    tiltPhase = 0;
-    tiltTarget = rand(-1, 1);
+  // ---------- менеджер случайных эффектов (приоритет + вытеснение слотов) ----------
+
+  function rescheduleDue(type) {
+    const ranges = {
+      calmBurn: [45, 90],
+      sigh: [60, 120],
+      wiggle: [45, 90],
+      tilt: [60, 120],
+      microShift: [60, 120],
+    };
+    const slow = sleepSlowdown();
+    const [a, b] = ranges[type];
+    nextDue[type] = Date.now() + rand(a, b) * 1000 * slow;
   }
 
-  function startMicroShift() {
-    microShiftActive = true;
-    microShiftEnd = Date.now() + rand(1000, 2000);
-    microShiftPhase = 0;
+  function tryStart(type, probability, durRangeMs, extra) {
+    const now = Date.now();
+    if (active.has(type)) return;
+    if ((nextDue[type] ?? 0) > now) return;
+
+    if (Math.random() >= probability) {
+      rescheduleDue(type); // не повезло — не спамим проверку каждый кадр
+      return;
+    }
+
+    if (active.size >= MAX_EFFECTS) {
+      // вытесняем активный эффект с худшим (большим) приоритетом, если он есть
+      let worstType = null, worstPriority = -1;
+      for (const t of active.keys()) {
+        if (PRIORITY[t] > worstPriority) { worstPriority = PRIORITY[t]; worstType = t; }
+      }
+      if (worstType === null || PRIORITY[worstType] <= PRIORITY[type]) {
+        rescheduleDue(type);
+        return;
+      }
+      active.delete(worstType);
+      rescheduleDue(worstType);
+    }
+
+    active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]), ...extra });
   }
+
+  function advanceEffect(type, dt, onEnd) {
+    const eff = active.get(type);
+    if (!eff) return null;
+    eff.phase = clamp(eff.phase + dt / eff.durMs, 0, 1);
+    if (eff.phase >= 1) {
+      active.delete(type);
+      rescheduleDue(type);
+      onEnd && onEnd();
+      return null;
+    }
+    return eff;
+  }
+
+  // ---------- основной кадр ----------
 
   function update(now, dt) {
     intensity = calcIntensity();
 
-    if (spawnPhase < 1) {
-      spawnPhase = clamp(spawnPhase + dt / 1800, 0, 1);
-    } else if (!spawnComplete) {
-      spawnComplete = true;
-    }
+    // спавн страницы: ядро -> свечение -> контур -> полное состояние
+    const since = now - spawnStart;
+    const spawnCore = clamp(since / 500, 0, 1);
+    const spawnGlow = clamp((since - 400) / 500, 0, 1);
+    const spawnRing = clamp((since - 800) / 600, 0, 1);
 
-    if (hover) {
-      hoverVal = clamp(hoverVal + dt / 300 * (1.8 - 0.8), 0, 1);
-    } else {
-      hoverVal = clamp(hoverVal - dt / 300, 0, 1);
-    }
+    // hover
+    const hoverStep = clamp(dt / 300, 0, 1);
+    hoverVal += hover ? (1 - hoverVal) * hoverStep : (0 - hoverVal) * hoverStep;
 
-    const breathMult = 1 + hoverVal * 0.8;
-    const breathSpeedBase = intensity > 0.3 ? 0.0008 : 0.0003;
-    breathPhase += breathSpeedBase * breathMult * dt;
+    // дыхание: быстрее при hover, тише при низкой intensity, медленнее во сне
+    const speedMult = (1 + hoverVal * 0.8) / sleepSlowdown();
+    const breathBase = intensity > 0.3 ? 0.0009 : 0.00035;
+    breathPhase += breathBase * speedMult * dt;
+    const hoverBreath = hover ? Math.sin(breathPhase * 2.5) * 0.05 * hoverVal : 0;
+    const breathScale = 1 + Math.sin(breathPhase * 2.5) * 0.012 * intensity + hoverBreath;
 
-    const hoverBreathe = hoverVal * 0.05;
-    const baseBreath = Math.sin(breathPhase * 2.5) * 0.008 * intensity;
-    const hoverBreathComp = hover ? Math.sin(now / 800) * 0.03 : 0;
-    breathScale = 1 + baseBreath + hoverBreathe + hoverBreathComp;
+    updateHeatZones(dt);
 
-    if (now > nextHeatShift) {
-      heatTargetX = rand(-3, 3);
-      heatTargetY = rand(-3, 3);
-      nextHeatShift = now + rand(2000, 4000);
-    }
+    if (heatBoost > 0) heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
 
-    heatOffsetX += (heatTargetX - heatOffsetX) * 0.003 * dt;
-    heatOffsetY += (heatTargetY - heatOffsetY) * 0.003 * dt;
+    // --- попытки запустить эффекты пула ---
+    // приоритет проверок не важен (он важен при вытеснении слотов),
+    // но порядок ниже соответствует приоритету: вздох > горение > поёживание > поворот > микросмещение
+    tryStart('sigh', 0.35, [4000, 5000]);
+    tryStart('calmBurn', 0.7, [2000, 3000]);
+    if (intensity > 0.5) tryStart('wiggle', 0.2, [700, 1000]);
+    tryStart('tilt', 0.15, [2000, 2000], { target: rand(-1, 1) });
+    tryStart('microShift', 0.1, [1000, 2000], { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) });
 
-    heatPhase += heatPhaseSpeed * dt;
+    const sigh = advanceEffect('sigh', dt);
+    const calmBurn = advanceEffect('calmBurn', dt);
+    const wiggle = advanceEffect('wiggle', dt);
+    advanceEffect('tilt', dt, () => { tiltTarget = 0; });
+    const tilt = active.get('tilt');
+    const microShift = advanceEffect('microShift', dt);
 
-    if (heatBoost > 0) {
-      heatBoost = Math.max(0, heatBoost - 0.002 * dt);
-    }
+    // --- композиция итоговых переменных ---
 
-    if (now > nextCalmBurn && !calmBurnActive && canAddEffect() && Math.random() < 0.7 * effectFrequencyMult()) {
-      if (startEffect('calm')) startCalmBurn();
-    }
-    if (calmBurnActive) {
-      calmBurnPhase += dt / (rand(2000, 3000));
-      if (calmBurnPhase >= 1) {
-        calmBurnActive = false;
-        endEffect();
-        scheduleNextCalmBurn();
-      }
-    }
-
-    if (now > nextSigh && !sighActive && canAddEffect() && Math.random() < 0.35 * effectFrequencyMult()) {
-      if (startEffect('sigh')) startSigh();
-    }
-    if (sighActive) {
-      sighPhase += dt / (rand(4000, 5000));
-      if (sighPhase >= 1) {
-        sighActive = false;
-        endEffect();
-        scheduleNextSigh();
-      }
-    }
-
-    if (now > nextWiggle && !wiggleActive && canAddEffect() && Math.random() < 0.2 * effectFrequencyMult()) {
-      if (startEffect('wiggle')) startWiggle();
-    }
-    if (wiggleActive) {
-      wigglePhase += dt / rand(700, 1000);
-      if (wigglePhase >= 1) {
-        wiggleActive = false;
-        endEffect();
-        scheduleNextWiggle();
-      }
-    }
-
-    if (now > nextTilt && !tiltActive && canAddEffect() && Math.random() < 0.15 * effectFrequencyMult()) {
-      if (startEffect('tilt')) startTilt();
-    }
-    if (tiltActive) {
-      tiltPhase += dt / 2000;
-      if (tiltPhase >= 1) {
-        tiltActive = false;
-        tiltTarget = 0;
-        endEffect();
-        scheduleNextTilt();
-      }
-      const ep = easeInOut(clamp(tiltPhase, 0, 1));
-      tiltCurrent += (tiltTarget - tiltCurrent) * 0.02 * dt;
-    } else {
-      tiltCurrent += (0 - tiltCurrent) * 0.02 * dt;
-    }
-
-    if (now > nextMicroShift && !microShiftActive && canAddEffect() && Math.random() < 0.1 * effectFrequencyMult()) {
-      if (startEffect('micro')) startMicroShift();
-    }
-    if (microShiftActive) {
-      microShiftPhase += dt / rand(1000, 2000);
-      if (microShiftPhase >= 1) {
-        microShiftActive = false;
-        endEffect();
-        scheduleNextMicroShift();
-      }
-    }
-
+    // поёживание: scaleX/scaleY по контрольным точкам
     let scaleX = 1, scaleY = 1;
-    if (wiggleActive && wigglePoints) {
-      const t = clamp(wigglePhase, 0, 1);
-      const totalPoints = wigglePoints.length - 1;
-      const pIdx = t * totalPoints;
-      const p0 = Math.floor(pIdx);
-      const p1 = Math.min(p0 + 1, totalPoints);
-      const lt = pIdx - p0;
-      scaleX = wigglePoints[p0].sx + (wigglePoints[p1].sx - wigglePoints[p0].sx) * lt;
-      scaleY = wigglePoints[p0].sy + (wigglePoints[p1].sy - wigglePoints[p0].sy) * lt;
+    if (wiggle) {
+      const pts = [[1, 1], [0.98, 1.02], [1.01, 0.99], [1, 1]];
+      const seg = wiggle.phase * (pts.length - 1);
+      const i0 = Math.floor(seg), i1 = Math.min(i0 + 1, pts.length - 1);
+      const lt = seg - i0;
+      scaleX = pts[i0][0] + (pts[i1][0] - pts[i0][0]) * lt;
+      scaleY = pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
     }
 
-    let calmMult = 1;
-    if (calmBurnActive) {
-      const ct = calmBurnPhase;
-      if (ct < 0.3) calmMult = 1 + easeOutQuad(ct / 0.3) * 0.02;
-      else if (ct < 0.7) calmMult = 1.02;
-      else calmMult = 1.02 - easeInQuad((ct - 0.7) / 0.3) * 0.02;
-    }
+    // спокойное горение: scale 1->1.02->1, brightness +0.1
+    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.02 : 1;
+    const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.1 : 0;
 
-    let sighMult = 1;
-    if (sighActive) {
-      const st = sighPhase;
-      if (st < 0.25) sighMult = 1 + easeOutQuad(st / 0.25) * 0.015;
-      else if (st < 0.75) sighMult = 1.015;
-      else sighMult = 1.015 - easeInQuad((st - 0.75) / 0.25) * 0.015;
-    }
+    // вздох: scale 1->1.015->1, brightness +0.06, glow +10%
+    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.015 : 1;
+    const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.06 : 0;
+    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.1 : 0;
 
-    let brightBase = 0.7 + intensity * 0.3;
-    let brightHover = hoverVal * 0.15;
-    let brightCalm = calmBurnActive ? 0.1 * Math.sin(calmBurnPhase * Math.PI) : 0;
-    let brightSigh = sighActive ? 0.06 * Math.sin(sighPhase * Math.PI) : 0;
-    let brightBoost = heatBoost;
-    let brightness = clamp(brightBase + brightHover + brightCalm + brightSigh + brightBoost, 0.3, 1.5);
+    // поворот ±1°: 0 -> target -> 0 за время эффекта
+    if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
+    tiltCurrent += (tiltTarget - tiltCurrent) * clamp(0.08 * (dt / 16.7), 0, 1);
 
-    let filterStr = `brightness(${brightness.toFixed(3)})`;
+    // микросмещение: 0 -> ~0.5px -> 0
+    const microShiftPx = microShift ? bump(microShift.phase, 0.5, 0.5) * (microShift.dx ?? 0.5) : 0;
 
-    root.style.setProperty('--brightness', brightness.toFixed(3));
+    const finalScaleX = breathScale * scaleX * calmMult * sighMult;
+    const finalScaleY = breathScale * scaleY * calmMult * sighMult;
 
-    let glowBoost = 0;
-    if (sighActive) glowBoost += 0.1 * Math.sin(sighPhase * Math.PI);
-    if (hover) glowBoost += 0.15;
-    root.style.setProperty('--glowBoost', glowBoost.toFixed(3));
+    const heat = clamp(intensity + heatBoost * 0.25, 0, 1);
+    const glow = clamp(intensity + heatBoost * 0.3 + sighGlow + hoverVal * 0.15, 0, 1.2);
 
-    const finalScale = breathScale * scaleX * scaleY * calmMult * sighMult;
-    root.style.setProperty('--finalScale', finalScale.toFixed(4));
+    const brightness = clamp(
+      0.7 + intensity * 0.3 + calmBright + sighBright + heatBoost * 0.4 + hoverVal * 0.15,
+      0.35,
+      1.5
+    );
 
-    root.style.filter = filterStr;
+    const shiftX = heatOffsetX * 0.6 + microShiftPx;
+    const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5; // hover слегка приподнимает
 
-    applyHeatVariables();
-    applySegments();
-    updateZones();
-
+    // --- запись переменных (только transform/opacity/filter-источники) ---
+    root.style.setProperty('--heat', heat.toFixed(3));
+    root.style.setProperty('--glow', glow.toFixed(3));
+    root.style.setProperty('--intensity', intensity.toFixed(3));
+    root.style.setProperty('--hover', hoverVal.toFixed(3));
+    root.style.setProperty('--shiftX', shiftX.toFixed(2) + 'px');
+    root.style.setProperty('--shiftY', shiftY.toFixed(2) + 'px');
+    root.style.setProperty('--breathScale', breathScale.toFixed(4));
     root.style.setProperty('--rotation', tiltCurrent.toFixed(2) + 'deg');
-  }
+    root.style.setProperty('--tiltX', (microShiftPx * 1.5).toFixed(2) + 'deg');
+    root.style.setProperty('--tiltY', (tiltCurrent * 0.6).toFixed(2) + 'deg');
 
-  let breathPhase = 0;
+    root.style.setProperty('--scaleX', finalScaleX.toFixed(4));
+    root.style.setProperty('--scaleY', finalScaleY.toFixed(4));
+    root.style.setProperty('--brightness', brightness.toFixed(3));
+    root.style.setProperty('--glowOpacity', (1 + hoverVal * 0.15).toFixed(3));
+    root.style.setProperty('--glowBlur', (5 + hoverVal * 1.5).toFixed(2) + 'px');
+    root.style.setProperty('--glowScale', (1 + hoverVal * 0.08).toFixed(3));
+    root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
+
+    root.style.setProperty('--spawnCore', spawnCore.toFixed(3));
+    root.style.setProperty('--spawnGlow', spawnGlow.toFixed(3));
+    root.style.setProperty('--spawnRing', spawnRing.toFixed(3));
+
+    applySegments();
+  }
 
   function animate(timestamp) {
     if (!root) return;
     if (lastFrame === 0) lastFrame = timestamp;
     const dt = Math.min(timestamp - lastFrame, 50);
     lastFrame = timestamp;
-
     update(timestamp, dt);
     rafId = requestAnimationFrame(animate);
   }
 
+  // ---------- реакция на печать ----------
+
   function handleInput() {
     typedChars++;
-    heatBoostTarget = Math.min(typedChars / 150, 0.25);
-    heatBoost = heatBoostTarget;
-    updateLastEdit();
-    scheduleRandomEvents();
-  }
-
-  function resetTypedChars() {
-    typedChars = 0;
-    heatBoostTarget = 0;
+    heatBoost = Math.min(typedChars / 150, 0.25);
+    notifyEdit();
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(() => { typedChars = 0; }, 2000);
   }
 
   function setupEventListeners() {
     root.addEventListener('mouseenter', () => { hover = true; });
     root.addEventListener('mouseleave', () => { hover = false; });
+    root.addEventListener('focus', () => { hover = true; });
+    root.addEventListener('blur', () => { hover = false; });
 
-    document.addEventListener('input', e => {
-      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
-        handleInput();
-      }
-    });
+    const isEditable = (el) =>
+      el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
 
-    document.addEventListener('keydown', e => {
-      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') {
-        if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
-          handleInput();
-        }
-      }
-    });
-
-    document.addEventListener('focusout', () => {
-      setTimeout(resetTypedChars, 2000);
+    document.addEventListener('input', (e) => {
+      if (isEditable(e.target)) handleInput();
     });
   }
 
-  function setupBroadcast() {
-    try {
-      channel = new BroadcastChannel(BROADCAST_KEY);
-      channel.onmessage = e => {
-        if (e.data?.type === 'update' && e.data?.state) {
-          state = e.data.state;
-        }
-      };
-    } catch {}
-  }
+  // ---------- инициализация ----------
 
-  function init() {
+  function init(mountEl) {
     state = loadState();
     createDOM();
-
     setupBroadcast();
     setupEventListeners();
 
-    const container = document.getElementById('ember-slot');
-    if (container) {
-      container.appendChild(root);
-    } else {
-      const helpBtn = document.getElementById('btn-help');
-      const copyBtn = document.getElementById('btn-copy');
-      const anchor = helpBtn || copyBtn;
-      if (anchor && anchor.parentNode) {
-        const wrapper = document.createElement('span');
-        wrapper.id = 'ember-slot';
-        wrapper.className = 'ember-slot';
-        wrapper.appendChild(root);
-        anchor.parentNode.insertBefore(wrapper, anchor);
-      }
-    }
+    const container = mountEl || document.getElementById('ember-slot');
+    if (container) container.appendChild(root);
+    else document.body.appendChild(root);
 
-    spawnPhase = 0;
-    spawned = true;
-    spawnComplete = false;
-
-    scheduleRandomEvents();
+    prevRemaining = remainingSegments();
+    spawnStart = performance.now();
     lastFrame = 0;
     rafId = requestAnimationFrame(animate);
   }
@@ -594,7 +452,10 @@ const Ember = (() => {
   function destroy() {
     if (rafId) cancelAnimationFrame(rafId);
     if (channel) { try { channel.close(); } catch {} }
+    clearTimeout(resetTimer);
   }
 
-  return { init, destroy, updateLastEdit };
+  // notifyEdit() — публичный метод, чтобы дёргать "уголёк" из кастомных
+  // редакторов (contenteditable-блоки и т.п.), если автослушатель не подходит
+  return { init, destroy, notifyEdit };
 })();
