@@ -70,10 +70,6 @@ const Ember = (() => {
   const mouse = { x: 0, y: 0, lastSampleX: 0, lastSampleY: 0, lastSampleTime: 0, speed: 0 };
   const caret = { x: 0, y: 0, active: false, typing: false, _typingTimer: null };
   const cursorLean = { x: 0, y: 0, squish: 0, scale: 1, tiltX: 0, tiltY: 0 };
-  let mouseInZone = false;
-  let lastMouseDist = 999;
-  let dodgeCooldown = 0;
-  const startle = { active: false, t0: 0, dur: 0, riseFrac: 0.2, x: 0, y: 0, nx: 0, ny: 0 };
 
   // ПКМ тестирование
   let testMode = false;
@@ -481,7 +477,6 @@ const Ember = (() => {
   // ---------- отслеживание курсора ----------
 
   const CURSOR_SAMPLE_INTERVAL = 50;
-  const CURSOR_ZONE_RADIUS = 250;
   const CARET_SAMPLE_INTERVAL = 80;
   let nextMouseSample = 0;
   let nextCaretSample = 0;
@@ -521,123 +516,6 @@ const Ember = (() => {
   }
 
   function normD(dx, dy, dist) { return dist > 0 ? { x: dx / dist, y: dy / dist } : { x: 0, y: 0 }; }
-
-  // запуск "шараханья" — резкий отскок ОТ курсора, потом возврат
-  function triggerStartle(norm, dist, riseMs, retMs) {
-    startle.active = true;
-    startle.t0 = performance.now();
-    startle.dur = riseMs + retMs;
-    startle.riseFrac = riseMs / startle.dur;
-    startle.x = -norm.x * dist;
-    startle.y = -norm.y * dist;
-    startle.nx = norm.x;
-    startle.ny = norm.y;
-    if (dist > 22 && Math.random() < 0.6) {
-      for (let i = 0; i < 2; i++) spawnSpark();
-    }
-  }
-
-  function updateCursorLean(now, dt) {
-    if (!browserFocused) {
-      cursorLean.x += (0 - cursorLean.x) * clamp(dt * 0.005, 0, 1);
-      cursorLean.y += (0 - cursorLean.y) * clamp(dt * 0.005, 0, 1);
-      cursorLean.squish += (0 - cursorLean.squish) * clamp(dt * 0.005, 0, 1);
-      cursorLean.scale += (1 - cursorLean.scale) * clamp(dt * 0.005, 0, 1);
-      cursorLean.tiltX += (0 - cursorLean.tiltX) * clamp(dt * 0.005, 0, 1);
-      cursorLean.tiltY += (0 - cursorLean.tiltY) * clamp(dt * 0.005, 0, 1);
-      return;
-    }
-
-    const ember = getEmberCenter();
-    const mDx = mouse.x - ember.x;
-    const mDy = mouse.y - ember.y;
-    const mDist = Math.sqrt(mDx * mDx + mDy * mDy);
-    const inZone = mDist < CURSOR_ZONE_RADIUS && mDist > 25;
-    const norm = normD(mDx, mDy, mDist);
-
-    // ВХОД в зону -> шарахается ОДИН раз на 20-40px
-    if (inZone && !mouseInZone) {
-      mouseInZone = true;
-      triggerStartle(norm, rand(20, 40), 130, 480);
-    } else if (!inZone && mouseInZone) {
-      mouseInZone = false;
-    }
-
-    // уже внутри + быстрое движение близко -> короткий рывок-уворот
-    if (inZone && !startle.active && mouse.speed > 14 && mDist < 110 && now > dodgeCooldown) {
-      triggerStartle(norm, rand(14, 26), 110, 380);
-      dodgeCooldown = now + rand(350, 800);
-    }
-
-    // мягкое "любопытство" — наклон К курсору когда стоит спокойно
-    let tx = 0, ty = 0, tScale = 1, tTiltX = 0, tTiltY = 0, tSquish = 0;
-    if (inZone) {
-      const prox = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
-      const str = prox * prox;
-      tx = norm.x * str * 7;
-      ty = norm.y * str * 5;
-      tScale = 1 + str * 0.06;
-      tTiltX = norm.y * str * 6;
-      tTiltY = -norm.x * str * 6;
-      if (norm.y > 0.15) tSquish = (norm.y - 0.15) * 0.3 * str;
-    }
-
-    // тянется к каретке при наборе текста
-    if (caret.active && caret.typing) {
-      const cDx = caret.x - ember.x;
-      const cDy = caret.y - ember.y;
-      const cDist = Math.sqrt(cDx * cDx + cDy * cDy);
-      if (cDist > 10 && cDist < 400) {
-        const cn = normD(cDx, cDy, cDist);
-        const cs = clamp(1 - cDist / 400, 0, 0.6);
-        tx += cn.x * cs * 5;
-        ty += cn.y * cs * 4;
-      }
-    }
-
-    // шараханье — перекрывает цель и делает движение резким
-    let lerp = clamp(dt * 0.012, 0, 1);
-    if (startle.active) {
-      const p = (now - startle.t0) / startle.dur;
-      if (p >= 1) {
-        startle.active = false;
-      } else {
-        const off = p < startle.riseFrac
-          ? easeOutQuad(p / startle.riseFrac)
-          : 1 - easeInOutQuad((p - startle.riseFrac) / (1 - startle.riseFrac));
-        tx += startle.x * off;
-        ty += startle.y * off;
-        tScale = 1 - 0.12 * off;
-        tTiltX += -startle.ny * off * 14;
-        tTiltY += startle.nx * off * 14;
-        tSquish = Math.max(tSquish, 0.22 * off);
-        lerp = clamp(dt * 0.035, 0, 1);
-      }
-    }
-
-    cursorLean.x += (tx - cursorLean.x) * lerp;
-    cursorLean.y += (ty - cursorLean.y) * lerp;
-    cursorLean.squish += (tSquish - cursorLean.squish) * lerp;
-    cursorLean.scale += (tScale - cursorLean.scale) * lerp;
-    cursorLean.tiltX += (tTiltX - cursorLean.tiltX) * lerp;
-    cursorLean.tiltY += (tTiltY - cursorLean.tiltY) * lerp;
-
-    // ограничение чтобы core не улетал за пределы кольца слишком сильно
-    cursorLean.x = clamp(cursorLean.x, -18, 18);
-    cursorLean.y = clamp(cursorLean.y, -18, 18);
-    cursorLean.scale = clamp(cursorLean.scale, 0.7, 1.2);
-    cursorLean.tiltX = clamp(cursorLean.tiltX, -20, 20);
-    cursorLean.tiltY = clamp(cursorLean.tiltY, -20, 20);
-
-    // горячая точка слегка тянется к курсору
-    if (inZone) {
-      const gStr = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
-      heatTargetX += norm.x * gStr * 0.4;
-      heatTargetY += norm.y * gStr * 0.4;
-    }
-
-    lastMouseDist = mDist;
-  }
 
   // ---------- пасхалка ----------
 
@@ -767,8 +645,7 @@ const Ember = (() => {
     'sigh', 'calmBurn', 'wiggle', 'tilt', 'microShift',
     'crackle', 'stretch', 'glint', 'sleepySag',
     'smolder', 'heatRadiance', 'glowPulse', 'ashDrift',
-    'segTremor', 'segFlicker', 'segHeatWave',
-    'cursorLean', 'typingApproach', 'startle', 'playfulDodge',
+    'typingApproach',
     'eggFly',
   ];
 
@@ -846,12 +723,6 @@ const Ember = (() => {
       for (let i = 0; i < 10; i++) setTimeout(() => spawnAshParticle(), i * 160);
     }
 
-    if (type === 'cursorLean') {
-      mouseInZone = true;
-      mouse.x = getEmberCenter().x + rand(-120, 120);
-      mouse.y = getEmberCenter().y + rand(30, 150);
-      mouse.speed = 2;
-    }
     if (type === 'typingApproach') {
       caret.typing = true;
       caret.active = true;
@@ -859,26 +730,10 @@ const Ember = (() => {
       caret.y = getEmberCenter().y + rand(-50, 50);
       setTimeout(() => { caret.typing = false; }, 2200);
     }
-    if (type === 'startle') {
-      mouseInZone = false;
-      const ec = getEmberCenter();
-      const ang = rand(0, Math.PI * 2);
-      const n = { x: Math.cos(ang), y: Math.sin(ang) };
-      triggerStartle(n, rand(28, 40), 130, 600);
-    }
-    if (type === 'playfulDodge') {
-      mouseInZone = true;
-      const ec = getEmberCenter();
-      const ang = rand(0, Math.PI * 2);
-      const n = { x: Math.cos(ang), y: Math.sin(ang) };
-      triggerStartle(n, rand(16, 26), 110, 420);
-    }
     if (type === 'eggFly') {
       egg.triggeredToday = false;
       const ec = getEmberCenter();
-      const angle = rand(0, Math.PI * 2);
-      const dist = rand(70, 140);
-      startEgg({ x: ec.x + Math.cos(angle) * dist, y: ec.y + Math.sin(angle) * dist });
+      startEgg({ x: ec.x + rand(40, 100), y: ec.y + rand(50, 90) });
     }
 
     setTimeout(runNextTest, 3300);
