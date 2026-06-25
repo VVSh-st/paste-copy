@@ -1176,11 +1176,129 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     scrollControls.appendChild(anchorCountEl);
     scrollControls.appendChild(counterSpan);
 
+    // ── Translate button ───────────────────────────────────────
+    const TRANSLATE_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
+    const translateBtn = mkBtn('font-ctrl-btn translate-btn', '', 'Перевести');
+    translateBtn.innerHTML = TRANSLATE_SVG;
+    translateBtn.setAttribute('aria-label', 'Перевести текст');
+    translateBtn.dataset.lang = Translator.targetLang;
+
+    const translateDropdown = document.createElement('div');
+    translateDropdown.className = 'translate-dropdown';
+    translateDropdown.style.display = 'none';
+
+    function _buildTranslateMenu() {
+      translateDropdown.innerHTML = '';
+      Translator.LANGUAGES.forEach(lang => {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'translate-lang-opt' + (lang.code === Translator.targetLang ? ' active' : '');
+        opt.textContent = lang.flag + ' ' + lang.name;
+        opt.onclick = e => {
+          e.stopPropagation();
+          Translator.targetLang = lang.code;
+          translateBtn.dataset.lang = lang.code;
+          translateBtn.title = 'Перевести → ' + lang.name;
+          _buildTranslateMenu();
+          translateDropdown.style.display = 'none';
+        };
+        translateDropdown.appendChild(opt);
+      });
+    }
+    _buildTranslateMenu();
+
+    let translateLongPressTimer = null;
+    let translateLongPressed = false;
+
+    translateBtn.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      translateLongPressed = false;
+      translateLongPressTimer = setTimeout(() => {
+        translateLongPressed = true;
+        const rect = translateBtn.getBoundingClientRect();
+        translateDropdown.style.left = rect.left + 'px';
+        translateDropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        translateDropdown.style.display = translateDropdown.style.display === 'none' ? 'block' : 'none';
+      }, 400);
+    });
+
+    translateBtn.addEventListener('mouseup', () => {
+      clearTimeout(translateLongPressTimer);
+    });
+
+    translateBtn.addEventListener('mouseleave', () => {
+      clearTimeout(translateLongPressTimer);
+    });
+
+    translateBtn.onclick = e => {
+      e.stopPropagation();
+      clearTimeout(translateLongPressTimer);
+      if (translateLongPressed) { translateLongPressed = false; return; }
+      translateDropdown.style.display = 'none';
+
+      // Восстановление: если есть сохранённый оригинал — возвращаем
+      if (translateBtn._savedOriginal) {
+        ta.value = translateBtn._savedOriginal;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        Toast.show('↩ Оригинал восстановлен');
+        translateBtn._savedOriginal = null;
+        translateBtn.dataset.state = '';
+        return;
+      }
+
+      const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+      const textToTranslate = sel.trim() || ta.value;
+      if (!textToTranslate.trim()) return;
+
+      const targetLang = Translator.targetLang;
+      const srcLang = Translator.detectLang(textToTranslate);
+
+      if (srcLang && srcLang.code === targetLang) {
+        Toast.show('Текст уже на ' + (srcLang?.name || targetLang));
+        return;
+      }
+
+      const langName = Translator.LANG_BY_CODE[targetLang]?.name || targetLang;
+      translateBtn.classList.add('translating');
+      translateBtn.textContent = '⏳';
+      Toast.show('Перевод → ' + langName + '...');
+
+      Translator.translateProtected(textToTranslate, targetLang).then(result => {
+        if (!result || result === textToTranslate) {
+          Toast.show('Не удалось перевести');
+          return;
+        }
+
+        Translator.addHistory(textToTranslate, result, srcLang?.code || '?', targetLang);
+
+        translateBtn._savedOriginal = textToTranslate;
+        translateBtn.dataset.state = 'translated';
+
+        ta.value = result;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        Toast.show('✓ Переведено → ' + langName + ' (клик ↩ — вернуть)');
+      }).catch(err => {
+        console.error('[Translator]', err);
+        Toast.show('Ошибка перевода: ' + err.message);
+      }).finally(() => {
+        translateBtn.classList.remove('translating');
+        translateBtn.innerHTML = TRANSLATE_SVG;
+      });
+    };
+
+    document.addEventListener('mousedown', e => {
+      if (!translateDropdown.contains(e.target) && e.target !== translateBtn) {
+        translateDropdown.style.display = 'none';
+      }
+    });
+
     footer.appendChild(fDecBtn);
     footer.appendChild(fIncBtn);
     footer.appendChild(pasteCursorBtn);
+    footer.appendChild(translateBtn);
     footer.appendChild(scrollControls);
     body.appendChild(footer);
+    body.appendChild(translateDropdown);
   }
 
   const _byteEnc = new TextEncoder();

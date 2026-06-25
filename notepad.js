@@ -140,6 +140,7 @@ const Notepad = (() => {
       _doUndo:      null,
       _doRedo:      null,
       _pushHistory: null,
+      _translateOriginal: null,
     };
 
     const win = _buildWindow(state);
@@ -427,6 +428,36 @@ const Notepad = (() => {
       clearBtn, saveBtn, transferBtn,
       _mkDiv(),
       fDecBtn, fIncBtn,
+      _mkDiv(),
+      _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст', () => {
+        if (typeof Translator === 'undefined') { Toast.show('Модуль переводчика не загружен', 'error'); return; }
+        const ta = getTa(); if (!ta) return;
+
+        // Возврат оригинала
+        if (state._translateOriginal !== null) {
+          ta.value = state._translateOriginal;
+          state.tabs[state.activeTab].value = state._translateOriginal;
+          state._translateOriginal = null;
+          ta.dispatchEvent(new Event('input'));
+          Toast.show('↩ Оригинал восстановлен');
+          return;
+        }
+
+        const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+        const text = sel.trim() || ta.value;
+        if (!text.trim()) return;
+        const lang = Translator.LANG_BY_CODE[Translator.targetLang];
+        Toast.show('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
+        Translator.translateProtected(text, Translator.targetLang).then(result => {
+          if (!result || result === text) { Toast.show('Не удалось перевести'); return; }
+          pushHistory(ta.value);
+          state._translateOriginal = text;
+          ta.value = result;
+          state.tabs[state.activeTab].value = result;
+          ta.dispatchEvent(new Event('input'));
+          Toast.show('✓ Переведено → ' + (lang?.name || Translator.targetLang) + ' (клик ↩ — вернуть)');
+        }).catch(err => Toast.show('Ошибка: ' + err.message));
+      }),
       _mkDiv(),
       prevTabBtn, tabsWrap, nextTabBtn,
       _mkDiv(),

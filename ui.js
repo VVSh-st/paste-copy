@@ -310,6 +310,19 @@ const Preview = (() => {
     return tpl.innerHTML;
   }
 
+  function _closeOpenFences(text) {
+    const lines = text.split('\n');
+    let fence = null;
+    for (const line of lines) {
+      const m = line.match(/^\s*(```|~~~)/);
+      if (m) {
+        if (!fence) fence = m[1];
+        else if (line.trim().startsWith(fence)) fence = null;
+      }
+    }
+    return fence ? text + '\n' + fence : text;
+  }
+
   function build() {
     const tab = State.getActive();
     if (!tab) return '';
@@ -340,23 +353,22 @@ const Preview = (() => {
         const content = items.map(i =>
           (showTitles && i.title) ? `## ${i.title}\n${i.value.trim()}` : i.value.trim()
         ).join('\n\n');
-        parts.push(showHeaders ? `# ${b.title}\n${applyVars(content)}` : applyVars(content));
+        parts.push(_closeOpenFences(showHeaders ? `# ${b.title}\n${applyVars(content)}` : applyVars(content)));
 
       } else if (b.type === 'text') {
         const idx = b.activeSubtab ?? 0;
         const raw = (b.subtabs?.[idx]?.value || '').trim();
         const val = applyVars(raw);
-        if (val) parts.push(showHeaders ? `# ${b.title}\n${val}` : val);
+        if (val) parts.push(_closeOpenFences(showHeaders ? `# ${b.title}\n${val}` : val));
 
       } else if (b.type === 'group' && b.enabled !== false) {
         (b.children || []).forEach(child => {
-          // Дочерние блоки тоже могут быть скрыты из превью
           if (child.previewDisabled === true) return;
           if (child.type === 'text') {
             const idx = child.activeSubtab ?? 0;
             const raw = (child.subtabs?.[idx]?.value || '').trim();
             const val = applyVars(raw);
-            if (val) parts.push(showHeaders ? `# ${child.title}\n${val}` : val);
+            if (val) parts.push(_closeOpenFences(showHeaders ? `# ${child.title}\n${val}` : val));
           }
         });
       }
@@ -398,13 +410,14 @@ const Preview = (() => {
       if (mdEl) {
         try {
           if (typeof marked !== 'undefined') {
-            mdEl.innerHTML = _sanitizeMarkdownHtml(marked.parse(t));
+            const safe = t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            mdEl.innerHTML = _sanitizeMarkdownHtml(marked.parse(safe));
           } else {
             mdEl.textContent = t;
           }
         } catch (err) {
           console.error('[Preview.render] marked.parse() threw:', err);
-          mdEl.textContent = t; // fallback — показываем сырой текст
+          mdEl.textContent = t;
         }
       }
     } else {
@@ -416,6 +429,7 @@ const Preview = (() => {
     applyFontSize();
     applyWrap();
     _syncPanelButtons();
+    renderStructureMenu();
   }
 
   function applyFontSize() {
@@ -529,9 +543,288 @@ const Preview = (() => {
 
   function getText() { return build(); }
 
+  /* ── Structure menu ──────────────────────────────────────────────── */
+  const structMenu      = document.getElementById('preview-structure-menu');
+  const structBody      = structMenu?.querySelector('.structure-menu-body');
+  const structToggleBtn = structMenu?.querySelector('.structure-menu-toggle');
+  let _structVisible    = true;
+  let _structScrollRaf  = null;
+  let _structActiveBg   = null;
+
+  const _typeIcons = {
+    text:     '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 5.5h6M5 8h4M5 10.5h5"/></svg>',
+    snippets: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 4h10M3 7h7M3 10h8M3 13h5"/></svg>',
+    group:    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>',
+  };
+
+  function _getBlockType(b) {
+    if (b.type === 'group') return 'group';
+    if (b.type === 'snippets') return 'snippets';
+    return 'text';
+  }
+
+  function _isBlockEmpty(block) {
+    if (block.type === 'snippets') {
+      return !(block.items || []).some(i => i.enabled && (i.value || '').trim());
+    }
+    if (block.type === 'group') {
+      return !(block.children || []).some(c => {
+        if (c.previewDisabled === true || c.type !== 'text') return false;
+        const idx = c.activeSubtab ?? 0;
+        return (c.subtabs?.[idx]?.value || '').trim();
+      });
+    }
+    if (block.type === 'text') {
+      const idx = block.activeSubtab ?? 0;
+      return !(block.subtabs?.[idx]?.value || '').trim();
+    }
+    return true;
+  }
+
+  function _extractPreviewText(block) {
+    if (block.type === 'snippets') {
+      const items = (block.items || []).filter(i => i.enabled && (i.value || '').trim());
+      return items.map(i => i.title ? `${i.title}: ${i.value.trim()}` : i.value.trim()).join(' ').slice(0, 120);
+    }
+    if (block.type === 'group') {
+      return (block.children || []).filter(c => c.type === 'text').map(c => {
+        const idx = c.activeSubtab ?? 0;
+        return (c.subtabs?.[idx]?.value || '').trim();
+      }).join(' ').slice(0, 120);
+    }
+    if (block.type === 'text') {
+      const idx = block.activeSubtab ?? 0;
+      return (block.subtabs?.[idx]?.value || '').trim().slice(0, 120);
+    }
+    return '';
+  }
+
+  function _isCodeOnlyBlock(b) {
+    if (b.type !== 'text') return false;
+    const idx = b.activeSubtab ?? 0;
+    const raw = (b.subtabs?.[idx]?.value || '').trim();
+    if (!raw) return false;
+    const lines = raw.split('\n');
+    let inFence = false;
+    let codeLines = 0;
+    let totalLines = 0;
+    for (const line of lines) {
+      if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; continue; }
+      totalLines++;
+      if (inFence) codeLines++;
+    }
+    return totalLines > 0 && codeLines / totalLines > 0.8;
+  }
+
+  function _buildMenu() {
+    if (!structBody) return;
+    const tab = State.getActive();
+    if (!tab) { structBody.innerHTML = ''; return; }
+
+    const entries = [];
+
+    (tab.blocks || []).forEach(b => {
+      if (b.type === 'commands' || b.type === 'variable') return;
+      if (b.previewDisabled === true) return;
+      if (_isBlockEmpty(b)) return;
+      if (_isCodeOnlyBlock(b)) return;
+
+      if (b.type === 'group' && b.enabled !== false) {
+        (b.children || []).forEach(child => {
+          if (child.previewDisabled === true) return;
+          if (child.type === 'text' && !_isBlockEmpty(child) && !_isCodeOnlyBlock(child)) {
+            entries.push({ id: child.id, title: child.title || 'Без названия', type: 'text', text: _extractPreviewText(child) });
+          }
+        });
+      } else {
+        entries.push({ id: b.id, title: b.title || 'Без названия', type: _getBlockType(b), text: _extractPreviewText(b) });
+      }
+    });
+
+    if (!entries.length) { structBody.innerHTML = ''; if (_structActiveBg) structBody.appendChild(_structActiveBg); return; }
+
+    structBody.innerHTML = entries.map(e => {
+      const icon = _typeIcons[e.type] || _typeIcons.text;
+      const title = escHtmlUi(e.title);
+      const preview = escHtmlUi(e.text.slice(0, 120));
+      return `<div class="structure-item" data-block-id="${e.id}">
+        <span class="structure-item-icon">${icon}</span>
+        <div class="structure-item-body">
+          <div class="structure-item-name">${title}</div>
+          <div class="structure-item-text">${preview}</div>
+        </div>
+      </div>`;
+    }).join('');
+    if (_structActiveBg) structBody.appendChild(_structActiveBg);
+    _lastActiveId = null;
+    _highlightActiveByScroll();
+  }
+
+  let _lastActiveId = null;
+
+  function _highlightActiveByScroll() {
+    if (!structBody) return;
+    const isMd = getMdMode();
+    const src = isMd ? mdEl : textEl;
+    if (!src) return;
+    const container = src.closest('#preview-content');
+    if (!container) return;
+
+    const items = [...structBody.querySelectorAll('.structure-item')];
+    if (!items.length) return;
+
+    const scrollMax = container.scrollHeight - container.clientHeight;
+    const atBottom = scrollMax > 0 && container.scrollTop + container.clientHeight >= container.scrollHeight - 2;
+    const ratio = scrollMax > 0 ? Math.min(1, Math.max(0, container.scrollTop / scrollMax)) : 0;
+
+    const lastItem = items[items.length - 1];
+    const totalH = structBody.scrollHeight;
+    const bgH = items[0].offsetHeight;
+    const targetY = atBottom ? lastItem.offsetTop : ratio * (totalH - bgH);
+
+    if (_structActiveBg) {
+      _structActiveBg.style.top = targetY + 'px';
+      _structActiveBg.style.height = bgH + 'px';
+    }
+
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    items.forEach((item, i) => {
+      const dist = Math.abs(item.offsetTop - targetY);
+      if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    });
+
+    const newName = items[bestIdx].querySelector('.structure-item-name')?.textContent?.trim() || '';
+    if (newName !== _lastActiveId) {
+      _lastActiveId = newName;
+      items.forEach((i, idx) => i.classList.toggle('active', idx === bestIdx));
+    }
+  }
+
+  function _onPreviewScroll() {
+    if (_structScrollRaf) return;
+    _structScrollRaf = requestAnimationFrame(() => {
+      _structScrollRaf = null;
+      _highlightActiveByScroll();
+    });
+  }
+
+  function _setupStructScroll() {
+    const container = mdEl?.closest('#preview-content') || textEl?.closest('#preview-content');
+    if (!container) return;
+    container.removeEventListener('scroll', _onPreviewScroll);
+    container.addEventListener('scroll', _onPreviewScroll, { passive: true });
+    _highlightActiveByScroll();
+  }
+
+  function _initStructMenu() {
+    if (structToggleBtn) {
+      structToggleBtn.addEventListener('click', () => {
+        structMenu.classList.toggle('collapsed');
+        const isCollapsed = structMenu.classList.contains('collapsed');
+        structToggleBtn.textContent = isCollapsed ? '▼' : '▲';
+      });
+    }
+
+    const structTitle = structMenu?.querySelector('.structure-menu-title');
+    if (structTitle) {
+      structTitle.addEventListener('dblclick', () => {
+        structMenu.classList.toggle('collapsed');
+        const isCollapsed = structMenu.classList.contains('collapsed');
+        if (structToggleBtn) structToggleBtn.textContent = isCollapsed ? '▼' : '▲';
+      });
+    }
+
+    if (structBody) {
+      structBody.style.position = 'relative';
+      _structActiveBg = document.createElement('div');
+      _structActiveBg.className = 'structure-active-bg';
+      structBody.appendChild(_structActiveBg);
+    }
+
+    if (structBody) {
+      structBody.addEventListener('click', (e) => {
+        const item = e.target.closest('.structure-item');
+        if (!item) return;
+        const blockId = item.dataset.blockId;
+        const nameEl = item.querySelector('.structure-item-name');
+        const blockTitle = nameEl?.textContent?.trim() || '';
+        const isMd = getMdMode();
+
+        // MD-режим: ищем заголовок в превью (только свободные h1-h3, не внутри code/pre)
+        if (isMd && mdEl && blockTitle) {
+          const headings = mdEl.querySelectorAll('h1, h2, h3');
+          for (const h of headings) {
+            if (h.closest('pre, code')) continue;
+            const hText = h.textContent.replace(/^\s*#+\s*/, '').trim();
+            if (hText === blockTitle) {
+              const container = mdEl.closest('#preview-content');
+              if (container) {
+                const hTop = h.offsetTop - container.offsetTop;
+                container.scrollTo({ top: Math.max(0, hTop - 10), behavior: 'smooth' });
+              }
+              h.classList.add('block-flash');
+              setTimeout(() => h.classList.remove('block-flash'), 1200);
+              return;
+            }
+          }
+          // Fallback: если заголовок не найден как элемент, ищем по тексту в превью
+          const titlePat = blockTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const mdText = mdEl.innerText || mdEl.textContent || '';
+          const match = mdText.match(new RegExp('(?:^|\\n)#\\s*' + titlePat + '(?:\\n|$|\\s)', 'm'));
+          if (match) {
+            const container = mdEl.closest('#preview-content');
+            if (container) {
+              const approxTop = (match.index / mdText.length) * mdEl.scrollHeight;
+              container.scrollTo({ top: Math.max(0, approxTop - 10), behavior: 'smooth' });
+            }
+            return;
+          }
+        }
+
+        // Текстовый режим: ищем позицию блока в превью по тексту
+        if (!isMd && textEl && blockTitle) {
+          const previewText = textEl.innerText || textEl.textContent || '';
+          const titlePat = blockTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const match = previewText.match(new RegExp('(?:^|\\n)#\\s*' + titlePat + '(?:\\n|$|\\s)', 'm'));
+          if (match) {
+            const container = textEl.closest('#preview-content');
+            if (container) {
+              const pos = match.index;
+              const approxTop = (pos / previewText.length) * textEl.scrollHeight;
+              container.scrollTo({ top: Math.max(0, approxTop - 10), behavior: 'smooth' });
+            }
+            return;
+          }
+        }
+
+        // Fallback — фокус на textarea в редакторе
+        if (blockId) {
+          const el = document.querySelector(`.block[data-id="${blockId}"]`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('block-flash');
+            setTimeout(() => el.classList.remove('block-flash'), 1200);
+            const ta = el.querySelector('textarea.block-textarea, textarea');
+            if (ta) ta.focus();
+          }
+        }
+      });
+    }
+  }
+
+  function renderStructureMenu() {
+    if (!_structVisible) return;
+    _buildMenu();
+    _setupStructScroll();
+  }
+
+  _initStructMenu();
+
   return {
     render, copy, applyHeight, fontInc, fontDec,
     toggleMarkdown, toggleCollapse, toggleWrap, getText,
+    renderStructureMenu,
   };
 })();
 

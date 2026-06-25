@@ -2705,7 +2705,10 @@ const AutoPoet = (() => {
         const span = last.querySelector('.llm-chat-msg-text');
         if (full && span) span.textContent = full;
         const textToCopy = full || span?.textContent || '';
-        if (textToCopy) _addCopyButton(last, textToCopy);
+        if (textToCopy) {
+          _addCopyButton(last, textToCopy);
+          _addTranslateButton(last, textToCopy);
+        }
       }
       const typing = el?.querySelector('.llm-chat-typing');
       if (typing) typing.remove();
@@ -2735,6 +2738,47 @@ const AutoPoet = (() => {
         }).catch(() => {
           _fallbackCopy(text, btn);
         });
+      });
+      container.appendChild(btn);
+    }
+
+    function _addTranslateButton(container, text) {
+      if (container.querySelector('.llm-chat-msg-translate')) return;
+      if (typeof Translator === 'undefined') return;
+
+      const TRANSLATE_CHAT_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
+      const btn = document.createElement('button');
+      btn.className = 'llm-chat-msg-translate';
+      btn.innerHTML = TRANSLATE_CHAT_SVG;
+      btn.title = 'Перевести RU↔EN';
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (btn.dataset.translated === '1') {
+          const span = container.querySelector('.llm-chat-msg-text');
+          if (span && btn.dataset.original) {
+            span.textContent = btn.dataset.original;
+            btn.dataset.translated = '0';
+            btn.innerHTML = TRANSLATE_CHAT_SVG;
+            btn.title = 'Перевести RU↔EN';
+          }
+          return;
+        }
+        const span = container.querySelector('.llm-chat-msg-text');
+        if (!span) return;
+        const srcText = span.textContent;
+        const lang = Translator.detectLang(srcText);
+        const targetLang = (lang?.code === 'ru') ? 'en' : 'ru';
+        const langName = Translator.LANG_BY_CODE[targetLang]?.name || targetLang;
+        btn.innerHTML = '⏳';
+        btn.title = 'Перевод → ' + langName + '...';
+        Translator.translateProtected(srcText, targetLang).then(result => {
+          if (!result || result === srcText) { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести RU↔EN'; return; }
+          btn.dataset.original = srcText;
+          btn.dataset.translated = '1';
+          span.textContent = result;
+          btn.innerHTML = '↩';
+          btn.title = 'Вернуть оригинал';
+        }).catch(() => { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести RU↔EN'; });
       });
       container.appendChild(btn);
     }
@@ -2778,14 +2822,10 @@ const AutoPoet = (() => {
         _draftInput = '';
       }
 
-      const ctxText  = window.Preview?.getText?.() ?? '';
       const LLMCore  = _LLMCore;
       const stateRef = _State;
 
       const system  = (LLMCore?.getPrompt?.('chat_system') ?? '') + (_LANG_INSTR ?? '');
-      const fullSys = ctxText
-        ? system + '\n\nКонтекст промпта (первые 3000 символов):\n' + ctxText.slice(0, 3000)
-        : system;
 
       _currentAbort = new AbortController();
       _streaming    = true;
@@ -2805,7 +2845,7 @@ const AutoPoet = (() => {
       try {
         if (!LLMCore?.request) throw new Error('LLMCore is unavailable');
         const result = await LLMCore.request({
-          messages:   [{ role: 'system', content: fullSys }, ..._history],
+          messages:   [{ role: 'system', content: system }, ..._history],
           stream:     true,
           onChunk:    chunk => appendChunk(chunk),
           signal:     _currentAbort.signal,
@@ -2837,11 +2877,7 @@ const AutoPoet = (() => {
 
     function _updateCtxLabel() {
       const el  = document.getElementById('llm-chat-ctx');
-      if (!el) return;
-      const txt = window.Preview?.getText?.() ?? '';
-      el.textContent = txt
-        ? 'Контекст: ' + txt.slice(0, 60).replace(/\s+/g, ' ') + (txt.length > 60 ? '…' : '')
-        : '';
+      if (el) el.textContent = '';
     }
 
     function _getClientPos(e) {

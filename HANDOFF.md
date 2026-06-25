@@ -1,75 +1,126 @@
 # HANDOFF
 
 ## Objective
-Функция "Якорь" (Anchor) — per-block bookmarking с визуальными маркерами, навигацией и palette-меню.
+
+Проект paste\copy — веб-приложение для работы с текстовыми промптами.
+
+Делай backup в .git после каждого задания (скриншоты такого вида не сохраняй "E:\CODE\Paste_copy\2026-06-21_20-35.jpg").
 
 ## Status — ГОТОВО
-Все основные задачи выполнены. Последний коммит: `e166f1b`.
 
-### Что работает
-- **Кнопки** (⚓, ⟳, ✕) в block-tools каждого текстового блока
-- **Palette** меню при длинном нажатии на кнопку навигации — показывает все якоря со всех вкладок, крестик ✕ для удаления (двойное нажатие)
-- **Hotkeys** Ctrl+Shift+1 (установить), Ctrl+Shift+2 (навигация), Ctrl+Shift+3 (очистить)
-- **Cross-tab** — навигация, palette, clear, remove работают со всеми вкладками
-- **State** хранится в `tab.anchors`, persistence через `State.updateLive()`
-- **Mirror-div** измерение координат — `box-sizing:content-box`, без padding, шириной как content-area textarea
-- **Y-координата** — считает высоту текста ДО текущей строки (prevLines через `lastIndexOf('\n')`), корректно при позиции в середине строки
-- **Навигация** — scroll через `_measurePos` (учитывает перенос строк), не через подсчёт `\n`
-- **Фоновая подсветка** — z-index:3 (gutter), z-index:4 (line), z-index:1 (textarea) — inline-стили синхронизированы
-- **Sticky marker** — полоска слева не скрывается при прокрутке, цепляется за край visible area
-- **Счётчик якорей** — ⚓ иконка + число в правом нижнем углу блока, обновляется при set/clear/remove
+### Выполнено в последней сессии
+
+**1. Переводчик** (`translator.js`, новый модуль)
+
+- Google → Microsoft → legacy fallback каскадный пайплайн
+- Кэш в localStorage (debounced flush 3с + beforeunload)
+- Защита шаблонов: `{{...}}`, `$VAR`, `!теги` не переводятся
+- Детекция языка: ru/en/mixed/zh/ko/ar
+- Декодировка HTML-сущностей (`&#39;` → `'`)
+- 15 языков для перевода
+- История переводов (до 50 записей)
+
+**2. Кнопка перевода в футере блока** (`blocks.js`)
+
+- SVG глобус в стиле Feather Icons
+- Клик → перевод выделенного/всего текста
+- Повторный клик → возврат оригинала из сохранённого состояния
+- Длинное нажатие → dropdown выбора языка
+- Анимация ⏳ при загрузке
+
+**3. Кнопка перевода в блокноте** (`notepad.js`)
+
+- SVG глобус в toolbar
+- Та же логика: клик=перевод, повторный=возврат
+
+**4. Кнопка перевода в мини-чате** (`llm-features.js`)
+
+- SVG глобус на ответах LLM
+- Авто-определение: кириллица → EN, латиница → RU
+- Toggle оригинал/перевод
+
+**5. Исправления переводчика** (баги)
+
+- `addHistory` не экспортировалась в публичный API
+- Повторный клик не возвращал оригинал (блок footer + блокнот)
+- Смешанный текст (ru+en) детектировался как "уже EN"
+- HTML-сущности в ответах Google/MS
+- Превью-перевод убран (не нужен)
+
+**6. Структура превью — навигация** (`ui.js`)
+
+- Клик по пункту меню → скроллит к заголовку в превью (MD + текстовый режим)
+- Auto-close code fences между блоками (`_closeOpenFences`)
+- Код-блоки (>80% кода) исключены из меню структуры
+- Заголовки внутри `<pre>/<code>` пропускаются при поиске
+
+**7. Структура превью — подсветка** (`ui.js`, `styles.css`)
+
+- Фон-индикатор (`.structure-active-bg`) плавно скользит пропорционально скроллу превью
+- `ratio = scrollTop / (scrollHeight - clientHeight)` → `top = ratio * (totalH - bgH)`
+- При достижении конца превью → привязка к последнему пункту
+- CSS transition `.12s ease-out`
+
+**8. Превью — XSS защита** (`ui.js`)
+
+- HTML-сущности экранируются перед `marked.parse()` (`<` → `&lt;`)
+- `<script>` как текст больше не ломает превью
+
+**9. Превью — двойной клик** (`app.js`)
+
+- Двойной клик на шапку превью (`#preview-bar`) → свернуть/развернуть
+- Курсор `pointer` на заголовке "Превью"
+
+**10. Переводчик — исправления пайплайна** (`translator.js`)
+
+- `accept()` убрана проверка `tr === src` (шорткаты могут совпадать)
+- `translateGoogle` / `translateMs` — try-catch на JSON парсинг
+- Debounced cache flush вместо записи на каждый `cacheSet`
+
+### Архив предыдущих сессий
+
+**Gist Sync — якоря в статистике** (`gist-sync.js`)
+- `getStats()` — `anchorCount`, `_pushImpl()`, модалка, история, сравнение
+
+**Help — документация якорей** (`help.js`)
+- Хоткеи: `Ctrl+Shift+1/2/3`, карточка "Якоря"
+
+**Inline Diff** (`diff-engine.js`)
+- LCS diff, кнопка 🔍, панель diff в модалке
+
+**Меню структуры блоков** (`ui.js`, `styles.css`)
 
 ## Active Files
-- `anchors.js` (~440 строк) — основной файл фичи
-- `blocks.js:1163-1230` — anchor count indicator + refreshAllAnchorCounts()
-- `blocks.js:905` — вызов `Anchors.createBlockAnchorButtons(b.id, ta)`
-- `styles.css:402-433` — .block-anchor-count стили
-- `styles.css:489-502` — .current-line-wrap + textarea z-index
-- `styles.css:5341-5356` — anchor-marker-line/gutter z-index
-- `app.js:65-78` — fullRender() с `Anchors._renderMarkersAll()` в rAF
+
+- `translator.js` (~470 строк) — ядро переводчика
+- `diff-engine.js` (~183 строки) — модуль diff
+- `gist-sync.js` — anchorCount в stats/истории/сравнении
+- `help.js` — карточка якорей + хоткеи
+- `ui.js` — Preview, Search, Snapshots, Templates, **Structure menu**, **Translate integration**
+- `styles.css` — **.structure-active-bg**, **.translate-btn**, **.translate-dropdown**
+- `app.js` — dblclick на превью, init translator
+- `anchors.js` (~440 строк) — якоря
+- `blocks.js` — translate button в футере блока
+- `notepad.js` — translate button в toolbar
+- `llm-features.js` — translate button в мини-чате
 
 ## Architecture Decisions
-- Маркеры — DOM div-ы внутри `.current-line-wrap` (position:relative)
-- Mirror div: `box-sizing:content-box`, `border:none`, `padding:0`, `word-break:break-all`, width = `clientWidth - paddingLeft - paddingRight`
-- Y-координата = `paddingTop + mirror.scrollHeight` текста до последнего `\n`
-- Скролл навигации — `_measurePos(ta, s)` вместо подсчёта строк
-- `State.onLive` + `State.onChange` — оба слушателя для `_renderMarkersAll`
-- Palette: DOM-элементы (не innerHTML), двойной клик на ✕ для удаления
-- Индикатор якорей хранится на `body._anchorCountEl` (block-body div)
+
+- Diff: переиспользован LCS из llm-features.js
+- Code fence: `_closeOpenFences()` закрывает незакрытые ``` между блоками
+- XSS: `html: false` в marked + ручное экранирование `<`, `>`, `&` перед parse
+- Structure menu: плавный фон-индикатор пропорционально скроллу (не IntersectionObserver)
+- Translator: Google/MS/legacy fallback с debounce cache flush
+- Код-блоки (>80% контента в fence) исключены из структуры
 
 ## Known Limitations
-- Mirror div не учитывает `text-decoration`, `text-transform` — координаты могут немного отличаться при нестандартных шрифтах
-- Palette не группирует якоря по вкладкам (плоский список с preview)
 
-## Verification
-1. Открыть `index.html` в браузере
-2. Ввести 20+ строк текста, выделить на 15+ строке, нажать ⚓
-3. Проверить: полоса и подсветка совпадают с выделением
-4. Нажать ⚓ на другом блоке — счётчик обновляется, фон виден сразу
-5. Прокрутить — полоска цепляется за край
-6. Переключиться на другой блок — подсветка остаётся видимой
-7. Palette (длинное нажатие) — показывает все якоря, ✕ удаляет по двойному клику
-8. Навигация Ctrl+Shift+2 — переключает вкладку если якорь на другой
+- Diff показывает только активную подвкладку каждого блока
+- Palette якорей не группирует по вкладкам
+- Переводчик не поддерживает сохранение пары "оригинал→перевод" для long-press меню
 
-## Next Steps (возможные улучшения)
-1. Именование якорей — при установке вводить имя, показывать в palette
-2. Цветовые метки — 3 цвета как в userscript-образце
-3. Экспорт/импорт якорей в JSON
-4. Стрелки ↑↓ в palette для навигации, Enter — перейти, Delete — удалить
-5. Автоскролл к ближайшему якорю при переключении вкладки
+## Commits (последняя сессия)
 
-## Commits (Anchor feature)
 ```
-e166f1b Cleanup: remove old backups, _ai_context, unused packages
-b441b69 Fix anchor background: inline z-index in JS overrode CSS values
-8fe3604 Raise marker line z-index to 4, above gutter at 3
-4c21483 Fix anchor background highlight hidden behind textarea z-index
-72bc29e Fix anchor count update + background highlight immediate rendering
-d82e70c Add anchor count indicator per text block + increase counter font size
-365946d Anchor marker line stays visible when scrolling: clamped to top/bottom edge
-296a8f1 Anchor palette: replace tab name with double-click delete button
-f554607 Anchors work across all tabs: navigation, palette, clear, remove
-d3976ed Fix anchor navigation scroll: use _measurePos for wrap-aware Y
-dffa77c Fix anchor Y position: measure only lines before current line
-782b70d Fix anchor marker positioning: mirror div width and padding corrections
+(не зафиксированы — все изменения в working tree)
 ```

@@ -57,13 +57,16 @@ const Anchors = (() => {
     const end = ta.selectionEnd;
     const snippet = (ta.value || '').slice(start, Math.min(start + 30, end || start + 30)).replace(/\n/g, ' ');
 
+    const blk = _findBlockById(tab.blocks || [], blockId);
+    const subtabIdx = blk ? (blk.activeSubtab ?? null) : null;
+
     State.updateLive(t => {
       if (!t.anchors) t.anchors = [];
       t.anchors.push({
         id: uid(),
         tabId: tab.id,
         blockId: blockId,
-        subtabIdx: null,
+        subtabIdx: subtabIdx,
         start: start,
         end: end,
         snippet: snippet || '(пусто)',
@@ -89,17 +92,18 @@ const Anchors = (() => {
     const count = allAnchors.length;
     _navIdx = -1;
     State.updateLive(t => { t.anchors = []; });
-    State.getAll().forEach(t => { if (t !== State.getActive()) t.anchors = []; });
     Toast.show(`Удалено ${count} якорей ✓`, 'success');
     document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
     Blocks.refreshAllAnchorCounts();
   }
 
-  function _jumpToAnchor(anchor) {
+  function _jumpToAnchor(anchor, _depth) {
+    _depth = (_depth || 0) + 1;
+    if (_depth > 5) { Toast.show('Не удалось перейти к якорю', 'error'); return; }
     const tab = State.getActive();
     if (!tab || anchor.tabId !== tab.id) {
       State.setActive(anchor.tabId);
-      requestAnimationFrame(() => _jumpToAnchor(anchor));
+      requestAnimationFrame(() => _jumpToAnchor(anchor, _depth));
       return;
     }
     const blk = _findBlockById(tab.blocks, anchor.blockId);
@@ -131,14 +135,21 @@ const Anchors = (() => {
   }
 
   function removeAnchorById(anchorId) {
+    let removed = false;
     for (const tab of State.getAll()) {
       const anchors = tab.anchors || [];
       const idx = anchors.findIndex(a => a.id === anchorId);
       if (idx >= 0) {
-        anchors.splice(idx, 1);
+        if (tab === State.getActive()) {
+          State.updateLive(t => { t.anchors = t.anchors.filter(a => a.id !== anchorId); });
+        } else {
+          tab.anchors = anchors.filter(a => a.id !== anchorId);
+        }
+        removed = true;
         break;
       }
     }
+    if (!removed) return;
     const all = _getAllAnchors();
     if (_navIdx >= all.length) _navIdx = all.length - 1;
     _renderMarkersAll();
@@ -218,7 +229,12 @@ const Anchors = (() => {
       if (pr.right > window.innerWidth - 8) _palette.style.left = Math.max(4, window.innerWidth - pr.width - 8) + 'px';
       if (pr.bottom > window.innerHeight - 8) _palette.style.top = Math.max(4, rect.top - pr.height - 4) + 'px';
     });
-    setTimeout(() => document.addEventListener('click', _closePalette, { once: true }), 0);
+    setTimeout(() => {
+      const handler = ev => {
+        if (_palette && !_palette.contains(ev.target)) { _closePalette(); document.removeEventListener('mousedown', handler, true); }
+      };
+      document.addEventListener('mousedown', handler, true);
+    }, 100);
   }
 
   /* ---- mirror for line-wrap measurement ---- */
@@ -324,7 +340,7 @@ const Anchors = (() => {
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
 
-    blockAnchors.forEach(anchor => {
+    blockAnchors.forEach((anchor, localIdx) => {
       const pos = _measurePos(ta, anchor.start);
       const rawTop = pos.y - scrollY;
       const wrapH = wrap.clientHeight;

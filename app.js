@@ -451,6 +451,11 @@
   onClick('prev-md',       () => Preview.toggleMarkdown());
   onClick('prev-toggle',   () => Preview.toggleCollapse());
 
+  onEvent('preview-bar', 'dblclick', e => {
+    if (e.target.closest('button, .preview-controls')) return;
+    Preview.toggleCollapse();
+  });
+
   onClick('prev-download', () => {
     const text = Preview.getText();
     if (!text) return;
@@ -718,7 +723,7 @@
 
   // Конфигурируем marked: переносы строк + GFM (защита от повторной инициализации)
   if (typeof marked !== 'undefined' && !window.__markedConfiguredOnce) {
-    marked.use({ breaks: true, gfm: true });
+    marked.use({ breaks: true, gfm: true, html: false });
     window.__markedConfiguredOnce = true;
   }
 
@@ -735,6 +740,7 @@
   if (typeof GistSync !== 'undefined') GistSync.init();
   if (window.MemorySync?.init) window.MemorySync.init();
   if (typeof Anchors !== 'undefined') Anchors.init();
+  if (typeof Translator !== 'undefined') Translator.init();
 
   window.addEventListener('beforeunload', () => Storage.save(State.serialize()));
 
