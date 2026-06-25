@@ -402,7 +402,7 @@ const Ember = (() => {
   // ---------- частицы: микропепел ----------
 
   function spawnAshParticle() {
-    if (particles.length > 20) return;
+    if (particles.length > 35) return;
     const el = document.createElement('div');
     el.className = 'ember-ash';
     const startX = rand(25, 75);
@@ -435,14 +435,14 @@ const Ember = (() => {
       const opacity = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
       p.el.style.left = x + '%';
       p.el.style.top = y + '%';
-      p.el.style.opacity = (opacity * 0.85).toFixed(3);
+      p.el.style.opacity = (opacity * 0.95).toFixed(3);
     }
   }
 
   // ---------- частицы: искры ----------
 
   function spawnSpark() {
-    if (activeSparks >= 3) return;
+    if (activeSparks >= 5) return;
     const el = document.createElement('div');
     el.className = 'ember-spark';
     const startX = rand(30, 70);
@@ -533,25 +533,24 @@ const Ember = (() => {
     if (mInZone && !mouseInZone) {
       mouseInZone = true;
       mouseEnterTime = now;
-      cursorReactionCooldown = now + rand(300, 1200);
-      if (Math.random() < (1 - intensity) * 0.4) {
-        cursorReactionCooldown = now + rand(4000, 10000);
+      cursorReactionCooldown = now + rand(200, 600);
+      if (Math.random() < (1 - intensity) * 0.3) {
+        cursorReactionCooldown = now + rand(3000, 7000);
       }
     } else if (!mInZone) {
       mouseInZone = false;
     }
 
-    // цель для наклона — от позиции мыши
+    // наклон — ВСЕГДА когда мышь в зоне (без кулдауна)
     let targetLeanX = 0, targetLeanY = 0, targetSquish = 0;
-    if (mInZone && now > cursorReactionCooldown) {
+    if (mInZone) {
       const normX = clamp(mDx / CURSOR_ZONE_RADIUS, -1, 1);
       const normY = clamp(mDy / CURSOR_ZONE_RADIUS, -1, 1);
       const proximity = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
       const strength = proximity * proximity;
-      targetLeanX = normX * strength * 3.5;
-      targetLeanY = normY * strength * 2.5;
-      // сжатие когда курсор внизу
-      if (normY > 0.3) targetSquish = (normY - 0.3) * 0.25 * strength;
+      targetLeanX = normX * strength * 6;
+      targetLeanY = normY * strength * 4;
+      if (normY > 0.2) targetSquish = (normY - 0.2) * 0.35 * strength;
     }
 
     // typing approach — подхожу к каретке
@@ -559,40 +558,40 @@ const Ember = (() => {
       const cDx = caret.x - ember.x;
       const cDy = caret.y - ember.y;
       const cDist = Math.sqrt(cDx * cDx + cDy * cDy);
-      if (cDist > 15 && cDist < 500) {
+      if (cDist > 10 && cDist < 500) {
         const cNormX = clamp(cDx / cDist, -1, 1);
         const cNormY = clamp(cDy / cDist, -1, 1);
-        const cStrength = clamp(1 - cDist / 500, 0, 0.6);
-        targetLeanX += cNormX * cStrength * 2;
-        targetLeanY += cNormY * cStrength * 1.5;
+        const cStrength = clamp(1 - cDist / 500, 0, 0.7);
+        targetLeanX += cNormX * cStrength * 3;
+        targetLeanY += cNormY * cStrength * 2;
       }
     }
 
     // dodge — быстрое движение мыши
-    if (mouse.speed > 12 && mInZone && mDist < 80) {
-      const dodgeX = -normDX(mDx, mDist) * Math.min(mouse.speed * 0.08, 2);
-      const dodgeY = -normDY(mDy, mDist) * Math.min(mouse.speed * 0.06, 1.5);
+    if (mouse.speed > 10 && mInZone && mDist < 100) {
+      const dodgeX = -normDX(mDx, mDist) * Math.min(mouse.speed * 0.1, 2.5);
+      const dodgeY = -normDY(mDy, mDist) * Math.min(mouse.speed * 0.08, 2);
       targetLeanX += dodgeX;
       targetLeanY += dodgeY;
     }
 
     // startle — резкое появление мыши
-    if (mInZone && mouse.speed > 8 && now - mouseEnterTime < 300) {
-      targetLeanX += (Math.random() < 0.5 ? 1 : -1) * 1.5;
-      targetLeanY -= 1;
+    if (mInZone && mouse.speed > 8 && now - mouseEnterTime < 350) {
+      targetLeanX += (Math.random() < 0.5 ? 1 : -1) * 2;
+      targetLeanY -= 1.5;
     }
 
-    // плавная интерполяция
-    const lerpSpeed = clamp(dt * 0.0025, 0, 1);
+    // плавная интерполяция — БЫСТРАЯ
+    const lerpSpeed = clamp(dt * 0.007, 0, 1);
     cursorLean.x += (targetLeanX - cursorLean.x) * lerpSpeed;
     cursorLean.y += (targetLeanY - cursorLean.y) * lerpSpeed;
     cursorLean.squish += (targetSquish - cursorLean.squish) * lerpSpeed;
 
     // gaze following — тепловые зоны следят за курсором
-    if (mInZone && now > cursorReactionCooldown) {
+    if (mInZone) {
       const gStr = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
-      heatTargetX += normDX(mDx, mDist) * gStr * 0.3;
-      heatTargetY += normDY(mDy, mDist) * gStr * 0.3;
+      heatTargetX += normDX(mDx, mDist) * gStr * 0.5;
+      heatTargetY += normDY(mDy, mDist) * gStr * 0.5;
     }
   }
 
@@ -906,15 +905,15 @@ const Ember = (() => {
 
     // --- микропепел ---
     if (Date.now() > nextAshSpawn) {
-      if (Math.random() < 0.5) spawnAshParticle();
-      nextAshSpawn = Date.now() + rand(1500, 4000);
+      if (Math.random() < 0.7) spawnAshParticle();
+      nextAshSpawn = Date.now() + rand(500, 1200);
     }
     updateParticles(now);
 
     // --- искры ---
     if (Date.now() > nextSparkCheck) {
-      if (Math.random() < 0.25 && activeSparks < 3) spawnSpark();
-      nextSparkCheck = Date.now() + rand(20000, 50000);
+      if (Math.random() < 0.4 && activeSparks < 5) spawnSpark();
+      nextSparkCheck = Date.now() + rand(3000, 8000);
     }
     // подсчёт активных искр
     activeSparks = particles.filter(p => p.isSpark).length;
