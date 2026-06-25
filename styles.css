@@ -5658,3 +5658,51 @@ body.help-open {
   outline: 1px dashed rgba(255, 150, 70, 0.5);
   outline-offset: 3px;
 }
+
+/* ===== Частицы ===== */
+.ember-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 10;
+}
+
+.ember-ash {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  border-radius: 50%;
+  background: rgba(255, 180, 100, 0.35);
+  box-shadow: 0 0 2px rgba(255, 160, 80, 0.2);
+  opacity: 0;
+  transition: left 0.1s linear, top 0.1s linear;
+}
+
+.ember-spark {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(255, 200, 100, 0.9);
+  box-shadow: 0 0 4px rgba(255, 180, 80, 0.8), 0 0 8px rgba(255, 140, 40, 0.4);
+  animation: sparkRise 1s ease-out forwards;
+}
+
+@keyframes sparkRise {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  60% { opacity: 0.8; }
+  100% { transform: translateY(-6px) scale(0.3); opacity: 0; }
+}
+
+/* ===== Дрожание воздуха ===== */
+.ember-shimmer {
+  animation: shimmerPulse 3s ease-in-out;
+}
+
+@keyframes shimmerPulse {
+  0%, 100% { backdrop-filter: none; }
+  30% { backdrop-filter: blur(0.3px); }
+  60% { backdrop-filter: blur(0.4px); }
+  80% { backdrop-filter: blur(0.2px); }
+}

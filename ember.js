@@ -3,7 +3,8 @@
 // "Уголёк" — живой индикатор состояния проекта.
 // Один rAF-цикл: update() -> applyVariables() -> requestAnimationFrame.
 // Все случайные эффекты идут через единый менеджер с приоритетом и
-// лимитом в 2 одновременных эффекта (со взаимным вытеснением слотов).
+// лимитом в 3 одновременных эффекта (со взаимным вытеснением слотов).
+// ПКМ на уголёк — циклический запуск всех эффектов для тестирования.
 
 const Ember = (() => {
   'use strict';
@@ -15,10 +16,10 @@ const Ember = (() => {
   // --- приоритет эффектов: меньше число = выше приоритет ---
   const PRIORITY = {
     sigh: 1, calmBurn: 2, wiggle: 3, tilt: 4, microShift: 5,
+    crackle: 6, stretch: 7, glint: 8, sleepySag: 9,
+    smolder: 10, heatRadiance: 11, glowPulse: 12, ashDrift: 13,
   };
   const MAX_EFFECTS = 3;
-
-  // сегментные эффекты — отдельный пул, не конфликтует с ядром
 
   let state = null;
   let root = null;
@@ -27,13 +28,11 @@ const Ember = (() => {
   let glowEl = null;
   let ringEl = null;
   let coreEl = null;
+  let particleLayer = null;
 
   let hover = false;
   let hoverVal = 0;
-
   let intensity = 1;
-
-  // дыхание
   let breathPhase = 0;
 
   // блуждание горячей точки
@@ -48,23 +47,38 @@ const Ember = (() => {
   let heatBoost = 0;
   let resetTimer = null;
 
-  // сегменты (часы активности)
+  // сегменты
   let prevRemaining = 12;
 
-  // спавн при загрузке страницы
+  // спавн
   let spawnStart = 0;
 
-  // активные эффекты пула: Map<type, {phase, durMs, ...extra}>
+  // активные эффекты ядра
   const active = new Map();
   let nextDue = {};
 
   let tiltCurrent = 0;
   let tiltTarget = 0;
 
-  // --- сегментные эффекты ---
-  // Каждый сегментный эффект — это {type, segIdx, phase, durMs}
+  // сегментные эффекты
   let segmentEffects = [];
   let nextSegDue = {};
+
+  // частицы (микропепел + искры)
+  let particles = [];
+  let nextAshSpawn = 0;
+  let nextSparkCheck = 0;
+  let activeSparks = 0;
+
+  // дрожание воздуха
+  let shimmerActive = false;
+  let shimmerEnd = 0;
+  let nextShimmerCheck = 0;
+
+  // ПКМ тестирование
+  let testMode = false;
+  let testQueue = [];
+  let testIndex = 0;
 
   let channel = null;
   let rafId = null;
@@ -82,7 +96,7 @@ const Ember = (() => {
     return 1 - easeInQuad((t - holdEnd) / (1 - holdEnd));
   }
 
-  // ---------- состояние / синхронизация между вкладками ----------
+  // ---------- состояние / синхронизация ----------
 
   function loadState() {
     try {
@@ -177,31 +191,44 @@ const Ember = (() => {
     glowEl.className = 'ember-glow';
     coreEl.appendChild(glowEl);
 
+    particleLayer = document.createElement('div');
+    particleLayer.className = 'ember-particles';
+    particleLayer.setAttribute('aria-hidden', 'true');
+
     root.appendChild(ringEl);
     root.appendChild(coreEl);
+    root.appendChild(particleLayer);
     return root;
   }
 
-  // ---------- сегменты: каскадное появление ----------
+  // ---------- сегменты ----------
 
   function applySegments() {
     const remaining = remainingSegments();
-
     if (remaining > prevRemaining) {
       const added = remaining - prevRemaining;
       const totalWindow = clamp(300 + added * 20, 300, 500);
       const step = totalWindow / added;
       for (let i = prevRemaining; i < remaining; i++) {
-        const delay = (i - prevRemaining) * step;
-        segments[i].style.setProperty('--reveal-delay', delay.toFixed(0));
+        segments[i].style.setProperty('--reveal-delay', ((i - prevRemaining) * step).toFixed(0));
       }
     }
-
-    segments.forEach((seg, i) => {
-      seg.classList.toggle('active', i < remaining);
-    });
-
+    segments.forEach((seg, i) => seg.classList.toggle('active', i < remaining));
     prevRemaining = remaining;
+  }
+
+  function getActiveSegIndices() {
+    const rem = remainingSegments();
+    const arr = [];
+    for (let i = 0; i < rem; i++) arr.push(i);
+    return arr;
+  }
+
+  function getOffSegIndices() {
+    const rem = remainingSegments();
+    const arr = [];
+    for (let i = rem; i < 12; i++) arr.push(i);
+    return arr;
   }
 
   // ---------- блуждание тепловых зон ----------
@@ -232,48 +259,52 @@ const Ember = (() => {
     });
   }
 
-  // ---------- менеджер случайных эффектов (ядро) ----------
+  // ---------- менеджер эффектов ядра ----------
 
   function rescheduleDue(type) {
     const ranges = {
-      calmBurn: [15, 30],
-      sigh: [20, 40],
-      wiggle: [15, 30],
-      tilt: [20, 40],
-      microShift: [20, 40],
-      crackle: [30, 60],      // 30–60с
-      stretch: [40, 80],      // 40–80с
-      glint: [50, 90],        // 50–90с
-      sleepySag: [60, 120],   // 60–120с
+      calmBurn: [15, 30], sigh: [20, 40], wiggle: [15, 30],
+      tilt: [20, 40], microShift: [20, 40],
+      crackle: [30, 60], stretch: [40, 80], glint: [50, 90],
+      sleepySag: [60, 120],
+      smolder: [25, 50], heatRadiance: [35, 65],
+      glowPulse: [30, 55], ashDrift: [20, 45],
     };
     const slow = sleepSlowdown();
-    const [a, b] = ranges[type];
+    const [a, b] = ranges[type] || [30, 60];
     nextDue[type] = Date.now() + rand(a, b) * 1000 * slow;
   }
 
   function tryStart(type, probability, durRangeMs, extra) {
+    if (testMode) {
+      // в тестовом режиме — принудительный запуск из очереди
+      if (active.has(type)) return;
+      if (active.size >= MAX_EFFECTS) {
+        let worstType = null, worstPri = -1;
+        for (const t of active.keys()) {
+          if (PRIORITY[t] > worstPri) { worstPri = PRIORITY[t]; worstType = t; }
+        }
+        if (worstType && PRIORITY[worstType] > PRIORITY[type]) {
+          active.delete(worstType); rescheduleDue(worstType);
+        } else return;
+      }
+      active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRange[1] ?? durRangeMs[1]), ...extra });
+      return;
+    }
     const now = Date.now();
     if (active.has(type)) return;
     if ((nextDue[type] ?? 0) > now) return;
-
-    if (Math.random() >= probability) {
-      rescheduleDue(type);
-      return;
-    }
-
+    if (Math.random() >= probability) { rescheduleDue(type); return; }
     if (active.size >= MAX_EFFECTS) {
-      let worstType = null, worstPriority = -1;
+      let worstType = null, worstPri = -1;
       for (const t of active.keys()) {
-        if (PRIORITY[t] > worstPriority) { worstPriority = PRIORITY[t]; worstType = t; }
+        if (PRIORITY[t] > worstPri) { worstPri = PRIORITY[t]; worstType = t; }
       }
       if (worstType === null || PRIORITY[worstType] <= PRIORITY[type]) {
-        rescheduleDue(type);
-        return;
+        rescheduleDue(type); return;
       }
-      active.delete(worstType);
-      rescheduleDue(worstType);
+      active.delete(worstType); rescheduleDue(worstType);
     }
-
     active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]), ...extra });
   }
 
@@ -294,119 +325,199 @@ const Ember = (() => {
 
   function rescheduleSegDue(type) {
     const ranges = {
-      segTremor: [15, 30],       // 15–30с
-      segTryIgnite: [20, 40],    // 20–40с
-      segHeatRipple: [30, 50],   // 30–50с
-      segFlicker: [10, 25],      // 10–25с
-      segHeatWave: [25, 45],     // 25–45с
+      segTremor: [15, 30], segTryIgnite: [20, 40],
+      segHeatRipple: [30, 50], segFlicker: [10, 25],
+      segHeatWave: [25, 45],
     };
     const slow = sleepSlowdown();
-    const [a, b] = ranges[type];
+    const [a, b] = ranges[type] || [20, 40];
     nextSegDue[type] = Date.now() + rand(a, b) * 1000 * slow;
   }
 
-  function getActiveSegIndices() {
-    const rem = remainingSegments();
-    const arr = [];
-    for (let i = 0; i < rem; i++) arr.push(i);
-    return arr;
-  }
-
-  function getOffSegIndices() {
-    const rem = remainingSegments();
-    const arr = [];
-    for (let i = rem; i < 12; i++) arr.push(i);
-    return arr;
-  }
-
   function tryStartSeg(type, probability, durRangeMs, pickSeg) {
-    const now = Date.now();
     if (segmentEffects.some(e => e.type === type)) return;
-    if ((nextSegDue[type] ?? 0) > now) return;
-
-    if (Math.random() >= probability) {
-      rescheduleSegDue(type);
-      return;
-    }
-
+    if ((nextSegDue[type] ?? 0) > Date.now()) return;
+    if (Math.random() >= probability) { rescheduleSegDue(type); return; }
     const segIdx = pickSeg();
-    if (segIdx === null || segIdx === undefined) {
-      rescheduleSegDue(type);
-      return;
-    }
-
-    segmentEffects.push({
-      type, segIdx,
-      phase: 0,
-      durMs: rand(durRangeMs[0], durRangeMs[1]),
-    });
+    if (segIdx === null || segIdx === undefined) { rescheduleSegDue(type); return; }
+    segmentEffects.push({ type, segIdx, phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]) });
   }
 
   function advanceSegEffects(dt) {
     for (let i = segmentEffects.length - 1; i >= 0; i--) {
       const e = segmentEffects[i];
       e.phase = clamp(e.phase + dt / e.durMs, 0, 1);
-      if (e.phase >= 1) {
-        segmentEffects.splice(i, 1);
-        rescheduleSegDue(e.type);
-      }
+      if (e.phase >= 1) { segmentEffects.splice(i, 1); rescheduleSegDue(e.type); }
     }
   }
 
   function applySegEffects() {
-    // сброс всех стилей сегментов
     segments.forEach(seg => {
       seg.style.removeProperty('--seg-tilt');
       seg.style.removeProperty('--seg-flash');
       seg.style.removeProperty('--seg-dim');
       seg.style.removeProperty('--seg-brightness');
     });
-
     for (const e of segmentEffects) {
       const seg = segments[e.segIdx];
       if (!seg) continue;
-
       switch (e.type) {
-        case 'segTremor': {
-          // дрожание: ±3° за 300-500мс
-          const tilt = Math.sin(e.phase * Math.PI) * 3;
-          seg.style.setProperty('--seg-tilt', tilt.toFixed(2) + 'deg');
+        case 'segTremor':
+          seg.style.setProperty('--seg-tilt', (Math.sin(e.phase * Math.PI) * 3).toFixed(2) + 'deg');
           break;
-        }
-        case 'segTryIgnite': {
-          // попытка зажечься: вспышка и затухание
-          const flash = e.phase < 0.3
-            ? easeOutQuad(e.phase / 0.3)
-            : 1 - easeInQuad((e.phase - 0.3) / 0.7);
-          seg.style.setProperty('--seg-flash', flash.toFixed(3));
+        case 'segTryIgnite':
+          seg.style.setProperty('--seg-flash',
+            (e.phase < 0.3 ? easeOutQuad(e.phase / 0.3) : 1 - easeInQuad((e.phase - 0.3) / 0.7)).toFixed(3));
           break;
-        }
-        case 'segHeatRipple': {
-          // тепловая рябь: волна яркости
-          const wave = Math.sin(e.phase * Math.PI);
-          seg.style.setProperty('--seg-brightness', (1 + wave * 0.6).toFixed(3));
+        case 'segHeatRipple':
+          seg.style.setProperty('--seg-brightness', (1 + Math.sin(e.phase * Math.PI) * 0.6).toFixed(3));
           break;
-        }
-        case 'segFlicker': {
-          // мерцание: быстрое затухание-вспышка
-          const flick = 0.5 + 0.5 * Math.sin(e.phase * Math.PI * 6) * (1 - e.phase);
-          seg.style.setProperty('--seg-dim', flick.toFixed(3));
+        case 'segFlicker':
+          seg.style.setProperty('--seg-dim',
+            (0.5 + 0.5 * Math.sin(e.phase * Math.PI * 6) * (1 - e.phase)).toFixed(3));
           break;
-        }
         case 'segHeatWave': {
-          // волна тепла: пульс яркости проходит через все активные
           const activeIdx = getActiveSegIndices();
           const pos = e.phase * activeIdx.length;
           const localPhase = pos - Math.floor(pos);
           const wave = Math.sin(localPhase * Math.PI);
           const dist = Math.abs(e.segIdx - Math.floor(pos));
-          if (dist <= 1) {
+          if (dist <= 1)
             seg.style.setProperty('--seg-brightness', (1 + wave * 0.4 * (1 - dist)).toFixed(3));
-          }
           break;
         }
       }
     }
+  }
+
+  // ---------- частицы: микропепел ----------
+
+  function spawnAshParticle() {
+    if (particles.length > 15) return;
+    const el = document.createElement('div');
+    el.className = 'ember-ash';
+    const startX = rand(30, 70);
+    const startY = rand(30, 60);
+    el.style.left = startX + '%';
+    el.style.top = startY + '%';
+    particleLayer.appendChild(el);
+
+    const dur = rand(2000, 4000);
+    const driftX = rand(-8, 8);
+    const driftY = rand(-15, -5);
+    particles.push({
+      el, born: performance.now(), dur,
+      startX, startY, driftX, driftY,
+    });
+  }
+
+  function updateParticles(now) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      const age = now - p.born;
+      const t = clamp(age / p.dur, 0, 1);
+      if (t >= 1) {
+        p.el.remove();
+        particles.splice(i, 1);
+        continue;
+      }
+      const x = p.startX + p.driftX * t;
+      const y = p.startY + p.driftY * t;
+      const opacity = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
+      p.el.style.left = x + '%';
+      p.el.style.top = y + '%';
+      p.el.style.opacity = (opacity * 0.35).toFixed(3);
+    }
+  }
+
+  // ---------- частицы: искры ----------
+
+  function spawnSpark() {
+    if (activeSparks >= 3) return;
+    const el = document.createElement('div');
+    el.className = 'ember-spark';
+    const startX = rand(35, 65);
+    const startY = rand(25, 50);
+    el.style.left = startX + '%';
+    el.style.top = startY + '%';
+    particleLayer.appendChild(el);
+
+    const dur = rand(800, 1200);
+    const driftX = rand(-4, 4);
+    activeSparks++;
+    particles.push({
+      el, born: performance.now(), dur,
+      startX, startY, driftX, driftY: -6,
+      isSpark: true,
+    });
+  }
+
+  // ---------- дрожание воздуха ----------
+
+  function updateShimmer(now) {
+    if (!shimmerActive && now > nextShimmerCheck) {
+      if (Math.random() < 0.15) {
+        shimmerActive = true;
+        shimmerEnd = now + rand(2000, 4000);
+        root.classList.add('ember-shimmer');
+      }
+      nextShimmerCheck = now + rand(120000, 180000); // 2–3 мин
+    }
+    if (shimmerActive && now > shimmerEnd) {
+      shimmerActive = false;
+      root.classList.remove('ember-shimmer');
+    }
+  }
+
+  // ---------- ПКМ тестирование ----------
+
+  const TEST_EFFECTS = [
+    'sigh', 'calmBurn', 'wiggle', 'tilt', 'microShift',
+    'crackle', 'stretch', 'glint', 'sleepySag',
+    'smolder', 'heatRadiance', 'glowPulse', 'ashDrift',
+  ];
+
+  function startTestMode() {
+    testMode = true;
+    testQueue = [...TEST_EFFECTS];
+    testIndex = 0;
+    runNextTest();
+  }
+
+  function runNextTest() {
+    if (!testMode || testIndex >= testQueue.length) {
+      testMode = false;
+      return;
+    }
+    const type = testQueue[testIndex];
+    testIndex++;
+    const durRanges = {
+      sigh: [4000, 5000], calmBurn: [2000, 3000], wiggle: [700, 1000],
+      tilt: [2000, 2000], microShift: [1000, 2000],
+      crackle: [80, 150], stretch: [3000, 4000], glint: [2000, 3000],
+      sleepySag: [3000, 5000],
+      smolder: [3000, 4000], heatRadiance: [2500, 3500],
+      glowPulse: [2000, 3000], ashDrift: [3000, 4000],
+    };
+    const extra = type === 'tilt' ? { target: rand(-1, 1) }
+      : type === 'microShift' ? { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }
+      : type === 'ashDrift' ? { dx: rand(-3, 3) }
+      : {};
+    // принудительный запуск
+    if (active.size >= MAX_EFFECTS) {
+      let worst = null, worstP = -1;
+      for (const t of active.keys()) { if (PRIORITY[t] > worstP) { worstP = PRIORITY[t]; worst = t; } }
+      if (worst) { active.delete(worst); }
+    }
+    active.set(type, { phase: 0, durMs: rand(durRanges[type][0], durRanges[type][1]), ...extra });
+
+    // запускаем сегментные эффекты тоже
+    if (['segTremor', 'segFlicker'].includes(type)) {
+      const a = getActiveSegIndices();
+      if (a.length) segmentEffects.push({ type, segIdx: a[Math.floor(Math.random() * a.length)], phase: 0, durMs: rand(300, 500) });
+    }
+
+    setTimeout(runNextTest, 1200);
   }
 
   // ---------- основной кадр ----------
@@ -414,7 +525,7 @@ const Ember = (() => {
   function update(now, dt) {
     intensity = calcIntensity();
 
-    // спавн страницы
+    // спавн
     const since = now - spawnStart;
     const spawnCore = clamp(since / 500, 0, 1);
     const spawnGlow = clamp((since - 400) / 500, 0, 1);
@@ -424,7 +535,7 @@ const Ember = (() => {
     const hoverStep = clamp(dt / 300, 0, 1);
     hoverVal += hover ? (1 - hoverVal) * hoverStep : (0 - hoverVal) * hoverStep;
 
-    // дыхание
+    // дыхание (~4-5с)
     const speedMult = (1 + hoverVal * 0.8) / sleepSlowdown();
     const breathBase = intensity > 0.3 ? 0.00055 : 0.0002;
     breathPhase += breathBase * speedMult * dt;
@@ -432,21 +543,24 @@ const Ember = (() => {
     const breathScale = 1 + Math.sin(breathPhase * 2.5) * 0.012 * intensity + hoverBreath;
 
     updateHeatZones(dt);
-
     if (heatBoost > 0) heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
 
-    // --- эффекты ядра ---
-    tryStart('sigh', 0.5, [4000, 5000]);
-    tryStart('calmBurn', 0.8, [2000, 3000]);
-    if (intensity > 0.5) tryStart('wiggle', 0.3, [700, 1000]);
-    tryStart('tilt', 0.25, [2000, 2000], { target: rand(-1, 1) });
-    tryStart('microShift', 0.2, [1000, 2000], { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) });
-
-    // новые эффекты ядра — высокие вероятности для видимости
-    tryStart('crackle', 0.4, [80, 150]);          // потрескивание
-    tryStart('stretch', 0.35, [3000, 4000]);      // растяжка/зевок
-    tryStart('glint', 0.3, [2000, 3000]);         // отблеск
-    if (intensity < 0.4) tryStart('sleepySag', 0.25, [3000, 5000]); // сонная просадка
+    // --- эффекты ядра (только в автоматическом режиме) ---
+    if (!testMode) {
+      tryStart('sigh', 0.5, [4000, 5000]);
+      tryStart('calmBurn', 0.8, [2000, 3000]);
+      if (intensity > 0.5) tryStart('wiggle', 0.3, [700, 1000]);
+      tryStart('tilt', 0.25, [2000, 2000], { target: rand(-1, 1) });
+      tryStart('microShift', 0.2, [1000, 2000], { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) });
+      tryStart('crackle', 0.4, [80, 150]);
+      tryStart('stretch', 0.35, [3000, 4000]);
+      tryStart('glint', 0.3, [2000, 3000]);
+      if (intensity < 0.4) tryStart('sleepySag', 0.25, [3000, 5000]);
+      tryStart('smolder', 0.3, [3000, 4000]);
+      tryStart('heatRadiance', 0.25, [2500, 3500]);
+      tryStart('glowPulse', 0.3, [2000, 3000]);
+      tryStart('ashDrift', 0.3, [3000, 4000], { dx: rand(-3, 3) });
+    }
 
     const sigh = advanceEffect('sigh', dt);
     const calmBurn = advanceEffect('calmBurn', dt);
@@ -458,6 +572,10 @@ const Ember = (() => {
     const stretch = advanceEffect('stretch', dt);
     const glint = advanceEffect('glint', dt);
     const sleepySag = advanceEffect('sleepySag', dt);
+    const smolder = advanceEffect('smolder', dt);
+    const heatRadiance = advanceEffect('heatRadiance', dt);
+    const glowPulse = advanceEffect('glowPulse', dt);
+    const ashDrift = advanceEffect('ashDrift', dt);
 
     // --- композиция ---
 
@@ -465,19 +583,19 @@ const Ember = (() => {
     let scaleX = 1, scaleY = 1;
     if (wiggle) {
       const pts = [[1, 1], [0.98, 1.02], [1.01, 0.99], [1, 1]];
-      const seg = wiggle.phase * (pts.length - 1);
-      const i0 = Math.floor(seg), i1 = Math.min(i0 + 1, pts.length - 1);
-      const lt = seg - i0;
+      const s = wiggle.phase * (pts.length - 1);
+      const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
+      const lt = s - i0;
       scaleX = pts[i0][0] + (pts[i1][0] - pts[i0][0]) * lt;
       scaleY = pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
     }
 
-    // растяжка/зевок: scaleY 1→1.03→0.98→1
+    // растяжка/зевок
     if (stretch) {
       const pts = [[1, 1], [1.03, 1], [0.98, 1], [1, 1]];
-      const seg = stretch.phase * (pts.length - 1);
-      const i0 = Math.floor(seg), i1 = Math.min(i0 + 1, pts.length - 1);
-      const lt = seg - i0;
+      const s = stretch.phase * (pts.length - 1);
+      const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
+      const lt = s - i0;
       scaleY *= pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
     }
 
@@ -490,16 +608,29 @@ const Ember = (() => {
     const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.06 : 0;
     const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.1 : 0;
 
-    // потрескивание: резкий блик яркости ~100мс
+    // потрескивание
     const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 0.8 : 0;
 
-    // отблеск: hue-rotate/saturate сдвиг
+    // отблеск
     const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 15 : 0;
     const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.25 : 0;
 
-    // сонная просадка: оседание scaleY + приглушение
+    // сонная просадка
     const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.035 : 1;
     const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.15 : 0;
+
+    // тление: пульсация hue между оранжевым и красным
+    const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * 10 : 0;
+    const smolderSat = smolder ? bump(smolder.phase, 0.2, 0.8) * 0.12 : 0;
+
+    // тепловое излучение: расширение glow
+    const radianceGlow = heatRadiance ? bump(heatRadiance.phase, 0.3, 0.7) * 0.2 : 0;
+
+    // пульс свечения: кратковременное увеличение glow
+    const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.15 : 0;
+
+    // дрейф пепла: смещение核心区
+    const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) : 0;
 
     // поворот
     if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
@@ -512,7 +643,7 @@ const Ember = (() => {
     const finalScaleY = breathScale * scaleY * calmMult * sighMult * sleepyMult;
 
     const heat = clamp(intensity + heatBoost * 0.25, 0, 1);
-    const glow = clamp(intensity + heatBoost * 0.3 + sighGlow + hoverVal * 0.15, 0, 1.2);
+    const glow = clamp(intensity + heatBoost * 0.3 + sighGlow + hoverVal * 0.15 + radianceGlow + glowPulseMult, 0, 1.4);
 
     const brightness = clamp(
       0.7 + intensity * 0.3 + calmBright + sighBright + crackleBright + sleepyBright
@@ -520,7 +651,7 @@ const Ember = (() => {
       0.35, 1.8
     );
 
-    const shiftX = heatOffsetX * 0.6 + microShiftPx;
+    const shiftX = heatOffsetX * 0.6 + microShiftPx + ashDriftX;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5;
 
     // --- запись переменных ---
@@ -538,18 +669,20 @@ const Ember = (() => {
     root.style.setProperty('--scaleX', finalScaleX.toFixed(4));
     root.style.setProperty('--scaleY', finalScaleY.toFixed(4));
     root.style.setProperty('--brightness', brightness.toFixed(3));
-    root.style.setProperty('--glowOpacity', (1 + hoverVal * 0.15).toFixed(3));
-    root.style.setProperty('--glowBlur', (5 + hoverVal * 1.5).toFixed(2) + 'px');
-    root.style.setProperty('--glowScale', (1 + hoverVal * 0.08).toFixed(3));
+    root.style.setProperty('--glowOpacity', (1 + hoverVal * 0.15 + radianceGlow).toFixed(3));
+    root.style.setProperty('--glowBlur', (5 + hoverVal * 1.5 + radianceGlow * 3).toFixed(2) + 'px');
+    root.style.setProperty('--glowScale', (1 + hoverVal * 0.08 + radianceGlow * 0.15).toFixed(3));
     root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
 
     root.style.setProperty('--spawnCore', spawnCore.toFixed(3));
     root.style.setProperty('--spawnGlow', spawnGlow.toFixed(3));
     root.style.setProperty('--spawnRing', spawnRing.toFixed(3));
 
-    // отблеск: фильтр на core
-    if (glintHue || glintSat) {
-      coreEl.style.filter = `hue-rotate(${glintHue.toFixed(1)}deg) saturate(${(1 + glintSat).toFixed(3)})`;
+    // отблеск + тление на core
+    const totalHue = glintHue + smolderHue;
+    const totalSat = glintSat + smolderSat;
+    if (totalHue || totalSat) {
+      coreEl.style.filter = `hue-rotate(${totalHue.toFixed(1)}deg) saturate(${(1 + totalSat).toFixed(3)})`;
     } else {
       coreEl.style.filter = '';
     }
@@ -557,47 +690,49 @@ const Ember = (() => {
     applySegments();
 
     // --- сегментные эффекты ---
-    tryStartSeg('segTremor', 0.35, [300, 500], () => {
-      const active = getActiveSegIndices();
-      return active.length ? active[Math.floor(Math.random() * active.length)] : null;
-    });
-    tryStartSeg('segTryIgnite', 0.3, [200, 400], () => {
-      const off = getOffSegIndices();
-      return off.length ? off[0] : null;
-    });
-    tryStartSeg('segHeatRipple', 0.25, [400, 600], () => {
-      const active = getActiveSegIndices();
-      if (active.length < 2) return null;
-      return active[Math.floor(Math.random() * (active.length - 1))];
-    });
-    tryStartSeg('segFlicker', 0.4, [300, 500], () => {
-      const active = getActiveSegIndices();
-      return active.length ? active[Math.floor(Math.random() * active.length)] : null;
-    });
-    tryStartSeg('segHeatWave', 0.25, [600, 900], () => {
-      const active = getActiveSegIndices();
-      return active.length >= 3 ? 0 : null;
-    });
-    tryStartSeg('segTryIgnite', 0.1, [200, 400], () => {
-      const off = getOffSegIndices();
-      return off.length ? off[0] : null; // первый выключенный (граничный)
-    });
-    tryStartSeg('segHeatRipple', 0.08, [400, 600], () => {
-      const active = getActiveSegIndices();
-      if (active.length < 2) return null;
-      return active[Math.floor(Math.random() * (active.length - 1))]; // 시작점
-    });
-    tryStartSeg('segFlicker', 0.15, [300, 500], () => {
-      const active = getActiveSegIndices();
-      return active.length ? active[Math.floor(Math.random() * active.length)] : null;
-    });
-    tryStartSeg('segHeatWave', 0.08, [600, 900], () => {
-      const active = getActiveSegIndices();
-      return active.length >= 3 ? 0 : null; // начинается с 0, проходит через все
-    });
+    if (!testMode) {
+      tryStartSeg('segTremor', 0.35, [300, 500], () => {
+        const a = getActiveSegIndices();
+        return a.length ? a[Math.floor(Math.random() * a.length)] : null;
+      });
+      tryStartSeg('segTryIgnite', 0.3, [200, 400], () => {
+        const o = getOffSegIndices();
+        return o.length ? o[0] : null;
+      });
+      tryStartSeg('segHeatRipple', 0.25, [400, 600], () => {
+        const a = getActiveSegIndices();
+        return a.length >= 2 ? a[Math.floor(Math.random() * (a.length - 1))] : null;
+      });
+      tryStartSeg('segFlicker', 0.4, [300, 500], () => {
+        const a = getActiveSegIndices();
+        return a.length ? a[Math.floor(Math.random() * a.length)] : null;
+      });
+      tryStartSeg('segHeatWave', 0.25, [600, 900], () => {
+        const a = getActiveSegIndices();
+        return a.length >= 3 ? 0 : null;
+      });
+    }
 
     advanceSegEffects(dt);
     applySegEffects();
+
+    // --- микропепел ---
+    if (Date.now() > nextAshSpawn) {
+      if (Math.random() < 0.3) spawnAshParticle();
+      nextAshSpawn = Date.now() + rand(3000, 8000);
+    }
+    updateParticles(now);
+
+    // --- искры ---
+    if (Date.now() > nextSparkCheck) {
+      if (Math.random() < 0.15 && activeSparks < 3) spawnSpark();
+      nextSparkCheck = Date.now() + rand(40000, 90000);
+    }
+    // подсчёт активных искр
+    activeSparks = particles.filter(p => p.isSpark).length;
+
+    // --- дрожание воздуха ---
+    updateShimmer(now);
   }
 
   function animate(timestamp) {
@@ -625,6 +760,12 @@ const Ember = (() => {
     root.addEventListener('focus', () => { hover = true; });
     root.addEventListener('blur', () => { hover = false; });
 
+    // ПКМ — тестовый режим
+    root.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (!testMode) startTestMode();
+    });
+
     const isEditable = (el) =>
       el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
 
@@ -649,7 +790,6 @@ const Ember = (() => {
     spawnStart = performance.now();
     lastFrame = 0;
 
-    // инициализация расписаний сегментных эффектов
     ['segTremor', 'segTryIgnite', 'segHeatRipple', 'segFlicker', 'segHeatWave']
       .forEach(rescheduleSegDue);
 
@@ -660,6 +800,8 @@ const Ember = (() => {
     if (rafId) cancelAnimationFrame(rafId);
     if (channel) { try { channel.close(); } catch {} }
     clearTimeout(resetTimer);
+    particles.forEach(p => p.el.remove());
+    particles = [];
   }
 
   return { init, destroy, notifyEdit };
