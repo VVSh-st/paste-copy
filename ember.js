@@ -76,12 +76,13 @@ const Ember = (() => {
   let nextShimmerCheck = 0;
 
   // отслеживание курсора
-  const mouse = { x: 0, y: 0, lastSampleX: 0, lastSampleY: 0, lastSampleTime: 0, speed: 0, active: false };
-  const caret = { x: 0, y: 0, active: false, typing: false, lastTypingEnd: 0 };
-  const cursorLean = { x: 0, y: 0, squish: 0 };
+  const mouse = { x: 0, y: 0, lastSampleX: 0, lastSampleY: 0, lastSampleTime: 0, speed: 0 };
+  const caret = { x: 0, y: 0, active: false, typing: false, _typingTimer: null };
+  const cursorLean = { x: 0, y: 0, squish: 0, scale: 1, tiltX: 0, tiltY: 0 };
   let cursorReactionCooldown = 0;
   let mouseEnterTime = 0;
   let mouseInZone = false;
+  let lastMouseDist = 999;
 
   // ПКМ тестирование
   let testMode = false;
@@ -480,9 +481,9 @@ const Ember = (() => {
 
   // ---------- отслеживание курсора ----------
 
-  const CURSOR_SAMPLE_INTERVAL = 80;
-  const CURSOR_ZONE_RADIUS = 200;
-  const CARET_SAMPLE_INTERVAL = 100;
+  const CURSOR_SAMPLE_INTERVAL = 60;
+  const CURSOR_ZONE_RADIUS = 250;
+  const CARET_SAMPLE_INTERVAL = 80;
   let nextMouseSample = 0;
   let nextCaretSample = 0;
 
@@ -491,8 +492,8 @@ const Ember = (() => {
     nextMouseSample = now + CURSOR_SAMPLE_INTERVAL;
     const dx = mouse.x - mouse.lastSampleX;
     const dy = mouse.y - mouse.lastSampleY;
-    const dt = now - mouse.lastSampleTime || 1;
-    mouse.speed = Math.sqrt(dx * dx + dy * dy) / (dt / 16.7);
+    const elapsed = now - mouse.lastSampleTime || 1;
+    mouse.speed = Math.sqrt(dx * dx + dy * dy) / (elapsed / 16.7);
     mouse.lastSampleX = mouse.x;
     mouse.lastSampleY = mouse.y;
     mouse.lastSampleTime = now;
@@ -520,83 +521,105 @@ const Ember = (() => {
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
+  function normD(dx, dy, dist) { return dist > 0 ? { x: dx / dist, y: dy / dist } : { x: 0, y: 0 }; }
+
   function updateCursorLean(now, dt) {
     const ember = getEmberCenter();
-
-    // мышь в зоне?
     const mDx = mouse.x - ember.x;
     const mDy = mouse.y - ember.y;
     const mDist = Math.sqrt(mDx * mDx + mDy * mDy);
     const mInZone = mDist < CURSOR_ZONE_RADIUS;
 
-    // входим в зону — решаем реагировать или нет
     if (mInZone && !mouseInZone) {
       mouseInZone = true;
       mouseEnterTime = now;
-      cursorReactionCooldown = now + rand(200, 600);
-      if (Math.random() < (1 - intensity) * 0.3) {
-        cursorReactionCooldown = now + rand(3000, 7000);
+      cursorReactionCooldown = now + rand(150, 400);
+      if (Math.random() < (1 - intensity) * 0.25) {
+        cursorReactionCooldown = now + rand(2000, 5000);
       }
     } else if (!mInZone) {
       mouseInZone = false;
     }
 
-    // наклон — ВСЕГДА когда мышь в зоне (без кулдауна)
+    const approaching = mInZone && mDist < lastMouseDist;
+    const receding = mInZone && mDist > lastMouseDist + 5;
+    lastMouseDist = mDist;
+
     let targetLeanX = 0, targetLeanY = 0, targetSquish = 0;
-    if (mInZone) {
-      const normX = clamp(mDx / CURSOR_ZONE_RADIUS, -1, 1);
-      const normY = clamp(mDy / CURSOR_ZONE_RADIUS, -1, 1);
+    let targetScale = 1, targetTiltX = 0, targetTiltY = 0;
+
+    if (mInZone && now > cursorReactionCooldown) {
+      const norm = normD(mDx, mDy, mDist);
       const proximity = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
-      const strength = proximity * proximity;
-      targetLeanX = normX * strength * 6;
-      targetLeanY = normY * strength * 4;
-      if (normY > 0.2) targetSquish = (normY - 0.2) * 0.35 * strength;
+      const str = proximity * proximity;
+
+      const isFastApproach = mouse.speed > 12 && approaching && mDist < 120;
+      const isCloseAndFast = mouse.speed > 8 && mDist < 80;
+
+      if (isFastApproach || isCloseAndFast) {
+        // страх: отпрыгиваем НАЗАД от мыши + вздрагиваем
+        targetLeanX = -norm.x * str * 14;
+        targetLeanY = -norm.y * str * 10;
+        targetScale = 1 - str * 0.15;
+        targetTiltX = -norm.y * str * 8;
+        targetTiltY = norm.x * str * 8;
+        if (mDist < 60 && Math.random() < 0.3) {
+          for (let i = 0; i < 2; i++) spawnSpark();
+        }
+      } else if (approaching || mDist < 120) {
+        // любопытство: наклоняемся К мыши
+        targetLeanX = norm.x * str * 8;
+        targetLeanY = norm.y * str * 6;
+        targetScale = 1 + str * 0.08;
+        targetTiltX = norm.y * str * 5;
+        targetTiltY = -norm.x * str * 5;
+      } else if (receding) {
+        // мышь уходит — тянемся следом слегка
+        targetLeanX = norm.x * str * 3;
+        targetLeanY = norm.y * str * 2;
+      }
+
+      if (norm.y > 0.2) targetSquish = (norm.y - 0.2) * 0.4 * str;
     }
 
-    // typing approach — подхожу к каретке
     if (caret.active && caret.typing) {
       const cDx = caret.x - ember.x;
       const cDy = caret.y - ember.y;
       const cDist = Math.sqrt(cDx * cDx + cDy * cDy);
-      if (cDist > 10 && cDist < 500) {
-        const cNormX = clamp(cDx / cDist, -1, 1);
-        const cNormY = clamp(cDy / cDist, -1, 1);
-        const cStrength = clamp(1 - cDist / 500, 0, 0.7);
-        targetLeanX += cNormX * cStrength * 3;
-        targetLeanY += cNormY * cStrength * 2;
+      if (cDist > 10 && cDist < 400) {
+        const cn = normD(cDx, cDy, cDist);
+        const cs = clamp(1 - cDist / 400, 0, 0.6);
+        targetLeanX += cn.x * cs * 4;
+        targetLeanY += cn.y * cs * 3;
       }
     }
 
-    // dodge — быстрое движение мыши
-    if (mouse.speed > 10 && mInZone && mDist < 100) {
-      const dodgeX = -normDX(mDx, mDist) * Math.min(mouse.speed * 0.1, 2.5);
-      const dodgeY = -normDY(mDy, mDist) * Math.min(mouse.speed * 0.08, 2);
-      targetLeanX += dodgeX;
-      targetLeanY += dodgeY;
+    if (mouse.speed > 10 && mInZone && mDist < 80) {
+      const norm = normD(mDx, mDy, mDist);
+      const dodge = Math.min(mouse.speed * 0.06, 1.5);
+      targetLeanX -= norm.x * dodge;
+      targetLeanY -= norm.y * dodge;
     }
 
-    // startle — резкое появление мыши
-    if (mInZone && mouse.speed > 8 && now - mouseEnterTime < 350) {
-      targetLeanX += (Math.random() < 0.5 ? 1 : -1) * 2;
-      targetLeanY -= 1.5;
-    }
+    const spd = clamp(dt * 0.008, 0, 1);
+    const spdFast = clamp(dt * 0.018, 0, 1);
+    const isFleeing = (mouse.speed > 12 && approaching && mDist < 120) || (mouse.speed > 8 && mDist < 80);
+    const lerp = isFleeing ? spdFast : spd;
 
-    // плавная интерполяция — БЫСТРАЯ
-    const lerpSpeed = clamp(dt * 0.007, 0, 1);
-    cursorLean.x += (targetLeanX - cursorLean.x) * lerpSpeed;
-    cursorLean.y += (targetLeanY - cursorLean.y) * lerpSpeed;
-    cursorLean.squish += (targetSquish - cursorLean.squish) * lerpSpeed;
+    cursorLean.x += (targetLeanX - cursorLean.x) * lerp;
+    cursorLean.y += (targetLeanY - cursorLean.y) * lerp;
+    cursorLean.squish += (targetSquish - cursorLean.squish) * lerp;
+    cursorLean.scale += (targetScale - cursorLean.scale) * (isFleeing ? spdFast : clamp(dt * 0.005, 0, 1));
+    cursorLean.tiltX += (targetTiltX - cursorLean.tiltX) * lerp;
+    cursorLean.tiltY += (targetTiltY - cursorLean.tiltY) * lerp;
 
-    // gaze following — тепловые зоны следят за курсором
     if (mInZone) {
       const gStr = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
-      heatTargetX += normDX(mDx, mDist) * gStr * 0.5;
-      heatTargetY += normDY(mDy, mDist) * gStr * 0.5;
+      const norm = normD(mDx, mDy, mDist);
+      heatTargetX += norm.x * gStr * 0.6;
+      heatTargetY += norm.y * gStr * 0.6;
     }
   }
-
-  function normDX(dx, dist) { return dist > 0 ? dx / dist : 0; }
-  function normDY(dy, dist) { return dist > 0 ? dy / dist : 0; }
 
   // ---------- ПКМ тестирование ----------
 
@@ -760,12 +783,12 @@ const Ember = (() => {
     const ashDrift = advanceEffect('ashDrift', dt);
 
     // --- композиция ---
-    const tm = testMode ? 5 : 1; // тестовый режим: усиление в 5 раз
+    const tm = testMode ? 5 : 1;
 
-    // поёживание — усилено
+    // поёживание — заметное дрожание
     let scaleX = 1, scaleY = 1;
     if (wiggle) {
-      const pts = [[1, 1], [0.96, 1.04], [1.02, 0.98], [1, 1]];
+      const pts = [[1, 1], [0.92, 1.07], [1.05, 0.95], [0.97, 1.03], [1, 1]];
       const s = wiggle.phase * (pts.length - 1);
       const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
       const lt = s - i0;
@@ -773,34 +796,43 @@ const Ember = (() => {
       scaleY = pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
     }
 
-    // растяжка/зевок — усилено
+    // растяжка/зевок — сильное вертикальное растяжение
     if (stretch) {
-      const pts = [[1, 1], [1.06, 1], [0.95, 1], [1, 1]];
+      const pts = [[1, 1], [1.12, 0.92], [0.9, 1.08], [1, 1]];
       const s = stretch.phase * (pts.length - 1);
       const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
       const lt = s - i0;
+      scaleX *= pts[i0][0] + (pts[i1][0] - pts[i0][0]) * lt;
       scaleY *= pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
     }
 
-    // спокойное горение
-    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.04 * tm : 1;
-    const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.2 * tm : 0;
+    // вздрагивание (crackle) — резкий scale spike
+    let crackleScale = 1;
+    if (crackle) {
+      const p = crackle.phase;
+      const spike = p < 0.15 ? 1 + p / 0.15 * 0.12 : 1 + (1 - (p - 0.15) / 0.85) * 0.12;
+      crackleScale = spike;
+    }
 
-    // вздох
-    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.03 * tm : 1;
-    const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.15 * tm : 0;
-    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.25 * tm : 0;
+    // спокойное горение — пульс размера
+    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.06 * tm : 1;
+    const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.15 * tm : 0;
 
-    // потрескивание — яркая вспышка
-    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 1.5 * tm : 0;
+    // вздох — расширение + сжатие
+    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.05 * tm : 1;
+    const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.12 * tm : 0;
+    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.2 * tm : 0;
 
-    // отблеск — насыщенность
+    // потрескивание — яркая вспышка + scale
+    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 1.2 * tm : 0;
+
+    // отблеск — насыщенность + лёгкий scale
     const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 25 * tm : 0;
     const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.4 * tm : 0;
 
-    // сонная просадка
-    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.05 * tm : 1;
-    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.25 * tm : 0;
+    // сонная просадка — сжимается
+    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.08 * tm : 1;
+    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.2 * tm : 0;
 
     // тление
     const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * 20 * tm : 0;
@@ -810,7 +842,7 @@ const Ember = (() => {
     const radianceGlow = heatRadiance ? bump(heatRadiance.phase, 0.3, 0.7) * 0.4 * tm : 0;
 
     // пульс свечения
-    const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.35 * tm : 0;
+    const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.3 * tm : 0;
 
     // дрейф пепла
     const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) * 2 * tm : 0;
@@ -822,8 +854,8 @@ const Ember = (() => {
     // микросмещение
     const microShiftPx = microShift ? bump(microShift.phase, 0.5, 0.5) * (microShift.dx ?? 0.5) : 0;
 
-    const finalScaleX = breathScale * scaleX * calmMult * sighMult * sleepyMult;
-    const finalScaleY = breathScale * scaleY * calmMult * sighMult * sleepyMult;
+    const finalScaleX = breathScale * scaleX * calmMult * sighMult * sleepyMult * crackleScale * cursorLean.scale;
+    const finalScaleY = breathScale * scaleY * calmMult * sighMult * sleepyMult * crackleScale * cursorLean.scale;
 
     const heat = clamp(intensity + heatBoost * 0.25, 0, 1);
     const glow = clamp(intensity + heatBoost * 0.3 + sighGlow + hoverVal * 0.15 + radianceGlow + glowPulseMult, 0, 1.8);
@@ -846,8 +878,8 @@ const Ember = (() => {
     root.style.setProperty('--shiftY', shiftY.toFixed(2) + 'px');
     root.style.setProperty('--breathScale', breathScale.toFixed(4));
     root.style.setProperty('--rotation', tiltCurrent.toFixed(2) + 'deg');
-    root.style.setProperty('--tiltX', (microShiftPx * 1.5).toFixed(2) + 'deg');
-    root.style.setProperty('--tiltY', (tiltCurrent * 0.6).toFixed(2) + 'deg');
+    root.style.setProperty('--tiltX', (microShiftPx * 1.5 + cursorLean.tiltX).toFixed(2) + 'deg');
+    root.style.setProperty('--tiltY', (tiltCurrent * 0.6 + cursorLean.tiltY).toFixed(2) + 'deg');
 
     root.style.setProperty('--scaleX', finalScaleX.toFixed(4));
     root.style.setProperty('--scaleY', finalScaleY.toFixed(4));
@@ -857,9 +889,12 @@ const Ember = (() => {
     root.style.setProperty('--glowScale', (1 + hoverVal * 0.08 + radianceGlow * 0.15).toFixed(3));
     root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
 
-    root.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(2));
-    root.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(2));
+    root.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(1));
+    root.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(1));
     root.style.setProperty('--cursorSquish', cursorLean.squish.toFixed(3));
+    root.style.setProperty('--cursorScale', cursorLean.scale.toFixed(3));
+    root.style.setProperty('--cursorTiltX', cursorLean.tiltX.toFixed(1));
+    root.style.setProperty('--cursorTiltY', cursorLean.tiltY.toFixed(1));
 
     root.style.setProperty('--spawnCore', spawnCore.toFixed(3));
     root.style.setProperty('--spawnGlow', spawnGlow.toFixed(3));
