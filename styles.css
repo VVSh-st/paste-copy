@@ -5564,9 +5564,13 @@ body.help-open {
   margin-left: -2.25px;
   border-radius: 1px;
   background: rgba(130, 70, 45, 0.5);
-  transform: rotate(calc(var(--i, 0) * 30deg)) translateY(-14px);
-  opacity: 0.35;
-  filter: brightness(1) drop-shadow(0 0 0 rgba(255, 120, 40, 0));
+  transform:
+    rotate(calc(var(--i, 0) * 30deg + var(--seg-tilt, 0deg)))
+    translateY(-14px);
+  opacity: calc(0.35 + var(--seg-flash, 0) * 0.65 - var(--seg-dim, 0) * 0.35);
+  filter:
+    brightness(calc(1 + var(--seg-brightness, 0) - 1))
+    drop-shadow(0 0 calc(var(--seg-flash, 0) * 3px) rgba(255, 150, 60, calc(var(--seg-flash, 0) * 0.9)));
   transition:
     opacity 0.35s ease,
     background-color 0.35s ease,
@@ -5576,8 +5580,10 @@ body.help-open {
 
 .segment.active {
   background: rgba(255, 150, 70, 0.95);
-  opacity: 1;
-  filter: brightness(1.35) drop-shadow(0 0 2.5px rgba(255, 120, 40, 0.8));
+  opacity: calc(1 + var(--seg-flash, 0) * 0.5 - var(--seg-dim, 0) * 0.5);
+  filter:
+    brightness(calc(1.35 + var(--seg-brightness, 0) * 0.5))
+    drop-shadow(0 0 calc(2.5px + var(--seg-flash, 0) * 4px) rgba(255, 120, 40, calc(0.8 + var(--seg-flash, 0) * 0.2)));
 }
 
 .ember-core {
