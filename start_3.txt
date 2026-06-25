@@ -1,0 +1,12 @@
+Работаем с проектом "E:\CODE\Paste_copy". Прочитай HANDOFF.md — там полный статус.
+Мне отвечай по русски.
+Делай backup в .git после каждого задания (скриншоты такого вида не сохраняй "E:\CODE\Paste_copy\2026-06-21_20-35.jpg").
+Проект — веб-приложение для работы с текстовыми промптами (index.html, vanilla JS).
+
+Главный баг: фон подсветки якоря (.anchor-marker-gutter) пропадает при перемещении курсора в другой текстовый блок, хотя левый маркер (.anchor-marker-line) остаётся.
+
+Корень проблемы: _doRender() в blocks.js пересоздаёт DOM через colLeft.innerHTML = '' через requestAnimationFrame. Анкорь-маркеры рисуются в wrap (.current-line-wrap), который уничтожается при пересоздании DOM. fullRender() в app.js вызывает Blocks.render() и Anchors._renderMarkersAll() — оба через requestAnimationFrame, но _doRender() может выполняться после _renderMarkersAll().
+
+Направление: перерисовку маркеров нужно делать ПОСЛЕ _doRender(), либо хранить состояние маркеров и восстанавливать их из _doRender().
+
+------

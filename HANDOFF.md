@@ -6,9 +6,22 @@
 
 Делай backup в .git после каждого задания (скриншоты такого вида не сохраняй "E:\CODE\Paste_copy\2026-06-21_20-35.jpg").
 
-## Status — ГОТОВО
+## Status — В РАБОТЕ
 
-### Выполнено в последней сессии
+### Текущая проблема: фон подсветки якоря пропадает
+
+**Баг**: при перемещении курсора в другой текстовый блок, фон подсветки якоря (`.anchor-marker-gutter`) пропадает, хотя левый маркер (`.anchor-marker-line`) остаётся.
+
+**Корень**: `Blocks.render()` делает `colLeft.innerHTML = ''` при полном перерендере (вызывается из `fullRender()` через `State.onChange`). `_doRender()` запускается через `requestAnimationFrame`, а `Anchors._renderMarkersAll()` тоже через `requestAnimationFrame` — но из `fullRender()`. Порядок rAF-колбэков: `_doRender()` → `_renderMarkersAll()`, т.е. DOM пересоздаётся ПЕРЕД отрисовкой маркеров. Однако баг воспроизводится и без полного перерендера — предположительно из-за `State.onLive` → `_renderMarkersAll()`, который вызывается ДО пересоздания DOM и не учитывает будущее состояние.
+
+**Что уже пробовано (не помогло)**:
+- Добавлены `focusin` и `input` обработчики в anchors.js
+- clamping `rawTop` для gutter (как для line marker)
+- Убран `overflow: hidden` конфликт в CSS `.anchor-marker-gutter`
+
+**Направление для следующей сессии**: рассмотреть перенос `_renderMarkersAll()` из `fullRender()` в callback после `_doRender()`, либо хранить маркеры как data-атрибуты/перерисовывать их из `_doRender()`.
+
+### Выполнено ранее
 
 **1. Переводчик** (`translator.js`, новый модуль)
 
@@ -17,7 +30,7 @@
 - Защита шаблонов: `{{...}}`, `$VAR`, `!теги` не переводятся
 - Детекция языка: ru/en/mixed/zh/ko/ar
 - Декодировка HTML-сущностей (`&#39;` → `'`)
-- 15 языков для перевода
+- **9 языков**: RU, EN, DE, FR, ES, IT, 中文, 日本語, 한국어 (было 15)
 - История переводов (до 50 записей)
 
 **2. Кнопка перевода в футере блока** (`blocks.js`)
@@ -39,88 +52,64 @@
 - Авто-определение: кириллица → EN, латиница → RU
 - Toggle оригинал/перевод
 
-**5. Исправления переводчика** (баги)
-
-- `addHistory` не экспортировалась в публичный API
-- Повторный клик не возвращал оригинал (блок footer + блокнот)
-- Смешанный текст (ru+en) детектировался как "уже EN"
-- HTML-сущности в ответах Google/MS
-- Превью-перевод убран (не нужен)
-
-**6. Структура превью — навигация** (`ui.js`)
+**5. Структура превью — навигация** (`ui.js`)
 
 - Клик по пункту меню → скроллит к заголовку в превью (MD + текстовый режим)
 - Auto-close code fences между блоками (`_closeOpenFences`)
 - Код-блоки (>80% кода) исключены из меню структуры
 - Заголовки внутри `<pre>/<code>` пропускаются при поиске
 
-**7. Структура превью — подсветка** (`ui.js`, `styles.css`)
+**6. Структура превью — подсветка** (`ui.js`, `styles.css`)
 
 - Фон-индикатор (`.structure-active-bg`) плавно скользит пропорционально скроллу превью
-- `ratio = scrollTop / (scrollHeight - clientHeight)` → `top = ratio * (totalH - bgH)`
-- При достижении конца превью → привязка к последнему пункту
 - CSS transition `.12s ease-out`
 
-**8. Превью — XSS защита** (`ui.js`)
+**7. Превью — XSS защита** (`ui.js`)
 
 - HTML-сущности экранируются перед `marked.parse()` (`<` → `&lt;`)
-- `<script>` как текст больше не ломает превью
 
-**9. Превью — двойной клик** (`app.js`)
+**8. Превью — двойной клик** (`app.js`)
 
 - Двойной клик на шапку превью (`#preview-bar`) → свернуть/развернуть
-- Курсор `pointer` на заголовке "Превью"
 
-**10. Переводчик — исправления пайплайна** (`translator.js`)
+**9. Якоря — позиционирование маркеров** (`anchors.js`)
 
-- `accept()` убрана проверка `tr === src` (шорткаты могут совпадать)
-- `translateGoogle` / `translateMs` — try-catch на JSON парсинг
-- Debounced cache flush вместо записи на каждый `cacheSet`
+- `_measurePos` переписан с canvas measureText на TreeWalker + Range (зеркало)
+- Точное позиционирование символа через DOM дерево зеркала
+- Подсветка фона: clamping позиции, корректная ширина при переносе строк
+- CSS: убран конфликт `left: 3px; right: 0` у `.anchor-marker-gutter`
 
 ### Архив предыдущих сессий
 
 **Gist Sync — якоря в статистике** (`gist-sync.js`)
-- `getStats()` — `anchorCount`, `_pushImpl()`, модалка, история, сравнение
-
 **Help — документация якорей** (`help.js`)
-- Хоткеи: `Ctrl+Shift+1/2/3`, карточка "Якоря"
-
 **Inline Diff** (`diff-engine.js`)
-- LCS diff, кнопка 🔍, панель diff в модалке
-
-**Меню структуры блоков** (`ui.js`, `styles.css`)
 
 ## Active Files
 
-- `translator.js` (~470 строк) — ядро переводчика
-- `diff-engine.js` (~183 строки) — модуль diff
-- `gist-sync.js` — anchorCount в stats/истории/сравнении
-- `help.js` — карточка якорей + хоткеи
-- `ui.js` — Preview, Search, Snapshots, Templates, **Structure menu**, **Translate integration**
-- `styles.css` — **.structure-active-bg**, **.translate-btn**, **.translate-dropdown**
-- `app.js` — dblclick на превью, init translator
-- `anchors.js` (~440 строк) — якоря
-- `blocks.js` — translate button в футере блока
+- `translator.js` (~470 строк) — ядро переводчика (9 языков)
+- `anchors.js` (~500 строк) — якоря, TreeWalker+Range позиционирование
+- `blocks.js` — translate button, `current-line-wrap`, `_doRender()` пересоздаёт DOM
+- `app.js` — `fullRender()`, `liveRender()`, dblclick на превью
+- `ui.js` — Preview, Structure menu, Search
+- `styles.css` — `.anchor-marker-gutter` (z-index:2), `.structure-active-bg`
 - `notepad.js` — translate button в toolbar
 - `llm-features.js` — translate button в мини-чате
+- `diff-engine.js` — LCS diff
+- `gist-sync.js` — anchorCount в stats
+- `help.js` — карточка якорей
 
 ## Architecture Decisions
 
-- Diff: переиспользован LCS из llm-features.js
-- Code fence: `_closeOpenFences()` закрывает незакрытые ``` между блоками
-- XSS: `html: false` в marked + ручное экранирование `<`, `>`, `&` перед parse
-- Structure menu: плавный фон-индикатор пропорционально скроллу (не IntersectionObserver)
+- TreeWalker+Range вместо canvas measureText для позиционирования якорей
+- Mirror div (`visibility:hidden`) копирует CSS textarea для точного переноса строк
 - Translator: Google/MS/legacy fallback с debounce cache flush
-- Код-блоки (>80% контента в fence) исключены из структуры
-
-## Known Limitations
-
-- Diff показывает только активную подвкладку каждого блока
-- Palette якорей не группирует по вкладкам
-- Переводчик не поддерживает сохранение пары "оригинал→перевод" для long-press меню
+- `_doRender()` пересоздаёт DOM через `colLeft.innerHTML = ''` — маркеры нужно пересоздавать ПОСЛЕ этого
 
 ## Commits (последняя сессия)
 
 ```
-(не зафиксированы — все изменения в working tree)
+22c7f0f fix: clamp gutter position and fix CSS z-index for anchor background highlight
+cf0f387 fix: re-render anchor markers on focus change and input
+589d29f fix: improved anchor marker positioning with TreeWalker+Range, reduced translator languages
 ```
