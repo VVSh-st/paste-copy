@@ -15,9 +15,10 @@ const Ember = (() => {
   // --- приоритет эффектов: меньше число = выше приоритет ---
   const PRIORITY = {
     sigh: 1, calmBurn: 2, wiggle: 3, tilt: 4, microShift: 5,
-    crackle: 6, stretch: 7, glint: 8, sleepySag: 9,
   };
-  const MAX_EFFECTS = 2;
+  const MAX_EFFECTS = 3;
+
+  // сегментные эффекты — отдельный пул, не конфликтует с ядром
 
   let state = null;
   let root = null;
@@ -235,15 +236,15 @@ const Ember = (() => {
 
   function rescheduleDue(type) {
     const ranges = {
-      calmBurn: [45, 90],
-      sigh: [60, 120],
-      wiggle: [45, 90],
-      tilt: [60, 120],
-      microShift: [60, 120],
-      crackle: [180, 360],     // 3–6 мин
-      stretch: [180, 300],     // 3–5 мин
-      glint: [240, 420],       // 4–7 мин
-      sleepySag: [300, 600],   // 5–10 мин (редко)
+      calmBurn: [15, 30],
+      sigh: [20, 40],
+      wiggle: [15, 30],
+      tilt: [20, 40],
+      microShift: [20, 40],
+      crackle: [30, 60],      // 30–60с
+      stretch: [40, 80],      // 40–80с
+      glint: [50, 90],        // 50–90с
+      sleepySag: [60, 120],   // 60–120с
     };
     const slow = sleepSlowdown();
     const [a, b] = ranges[type];
@@ -293,11 +294,11 @@ const Ember = (() => {
 
   function rescheduleSegDue(type) {
     const ranges = {
-      segTremor: [120, 240],     // 2–4 мин
-      segTryIgnite: [180, 360],  // 3–6 мин
-      segHeatRipple: [300, 480], // 5–8 мин
-      segFlicker: [90, 180],     // 1.5–3 мин
-      segHeatWave: [240, 420],   // 4–7 мин
+      segTremor: [15, 30],       // 15–30с
+      segTryIgnite: [20, 40],    // 20–40с
+      segHeatRipple: [30, 50],   // 30–50с
+      segFlicker: [10, 25],      // 10–25с
+      segHeatWave: [25, 45],     // 25–45с
     };
     const slow = sleepSlowdown();
     const [a, b] = ranges[type];
@@ -435,17 +436,17 @@ const Ember = (() => {
     if (heatBoost > 0) heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
 
     // --- эффекты ядра ---
-    tryStart('sigh', 0.35, [4000, 5000]);
-    tryStart('calmBurn', 0.7, [2000, 3000]);
-    if (intensity > 0.5) tryStart('wiggle', 0.2, [700, 1000]);
-    tryStart('tilt', 0.15, [2000, 2000], { target: rand(-1, 1) });
-    tryStart('microShift', 0.1, [1000, 2000], { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) });
+    tryStart('sigh', 0.5, [4000, 5000]);
+    tryStart('calmBurn', 0.8, [2000, 3000]);
+    if (intensity > 0.5) tryStart('wiggle', 0.3, [700, 1000]);
+    tryStart('tilt', 0.25, [2000, 2000], { target: rand(-1, 1) });
+    tryStart('microShift', 0.2, [1000, 2000], { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) });
 
-    // новые эффекты ядра
-    tryStart('crackle', 0.15, [80, 150]);          // потрескивание: 15% шанс, ~100мс
-    tryStart('stretch', 0.12, [3000, 4000]);       // растяжка/зевок: 12% шанс, 3-4с
-    tryStart('glint', 0.1, [2000, 3000]);          // отблеск: 10% шанс, 2-3с
-    if (intensity < 0.4) tryStart('sleepySag', 0.08, [3000, 5000]); // сонная просадка
+    // новые эффекты ядра — высокие вероятности для видимости
+    tryStart('crackle', 0.4, [80, 150]);          // потрескивание
+    tryStart('stretch', 0.35, [3000, 4000]);      // растяжка/зевок
+    tryStart('glint', 0.3, [2000, 3000]);         // отблеск
+    if (intensity < 0.4) tryStart('sleepySag', 0.25, [3000, 5000]); // сонная просадка
 
     const sigh = advanceEffect('sigh', dt);
     const calmBurn = advanceEffect('calmBurn', dt);
@@ -490,15 +491,15 @@ const Ember = (() => {
     const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.1 : 0;
 
     // потрескивание: резкий блик яркости ~100мс
-    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 0.5 : 0;
+    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 0.8 : 0;
 
     // отблеск: hue-rotate/saturate сдвиг
-    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 8 : 0;
-    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.15 : 0;
+    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 15 : 0;
+    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.25 : 0;
 
     // сонная просадка: оседание scaleY + приглушение
-    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.02 : 1;
-    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.1 : 0;
+    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.035 : 1;
+    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.15 : 0;
 
     // поворот
     if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
@@ -556,9 +557,26 @@ const Ember = (() => {
     applySegments();
 
     // --- сегментные эффекты ---
-    tryStartSeg('segTremor', 0.12, [300, 500], () => {
+    tryStartSeg('segTremor', 0.35, [300, 500], () => {
       const active = getActiveSegIndices();
       return active.length ? active[Math.floor(Math.random() * active.length)] : null;
+    });
+    tryStartSeg('segTryIgnite', 0.3, [200, 400], () => {
+      const off = getOffSegIndices();
+      return off.length ? off[0] : null;
+    });
+    tryStartSeg('segHeatRipple', 0.25, [400, 600], () => {
+      const active = getActiveSegIndices();
+      if (active.length < 2) return null;
+      return active[Math.floor(Math.random() * (active.length - 1))];
+    });
+    tryStartSeg('segFlicker', 0.4, [300, 500], () => {
+      const active = getActiveSegIndices();
+      return active.length ? active[Math.floor(Math.random() * active.length)] : null;
+    });
+    tryStartSeg('segHeatWave', 0.25, [600, 900], () => {
+      const active = getActiveSegIndices();
+      return active.length >= 3 ? 0 : null;
     });
     tryStartSeg('segTryIgnite', 0.1, [200, 400], () => {
       const off = getOffSegIndices();
