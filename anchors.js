@@ -262,19 +262,45 @@ const Anchors = (() => {
     const pl = parseFloat(cs.paddingLeft) || 0;
     if (charPos <= 0) return { x: pl, y: pt };
 
-    const text = ta.value.substring(0, charPos);
-    const lastNewline = text.lastIndexOf('\n');
-    const prevLines = lastNewline >= 0 ? text.substring(0, lastNewline + 1) : '';
-
     const mirror = _getMirror(ta);
-    mirror.textContent = prevLines;
-    const y = pt + mirror.scrollHeight;
+    mirror.textContent = ta.value;
 
-    const lineText = lastNewline >= 0 ? text.substring(lastNewline + 1) : text;
-    const ctx = _measureCtx || (_measureCtx = document.createElement('canvas').getContext('2d'));
-    ctx.font = cs.fontSize + ' ' + cs.fontFamily;
-    const x = pl + ctx.measureText(lineText).width;
-    return { x: x, y: y };
+    const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
+    let remaining = charPos;
+    let targetNode = null;
+    let targetOffset = 0;
+    let node;
+    while ((node = walker.nextNode())) {
+      if (remaining <= node.textContent.length) {
+        targetNode = node;
+        targetOffset = remaining;
+        break;
+      }
+      remaining -= node.textContent.length;
+    }
+
+    if (!targetNode) {
+      mirror.textContent = ta.value.substring(0, charPos);
+      return { x: pl, y: pt + mirror.scrollHeight };
+    }
+
+    try {
+      const range = document.createRange();
+      range.setStart(targetNode, targetOffset);
+      range.collapse(true);
+      const marker = document.createElement('span');
+      marker.textContent = '\u200B';
+      range.insertNode(marker);
+      const mr = marker.getBoundingClientRect();
+      const mir = mirror.getBoundingClientRect();
+      const x = pl + mr.left - mir.left;
+      const y = pt + mr.top - mir.top;
+      marker.parentNode.removeChild(marker);
+      return { x: x, y: y };
+    } catch (_) {
+      mirror.textContent = ta.value.substring(0, charPos);
+      return { x: pl, y: pt + mirror.scrollHeight };
+    }
   }
 
   /* ---- char width measurement ---- */
@@ -359,10 +385,13 @@ const Anchors = (() => {
       if (settings.bgHighlight && anchor.start !== anchor.end) {
         if (rawTop + lineHeight < -lineHeight || rawTop > wrapH + lineHeight) return;
         const endPos = _measurePos(ta, anchor.end);
-        const selW = Math.max(2, endPos.x - pos.x);
+        const wrapW = wrap.clientWidth || (ta.clientWidth + (parseFloat(getComputedStyle(ta).paddingLeft) || 0));
+        let selW = Math.max(2, endPos.x - pos.x);
+        if (selW < 0) selW = wrapW - pos.x;
+        if (pos.x + selW > wrapW) selW = Math.max(2, wrapW - pos.x);
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + rawTop + 'px;pointer-events:none;z-index:3;background:' + settings.color + '33;border-radius:2px;left:' + pos.x + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + rawTop + 'px;pointer-events:none;z-index:0;background:' + settings.color + '33;border-radius:2px;left:' + pos.x + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });

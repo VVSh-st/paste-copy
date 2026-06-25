@@ -33,15 +33,9 @@ const Translator = (() => {
     { code: 'fr', name: 'Français', flag: '🇫🇷' },
     { code: 'es', name: 'Español', flag: '🇪🇸' },
     { code: 'it', name: 'Italiano', flag: '🇮🇹' },
-    { code: 'pt', name: 'Português', flag: '🇵🇹' },
     { code: 'zh', name: '中文', flag: '🇨🇳' },
     { code: 'ja', name: '日本語', flag: '🇯🇵' },
     { code: 'ko', name: '한국어', flag: '🇰🇷' },
-    { code: 'tr', name: 'Türkçe', flag: '🇹🇷' },
-    { code: 'uk', name: 'Українська', flag: '🇺🇦' },
-    { code: 'pl', name: 'Polski', flag: '🇵🇱' },
-    { code: 'nl', name: 'Nederlands', flag: '🇳🇱' },
-    { code: 'ar', name: 'العربية', flag: '🇸🇦' },
   ];
 
   const LANG_BY_CODE = Object.fromEntries(LANGUAGES.map(l => [l.code, l]));
