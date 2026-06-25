@@ -2,9 +2,6 @@
 //
 // "Уголёк" — живой индикатор состояния проекта.
 // Один rAF-цикл: update() -> applyVariables() -> requestAnimationFrame.
-// Все случайные эффекты идут через единый менеджер с приоритетом и
-// лимитом в 3 одновременных эффекта (со взаимным вытеснением слотов).
-// ПКМ на уголёк — циклический запуск всех эффектов для тестирования.
 
 const Ember = (() => {
   'use strict';
@@ -13,9 +10,8 @@ const Ember = (() => {
   const STORAGE_KEY = 'ember-state';
   const BROADCAST_KEY = 'ember-sync';
 
-  // --- приоритет эффектов: меньше число = выше приоритет ---
   const PRIORITY = {
-    sigh: 1, calmBurn: 2, wiggle: 3, tilt: 4, microShift: 5,
+    startle: 0, sigh: 1, calmBurn: 2, wiggle: 3, tilt: 4, microShift: 5,
     crackle: 6, stretch: 7, glint: 8, sleepySag: 9,
     smolder: 10, heatRadiance: 11, glowPulse: 12, ashDrift: 13,
   };
@@ -28,6 +24,7 @@ const Ember = (() => {
   let glowEl = null;
   let ringEl = null;
   let coreEl = null;
+  let crustEl = null;
   let particleLayer = null;
 
   let hover = false;
@@ -35,54 +32,48 @@ const Ember = (() => {
   let intensity = 1;
   let breathPhase = 0;
 
-  // блуждание горячей точки
   let heatOffsetX = 0, heatOffsetY = 0;
   let heatTargetX = 0, heatTargetY = 0;
   let nextHeatShift = 0;
   let heatPhase = 0;
   const heatPhaseSpeed = 0.0009;
 
-  // реакция на печать
   let typedChars = 0;
   let heatBoost = 0;
   let resetTimer = null;
 
-  // сегменты
   let prevRemaining = 12;
-
-  // спавн
   let spawnStart = 0;
 
-  // активные эффекты ядра
   const active = new Map();
   let nextDue = {};
 
   let tiltCurrent = 0;
   let tiltTarget = 0;
 
-  // сегментные эффекты
   let segmentEffects = [];
   let nextSegDue = {};
 
-  // частицы (микропепел + искры)
   let particles = [];
   let nextAshSpawn = 0;
   let nextSparkCheck = 0;
   let activeSparks = 0;
 
-  // дрожание воздуха
   let shimmerActive = false;
   let shimmerEnd = 0;
   let nextShimmerCheck = 0;
 
-  // отслеживание курсора
+  let ringAngle = 0;
+  let browserFocused = true;
+
+  // --- курсор ---
   const mouse = { x: 0, y: 0, lastSampleX: 0, lastSampleY: 0, lastSampleTime: 0, speed: 0 };
   const caret = { x: 0, y: 0, active: false, typing: false, _typingTimer: null };
   const cursorLean = { x: 0, y: 0, squish: 0, scale: 1, tiltX: 0, tiltY: 0 };
-  let cursorReactionCooldown = 0;
-  let mouseEnterTime = 0;
   let mouseInZone = false;
   let lastMouseDist = 999;
+  let dodgeCooldown = 0;
+  const startle = { active: false, t0: 0, dur: 0, riseFrac: 0.2, x: 0, y: 0, nx: 0, ny: 0 };
 
   // ПКМ тестирование
   let testMode = false;
@@ -93,8 +84,8 @@ const Ember = (() => {
   // пасхалка
   const egg = {
     active: false, phase: 0, phaseStart: 0,
-    caretX: 0, caretY: 0, startX: 0, startY: 0,
-    lookCount: 0, triggeredToday: false,
+    caretX: 0, caretY: 0, startX: 0, startY: 0, triggeredToday: false,
+    x: 0, y: 0, scale: 1, squish: 0, tiltX: 0, tiltY: 0,
   };
   const EGG_STORAGE_KEY = 'ember-egg-date';
   const EGG_CHARS_THRESHOLD = 1000;
@@ -110,6 +101,7 @@ const Ember = (() => {
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function easeOutQuad(t) { return t * (2 - t); }
   function easeInQuad(t) { return t * t; }
+  function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
   function bump(t, riseEnd, holdEnd) {
     if (t < riseEnd) return easeOutQuad(t / riseEnd);
     if (t < holdEnd) return 1;
@@ -159,19 +151,9 @@ const Ember = (() => {
     const t = clamp(age / LIFE, 0, 1);
     return Math.pow(1 - t, 1.7);
   }
-
-  function hoursWithoutActivity() {
-    return (Date.now() - state.lastEditTime) / 3_600_000;
-  }
-
-  function remainingSegments() {
-    return clamp(12 - Math.floor(hoursWithoutActivity() / 2), 0, 12);
-  }
-
-  function isSleeping() {
-    return hoursWithoutActivity() > 5 * 24;
-  }
-
+  function hoursWithoutActivity() { return (Date.now() - state.lastEditTime) / 3_600_000; }
+  function remainingSegments() { return clamp(12 - Math.floor(hoursWithoutActivity() / 2), 0, 12); }
+  function isSleeping() { return hoursWithoutActivity() > 5 * 24; }
   function sleepSlowdown() {
     if (!isSleeping()) return 1;
     const h = hoursWithoutActivity();
@@ -200,6 +182,7 @@ const Ember = (() => {
 
     coreEl = document.createElement('div');
     coreEl.className = 'ember-core';
+    coreEl.style.animationDuration = rand(3.4, 4.8).toFixed(2) + 's';
     ['zone1', 'zone2', 'zone3'].forEach((cls) => {
       const z = document.createElement('div');
       z.className = `heat-zone ${cls}`;
@@ -207,8 +190,13 @@ const Ember = (() => {
       zones.push(z);
     });
 
+    crustEl = document.createElement('div');
+    crustEl.className = 'ember-crust';
+    coreEl.appendChild(crustEl);
+
     glowEl = document.createElement('div');
     glowEl.className = 'ember-glow';
+    glowEl.style.animationDuration = rand(2.6, 3.6).toFixed(2) + 's';
     coreEl.appendChild(glowEl);
 
     particleLayer = document.createElement('div');
@@ -243,7 +231,6 @@ const Ember = (() => {
     for (let i = 0; i < rem; i++) arr.push(i);
     return arr;
   }
-
   function getOffSegIndices() {
     const rem = remainingSegments();
     const arr = [];
@@ -263,19 +250,19 @@ const Ember = (() => {
     heatOffsetY += (heatTargetY - heatOffsetY) * clamp(0.003 * dt, 0, 1);
     heatPhase += heatPhaseSpeed * dt;
 
-    const cxBase = 50 + heatOffsetX * 3;
-    const cyBase = 50 + heatOffsetY * 3;
+    const cxBase = 50 + heatOffsetX * 2.5;
+    const cyBase = 50 + heatOffsetY * 2.5;
     const wander = [
-      { dx: -20, dy: -15, fx: 2.1, fy: 1.7 },
-      { dx: 5, dy: 0, fx: 1.4, fy: 2.3 },
-      { dx: -5, dy: 20, fx: 1.9, fy: 1.1 },
+      { dx: -12, dy: -8, fx: 2.1, fy: 1.7 },
+      { dx: 2, dy: 16, fx: 1.4, fy: 2.3 },
+      { dx: 0, dy: 5, fx: 1.9, fy: 1.1 },
     ];
     zones.forEach((zone, i) => {
       const w = wander[i];
-      const cx = cxBase + w.dx + Math.sin(heatPhase * w.fx + i) * 8;
-      const cy = cyBase + w.dy + Math.cos(heatPhase * w.fy + i) * 8;
-      zone.style.setProperty('--cx', clamp(cx, 15, 85).toFixed(1) + '%');
-      zone.style.setProperty('--cy', clamp(cy, 15, 85).toFixed(1) + '%');
+      const cx = cxBase + w.dx + Math.sin(heatPhase * w.fx + i) * 6;
+      const cy = cyBase + w.dy + Math.cos(heatPhase * w.fy + i) * 6;
+      zone.style.setProperty('--cx', clamp(cx, 20, 80).toFixed(1) + '%');
+      zone.style.setProperty('--cy', clamp(cy, 20, 80).toFixed(1) + '%');
     });
   }
 
@@ -285,7 +272,7 @@ const Ember = (() => {
     const ranges = {
       calmBurn: [15, 30], sigh: [20, 40], wiggle: [15, 30],
       tilt: [20, 40], microShift: [20, 40],
-      crackle: [30, 60], stretch: [40, 80], glint: [50, 90],
+      crackle: [25, 50], stretch: [40, 80], glint: [50, 90],
       sleepySag: [60, 120],
       smolder: [25, 50], heatRadiance: [35, 65],
       glowPulse: [30, 55], ashDrift: [20, 45],
@@ -295,22 +282,8 @@ const Ember = (() => {
     nextDue[type] = Date.now() + rand(a, b) * 1000 * slow;
   }
 
-  function tryStart(type, probability, durRangeMs, extra) {
-    if (testMode) {
-      // в тестовом режиме — принудительный запуск из очереди
-      if (active.has(type)) return;
-      if (active.size >= MAX_EFFECTS) {
-        let worstType = null, worstPri = -1;
-        for (const t of active.keys()) {
-          if (PRIORITY[t] > worstPri) { worstPri = PRIORITY[t]; worstType = t; }
-        }
-        if (worstType && PRIORITY[worstType] > PRIORITY[type]) {
-          active.delete(worstType); rescheduleDue(worstType);
-        } else return;
-      }
-      active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]), ...extra });
-      return;
-    }
+  function tryStart(type, probability, durRangeMs, extraFn) {
+    if (testMode) return;
     const now = Date.now();
     if (active.has(type)) return;
     if ((nextDue[type] ?? 0) > now) return;
@@ -325,6 +298,7 @@ const Ember = (() => {
       }
       active.delete(worstType); rescheduleDue(worstType);
     }
+    const extra = typeof extraFn === 'function' ? extraFn() : (extraFn || {});
     active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]), ...extra });
   }
 
@@ -341,7 +315,7 @@ const Ember = (() => {
     return eff;
   }
 
-  // ---------- менеджер сегментных эффектов ----------
+  // ---------- сегментные эффекты ----------
 
   function rescheduleSegDue(type) {
     const ranges = {
@@ -360,7 +334,11 @@ const Ember = (() => {
     if (Math.random() >= probability) { rescheduleSegDue(type); return; }
     const segIdx = pickSeg();
     if (segIdx === null || segIdx === undefined) { rescheduleSegDue(type); return; }
-    segmentEffects.push({ type, segIdx, phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]) });
+    segmentEffects.push({
+      type, segIdx, phase: 0,
+      durMs: rand(durRangeMs[0], durRangeMs[1]),
+      mag: rand(0.7, 1.3),
+    });
   }
 
   function advanceSegEffects(dt) {
@@ -377,20 +355,23 @@ const Ember = (() => {
       seg.style.removeProperty('--seg-flash');
       seg.style.removeProperty('--seg-dim');
       seg.style.removeProperty('--seg-brightness');
+      seg.style.removeProperty('--seg-push');
     });
     for (const e of segmentEffects) {
       const seg = segments[e.segIdx];
       if (!seg) continue;
+      const m = e.mag ?? 1;
       switch (e.type) {
         case 'segTremor':
-          seg.style.setProperty('--seg-tilt', (Math.sin(e.phase * Math.PI) * 5).toFixed(2) + 'deg');
+          seg.style.setProperty('--seg-tilt', (Math.sin(e.phase * Math.PI * 3) * 6 * m * (1 - e.phase)).toFixed(2) + 'deg');
+          seg.style.setProperty('--seg-push', (Math.sin(e.phase * Math.PI) * 1.2 * m).toFixed(2) + 'px');
           break;
         case 'segTryIgnite':
           seg.style.setProperty('--seg-flash',
             (e.phase < 0.3 ? easeOutQuad(e.phase / 0.3) : 1 - easeInQuad((e.phase - 0.3) / 0.7)).toFixed(3));
           break;
         case 'segHeatRipple':
-          seg.style.setProperty('--seg-brightness', (1 + Math.sin(e.phase * Math.PI) * 1.2).toFixed(3));
+          seg.style.setProperty('--seg-brightness', (1 + Math.sin(e.phase * Math.PI) * 1.2 * m).toFixed(3));
           break;
         case 'segFlicker':
           seg.style.setProperty('--seg-dim',
@@ -399,9 +380,9 @@ const Ember = (() => {
         case 'segHeatWave': {
           const activeIdx = getActiveSegIndices();
           const pos = e.phase * activeIdx.length;
+          const dist = Math.abs(e.segIdx - Math.floor(pos));
           const localPhase = pos - Math.floor(pos);
           const wave = Math.sin(localPhase * Math.PI);
-          const dist = Math.abs(e.segIdx - Math.floor(pos));
           if (dist <= 1)
             seg.style.setProperty('--seg-brightness', (1 + wave * 0.8 * (1 - dist)).toFixed(3));
           break;
@@ -410,66 +391,74 @@ const Ember = (() => {
     }
   }
 
-  // ---------- частицы: микропепел ----------
+  // ---------- частицы ----------
 
   function spawnAshParticle() {
-    if (particles.length > 35) return;
+    if (particles.length > 40) return;
     const el = document.createElement('div');
-    el.className = 'ember-ash';
-    const startX = rand(25, 75);
-    const startY = rand(20, 65);
+    const roll = Math.random();
+    el.className = 'ember-ash' + (roll < 0.33 ? ' dark' : roll > 0.8 ? ' bright' : '');
+    const size = rand(1.4, 3);
+    el.style.width = size.toFixed(1) + 'px';
+    el.style.height = size.toFixed(1) + 'px';
+    const startX = rand(28, 72);
+    const startY = rand(35, 70);
     el.style.left = startX + '%';
     el.style.top = startY + '%';
     particleLayer.appendChild(el);
 
-    const dur = rand(2500, 5000);
-    const driftX = rand(-12, 12);
-    const driftY = rand(-20, -8);
     particles.push({
-      el, born: performance.now(), dur,
-      startX, startY, driftX, driftY,
+      el, born: performance.now(),
+      dur: rand(2600, 5200),
+      rise: rand(-36, -20),
+      drift: rand(-12, 12),
+      sway: rand(2, 6),
+      isSpark: false,
+    });
+  }
+
+  function spawnSpark() {
+    if (activeSparks >= 7) return;
+    const el = document.createElement('div');
+    el.className = 'ember-spark';
+    const size = rand(1.6, 3.4);
+    el.style.width = size.toFixed(1) + 'px';
+    el.style.height = (size * rand(1.4, 2.2)).toFixed(1) + 'px';
+    const startX = rand(30, 70);
+    const startY = rand(35, 60);
+    el.style.left = startX + '%';
+    el.style.top = startY + '%';
+    particleLayer.appendChild(el);
+    activeSparks++;
+
+    particles.push({
+      el, born: performance.now(),
+      dur: rand(650, 1300),
+      rise: rand(-30, -16),
+      drift: rand(-8, 8),
+      sway: rand(1, 3),
+      isSpark: true,
     });
   }
 
   function updateParticles(now) {
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      const age = now - p.born;
-      const t = clamp(age / p.dur, 0, 1);
+      const t = clamp((now - p.born) / p.dur, 0, 1);
       if (t >= 1) {
         p.el.remove();
+        if (p.isSpark) activeSparks = Math.max(0, activeSparks - 1);
         particles.splice(i, 1);
         continue;
       }
-      const x = p.startX + p.driftX * t;
-      const y = p.startY + p.driftY * t;
-      const opacity = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
-      p.el.style.left = x + '%';
-      p.el.style.top = y + '%';
-      p.el.style.opacity = (opacity * 0.95).toFixed(3);
+      const rise = p.rise * easeOutQuad(t);
+      const drift = p.drift * t + Math.sin(t * Math.PI * 3) * p.sway;
+      const opacity = t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78;
+      const scale = p.isSpark ? (1 - t * 0.75) : (1 - t * 0.3);
+      const rot = p.isSpark ? t * 50 : 0;
+      p.el.style.transform = `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${rot}deg) scale(${scale.toFixed(2)})`;
+      p.el.style.opacity = (opacity * (p.isSpark ? 1 : 0.92)).toFixed(3);
     }
-  }
-
-  // ---------- частицы: искры ----------
-
-  function spawnSpark() {
-    if (activeSparks >= 5) return;
-    const el = document.createElement('div');
-    el.className = 'ember-spark';
-    const startX = rand(30, 70);
-    const startY = rand(20, 55);
-    el.style.left = startX + '%';
-    el.style.top = startY + '%';
-    particleLayer.appendChild(el);
-
-    const dur = rand(800, 1200);
-    const driftX = rand(-6, 6);
-    activeSparks++;
-    particles.push({
-      el, born: performance.now(), dur,
-      startX, startY, driftX, driftY: -6,
-      isSpark: true,
-    });
   }
 
   // ---------- дрожание воздуха ----------
@@ -481,7 +470,7 @@ const Ember = (() => {
         shimmerEnd = now + rand(2000, 4000);
         root.classList.add('ember-shimmer');
       }
-      nextShimmerCheck = now + rand(120000, 180000); // 2–3 мин
+      nextShimmerCheck = now + rand(120000, 180000);
     }
     if (shimmerActive && now > shimmerEnd) {
       shimmerActive = false;
@@ -491,7 +480,7 @@ const Ember = (() => {
 
   // ---------- отслеживание курсора ----------
 
-  const CURSOR_SAMPLE_INTERVAL = 60;
+  const CURSOR_SAMPLE_INTERVAL = 50;
   const CURSOR_ZONE_RADIUS = 250;
   const CARET_SAMPLE_INTERVAL = 80;
   let nextMouseSample = 0;
@@ -533,65 +522,67 @@ const Ember = (() => {
 
   function normD(dx, dy, dist) { return dist > 0 ? { x: dx / dist, y: dy / dist } : { x: 0, y: 0 }; }
 
+  // запуск "шараханья" — резкий отскок ОТ курсора, потом возврат
+  function triggerStartle(norm, dist, riseMs, retMs) {
+    startle.active = true;
+    startle.t0 = performance.now();
+    startle.dur = riseMs + retMs;
+    startle.riseFrac = riseMs / startle.dur;
+    startle.x = -norm.x * dist;
+    startle.y = -norm.y * dist;
+    startle.nx = norm.x;
+    startle.ny = norm.y;
+    if (dist > 22 && Math.random() < 0.6) {
+      for (let i = 0; i < 2; i++) spawnSpark();
+    }
+  }
+
   function updateCursorLean(now, dt) {
+    if (!browserFocused) {
+      cursorLean.x += (0 - cursorLean.x) * clamp(dt * 0.005, 0, 1);
+      cursorLean.y += (0 - cursorLean.y) * clamp(dt * 0.005, 0, 1);
+      cursorLean.squish += (0 - cursorLean.squish) * clamp(dt * 0.005, 0, 1);
+      cursorLean.scale += (1 - cursorLean.scale) * clamp(dt * 0.005, 0, 1);
+      cursorLean.tiltX += (0 - cursorLean.tiltX) * clamp(dt * 0.005, 0, 1);
+      cursorLean.tiltY += (0 - cursorLean.tiltY) * clamp(dt * 0.005, 0, 1);
+      return;
+    }
+
     const ember = getEmberCenter();
     const mDx = mouse.x - ember.x;
     const mDy = mouse.y - ember.y;
     const mDist = Math.sqrt(mDx * mDx + mDy * mDy);
-    const mInZone = mDist < CURSOR_ZONE_RADIUS;
+    const inZone = mDist < CURSOR_ZONE_RADIUS && mDist > 25;
+    const norm = normD(mDx, mDy, mDist);
 
-    if (mInZone && !mouseInZone) {
+    // ВХОД в зону -> шарахается ОДИН раз на 20-40px
+    if (inZone && !mouseInZone) {
       mouseInZone = true;
-      mouseEnterTime = now;
-      cursorReactionCooldown = now + rand(150, 400);
-      if (Math.random() < (1 - intensity) * 0.25) {
-        cursorReactionCooldown = now + rand(2000, 5000);
-      }
-    } else if (!mInZone) {
+      triggerStartle(norm, rand(20, 40), 130, 480);
+    } else if (!inZone && mouseInZone) {
       mouseInZone = false;
     }
 
-    const approaching = mInZone && mDist < lastMouseDist;
-    const receding = mInZone && mDist > lastMouseDist + 5;
-    lastMouseDist = mDist;
-
-    let targetLeanX = 0, targetLeanY = 0, targetSquish = 0;
-    let targetScale = 1, targetTiltX = 0, targetTiltY = 0;
-
-    if (mInZone && now > cursorReactionCooldown) {
-      const norm = normD(mDx, mDy, mDist);
-      const proximity = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
-      const str = proximity * proximity;
-
-      const isFastApproach = mouse.speed > 12 && approaching && mDist < 120;
-      const isCloseAndFast = mouse.speed > 8 && mDist < 80;
-
-      if (isFastApproach || isCloseAndFast) {
-        // страх: отпрыгиваем НАЗАД от мыши + вздрагиваем
-        targetLeanX = -norm.x * str * 14;
-        targetLeanY = -norm.y * str * 10;
-        targetScale = 1 - str * 0.15;
-        targetTiltX = -norm.y * str * 8;
-        targetTiltY = norm.x * str * 8;
-        if (mDist < 60 && Math.random() < 0.3) {
-          for (let i = 0; i < 2; i++) spawnSpark();
-        }
-      } else if (approaching || mDist < 120) {
-        // любопытство: наклоняемся К мыши
-        targetLeanX = norm.x * str * 8;
-        targetLeanY = norm.y * str * 6;
-        targetScale = 1 + str * 0.08;
-        targetTiltX = norm.y * str * 5;
-        targetTiltY = -norm.x * str * 5;
-      } else if (receding) {
-        // мышь уходит — тянемся следом слегка
-        targetLeanX = norm.x * str * 3;
-        targetLeanY = norm.y * str * 2;
-      }
-
-      if (norm.y > 0.2) targetSquish = (norm.y - 0.2) * 0.4 * str;
+    // уже внутри + быстрое движение близко -> короткий рывок-уворот
+    if (inZone && !startle.active && mouse.speed > 14 && mDist < 110 && now > dodgeCooldown) {
+      triggerStartle(norm, rand(14, 26), 110, 380);
+      dodgeCooldown = now + rand(350, 800);
     }
 
+    // мягкое "любопытство" — наклон К курсору когда стоит спокойно
+    let tx = 0, ty = 0, tScale = 1, tTiltX = 0, tTiltY = 0, tSquish = 0;
+    if (inZone) {
+      const prox = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
+      const str = prox * prox;
+      tx = norm.x * str * 7;
+      ty = norm.y * str * 5;
+      tScale = 1 + str * 0.06;
+      tTiltX = norm.y * str * 6;
+      tTiltY = -norm.x * str * 6;
+      if (norm.y > 0.15) tSquish = (norm.y - 0.15) * 0.3 * str;
+    }
+
+    // тянется к каретке при наборе текста
     if (caret.active && caret.typing) {
       const cDx = caret.x - ember.x;
       const cDy = caret.y - ember.y;
@@ -599,39 +590,56 @@ const Ember = (() => {
       if (cDist > 10 && cDist < 400) {
         const cn = normD(cDx, cDy, cDist);
         const cs = clamp(1 - cDist / 400, 0, 0.6);
-        targetLeanX += cn.x * cs * 4;
-        targetLeanY += cn.y * cs * 3;
+        tx += cn.x * cs * 5;
+        ty += cn.y * cs * 4;
       }
     }
 
-    if (mouse.speed > 10 && mInZone && mDist < 80) {
-      const norm = normD(mDx, mDy, mDist);
-      const dodge = Math.min(mouse.speed * 0.06, 1.5);
-      targetLeanX -= norm.x * dodge;
-      targetLeanY -= norm.y * dodge;
+    // шараханье — перекрывает цель и делает движение резким
+    let lerp = clamp(dt * 0.012, 0, 1);
+    if (startle.active) {
+      const p = (now - startle.t0) / startle.dur;
+      if (p >= 1) {
+        startle.active = false;
+      } else {
+        const off = p < startle.riseFrac
+          ? easeOutQuad(p / startle.riseFrac)
+          : 1 - easeInOutQuad((p - startle.riseFrac) / (1 - startle.riseFrac));
+        tx += startle.x * off;
+        ty += startle.y * off;
+        tScale = 1 - 0.12 * off;
+        tTiltX += -startle.ny * off * 14;
+        tTiltY += startle.nx * off * 14;
+        tSquish = Math.max(tSquish, 0.22 * off);
+        lerp = clamp(dt * 0.035, 0, 1);
+      }
     }
 
-    const spd = clamp(dt * 0.008, 0, 1);
-    const spdFast = clamp(dt * 0.018, 0, 1);
-    const isFleeing = (mouse.speed > 12 && approaching && mDist < 120) || (mouse.speed > 8 && mDist < 80);
-    const lerp = isFleeing ? spdFast : spd;
+    cursorLean.x += (tx - cursorLean.x) * lerp;
+    cursorLean.y += (ty - cursorLean.y) * lerp;
+    cursorLean.squish += (tSquish - cursorLean.squish) * lerp;
+    cursorLean.scale += (tScale - cursorLean.scale) * lerp;
+    cursorLean.tiltX += (tTiltX - cursorLean.tiltX) * lerp;
+    cursorLean.tiltY += (tTiltY - cursorLean.tiltY) * lerp;
 
-    cursorLean.x += (targetLeanX - cursorLean.x) * lerp;
-    cursorLean.y += (targetLeanY - cursorLean.y) * lerp;
-    cursorLean.squish += (targetSquish - cursorLean.squish) * lerp;
-    cursorLean.scale += (targetScale - cursorLean.scale) * (isFleeing ? spdFast : clamp(dt * 0.005, 0, 1));
-    cursorLean.tiltX += (targetTiltX - cursorLean.tiltX) * lerp;
-    cursorLean.tiltY += (targetTiltY - cursorLean.tiltY) * lerp;
+    // ограничение чтобы core не улетал за пределы кольца слишком сильно
+    cursorLean.x = clamp(cursorLean.x, -18, 18);
+    cursorLean.y = clamp(cursorLean.y, -18, 18);
+    cursorLean.scale = clamp(cursorLean.scale, 0.7, 1.2);
+    cursorLean.tiltX = clamp(cursorLean.tiltX, -20, 20);
+    cursorLean.tiltY = clamp(cursorLean.tiltY, -20, 20);
 
-    if (mInZone) {
+    // горячая точка слегка тянется к курсору
+    if (inZone) {
       const gStr = 1 - clamp(mDist / CURSOR_ZONE_RADIUS, 0, 1);
-      const norm = normD(mDx, mDy, mDist);
-      heatTargetX += norm.x * gStr * 0.6;
-      heatTargetY += norm.y * gStr * 0.6;
+      heatTargetX += norm.x * gStr * 0.4;
+      heatTargetY += norm.y * gStr * 0.4;
     }
+
+    lastMouseDist = mDist;
   }
 
-  // ---------- пасхалка: полёт к каретке ----------
+  // ---------- пасхалка ----------
 
   function checkEggTrigger() {
     if (egg.active || egg.triggeredToday) return false;
@@ -671,72 +679,86 @@ const Ember = (() => {
     egg.startY = cursorLean.y;
     egg.caretX = targetX - ember.x;
     egg.caretY = targetY - ember.y;
-    egg.lookCount = 0;
+    egg.x = cursorLean.x;
+    egg.y = cursorLean.y;
+    egg.scale = 1;
+    egg.squish = 0;
+    egg.tiltX = 0;
+    egg.tiltY = 0;
     eggCharCount = 0;
   }
 
+  // Сценарий: подлетает к каретке -> осматривается/разглядывает ->
+  // схлопывается в точку -> телепортируется в кружок -> вырастает обратно.
   function updateEgg(now) {
-    if (!egg.active) return false;
+    if (!egg.active) return;
     const t = now - egg.phaseStart;
     switch (egg.phase) {
-      case 1: {
-        const p = clamp(t / 900, 0, 1);
+      case 1: { // полёт к каретке
+        const p = clamp(t / 850, 0, 1);
         const e = easeOutQuad(p);
-        cursorLean.x = egg.startX + (egg.caretX - egg.startX) * e;
-        cursorLean.y = egg.startY + (egg.caretY - egg.startY) * e;
-        cursorLean.scale = 1 + Math.sin(p * Math.PI) * 0.1;
-        cursorLean.tiltX = 0;
-        cursorLean.tiltY = 0;
+        egg.x = egg.startX + (egg.caretX - egg.startX) * e;
+        egg.y = egg.startY + (egg.caretY - egg.startY) * e;
+        // лёгкое покачивание в полёте + наклон по направлению движения
+        egg.y += Math.sin(p * Math.PI * 3) * 2 * (1 - p);
+        egg.scale = 1 + Math.sin(p * Math.PI) * 0.12;
+        egg.tiltY = (egg.caretX - egg.startX) > 0 ? -10 * (1 - p) : 10 * (1 - p);
+        egg.tiltX = 0;
         if (p >= 1) { egg.phase = 2; egg.phaseStart = now; }
-        return true;
+        break;
       }
-      case 2: {
-        const p = clamp(t / 1800, 0, 1);
-        const lookX = Math.sin(p * Math.PI * 2.5) * 6;
-        const lookY = Math.cos(p * Math.PI * 1.8) * 4;
-        cursorLean.x = egg.caretX + lookX;
-        cursorLean.y = egg.caretY + lookY;
-        cursorLean.scale = 1.06;
-        cursorLean.tiltX = Math.sin(p * Math.PI * 3) * 10;
-        cursorLean.tiltY = Math.cos(p * Math.PI * 2) * 7;
+      case 2: { // осматривается, крутит "головой", разглядывает
+        const p = clamp(t / 2400, 0, 1);
+        egg.x = egg.caretX + Math.sin(p * Math.PI * 3) * 7;
+        egg.y = egg.caretY + Math.sin(p * Math.PI * 2 + 1) * 5 - 2;
+        egg.scale = 1.05 + Math.sin(p * Math.PI * 4) * 0.04;
+        egg.tiltX = Math.sin(p * Math.PI * 3.5) * 14;
+        egg.tiltY = Math.cos(p * Math.PI * 2.5) * 16;
+        egg.squish = Math.max(0, Math.sin(p * Math.PI * 6)) * 0.08;
         if (p >= 1) { egg.phase = 3; egg.phaseStart = now; }
-        return true;
+        break;
       }
-      case 3: {
-        const p = clamp(t / 350, 0, 1);
-        cursorLean.x = egg.caretX;
-        cursorLean.y = egg.caretY;
-        cursorLean.scale = 1 - easeInQuad(p) * 0.95;
-        cursorLean.tiltX = 0;
-        cursorLean.tiltY = 0;
-        cursorLean.squish = easeInQuad(p) * 0.5;
+      case 3: { // замах перед схлопыванием
+        const p = clamp(t / 220, 0, 1);
+        egg.x = egg.caretX;
+        egg.y = egg.caretY;
+        egg.scale = 1.05 + easeOutQuad(p) * 0.25;
+        egg.tiltX = 0; egg.tiltY = 0;
+        egg.squish = -0.1 * p;
         if (p >= 1) { egg.phase = 4; egg.phaseStart = now; }
-        return true;
+        break;
       }
-      case 4: {
-        cursorLean.x = 0;
-        cursorLean.y = 0;
-        cursorLean.scale = 0.05;
-        cursorLean.squish = 0.5;
-        cursorLean.tiltX = 0;
-        cursorLean.tiltY = 0;
-        if (t > 80) { egg.phase = 5; egg.phaseStart = now; }
-        return true;
+      case 4: { // схлопывается в точку (на месте каретки)
+        const p = clamp(t / 260, 0, 1);
+        egg.x = egg.caretX;
+        egg.y = egg.caretY;
+        egg.scale = 1.3 - easeInQuad(p) * 1.26; // -> ~0.04
+        egg.squish = easeInQuad(p) * 0.6;
+        if (p >= 1) { egg.phase = 5; egg.phaseStart = now; }
+        break;
       }
-      case 5: {
-        const p = clamp(t / 400, 0, 1);
+      case 5: { // телепорт в кружок: мгновенно дома, держим точку
+        egg.x = 0;
+        egg.y = 0;
+        egg.scale = 0.04;
+        egg.squish = 0.5;
+        egg.tiltX = 0; egg.tiltY = 0;
+        if (t > 90) { egg.phase = 6; egg.phaseStart = now; }
+        break;
+      }
+      case 6: { // "пшик" — раздувается обратно до нормы
+        const p = clamp(t / 420, 0, 1);
         const e = easeOutQuad(p);
-        cursorLean.scale = 0.05 + e * 0.95;
-        cursorLean.squish = (1 - e) * 0.5;
+        egg.x = 0; egg.y = 0;
+        egg.scale = 0.04 + e * 0.96 + Math.sin(p * Math.PI) * 0.12;
+        egg.squish = (1 - e) * 0.5 - Math.sin(p * Math.PI) * 0.1;
         if (p >= 1) {
-          cursorLean.scale = 1;
-          cursorLean.squish = 0;
+          egg.scale = 1; egg.squish = 0;
           egg.active = false;
         }
-        return !egg.active;
+        break;
       }
     }
-    return false;
   }
 
   // ---------- ПКМ тестирование ----------
@@ -745,6 +767,7 @@ const Ember = (() => {
     'sigh', 'calmBurn', 'wiggle', 'tilt', 'microShift',
     'crackle', 'stretch', 'glint', 'sleepySag',
     'smolder', 'heatRadiance', 'glowPulse', 'ashDrift',
+    'segTremor', 'segFlicker', 'segHeatWave',
     'cursorLean', 'typingApproach', 'startle', 'playfulDodge',
     'eggFly',
   ];
@@ -765,7 +788,6 @@ const Ember = (() => {
     const type = testQueue[testIndex];
     testIndex++;
 
-    // показываем название текущего эффекта
     if (!testLabel) {
       testLabel = document.createElement('div');
       testLabel.className = 'ember-test-label';
@@ -782,74 +804,102 @@ const Ember = (() => {
       sleepySag: [3000, 5000],
       smolder: [3000, 4000], heatRadiance: [2500, 3500],
       glowPulse: [2000, 3000], ashDrift: [3000, 4000],
-      cursorLean: [2000, 3000], typingApproach: [3000, 4000],
-      startle: [1500, 2000], playfulDodge: [1200, 1800],
-      eggFly: [3500, 3500],
     };
-    const extra = type === 'tilt' ? { target: rand(-1, 1) }
-      : type === 'microShift' ? { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }
-      : type === 'ashDrift' ? { dx: rand(-3, 3) }
-      : {};
-    // принудительный запуск — очищаем всё перед каждым эффектом
+
     active.clear();
-    active.set(type, { phase: 0, durMs: rand(durRanges[type][0], durRanges[type][1]), ...extra });
 
-    // запускаем сегментные эффекты тоже
-    if (['segTremor', 'segFlicker'].includes(type)) {
+    const coreTypes = Object.keys(durRanges);
+    if (coreTypes.includes(type)) {
+      const extras = {
+        calmBurn: { mag: rand(0.05, 0.1), hue: rand(-6, 12) },
+        sigh: { mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) },
+        wiggle: { amp: rand(0.9, 1.3) },
+        stretch: { amp: rand(0.9, 1.25) },
+        crackle: { mag: rand(0.9, 1.5) },
+        glint: { hue: rand(15, 35), sat: rand(0.3, 0.6) },
+        smolder: { hue: rand(10, 26), sat: rand(0.15, 0.32) },
+        tilt: { target: rand(-1, 1) },
+        microShift: { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) },
+        ashDrift: { dx: rand(-3, 3) },
+      };
+      active.set(type, {
+        phase: 0,
+        durMs: rand(durRanges[type][0], durRanges[type][1]),
+        ...(extras[type] || {}),
+      });
+    }
+
+    if (['segTremor', 'segFlicker', 'segHeatWave'].includes(type)) {
       const a = getActiveSegIndices();
-      if (a.length) segmentEffects.push({ type, segIdx: a[Math.floor(Math.random() * a.length)], phase: 0, durMs: rand(400, 600) });
+      if (a.length) {
+        segmentEffects.push({
+          type, segIdx: type === 'segHeatWave' ? 0 : a[Math.floor(Math.random() * a.length)],
+          phase: 0, durMs: rand(500, 800), mag: rand(0.8, 1.2),
+        });
+      }
     }
 
-    // запускаем искры/пепел для соответствующих эффектов
-    if (type === 'crackle' || type === 'glowPulse' || type === 'calmBurn') {
-      for (let i = 0; i < 5; i++) setTimeout(() => spawnSpark(), i * 150);
+    if (['crackle', 'glowPulse', 'calmBurn'].includes(type)) {
+      for (let i = 0; i < 6; i++) setTimeout(() => spawnSpark(), i * 130);
     }
-    if (type === 'ashDrift' || type === 'smolder' || type === 'sigh') {
-      for (let i = 0; i < 8; i++) setTimeout(() => spawnAshParticle(), i * 200);
+    if (['ashDrift', 'smolder', 'sigh'].includes(type)) {
+      for (let i = 0; i < 10; i++) setTimeout(() => spawnAshParticle(), i * 160);
     }
 
-    // курсорные эффекты — имитируем позицию мыши
     if (type === 'cursorLean') {
-      cursorReactionCooldown = 0;
       mouseInZone = true;
-      mouseEnterTime = performance.now() - 5000;
       mouse.x = getEmberCenter().x + rand(-120, 120);
       mouse.y = getEmberCenter().y + rand(30, 150);
+      mouse.speed = 2;
     }
     if (type === 'typingApproach') {
       caret.typing = true;
       caret.active = true;
       caret.x = getEmberCenter().x + rand(-100, 100);
       caret.y = getEmberCenter().y + rand(-50, 50);
-      setTimeout(() => { caret.typing = false; }, 2000);
+      setTimeout(() => { caret.typing = false; }, 2200);
     }
     if (type === 'startle') {
       mouseInZone = false;
-      mouseEnterTime = performance.now();
-      mouse.x = getEmberCenter().x + rand(-200, 200);
-      mouse.y = getEmberCenter().y + rand(-200, 200);
-      mouse.speed = rand(15, 30);
+      const ec = getEmberCenter();
+      const ang = rand(0, Math.PI * 2);
+      const n = { x: Math.cos(ang), y: Math.sin(ang) };
+      triggerStartle(n, rand(28, 40), 130, 600);
     }
     if (type === 'playfulDodge') {
       mouseInZone = true;
-      mouseEnterTime = performance.now() - 2000;
-      mouse.x = getEmberCenter().x + rand(-60, 60);
-      mouse.y = getEmberCenter().y + rand(-60, 60);
-      mouse.speed = rand(15, 25);
+      const ec = getEmberCenter();
+      const ang = rand(0, Math.PI * 2);
+      const n = { x: Math.cos(ang), y: Math.sin(ang) };
+      triggerStartle(n, rand(16, 26), 110, 420);
     }
-
     if (type === 'eggFly') {
       egg.triggeredToday = false;
       const ec = getEmberCenter();
       const angle = rand(0, Math.PI * 2);
-      const dist = rand(60, 140);
+      const dist = rand(70, 140);
       startEgg({ x: ec.x + Math.cos(angle) * dist, y: ec.y + Math.sin(angle) * dist });
     }
 
-    setTimeout(runNextTest, 3000);
+    setTimeout(runNextTest, 3300);
   }
 
   // ---------- основной кадр ----------
+
+  function applyEggVars() {
+    coreEl.style.setProperty('--cursorLeanX', '0');
+    coreEl.style.setProperty('--cursorLeanY', '0');
+    coreEl.style.setProperty('--cursorSquish', '0');
+    coreEl.style.setProperty('--cursorScale', '1');
+    coreEl.style.setProperty('--cursorTiltX', '0');
+    coreEl.style.setProperty('--cursorTiltY', '0');
+    coreEl.style.setProperty('--eggX', egg.x.toFixed(1) + 'px');
+    coreEl.style.setProperty('--eggY', egg.y.toFixed(1) + 'px');
+    coreEl.style.setProperty('--eggScale', clamp(egg.scale, 0.02, 2).toFixed(3));
+    coreEl.style.setProperty('--eggSquish', egg.squish.toFixed(3));
+    coreEl.style.setProperty('--eggTiltX', egg.tiltX.toFixed(1) + 'deg');
+    coreEl.style.setProperty('--eggTiltY', egg.tiltY.toFixed(1) + 'deg');
+  }
 
   function update(now, dt) {
     intensity = calcIntensity();
@@ -857,20 +907,13 @@ const Ember = (() => {
     sampleMousePosition(now);
     sampleCaretPosition(now);
 
+    // вращение кольца — медленное, только при наведении
+    ringAngle += dt * 0.0003 * hoverVal / sleepSlowdown();
+    ringEl.style.setProperty('--ringRot', (ringAngle * 57.2958 % 360).toFixed(2) + 'deg');
+
     if (egg.active) {
       updateEgg(now);
-      root.style.setProperty('--cursorLeanX', '0');
-      root.style.setProperty('--cursorLeanY', '0');
-      root.style.setProperty('--cursorSquish', '0');
-      root.style.setProperty('--cursorScale', '1');
-      root.style.setProperty('--cursorTiltX', '0');
-      root.style.setProperty('--cursorTiltY', '0');
-      coreEl.style.setProperty('--eggX', cursorLean.x.toFixed(1) + 'px');
-      coreEl.style.setProperty('--eggY', cursorLean.y.toFixed(1) + 'px');
-      coreEl.style.setProperty('--eggScale', cursorLean.scale.toFixed(3));
-      coreEl.style.setProperty('--eggSquish', cursorLean.squish.toFixed(3));
-      coreEl.style.setProperty('--eggTiltX', cursorLean.tiltX.toFixed(1) + 'deg');
-      coreEl.style.setProperty('--eggTiltY', cursorLean.tiltY.toFixed(1) + 'deg');
+      applyEggVars();
       applySegments();
       advanceSegEffects(dt);
       applySegEffects();
@@ -886,17 +929,14 @@ const Ember = (() => {
 
     updateCursorLean(now, dt);
 
-    // спавн
     const since = now - spawnStart;
     const spawnCore = clamp(since / 500, 0, 1);
     const spawnGlow = clamp((since - 400) / 500, 0, 1);
     const spawnRing = clamp((since - 800) / 600, 0, 1);
 
-    // hover
     const hoverStep = clamp(dt / 300, 0, 1);
     hoverVal += hover ? (1 - hoverVal) * hoverStep : (0 - hoverVal) * hoverStep;
 
-    // дыхание (~4-5с)
     const speedMult = (1 + hoverVal * 0.8) / sleepSlowdown();
     const breathBase = intensity > 0.3 ? 0.00055 : 0.0002;
     breathPhase += breathBase * speedMult * dt;
@@ -906,21 +946,21 @@ const Ember = (() => {
     updateHeatZones(dt);
     if (heatBoost > 0) heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
 
-    // --- эффекты ядра (только в автоматическом режиме) ---
+    // --- запуск эффектов ядра с рандомными параметрами ---
     if (!testMode) {
-      tryStart('sigh', 0.5, [4000, 5000]);
-      tryStart('calmBurn', 0.8, [2000, 3000]);
-      if (intensity > 0.5) tryStart('wiggle', 0.3, [700, 1000]);
-      tryStart('tilt', 0.25, [2000, 2000], { target: rand(-1, 1) });
-      tryStart('microShift', 0.2, [1000, 2000], { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) });
-      tryStart('crackle', 0.4, [80, 150]);
-      tryStart('stretch', 0.35, [3000, 4000]);
-      tryStart('glint', 0.3, [2000, 3000]);
+      tryStart('sigh', 0.5, [4000, 5000], () => ({ mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) }));
+      tryStart('calmBurn', 0.8, [2000, 3000], () => ({ mag: rand(0.05, 0.1), hue: rand(-6, 12) }));
+      if (intensity > 0.5) tryStart('wiggle', 0.3, [700, 1100], () => ({ amp: rand(0.9, 1.3) }));
+      tryStart('tilt', 0.25, [2000, 2000], () => ({ target: rand(-1, 1) }));
+      tryStart('microShift', 0.2, [1000, 2000], () => ({ dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }));
+      tryStart('crackle', 0.4, [80, 160], () => ({ mag: rand(0.9, 1.5) }));
+      tryStart('stretch', 0.35, [3000, 4200], () => ({ amp: rand(0.9, 1.25) }));
+      tryStart('glint', 0.3, [2000, 3000], () => ({ hue: rand(15, 35), sat: rand(0.3, 0.6) }));
       if (intensity < 0.4) tryStart('sleepySag', 0.25, [3000, 5000]);
-      tryStart('smolder', 0.3, [3000, 4000]);
+      tryStart('smolder', 0.3, [3000, 4000], () => ({ hue: rand(10, 26), sat: rand(0.15, 0.32) }));
       tryStart('heatRadiance', 0.25, [2500, 3500]);
       tryStart('glowPulse', 0.3, [2000, 3000]);
-      tryStart('ashDrift', 0.3, [3000, 4000], { dx: rand(-3, 3) });
+      tryStart('ashDrift', 0.3, [3000, 4000], () => ({ dx: rand(-3, 3) }));
     }
 
     const sigh = advanceEffect('sigh', dt);
@@ -938,76 +978,67 @@ const Ember = (() => {
     const glowPulse = advanceEffect('glowPulse', dt);
     const ashDrift = advanceEffect('ashDrift', dt);
 
-    // --- композиция ---
-    const tm = testMode ? 5 : 1;
+    const tm = testMode ? 4 : 1;
 
-    // поёживание — заметное дрожание
+    // поёживание (рандомная амплитуда)
     let scaleX = 1, scaleY = 1;
     if (wiggle) {
+      const amp = wiggle.amp ?? 1;
       const pts = [[1, 1], [0.92, 1.07], [1.05, 0.95], [0.97, 1.03], [1, 1]];
       const s = wiggle.phase * (pts.length - 1);
       const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
       const lt = s - i0;
-      scaleX = pts[i0][0] + (pts[i1][0] - pts[i0][0]) * lt;
-      scaleY = pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
+      scaleX = 1 + ((pts[i0][0] + (pts[i1][0] - pts[i0][0]) * lt) - 1) * amp;
+      scaleY = 1 + ((pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt) - 1) * amp;
     }
 
-    // растяжка/зевок — сильное вертикальное растяжение
     if (stretch) {
+      const amp = stretch.amp ?? 1;
       const pts = [[1, 1], [1.12, 0.92], [0.9, 1.08], [1, 1]];
       const s = stretch.phase * (pts.length - 1);
       const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
       const lt = s - i0;
-      scaleX *= pts[i0][0] + (pts[i1][0] - pts[i0][0]) * lt;
-      scaleY *= pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
+      scaleX *= 1 + ((pts[i0][0] + (pts[i1][0] - pts[i0][0]) * lt) - 1) * amp;
+      scaleY *= 1 + ((pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt) - 1) * amp;
     }
 
-    // вздрагивание (crackle) — резкий scale spike
     let crackleScale = 1;
     if (crackle) {
+      const mag = crackle.mag ?? 1;
       const p = crackle.phase;
-      const spike = p < 0.15 ? 1 + p / 0.15 * 0.12 : 1 + (1 - (p - 0.15) / 0.85) * 0.12;
+      const spike = p < 0.15 ? 1 + p / 0.15 * 0.12 * mag : 1 + (1 - (p - 0.15) / 0.85) * 0.12 * mag;
       crackleScale = spike;
+      if (p < 0.04 && Math.random() < 0.5) spawnSpark();
     }
 
-    // спокойное горение — пульс размера
-    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.06 * tm : 1;
+    const calmMag = calmBurn?.mag ?? 0.06;
+    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * calmMag * tm : 1;
     const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.15 * tm : 0;
+    const calmHue = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * (calmBurn.hue ?? 0) * tm : 0;
 
-    // вздох — расширение + сжатие
-    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.05 * tm : 1;
+    const sighMag = sigh?.mag ?? 0.05;
+    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * sighMag * tm : 1;
     const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.12 * tm : 0;
-    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.2 * tm : 0;
+    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * (sigh.glow ?? 0.2) * tm : 0;
 
-    // потрескивание — яркая вспышка + scale
-    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 1.2 * tm : 0;
+    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 1.2 * (crackle.mag ?? 1) * tm : 0;
 
-    // отблеск — насыщенность + лёгкий scale
-    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 25 * tm : 0;
-    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.4 * tm : 0;
+    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * (glint.hue ?? 25) * tm : 0;
+    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * (glint.sat ?? 0.4) * tm : 0;
 
-    // сонная просадка — сжимается
     const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.08 * tm : 1;
     const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.2 * tm : 0;
 
-    // тление
-    const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * 20 * tm : 0;
-    const smolderSat = smolder ? bump(smolder.phase, 0.2, 0.8) * 0.25 * tm : 0;
+    const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * (smolder.hue ?? 20) * tm : 0;
+    const smolderSat = smolder ? bump(smolder.phase, 0.2, 0.8) * (smolder.sat ?? 0.25) * tm : 0;
 
-    // тепловое излучение
     const radianceGlow = heatRadiance ? bump(heatRadiance.phase, 0.3, 0.7) * 0.4 * tm : 0;
-
-    // пульс свечения
     const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.3 * tm : 0;
-
-    // дрейф пепла
     const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) * 2 * tm : 0;
 
-    // поворот
     if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
     tiltCurrent += (tiltTarget - tiltCurrent) * clamp(0.08 * (dt / 16.7), 0, 1);
 
-    // микросмещение
     const microShiftPx = microShift ? bump(microShift.phase, 0.5, 0.5) * (microShift.dx ?? 0.5) : 0;
 
     const finalScaleX = breathScale * scaleX * calmMult * sighMult * sleepyMult * crackleScale * cursorLean.scale;
@@ -1025,7 +1056,6 @@ const Ember = (() => {
     const shiftX = heatOffsetX * 0.6 + microShiftPx + ashDriftX;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5;
 
-    // --- запись переменных ---
     root.style.setProperty('--heat', heat.toFixed(3));
     root.style.setProperty('--glow', glow.toFixed(3));
     root.style.setProperty('--intensity', intensity.toFixed(3));
@@ -1042,32 +1072,31 @@ const Ember = (() => {
     root.style.setProperty('--brightness', brightness.toFixed(3));
     root.style.setProperty('--glowOpacity', (1 + hoverVal * 0.15 + radianceGlow).toFixed(3));
     root.style.setProperty('--glowBlur', (5 + hoverVal * 1.5 + radianceGlow * 3).toFixed(2) + 'px');
-    root.style.setProperty('--glowScale', (1 + hoverVal * 0.08 + radianceGlow * 0.15).toFixed(3));
+    root.style.setProperty('--glowScale', (1 + hoverVal * 0.08 + radianceGlow * 0.15 + glowPulseMult * 0.1).toFixed(3));
     root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
 
-    root.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(1));
-    root.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(1));
-    root.style.setProperty('--cursorSquish', cursorLean.squish.toFixed(3));
-    root.style.setProperty('--cursorScale', cursorLean.scale.toFixed(3));
-    root.style.setProperty('--cursorTiltX', cursorLean.tiltX.toFixed(1));
-    root.style.setProperty('--cursorTiltY', cursorLean.tiltY.toFixed(1));
+    // cursor lean — только на core, кольцо остаётся на месте
+    coreEl.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(1));
+    coreEl.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(1));
+    coreEl.style.setProperty('--cursorSquish', cursorLean.squish.toFixed(3));
+    coreEl.style.setProperty('--cursorScale', cursorLean.scale.toFixed(3));
+    coreEl.style.setProperty('--cursorTiltX', cursorLean.tiltX.toFixed(1));
+    coreEl.style.setProperty('--cursorTiltY', cursorLean.tiltY.toFixed(1));
 
     root.style.setProperty('--spawnCore', spawnCore.toFixed(3));
     root.style.setProperty('--spawnGlow', spawnGlow.toFixed(3));
     root.style.setProperty('--spawnRing', spawnRing.toFixed(3));
 
-    // отблеск + тление на core
-    const totalHue = glintHue + smolderHue;
+    const totalHue = glintHue + smolderHue + calmHue;
     const totalSat = glintSat + smolderSat;
     if (totalHue || totalSat) {
-      coreEl.style.filter = `hue-rotate(${totalHue.toFixed(1)}deg) saturate(${(1 + totalSat).toFixed(3)})`;
+      coreEl.style.filter = `brightness(var(--brightness)) hue-rotate(${totalHue.toFixed(1)}deg) saturate(${(1 + totalSat).toFixed(3)})`;
     } else {
-      coreEl.style.filter = '';
+      coreEl.style.filter = 'brightness(var(--brightness))';
     }
 
     applySegments();
 
-    // --- сегментные эффекты ---
     if (!testMode) {
       tryStartSeg('segTremor', 0.35, [300, 500], () => {
         const a = getActiveSegIndices();
@@ -1094,22 +1123,20 @@ const Ember = (() => {
     advanceSegEffects(dt);
     applySegEffects();
 
-    // --- микропепел ---
+    // --- микропепел (чаще + выше) ---
     if (Date.now() > nextAshSpawn) {
-      if (Math.random() < 0.7) spawnAshParticle();
-      nextAshSpawn = Date.now() + rand(500, 1200);
+      if (Math.random() < 0.88) spawnAshParticle();
+      if (intensity > 0.6 && Math.random() < 0.3) spawnAshParticle();
+      nextAshSpawn = Date.now() + rand(280, 720);
     }
-    updateParticles(now);
 
-    // --- искры ---
+    // --- искры (чаще, ярче, разные) ---
     if (Date.now() > nextSparkCheck) {
-      if (Math.random() < 0.4 && activeSparks < 5) spawnSpark();
-      nextSparkCheck = Date.now() + rand(3000, 8000);
+      if (Math.random() < 0.5 * (0.4 + intensity * 0.6)) spawnSpark();
+      nextSparkCheck = Date.now() + rand(1400, 3800);
     }
-    // подсчёт активных искр
-    activeSparks = particles.filter(p => p.isSpark).length;
 
-    // --- дрожание воздуха ---
+    updateParticles(now);
     updateShimmer(now);
   }
 
@@ -1143,7 +1170,6 @@ const Ember = (() => {
     root.addEventListener('focus', () => { hover = true; });
     root.addEventListener('blur', () => { hover = false; });
 
-    // ПКМ — тестовый режим
     root.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (!testMode) startTestMode();
@@ -1153,16 +1179,23 @@ const Ember = (() => {
       el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
 
     document.addEventListener('input', (e) => {
-      if (isEditable(e.target)) handleInput();
+      if (isEditable(e.target)) {
+        handleInput();
+        caret.typing = true;
+        clearTimeout(caret._typingTimer);
+        caret._typingTimer = setTimeout(() => { caret.typing = false; }, 1500);
+      }
     });
 
-    // отслеживание мыши
     document.addEventListener('mousemove', (e) => {
-      mouse.x = e.clientX;
-      mouse.y = e.clientY;
+      if (!browserFocused) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const margin = 200;
+      mouse.x = clamp(e.clientX, -margin, vw + margin);
+      mouse.y = clamp(e.clientY, -margin, vh + margin);
     });
 
-    // отслеживание каретки — через selectionchange
     document.addEventListener('selectionchange', () => {
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) { caret.active = false; return; }
@@ -1170,15 +1203,17 @@ const Ember = (() => {
       caret.active = range.collapsed;
     });
 
-    // отслеживание набора текста
-    document.addEventListener('input', (e) => {
-      if (isEditable(e.target)) {
-        caret.typing = true;
-        clearTimeout(caret._typingTimer);
-        caret._typingTimer = setTimeout(() => {
-          caret.typing = false;
-          caret.lastTypingEnd = performance.now();
-        }, 1500);
+    window.addEventListener('focus', () => { browserFocused = true; });
+    window.addEventListener('blur', () => {
+      browserFocused = false;
+      mouseInZone = false;
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        browserFocused = false;
+        mouseInZone = false;
+      } else {
+        browserFocused = true;
       }
     });
   }
@@ -1216,6 +1251,7 @@ const Ember = (() => {
     clearTimeout(resetTimer);
     particles.forEach(p => p.el.remove());
     particles = [];
+    activeSparks = 0;
   }
 
   return { init, destroy, notifyEdit };
