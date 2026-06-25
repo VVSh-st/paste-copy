@@ -5706,3 +5706,19 @@ body.help-open {
   60% { backdrop-filter: blur(0.4px); }
   80% { backdrop-filter: blur(0.2px); }
 }
+
+/* ===== Тестовый режим (ПКМ) ===== */
+.ember-test-label {
+  position: absolute;
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  font-family: var(--mono);
+  color: rgba(255, 180, 100, 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+  transition: opacity 0.3s ease;
+}

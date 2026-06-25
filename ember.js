@@ -79,6 +79,7 @@ const Ember = (() => {
   let testMode = false;
   let testQueue = [];
   let testIndex = 0;
+  let testLabel = null;
 
   let channel = null;
   let rafId = null;
@@ -288,7 +289,7 @@ const Ember = (() => {
           active.delete(worstType); rescheduleDue(worstType);
         } else return;
       }
-      active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRange[1] ?? durRangeMs[1]), ...extra });
+      active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]), ...extra });
       return;
     }
     const now = Date.now();
@@ -487,14 +488,26 @@ const Ember = (() => {
   function runNextTest() {
     if (!testMode || testIndex >= testQueue.length) {
       testMode = false;
+      if (testLabel) { testLabel.remove(); testLabel = null; }
       return;
     }
     const type = testQueue[testIndex];
     testIndex++;
+
+    // показываем название текущего эффекта
+    if (!testLabel) {
+      testLabel = document.createElement('div');
+      testLabel.className = 'ember-test-label';
+      root.appendChild(testLabel);
+    }
+    testLabel.textContent = type;
+    testLabel.style.opacity = '1';
+    setTimeout(() => { if (testLabel) testLabel.style.opacity = '0.7'; }, 800);
+
     const durRanges = {
       sigh: [4000, 5000], calmBurn: [2000, 3000], wiggle: [700, 1000],
       tilt: [2000, 2000], microShift: [1000, 2000],
-      crackle: [80, 150], stretch: [3000, 4000], glint: [2000, 3000],
+      crackle: [150, 250], stretch: [3000, 4000], glint: [2000, 3000],
       sleepySag: [3000, 5000],
       smolder: [3000, 4000], heatRadiance: [2500, 3500],
       glowPulse: [2000, 3000], ashDrift: [3000, 4000],
@@ -503,21 +516,25 @@ const Ember = (() => {
       : type === 'microShift' ? { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }
       : type === 'ashDrift' ? { dx: rand(-3, 3) }
       : {};
-    // принудительный запуск
-    if (active.size >= MAX_EFFECTS) {
-      let worst = null, worstP = -1;
-      for (const t of active.keys()) { if (PRIORITY[t] > worstP) { worstP = PRIORITY[t]; worst = t; } }
-      if (worst) { active.delete(worst); }
-    }
+    // принудительный запуск — очищаем всё перед каждым эффектом
+    active.clear();
     active.set(type, { phase: 0, durMs: rand(durRanges[type][0], durRanges[type][1]), ...extra });
 
     // запускаем сегментные эффекты тоже
     if (['segTremor', 'segFlicker'].includes(type)) {
       const a = getActiveSegIndices();
-      if (a.length) segmentEffects.push({ type, segIdx: a[Math.floor(Math.random() * a.length)], phase: 0, durMs: rand(300, 500) });
+      if (a.length) segmentEffects.push({ type, segIdx: a[Math.floor(Math.random() * a.length)], phase: 0, durMs: rand(400, 600) });
     }
 
-    setTimeout(runNextTest, 1200);
+    // запускаем искры/пепел для соответствующих эффектов
+    if (type === 'crackle' || type === 'glowPulse') {
+      for (let i = 0; i < 3; i++) setTimeout(() => spawnSpark(), i * 200);
+    }
+    if (type === 'ashDrift' || type === 'smolder') {
+      for (let i = 0; i < 5; i++) setTimeout(() => spawnAshParticle(), i * 300);
+    }
+
+    setTimeout(runNextTest, 2500);
   }
 
   // ---------- основной кадр ----------
@@ -578,6 +595,7 @@ const Ember = (() => {
     const ashDrift = advanceEffect('ashDrift', dt);
 
     // --- композиция ---
+    const tm = testMode ? 3 : 1; // тестовый режим: усиление в 3 раза
 
     // поёживание
     let scaleX = 1, scaleY = 1;
@@ -600,37 +618,37 @@ const Ember = (() => {
     }
 
     // спокойное горение
-    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.02 : 1;
-    const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.1 : 0;
+    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.02 * tm : 1;
+    const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.1 * tm : 0;
 
     // вздох
-    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.015 : 1;
-    const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.06 : 0;
-    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.1 : 0;
+    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.015 * tm : 1;
+    const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.06 * tm : 0;
+    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.1 * tm : 0;
 
     // потрескивание
-    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 0.8 : 0;
+    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 0.8 * tm : 0;
 
     // отблеск
-    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 15 : 0;
-    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.25 : 0;
+    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 15 * tm : 0;
+    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.25 * tm : 0;
 
     // сонная просадка
-    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.035 : 1;
-    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.15 : 0;
+    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.035 * tm : 1;
+    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.15 * tm : 0;
 
-    // тление: пульсация hue между оранжевым и красным
-    const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * 10 : 0;
-    const smolderSat = smolder ? bump(smolder.phase, 0.2, 0.8) * 0.12 : 0;
+    // тление
+    const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * 10 * tm : 0;
+    const smolderSat = smolder ? bump(smolder.phase, 0.2, 0.8) * 0.12 * tm : 0;
 
-    // тепловое излучение: расширение glow
-    const radianceGlow = heatRadiance ? bump(heatRadiance.phase, 0.3, 0.7) * 0.2 : 0;
+    // тепловое излучение
+    const radianceGlow = heatRadiance ? bump(heatRadiance.phase, 0.3, 0.7) * 0.2 * tm : 0;
 
-    // пульс свечения: кратковременное увеличение glow
-    const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.15 : 0;
+    // пульс свечения
+    const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.15 * tm : 0;
 
-    // дрейф пепла: смещение核心区
-    const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) : 0;
+    // дрейф пепла
+    const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) * tm : 0;
 
     // поворот
     if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
