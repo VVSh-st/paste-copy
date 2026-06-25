@@ -383,15 +383,15 @@ const Anchors = (() => {
       }
 
       if (settings.bgHighlight && anchor.start !== anchor.end) {
-        if (rawTop + lineHeight < -lineHeight || rawTop > wrapH + lineHeight) return;
         const endPos = _measurePos(ta, anchor.end);
         const wrapW = wrap.clientWidth || (ta.clientWidth + (parseFloat(getComputedStyle(ta).paddingLeft) || 0));
-        let selW = Math.max(2, endPos.x - pos.x);
-        if (selW < 0) selW = wrapW - pos.x;
-        if (pos.x + selW > wrapW) selW = Math.max(2, wrapW - pos.x);
+        let selW = Math.max(2, Math.abs(endPos.x - pos.x));
+        const gLeft = Math.min(pos.x, endPos.x);
+        if (gLeft + selW > wrapW) selW = Math.max(2, wrapW - gLeft);
+        const gTop = Math.max(0, Math.min(rawTop, wrapH - lineHeight));
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + rawTop + 'px;pointer-events:none;z-index:0;background:' + settings.color + '33;border-radius:2px;left:' + pos.x + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });

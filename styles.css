@@ -5496,9 +5496,7 @@ body.help-open {
 }
 .anchor-marker-gutter {
   position: absolute;
-  left: 3px;
-  right: 0;
   pointer-events: none;
-  z-index: 3;
+  z-index: 2;
   border-radius: 2px;
 }
