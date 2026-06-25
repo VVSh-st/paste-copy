@@ -654,21 +654,29 @@ const Ember = (() => {
     return false;
   }
 
-  function startEgg() {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const range = sel.getRangeAt(0);
-    if (!range.collapsed) return;
-    const rect = range.getBoundingClientRect();
-    if (!rect.width && !rect.height) return;
+  function startEgg(targetOverride) {
+    let targetX, targetY;
+    if (targetOverride) {
+      targetX = targetOverride.x;
+      targetY = targetOverride.y;
+    } else {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) return;
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) return;
+      targetX = rect.left + rect.width / 2;
+      targetY = rect.top;
+    }
     const ember = getEmberCenter();
     egg.active = true;
     egg.phase = 1;
     egg.phaseStart = performance.now();
     egg.startX = cursorLean.x;
     egg.startY = cursorLean.y;
-    egg.caretX = rect.left + rect.width / 2 - ember.x;
-    egg.caretY = rect.top - ember.y;
+    egg.caretX = targetX - ember.x;
+    egg.caretY = targetY - ember.y;
     egg.lookCount = 0;
     eggWordBuffer = 0;
     eggFirstTyped = 0;
@@ -839,7 +847,10 @@ const Ember = (() => {
 
     if (type === 'eggFly') {
       egg.triggeredToday = false;
-      startEgg();
+      const ec = getEmberCenter();
+      const angle = rand(0, Math.PI * 2);
+      const dist = rand(60, 140);
+      startEgg({ x: ec.x + Math.cos(angle) * dist, y: ec.y + Math.sin(angle) * dist });
     }
 
     setTimeout(runNextTest, 3000);
