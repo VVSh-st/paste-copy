@@ -5500,3 +5500,126 @@ body.help-open {
   z-index: 2;
   border-radius: 2px;
 }
+
+/* ===== EMBER ===== */
+.ember-slot {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 0 0;
+}
+.ember {
+  --heat: 1;
+  --glow: 1;
+  --intensity: 1;
+  --hover: 0;
+  --shiftX: 0px;
+  --shiftY: 0px;
+  --breathScale: 1;
+  --rotation: 0deg;
+  --tiltX: 0deg;
+  --tiltY: 0deg;
+  --brightness: 1;
+  --glowBoost: 0;
+  --finalScale: 1;
+  --cx1: 30%;
+  --cy1: 35%;
+  --cx2: 55%;
+  --cy2: 50%;
+  --cx3: 45%;
+  --cy3: 70%;
+
+  position: relative;
+  width: 38px;
+  height: 34px;
+  cursor: default;
+  transform: scale(var(--finalScale)) rotate(var(--rotation)) perspective(200px) rotateX(var(--tiltX)) rotateY(var(--tiltY));
+  transition: filter 0.3s ease;
+  flex-shrink: 0;
+}
+.ember:focus-visible {
+  outline: 2px solid rgba(79,142,247,0.5);
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
+/* -- Ring -- */
+.ember-ring {
+  position: absolute;
+  inset: 2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  opacity: 0.08;
+}
+.ember-ring .segment {
+  position: absolute;
+  width: 3px;
+  height: 5px;
+  background: rgba(255,160,80,0.6);
+  border-radius: 1px;
+  left: 50%;
+  top: 0;
+  transform-origin: 50% 15px;
+  transform: translateX(-50%) rotate(calc(var(--i) * 30deg));
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.ember-ring .segment.active {
+  opacity: calc(0.4 + var(--heat) * 0.6);
+}
+
+/* -- Core -- */
+.ember-core {
+  position: absolute;
+  inset: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at var(--cx1) var(--cy1),
+    rgba(255,120,30,1) 0%,
+    rgba(255,80,10,calc(0.75 * var(--heat))) 50%,
+    rgba(180,40,0,calc(0.35 * var(--heat))) 100%
+  );
+  transform: scale(var(--breathScale)) translate(var(--shiftX), var(--shiftY));
+  transition: background 3s ease;
+}
+
+/* -- Heat zones -- */
+.heat-zone {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transition: opacity 3s ease, transform 3s ease;
+}
+.heat-zone.zone1 {
+  inset: 0;
+  background: radial-gradient(circle at var(--cx1) var(--cy1), rgba(255,140,40,0.9) 0%, transparent 70%);
+  opacity: calc(var(--heat));
+}
+.heat-zone.zone2 {
+  inset: 2px;
+  background: radial-gradient(circle at var(--cx2) var(--cy2), rgba(255,90,20,0.7) 0%, transparent 65%);
+  opacity: calc(var(--heat) * 0.75);
+}
+.heat-zone.zone3 {
+  inset: 4px;
+  background: radial-gradient(circle at var(--cx3) var(--cy3), rgba(220,60,10,0.4) 0%, transparent 60%);
+  opacity: calc(var(--heat) * 0.35);
+}
+
+/* -- Glow -- */
+.ember-glow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,100,20,0.35) 0%, transparent 70%);
+  opacity: calc(var(--glow) * 0.5 + var(--glowBoost) * 0.5);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* -- Hover lift -- */
+.ember:hover {
+  transform: scale(calc(var(--finalScale) * 1.05)) rotate(var(--rotation)) perspective(200px) rotateX(var(--tiltX)) rotateY(var(--tiltY)) translateY(-0.5px);
+}

@@ -741,6 +741,7 @@
   if (window.MemorySync?.init) window.MemorySync.init();
   if (typeof Anchors !== 'undefined') Anchors.init();
   if (typeof Translator !== 'undefined') Translator.init();
+  if (typeof Ember !== 'undefined') Ember.init();
 
   window.addEventListener('beforeunload', () => Storage.save(State.serialize()));
 
