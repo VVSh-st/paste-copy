@@ -473,6 +473,22 @@ const Anchors = (() => {
         if (bel) _renderMarkers(bel, ta);
       }
     }, true);
+    document.addEventListener('focusin', e => {
+      const ta = e.target;
+      if (ta.classList && ta.classList.contains('block-textarea')) {
+        const bel = ta.closest('.block[data-id]');
+        if (bel) {
+          requestAnimationFrame(() => _renderMarkers(bel, ta));
+        }
+      }
+    }, true);
+    document.addEventListener('input', e => {
+      const ta = e.target;
+      if (ta.classList && ta.classList.contains('block-textarea')) {
+        const bel = ta.closest('.block[data-id]');
+        if (bel) _renderMarkers(bel, ta);
+      }
+    }, true);
   }
 
   return {
