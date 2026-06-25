@@ -90,6 +90,20 @@ const Ember = (() => {
   let testIndex = 0;
   let testLabel = null;
 
+  // пасхалка
+  const egg = {
+    active: false, phase: 0, phaseStart: 0,
+    caretX: 0, caretY: 0, startX: 0, startY: 0,
+    lookCount: 0, triggeredToday: false,
+  };
+  const EGG_STORAGE_KEY = 'ember-egg-date';
+  const EGG_WORDS_KEY = 'ember-egg-words';
+  const EGG_WORDS_THRESHOLD = 30;
+  const EGG_TIME_THRESHOLD = 120000;
+  let eggWordBuffer = 0;
+  let eggFirstTyped = 0;
+  let eggLastWord = 0;
+
   let channel = null;
   let rafId = null;
   let lastFrame = 0;
@@ -621,6 +635,109 @@ const Ember = (() => {
     }
   }
 
+  // ---------- пасхалка: полёт к каретке ----------
+
+  function checkEggTrigger() {
+    if (egg.active || egg.triggeredToday) return false;
+    const today = new Date().toDateString();
+    try {
+      const saved = localStorage.getItem(EGG_STORAGE_KEY);
+      if (saved === today) { egg.triggeredToday = true; return false; }
+    } catch {}
+    const wordCount = eggWordBuffer;
+    const typingDuration = eggFirstTyped ? performance.now() - eggFirstTyped : 0;
+    if (wordCount >= EGG_WORDS_THRESHOLD || typingDuration > EGG_TIME_THRESHOLD) {
+      egg.triggeredToday = true;
+      try { localStorage.setItem(EGG_STORAGE_KEY, today); } catch {}
+      return true;
+    }
+    return false;
+  }
+
+  function startEgg() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return;
+    const rect = range.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+    const ember = getEmberCenter();
+    egg.active = true;
+    egg.phase = 1;
+    egg.phaseStart = performance.now();
+    egg.startX = cursorLean.x;
+    egg.startY = cursorLean.y;
+    egg.caretX = rect.left + rect.width / 2 - ember.x;
+    egg.caretY = rect.top - ember.y;
+    egg.lookCount = 0;
+    eggWordBuffer = 0;
+    eggFirstTyped = 0;
+  }
+
+  function updateEgg(now) {
+    if (!egg.active) return false;
+    const t = now - egg.phaseStart;
+    switch (egg.phase) {
+      case 1: {
+        const p = clamp(t / 900, 0, 1);
+        const e = easeOutQuad(p);
+        cursorLean.x = egg.startX + (egg.caretX - egg.startX) * e;
+        cursorLean.y = egg.startY + (egg.caretY - egg.startY) * e;
+        cursorLean.scale = 1 + Math.sin(p * Math.PI) * 0.1;
+        cursorLean.tiltX = 0;
+        cursorLean.tiltY = 0;
+        if (p >= 1) { egg.phase = 2; egg.phaseStart = now; }
+        return true;
+      }
+      case 2: {
+        const p = clamp(t / 1800, 0, 1);
+        const lookX = Math.sin(p * Math.PI * 2.5) * 6;
+        const lookY = Math.cos(p * Math.PI * 1.8) * 4;
+        cursorLean.x = egg.caretX + lookX;
+        cursorLean.y = egg.caretY + lookY;
+        cursorLean.scale = 1.06;
+        cursorLean.tiltX = Math.sin(p * Math.PI * 3) * 10;
+        cursorLean.tiltY = Math.cos(p * Math.PI * 2) * 7;
+        if (p >= 1) { egg.phase = 3; egg.phaseStart = now; }
+        return true;
+      }
+      case 3: {
+        const p = clamp(t / 350, 0, 1);
+        cursorLean.x = egg.caretX;
+        cursorLean.y = egg.caretY;
+        cursorLean.scale = 1 - easeInQuad(p) * 0.95;
+        cursorLean.tiltX = 0;
+        cursorLean.tiltY = 0;
+        cursorLean.squish = easeInQuad(p) * 0.5;
+        if (p >= 1) { egg.phase = 4; egg.phaseStart = now; }
+        return true;
+      }
+      case 4: {
+        cursorLean.x = 0;
+        cursorLean.y = 0;
+        cursorLean.scale = 0.05;
+        cursorLean.squish = 0.5;
+        cursorLean.tiltX = 0;
+        cursorLean.tiltY = 0;
+        if (t > 80) { egg.phase = 5; egg.phaseStart = now; }
+        return true;
+      }
+      case 5: {
+        const p = clamp(t / 400, 0, 1);
+        const e = easeOutQuad(p);
+        cursorLean.scale = 0.05 + e * 0.95;
+        cursorLean.squish = (1 - e) * 0.5;
+        if (p >= 1) {
+          cursorLean.scale = 1;
+          cursorLean.squish = 0;
+          egg.active = false;
+        }
+        return !egg.active;
+      }
+    }
+    return false;
+  }
+
   // ---------- ПКМ тестирование ----------
 
   const TEST_EFFECTS = [
@@ -628,6 +745,7 @@ const Ember = (() => {
     'crackle', 'stretch', 'glint', 'sleepySag',
     'smolder', 'heatRadiance', 'glowPulse', 'ashDrift',
     'cursorLean', 'typingApproach', 'startle', 'playfulDodge',
+    'eggFly',
   ];
 
   function startTestMode() {
@@ -665,6 +783,7 @@ const Ember = (() => {
       glowPulse: [2000, 3000], ashDrift: [3000, 4000],
       cursorLean: [2000, 3000], typingApproach: [3000, 4000],
       startle: [1500, 2000], playfulDodge: [1200, 1800],
+      eggFly: [3500, 3500],
     };
     const extra = type === 'tilt' ? { target: rand(-1, 1) }
       : type === 'microShift' ? { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }
@@ -718,7 +837,12 @@ const Ember = (() => {
       mouse.speed = rand(15, 25);
     }
 
-    setTimeout(runNextTest, 2500);
+    if (type === 'eggFly') {
+      egg.triggeredToday = false;
+      startEgg();
+    }
+
+    setTimeout(runNextTest, 3000);
   }
 
   // ---------- основной кадр ----------
@@ -728,6 +852,22 @@ const Ember = (() => {
 
     sampleMousePosition(now);
     sampleCaretPosition(now);
+
+    if (egg.active) {
+      updateEgg(now);
+      root.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(1));
+      root.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(1));
+      root.style.setProperty('--cursorSquish', cursorLean.squish.toFixed(3));
+      root.style.setProperty('--cursorScale', cursorLean.scale.toFixed(3));
+      root.style.setProperty('--cursorTiltX', cursorLean.tiltX.toFixed(1));
+      root.style.setProperty('--cursorTiltY', cursorLean.tiltY.toFixed(1));
+      applySegments();
+      advanceSegEffects(dt);
+      applySegEffects();
+      updateParticles(now);
+      return;
+    }
+
     updateCursorLean(now, dt);
 
     // спавн
@@ -974,6 +1114,22 @@ const Ember = (() => {
     notifyEdit();
     clearTimeout(resetTimer);
     resetTimer = setTimeout(() => { typedChars = 0; }, 2000);
+
+    if (!egg.triggeredToday) {
+      const now = performance.now();
+      const text = document.activeElement?.value || document.activeElement?.textContent || '';
+      const words = text.trim().split(/\s+/).filter(Boolean).length;
+      if (eggWordBuffer === 0 || words > eggWordBuffer) {
+        eggWordBuffer = words;
+        if (!eggFirstTyped) eggFirstTyped = now;
+        eggLastWord = now;
+      }
+      if (now - eggLastWord > 3000) {
+        eggWordBuffer = 0;
+        eggFirstTyped = 0;
+      }
+      if (checkEggTrigger()) startEgg();
+    }
   }
 
   function setupEventListeners() {
@@ -1029,6 +1185,11 @@ const Ember = (() => {
     createDOM();
     setupBroadcast();
     setupEventListeners();
+
+    try {
+      const today = new Date().toDateString();
+      if (localStorage.getItem(EGG_STORAGE_KEY) === today) egg.triggeredToday = true;
+    } catch {}
 
     const container = mountEl || document.getElementById('ember-slot');
     if (container) container.appendChild(root);
