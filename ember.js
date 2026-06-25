@@ -364,18 +364,18 @@ const Ember = (() => {
       if (!seg) continue;
       switch (e.type) {
         case 'segTremor':
-          seg.style.setProperty('--seg-tilt', (Math.sin(e.phase * Math.PI) * 3).toFixed(2) + 'deg');
+          seg.style.setProperty('--seg-tilt', (Math.sin(e.phase * Math.PI) * 5).toFixed(2) + 'deg');
           break;
         case 'segTryIgnite':
           seg.style.setProperty('--seg-flash',
             (e.phase < 0.3 ? easeOutQuad(e.phase / 0.3) : 1 - easeInQuad((e.phase - 0.3) / 0.7)).toFixed(3));
           break;
         case 'segHeatRipple':
-          seg.style.setProperty('--seg-brightness', (1 + Math.sin(e.phase * Math.PI) * 0.6).toFixed(3));
+          seg.style.setProperty('--seg-brightness', (1 + Math.sin(e.phase * Math.PI) * 1.2).toFixed(3));
           break;
         case 'segFlicker':
           seg.style.setProperty('--seg-dim',
-            (0.5 + 0.5 * Math.sin(e.phase * Math.PI * 6) * (1 - e.phase)).toFixed(3));
+            (0.7 + 0.7 * Math.sin(e.phase * Math.PI * 6) * (1 - e.phase)).toFixed(3));
           break;
         case 'segHeatWave': {
           const activeIdx = getActiveSegIndices();
@@ -384,7 +384,7 @@ const Ember = (() => {
           const wave = Math.sin(localPhase * Math.PI);
           const dist = Math.abs(e.segIdx - Math.floor(pos));
           if (dist <= 1)
-            seg.style.setProperty('--seg-brightness', (1 + wave * 0.4 * (1 - dist)).toFixed(3));
+            seg.style.setProperty('--seg-brightness', (1 + wave * 0.8 * (1 - dist)).toFixed(3));
           break;
         }
       }
@@ -394,18 +394,18 @@ const Ember = (() => {
   // ---------- частицы: микропепел ----------
 
   function spawnAshParticle() {
-    if (particles.length > 15) return;
+    if (particles.length > 20) return;
     const el = document.createElement('div');
     el.className = 'ember-ash';
-    const startX = rand(30, 70);
-    const startY = rand(30, 60);
+    const startX = rand(25, 75);
+    const startY = rand(20, 65);
     el.style.left = startX + '%';
     el.style.top = startY + '%';
     particleLayer.appendChild(el);
 
-    const dur = rand(2000, 4000);
-    const driftX = rand(-8, 8);
-    const driftY = rand(-15, -5);
+    const dur = rand(2500, 5000);
+    const driftX = rand(-12, 12);
+    const driftY = rand(-20, -8);
     particles.push({
       el, born: performance.now(), dur,
       startX, startY, driftX, driftY,
@@ -427,7 +427,7 @@ const Ember = (() => {
       const opacity = t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7;
       p.el.style.left = x + '%';
       p.el.style.top = y + '%';
-      p.el.style.opacity = (opacity * 0.35).toFixed(3);
+      p.el.style.opacity = (opacity * 0.85).toFixed(3);
     }
   }
 
@@ -437,14 +437,14 @@ const Ember = (() => {
     if (activeSparks >= 3) return;
     const el = document.createElement('div');
     el.className = 'ember-spark';
-    const startX = rand(35, 65);
-    const startY = rand(25, 50);
+    const startX = rand(30, 70);
+    const startY = rand(20, 55);
     el.style.left = startX + '%';
     el.style.top = startY + '%';
     particleLayer.appendChild(el);
 
     const dur = rand(800, 1200);
-    const driftX = rand(-4, 4);
+    const driftX = rand(-6, 6);
     activeSparks++;
     particles.push({
       el, born: performance.now(), dur,
@@ -527,11 +527,11 @@ const Ember = (() => {
     }
 
     // запускаем искры/пепел для соответствующих эффектов
-    if (type === 'crackle' || type === 'glowPulse') {
-      for (let i = 0; i < 3; i++) setTimeout(() => spawnSpark(), i * 200);
+    if (type === 'crackle' || type === 'glowPulse' || type === 'calmBurn') {
+      for (let i = 0; i < 5; i++) setTimeout(() => spawnSpark(), i * 150);
     }
-    if (type === 'ashDrift' || type === 'smolder') {
-      for (let i = 0; i < 5; i++) setTimeout(() => spawnAshParticle(), i * 300);
+    if (type === 'ashDrift' || type === 'smolder' || type === 'sigh') {
+      for (let i = 0; i < 8; i++) setTimeout(() => spawnAshParticle(), i * 200);
     }
 
     setTimeout(runNextTest, 2500);
@@ -595,12 +595,12 @@ const Ember = (() => {
     const ashDrift = advanceEffect('ashDrift', dt);
 
     // --- композиция ---
-    const tm = testMode ? 3 : 1; // тестовый режим: усиление в 3 раза
+    const tm = testMode ? 5 : 1; // тестовый режим: усиление в 5 раз
 
-    // поёживание
+    // поёживание — усилено
     let scaleX = 1, scaleY = 1;
     if (wiggle) {
-      const pts = [[1, 1], [0.98, 1.02], [1.01, 0.99], [1, 1]];
+      const pts = [[1, 1], [0.96, 1.04], [1.02, 0.98], [1, 1]];
       const s = wiggle.phase * (pts.length - 1);
       const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
       const lt = s - i0;
@@ -608,9 +608,9 @@ const Ember = (() => {
       scaleY = pts[i0][1] + (pts[i1][1] - pts[i0][1]) * lt;
     }
 
-    // растяжка/зевок
+    // растяжка/зевок — усилено
     if (stretch) {
-      const pts = [[1, 1], [1.03, 1], [0.98, 1], [1, 1]];
+      const pts = [[1, 1], [1.06, 1], [0.95, 1], [1, 1]];
       const s = stretch.phase * (pts.length - 1);
       const i0 = Math.floor(s), i1 = Math.min(i0 + 1, pts.length - 1);
       const lt = s - i0;
@@ -618,37 +618,37 @@ const Ember = (() => {
     }
 
     // спокойное горение
-    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.02 * tm : 1;
-    const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.1 * tm : 0;
+    const calmMult = calmBurn ? 1 + bump(calmBurn.phase, 0.3, 0.7) * 0.04 * tm : 1;
+    const calmBright = calmBurn ? bump(calmBurn.phase, 0.3, 0.7) * 0.2 * tm : 0;
 
     // вздох
-    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.015 * tm : 1;
-    const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.06 * tm : 0;
-    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.1 * tm : 0;
+    const sighMult = sigh ? 1 + bump(sigh.phase, 0.25, 0.75) * 0.03 * tm : 1;
+    const sighBright = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.15 * tm : 0;
+    const sighGlow = sigh ? bump(sigh.phase, 0.25, 0.75) * 0.25 * tm : 0;
 
-    // потрескивание
-    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 0.8 * tm : 0;
+    // потрескивание — яркая вспышка
+    const crackleBright = crackle ? bump(crackle.phase, 0.3, 0.5) * 1.5 * tm : 0;
 
-    // отблеск
-    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 15 * tm : 0;
-    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.25 * tm : 0;
+    // отблеск — насыщенность
+    const glintHue = glint ? bump(glint.phase, 0.3, 0.7) * 25 * tm : 0;
+    const glintSat = glint ? bump(glint.phase, 0.3, 0.7) * 0.4 * tm : 0;
 
     // сонная просадка
-    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.035 * tm : 1;
-    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.15 * tm : 0;
+    const sleepyMult = sleepySag ? 1 - bump(sleepySag.phase, 0.3, 0.7) * 0.05 * tm : 1;
+    const sleepyBright = sleepySag ? -bump(sleepySag.phase, 0.3, 0.7) * 0.25 * tm : 0;
 
     // тление
-    const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * 10 * tm : 0;
-    const smolderSat = smolder ? bump(smolder.phase, 0.2, 0.8) * 0.12 * tm : 0;
+    const smolderHue = smolder ? bump(smolder.phase, 0.2, 0.8) * 20 * tm : 0;
+    const smolderSat = smolder ? bump(smolder.phase, 0.2, 0.8) * 0.25 * tm : 0;
 
     // тепловое излучение
-    const radianceGlow = heatRadiance ? bump(heatRadiance.phase, 0.3, 0.7) * 0.2 * tm : 0;
+    const radianceGlow = heatRadiance ? bump(heatRadiance.phase, 0.3, 0.7) * 0.4 * tm : 0;
 
     // пульс свечения
-    const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.15 * tm : 0;
+    const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.35 * tm : 0;
 
     // дрейф пепла
-    const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) * tm : 0;
+    const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) * 2 * tm : 0;
 
     // поворот
     if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
@@ -661,12 +661,12 @@ const Ember = (() => {
     const finalScaleY = breathScale * scaleY * calmMult * sighMult * sleepyMult;
 
     const heat = clamp(intensity + heatBoost * 0.25, 0, 1);
-    const glow = clamp(intensity + heatBoost * 0.3 + sighGlow + hoverVal * 0.15 + radianceGlow + glowPulseMult, 0, 1.4);
+    const glow = clamp(intensity + heatBoost * 0.3 + sighGlow + hoverVal * 0.15 + radianceGlow + glowPulseMult, 0, 1.8);
 
     const brightness = clamp(
       0.7 + intensity * 0.3 + calmBright + sighBright + crackleBright + sleepyBright
       + heatBoost * 0.4 + hoverVal * 0.15,
-      0.35, 1.8
+      0.35, 2.5
     );
 
     const shiftX = heatOffsetX * 0.6 + microShiftPx + ashDriftX;
@@ -736,15 +736,15 @@ const Ember = (() => {
 
     // --- микропепел ---
     if (Date.now() > nextAshSpawn) {
-      if (Math.random() < 0.3) spawnAshParticle();
-      nextAshSpawn = Date.now() + rand(3000, 8000);
+      if (Math.random() < 0.5) spawnAshParticle();
+      nextAshSpawn = Date.now() + rand(1500, 4000);
     }
     updateParticles(now);
 
     // --- искры ---
     if (Date.now() > nextSparkCheck) {
-      if (Math.random() < 0.15 && activeSparks < 3) spawnSpark();
-      nextSparkCheck = Date.now() + rand(40000, 90000);
+      if (Math.random() < 0.25 && activeSparks < 3) spawnSpark();
+      nextSparkCheck = Date.now() + rand(20000, 50000);
     }
     // подсчёт активных искр
     activeSparks = particles.filter(p => p.isSpark).length;

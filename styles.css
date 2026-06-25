@@ -5614,38 +5614,41 @@ body.help-open {
 .zone1 {
   background: radial-gradient(
     circle at var(--cx, 45%) var(--cy, 50%),
-    rgba(255, 238, 205, calc(var(--heat) * 1)) 0%,
-    rgba(255, 185, 95, calc(var(--heat) * 0.85)) 38%,
-    transparent 72%
+    rgba(255, 245, 220, calc(var(--heat) * 1)) 0%,
+    rgba(255, 195, 110, calc(var(--heat) * 0.9)) 35%,
+    rgba(255, 140, 50, calc(var(--heat) * 0.4)) 65%,
+    transparent 80%
   );
 }
 
 .zone2 {
   background: radial-gradient(
     circle at var(--cx, 55%) var(--cy, 55%),
-    rgba(255, 140, 60, calc(var(--heat) * 0.75)) 0%,
-    rgba(214, 80, 30, calc(var(--heat) * 0.45)) 48%,
-    transparent 78%
+    rgba(255, 160, 75, calc(var(--heat) * 0.85)) 0%,
+    rgba(230, 90, 35, calc(var(--heat) * 0.55)) 45%,
+    transparent 75%
   );
 }
 
 .zone3 {
   background: radial-gradient(
     circle at var(--cx, 50%) var(--cy, 65%),
-    rgba(170, 50, 20, calc(var(--heat) * 0.4)) 0%,
+    rgba(190, 60, 25, calc(var(--heat) * 0.55)) 0%,
+    rgba(140, 30, 10, calc(var(--heat) * 0.2)) 50%,
     transparent 80%
   );
 }
 
 .ember-glow {
   position: absolute;
-  inset: -9px;
+  inset: -12px;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(255, 165, 85, 0.95) 0%,
-    rgba(255, 95, 35, 0.45) 45%,
-    transparent 75%
+    rgba(255, 180, 100, 1) 0%,
+    rgba(255, 110, 45, 0.6) 40%,
+    rgba(255, 70, 20, 0.2) 70%,
+    transparent 85%
   );
   filter: blur(var(--glowBlur));
   opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
@@ -5670,22 +5673,22 @@ body.help-open {
 
 .ember-ash {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: 2px;
+  height: 2px;
   border-radius: 50%;
-  background: rgba(255, 180, 100, 0.35);
-  box-shadow: 0 0 2px rgba(255, 160, 80, 0.2);
+  background: rgba(255, 180, 100, 0.8);
+  box-shadow: 0 0 4px rgba(255, 160, 80, 0.6), 0 0 8px rgba(255, 130, 50, 0.3);
   opacity: 0;
-  transition: left 0.1s linear, top 0.1s linear;
+  transition: left 0.08s linear, top 0.08s linear;
 }
 
 .ember-spark {
   position: absolute;
-  width: 2px;
-  height: 2px;
+  width: 3px;
+  height: 3px;
   border-radius: 50%;
-  background: rgba(255, 200, 100, 0.9);
-  box-shadow: 0 0 4px rgba(255, 180, 80, 0.8), 0 0 8px rgba(255, 140, 40, 0.4);
+  background: rgba(255, 220, 120, 1);
+  box-shadow: 0 0 6px rgba(255, 200, 100, 1), 0 0 12px rgba(255, 160, 60, 0.6), 0 0 20px rgba(255, 120, 30, 0.3);
   animation: sparkRise 1s ease-out forwards;
 }
 
