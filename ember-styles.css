@@ -35,6 +35,19 @@
   --coreHue: 35;
   --coreLight: 50%;
   --ashCoverage: 0;
+  --ringExpand: 0px;
+  --ringPulse: 1;
+  --glowSkewX: 0deg;
+  --glowSkewY: 0deg;
+  --glowX: 0px;
+  --glowY: 0px;
+  --crustX: 0px;
+  --crustY: 0px;
+  --crustRot: 0deg;
+  --crustScale: 1;
+  --ashShiftX: 0px;
+  --ashShiftY: 0px;
+  --ashRot: 0deg;
 
   position: relative;
   width: 38px;
@@ -57,7 +70,7 @@
   left: 50%;
   width: 30px;
   height: 30px;
-  transform: translate(-50%, -50%) rotate(var(--ringRot, 0deg));
+  transform: translate(-50%, -50%) rotate(var(--ringRot, 0deg)) scale(var(--ringPulse, 1));
   opacity: calc(0.06 + var(--ringOpacity) * 0.78 * var(--spawnRing));
   transition: opacity 0.4s ease;
   pointer-events: none;
@@ -75,7 +88,9 @@
   background: rgba(80, 40, 20, 0.4);
   transform:
     rotate(calc(var(--i, 0) * 30deg + var(--seg-tilt, 0deg)))
-    translateY(calc(-14px - var(--seg-push, 0px)));
+    translateY(calc(-14px - var(--seg-push, 0px) - var(--ringExpand, 0px)))
+    scaleX(var(--seg-scaleX, 1))
+    scaleY(var(--seg-scaleY, 1));
   opacity: calc(0.3 + var(--seg-flash, 0) * 0.7 - var(--seg-dim, 0) * 0.3);
   filter:
     brightness(calc(1 + var(--seg-brightness, 0)))
@@ -170,6 +185,10 @@
   border-radius: inherit;
   mix-blend-mode: multiply;
   pointer-events: none;
+  transform:
+    translate(var(--crustX, 0px), var(--crustY, 0px))
+    rotate(var(--crustRot, 0deg))
+    scale(var(--crustScale, 1));
   background:
     radial-gradient(circle at 24% 28%, rgba(15, 6, 2, 0.95) 0%, transparent 30%),
     radial-gradient(circle at 72% 34%, rgba(12, 5, 2, 0.9) 0%, transparent 26%),
@@ -184,15 +203,22 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  opacity: var(--crackGlow, 0.5);
-  background:
-    linear-gradient(137deg, transparent 42%, rgba(255, 180, 60, 0.9) 42.5%, rgba(255, 180, 60, 0.9) 43%, transparent 43.5%),
-    linear-gradient(53deg, transparent 55%, rgba(255, 140, 40, 0.7) 55.3%, rgba(255, 140, 40, 0.7) 55.7%, transparent 56%),
-    linear-gradient(170deg, transparent 30%, rgba(255, 200, 80, 0.6) 30.2%, rgba(255, 200, 80, 0.6) 30.6%, transparent 30.8%),
-    linear-gradient(95deg, transparent 65%, rgba(255, 160, 50, 0.5) 65.2%, rgba(255, 160, 50, 0.5) 65.5%, transparent 65.7%),
-    linear-gradient(210deg, transparent 48%, rgba(255, 120, 30, 0.4) 48.1%, rgba(255, 120, 30, 0.4) 48.4%, transparent 48.5%);
+}
+
+.ember-crack-layer {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.5;
   mix-blend-mode: screen;
   filter: blur(0.3px);
+  transition: opacity 0.15s ease;
+}
+
+.ember-crack-layer.ignited {
+  opacity: 1 !important;
+  filter: blur(0.3px) brightness(1.5);
 }
 
 /* зола, нарастающая со временем */
@@ -202,6 +228,7 @@
   border-radius: inherit;
   pointer-events: none;
   opacity: var(--ashCoverage, 0);
+  transform: translate(var(--ashShiftX, 0px), var(--ashShiftY, 0px)) rotate(var(--ashRot, 0deg));
   background:
     radial-gradient(circle at 30% 35%, rgba(150, 150, 160, 0.7) 0%, transparent 40%),
     radial-gradient(circle at 65% 55%, rgba(135, 135, 145, 0.6) 0%, transparent 35%),
@@ -259,7 +286,13 @@
   );
   filter: blur(var(--glowBlur));
   opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
-  transform: scale(var(--glowScale)) rotateX(var(--tiltX)) rotateY(var(--tiltY));
+  transform:
+    translate(var(--glowX, 0px), var(--glowY, 0px))
+    scale(var(--glowScale))
+    skewX(var(--glowSkewX, 0deg))
+    skewY(var(--glowSkewY, 0deg))
+    rotateX(var(--tiltX))
+    rotateY(var(--tiltY));
   z-index: -1;
   pointer-events: none;
   animation: glowFlicker 3s ease-in-out infinite;
@@ -381,6 +414,41 @@
   30% { backdrop-filter: blur(0.3px); }
   60% { backdrop-filter: blur(0.4px); }
   80% { backdrop-filter: blur(0.2px); }
+}
+
+/* ===== Глазок-блик ===== */
+.ember-glint {
+  position: absolute;
+  width: 5px;
+  height: 2px;
+  left: var(--glintX, 58%);
+  top: var(--glintY, 32%);
+  border-radius: 999px;
+  background: rgba(255, 245, 190, 0.95);
+  box-shadow: 0 0 6px rgba(255, 210, 120, .9);
+  opacity: var(--glintOpacity, 0);
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--glintRot, -18deg))
+    scale(var(--glintScale, 1));
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  .ember-core,
+  .ember-glow,
+  .ember-haze,
+  .ember-shimmer {
+    animation: none !important;
+  }
+  .ember-ash,
+  .ember-spark,
+  .ember-ash-overlay,
+  .ember-crack-layer {
+    transition: none !important;
+  }
 }
 
 /* ===== Тестовый режим (ПКМ) ===== */
