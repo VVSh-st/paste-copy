@@ -112,7 +112,12 @@ const Ember = (() => {
   let ashTrackX = 0, ashTrackY = 0;
   let hazeTrackX = 0;
   let emberMood = 'calm';
-  let lastMoodCheck = 0;
+  const mood = { agitated: 0, calm: 0.5, sleepy: 0 };
+  let lastMoodUpdate = 0;
+
+  let focusState = 'active';
+  let focusTimer = 0;
+  let settlingDuration = 0;
 
   // --- курсор ---
   const mouse = { x: 0, y: 0, lastSampleX: 0, lastSampleY: 0, lastSampleTime: 0, speed: 0 };
@@ -175,6 +180,58 @@ const Ember = (() => {
     if (t < riseEnd) return easeOutQuad(t / riseEnd);
     if (t < holdEnd) return 1;
     return 1 - easeInQuad((t - holdEnd) / (1 - holdEnd));
+  }
+
+  // --- редкие экстремальные события ---
+  const anomaly = {
+    sparkStorm:       { chance: 1 / (30 * 60), mult: [3, 6] },
+    deformationBurst: { chance: 1 / (20 * 60), mult: [3, 5] },
+    ringPulseBig:     { chance: 1 / (60 * 60), mult: [2, 3] },
+    heatBubble:       { chance: 1 / (45 * 60), mult: [2, 4] },
+    coalSigh:         { chance: 1 / (40 * 60), mult: [2, 3] },
+    hotVein:          { chance: 1 / (25 * 60), mult: [1.5, 2.5] },
+    ashDump:          { chance: 1 / (35 * 60), mult: [2, 3] },
+  };
+
+  function activateRare(type) {
+    const ev = anomaly[type];
+    const mul = rand(ev.mult[0], ev.mult[1]);
+    switch (type) {
+      case 'sparkStorm':
+        for (let i = 0; i < Math.floor(rand(8, 12)); i++) setTimeout(spawnSpark, i * 50);
+        for (let i = 0; i < 2; i++) setTimeout(spawnShootingSpark, 100 + i * 150);
+        igniteCrackSide(Math.random() < 0.5 ? -1 : 1);
+        heatBoost = Math.max(heatBoost, 0.3 * mul);
+        ringImpulse = rand(4, 8) * (Math.random() < 0.5 ? 1 : -1);
+        break;
+      case 'deformationBurst':
+        heatBoost = Math.max(heatBoost, 0.25 * mul);
+        for (let i = 0; i < 4; i++) setTimeout(spawnAshParticle, i * 80);
+        igniteCrackSide(-1);
+        igniteCrackSide(1);
+        break;
+      case 'ringPulseBig':
+        heatBoost = Math.max(heatBoost, 0.15 * mul);
+        ringImpulse = rand(5, 10) * (Math.random() < 0.5 ? 1 : -1);
+        break;
+      case 'heatBubble':
+        heatBoost = Math.max(heatBoost, 0.2 * mul);
+        for (let i = 0; i < 3; i++) setTimeout(spawnSpark, i * 100);
+        break;
+      case 'coalSigh':
+        heatBoost = Math.max(heatBoost, 0.15 * mul);
+        for (let i = 0; i < 5; i++) setTimeout(spawnAshParticle, i * 120);
+        break;
+      case 'hotVein': {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        igniteCrackSide(side);
+        heatBoost = Math.max(heatBoost, 0.1 * mul);
+        break;
+      }
+      case 'ashDump':
+        for (let i = 0; i < Math.floor(rand(6, 8)); i++) setTimeout(spawnAshParticle, i * 60);
+        break;
+    }
   }
 
   // ---------- состояние / синхронизация ----------
@@ -563,6 +620,7 @@ const Ember = (() => {
       crustX: 0, crustY: 0, crustRot: 0, crustScale: 1,
       ashShiftX: 0, ashShiftY: 0, ashRot: 0,
       ringExpand: 0,
+      ringExpandX: 0, ringExpandY: 0,
       segScaleX: 1, segScaleY: 1,
       glintOpacity: 0, glintX: 58, glintY: 32, glintRot: -18, glintScale: 1,
       massShiftX: 0, massShiftY: 0,
@@ -756,7 +814,8 @@ const Ember = (() => {
   function applyHeatRadiancePose(pose, eff) {
     const k = bump(eff.phase, 0.3, 0.7);
     pose.glow += k * 0.4;
-    pose.ringExpand += k * 2.5;
+    pose.ringExpandX += k * 4;
+    pose.ringExpandY += k * 1.5;
     pose.glowY -= k * 2;
     pose.glowSkewX += Math.sin(eff.phase * Math.PI * 3) * 8;
     pose.squash += -k * 0.05;
@@ -772,7 +831,8 @@ const Ember = (() => {
     pose.squash += -beat * 0.15;
     pose.y -= beat * 0.5;
     pose.glow += beat * 0.8;
-    pose.ringExpand += beat * 4;
+    pose.ringExpandX += beat * 3;
+    pose.ringExpandY += beat * 4;
   }
 
   function applyAshDriftPose(pose, eff) {
@@ -859,7 +919,8 @@ const Ember = (() => {
     root.style.setProperty('--ashShiftY', ashTrackY.toFixed(2) + 'px');
     root.style.setProperty('--ashRot', pose.ashRot.toFixed(2) + 'deg');
 
-    root.style.setProperty('--ringExpand', pose.ringExpand.toFixed(2) + 'px');
+    root.style.setProperty('--ringExpand', (pose.ringExpand + pose.ringExpandY).toFixed(2) + 'px');
+    root.style.setProperty('--ringExpandX', pose.ringExpandX.toFixed(2) + 'px');
 
     coreEl.style.setProperty('--glintOpacity', pose.glintOpacity.toFixed(3));
     coreEl.style.setProperty('--glintX', pose.glintX.toFixed(1) + '%');
@@ -1074,6 +1135,7 @@ const Ember = (() => {
 
   function spawnAshParticle() {
     if (particles.length > 40) return;
+    if (focusState !== 'active') return;
     const roll = Math.random();
     const cls = 'ember-ash' + (roll < 0.33 ? ' dark' : roll > 0.8 ? ' bright' : '');
     const el = acquireEl(cls);
@@ -1100,6 +1162,7 @@ const Ember = (() => {
 
   function spawnSpark(hBias) {
     if (activeSparks >= 7) return;
+    if (focusState !== 'active') return;
     const sparkTypes = ['spark-point', 'spark-elongated', 'spark-broken', 'spark-double'];
     const typeIdx = Math.floor(Math.random() * sparkTypes.length);
     const sparkType = sparkTypes[typeIdx];
@@ -1135,6 +1198,7 @@ const Ember = (() => {
 
   function spawnShootingSpark() {
     if (activeSparks >= 7) return;
+    if (focusState !== 'active') return;
     const el = acquireEl('ember-spark ember-spark-shoot');
     const size = rand(1.4, 2.2);
     el.style.width = size.toFixed(1) + 'px';
@@ -1161,6 +1225,7 @@ const Ember = (() => {
 
   function spawnCrumb() {
     if (particles.length > 40) return;
+    if (focusState !== 'active') return;
     const el = acquireEl('ember-ash bright');
     const size = rand(2, 3.5);
     el.style.width = size.toFixed(1) + 'px';
@@ -2130,14 +2195,23 @@ const Ember = (() => {
   // ---------- основной кадр ----------
 
   function updateMood(now) {
-    if (now - lastMoodCheck < 3000) return;
-    lastMoodCheck = now;
-    const recentActivity = heatBoost;
+    if (now - lastMoodUpdate < 1000) return;
+    lastMoodUpdate = now;
+    const dt1s = 1;
+
+    if (typedChars > 5) mood.agitated = Math.min(mood.agitated + 0.3, 1);
+    else mood.agitated = Math.max(mood.agitated - 0.02, 0);
+
     const h = hoursWithoutActivity();
-    if (recentActivity > 0.3) emberMood = 'overheated';
-    else if (h < 1) emberMood = 'active';
-    else if (h < 24) emberMood = 'calm';
-    else emberMood = 'sleepy';
+    if (h > 2) mood.sleepy = Math.min(mood.sleepy + 0.05 * dt1s, 1);
+    else mood.sleepy = Math.max(mood.sleepy - 0.03, 0);
+
+    mood.calm = clamp(1 - mood.agitated - mood.sleepy, 0, 1);
+
+    if (mood.agitated > 0.7) emberMood = 'active';
+    else if (mood.agitated > 0.3) emberMood = 'overheated';
+    else if (mood.sleepy > 0.6) emberMood = 'sleepy';
+    else emberMood = 'calm';
   }
 
   function updateRingSegments(now) {
@@ -2243,6 +2317,100 @@ const Ember = (() => {
     coreEl.style.removeProperty('--eggTiltX');
     coreEl.style.removeProperty('--eggTiltY');
 
+    // --- settling → idle → wakeUp ---
+    if (focusState === 'settling') {
+      focusTimer += dt;
+      const sp = clamp(focusTimer / settlingDuration, 0, 1);
+      const damp = 1 - sp;
+      cursorLean.x *= damp;
+      cursorLean.y *= damp;
+      cursorLean.squish *= damp;
+      cursorLean.tiltX *= damp;
+      cursorLean.tiltY *= damp;
+      cursorLean.scale += (1 - cursorLean.scale) * 0.08;
+      windGust *= 0.8;
+      heatBoost *= 0.9;
+      residualHeat *= 0.85;
+      ringImpulse *= 0.7;
+      breathScale += (1 + Math.sin(now * 0.0015) * 0.015 - breathScale) * 0.06;
+      peek.state = 'idle';
+
+      root.style.setProperty('--breathScale', breathScale.toFixed(4));
+      root.style.setProperty('--shiftX', '0px');
+      root.style.setProperty('--shiftY', '0px');
+      root.style.setProperty('--scaleX', (breathScale * breathScale).toFixed(4));
+      root.style.setProperty('--scaleY', (breathScale * breathScale).toFixed(4));
+      root.style.setProperty('--rotation', '0deg');
+      root.style.setProperty('--glow', (intensity * 0.6).toFixed(3));
+      root.style.setProperty('--brightness', (0.6 + intensity * 0.2).toFixed(3));
+
+      if (sp >= 1) {
+        focusState = 'idle';
+        active.clear();
+        segmentEffects = [];
+        particles.forEach(p => releaseEl(p.el));
+        particles = [];
+        activeSparks = 0;
+      }
+      return;
+    }
+
+    if (focusState === 'idle') {
+      focusTimer += dt;
+      cursorLean.x *= 0.92;
+      cursorLean.y *= 0.92;
+      cursorLean.squish *= 0.92;
+      cursorLean.tiltX *= 0.92;
+      cursorLean.tiltY *= 0.92;
+      cursorLean.scale += (1 - cursorLean.scale) * 0.05;
+      windGust *= 0.9;
+      heatBoost *= 0.99;
+      ringImpulse *= 0.95;
+
+      const idleBreath = 1 + Math.sin(now * 0.0015) * 0.015;
+      breathScale += (idleBreath - breathScale) * 0.06;
+      const idleGlow = intensity * 0.5 + heatBoost * 0.2;
+      const idleBright = 0.5 + intensity * 0.2;
+
+      root.style.setProperty('--breathScale', breathScale.toFixed(4));
+      root.style.setProperty('--shiftX', '0px');
+      root.style.setProperty('--shiftY', '0px');
+      root.style.setProperty('--scaleX', (idleBreath).toFixed(4));
+      root.style.setProperty('--scaleY', (idleBreath).toFixed(4));
+      root.style.setProperty('--rotation', '0deg');
+      root.style.setProperty('--glow', idleGlow.toFixed(3));
+      root.style.setProperty('--brightness', idleBright.toFixed(3));
+      root.style.setProperty('--coreHue', (15 + intensity * 35).toFixed(1));
+      root.style.setProperty('--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
+
+      coreEl.style.filter = 'brightness(var(--brightness))';
+      coreEl.style.setProperty('--cursorLeanX', '0');
+      coreEl.style.setProperty('--cursorLeanY', '0');
+      coreEl.style.setProperty('--cursorSquish', '0');
+      coreEl.style.setProperty('--cursorScale', '1');
+      coreEl.style.setProperty('--cursorTiltX', '0');
+      coreEl.style.setProperty('--cursorTiltY', '0');
+      return;
+    }
+
+    if (focusState === 'wakeUp') {
+      focusTimer += dt;
+      if (focusTimer < 200) {
+        const wk = focusTimer / 200;
+        breathScale += (1 + wk * 0.02 - breathScale) * 0.1;
+        root.style.setProperty('--breathScale', breathScale.toFixed(4));
+        root.style.setProperty('--brightness', (0.5 + wk * 0.3).toFixed(3));
+        return;
+      }
+      if (focusTimer < 400 && !focusState._sparkDone) {
+        focusState._sparkDone = true;
+        heatBoost = 0.2;
+        spawnSpark();
+      }
+      focusState = 'active';
+      focusState._sparkDone = false;
+    }
+
     updateCursorLean(now, dt);
     updatePreviewScare(now);
 
@@ -2278,15 +2446,23 @@ const Ember = (() => {
     if (heatBoost > 0 && statusState !== 'error') heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
     residualHeat *= 0.992;
 
+    // --- редкие экстремальные события ---
+    if (!testMode) {
+      for (const ev in anomaly) {
+        if (Math.random() < dt / 1000 * anomaly[ev].chance) activateRare(ev);
+      }
+    }
+
     // --- запуск эффектов ядра с рандомными параметрами ---
     if (!testMode) {
       const moodMul = emberMood === 'active' ? 1.4 : emberMood === 'overheated' ? 1.6 : emberMood === 'sleepy' ? 0.5 : 1;
-      tryStart('sigh', 0.5 * moodMul, [4000, 5000], () => ({ mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) }));
+      const agitatedBoost = mood.agitated > 0.7 ? 2.5 : mood.agitated > 0.3 ? 1.5 : 1;
+      tryStart('sigh', 0.5 * moodMul * (mood.sleepy > 0.5 ? 1.5 : 1), [4000, 5000], () => ({ mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) }));
       tryStart('calmBurn', 0.8 * moodMul, [2000, 3000], () => ({ mag: rand(0.05, 0.1), hue: rand(-6, 12) }));
-      if (intensity > 0.5 && !reduceMotion) tryStart('wiggle', 0.3 * moodMul, [700, 1100], () => ({ amp: rand(0.9, 1.3), mag: rand(0.7, 1.1) }));
+      if (intensity > 0.5 && !reduceMotion) tryStart('wiggle', 0.3 * moodMul * agitatedBoost, [700, 1100], () => ({ amp: rand(0.9, 1.3), mag: rand(0.7, 1.1) }));
       tryStart('tilt', 0.25 * moodMul, [2000, 2000], () => ({ target: rand(-1, 1) }));
       tryStart('microShift', 0.2 * moodMul, [1000, 2000], () => ({ dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }));
-      tryStart('crackle', 0.4 * moodMul, [80, 160], () => ({ mag: rand(0.9, 1.5), side: Math.random() < 0.5 ? -1 : 1 }));
+      tryStart('crackle', 0.4 * moodMul * agitatedBoost, [80, 160], () => ({ mag: rand(0.9, 1.5), side: Math.random() < 0.5 ? -1 : 1 }));
       tryStart('stretch', 0.35 * moodMul, [3000, 4200], () => ({ amp: rand(0.9, 1.25), mag: rand(0.7, 1.1) }));
       tryStart('glint', 0.3 * moodMul, [2000, 3000], () => ({ hue: rand(15, 35), sat: rand(0.3, 0.6) }));
       if (intensity < 0.4 || emberMood === 'sleepy') tryStart('sleepySag', 0.25 * moodMul, [3000, 5000], () => ({ mag: rand(0.6, 1.0) }));
@@ -2453,7 +2629,7 @@ const Ember = (() => {
     if (!root) return;
     if (lastFrame === 0) lastFrame = timestamp;
     const dt = Math.min(timestamp - lastFrame, 50);
-    if (!browserFocused && dt < 250) {
+    if (!browserFocused && focusState === 'active' && dt < 250) {
       rafId = requestAnimationFrame(animate);
       return;
     }
@@ -2542,11 +2718,40 @@ const Ember = (() => {
       const range = sel.getRangeAt(0);
       caret.active = range.collapsed;
     };
-    handlers.windowFocus = () => { browserFocused = true; };
-    handlers.windowBlur = () => { browserFocused = false; };
+    handlers.windowFocus = () => {
+      browserFocused = true;
+      if (focusState === 'idle' || focusState === 'settling') {
+        focusState = 'wakeUp';
+        focusTimer = 0;
+      }
+    };
+    handlers.windowBlur = () => {
+      browserFocused = false;
+      if (focusState === 'active') {
+        focusState = 'settling';
+        focusTimer = 0;
+        settlingDuration = rand(800, 1500);
+      }
+    };
     handlers.visibilitychange = () => {
-      if (document.hidden) { browserFocused = false; stopLoop(); }
-      else { browserFocused = true; if (onScreen) startLoop(); }
+      if (document.hidden) {
+        browserFocused = false;
+        if (focusState === 'active') {
+          focusState = 'settling';
+          focusTimer = 0;
+          settlingDuration = rand(800, 1500);
+        }
+        stopLoop();
+      } else {
+        browserFocused = true;
+        if (onScreen) {
+          if (focusState === 'idle' || focusState === 'settling') {
+            focusState = 'wakeUp';
+            focusTimer = 0;
+          }
+          startLoop();
+        }
+      }
     };
 
     document.addEventListener('input', handlers.input);
@@ -2627,6 +2832,7 @@ const Ember = (() => {
     breathPatternIdx = 0;
     nextBreathSwitch = 0;
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
+    focusState = 'active'; focusTimer = 0;
 
     root.removeEventListener('mouseenter', handlers.mouseenter);
     root.removeEventListener('mouseleave', handlers.mouseleave);

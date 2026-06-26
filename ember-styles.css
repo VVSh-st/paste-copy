@@ -36,6 +36,7 @@
   --coreLight: 50%;
   --ashCoverage: 0;
   --ringExpand: 0px;
+  --ringExpandX: 0px;
   --ringPulse: 1;
   --glowSkewX: 0deg;
   --glowSkewY: 0deg;
@@ -88,6 +89,7 @@
   background: rgba(80, 40, 20, 0.4);
   transform:
     rotate(calc(var(--i, 0) * 30deg + var(--seg-tilt, 0deg)))
+    translateX(calc(var(--ringExpandX, 0px) * 0.3))
     translateY(calc(-14px - var(--seg-push, 0px) - var(--ringExpand, 0px)))
     scaleX(var(--seg-scaleX, 1))
     scaleY(var(--seg-scaleY, 1));
