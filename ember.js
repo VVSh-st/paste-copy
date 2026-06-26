@@ -112,6 +112,8 @@ const Ember = (() => {
   let ashTrackX = 0, ashTrackY = 0;
   let hazeTrackX = 0;
   let emberMood = 'calm';
+  let bobPhase = 0;
+  let ringTrackX = 0, ringTrackY = 0;
   const mood = { agitated: 0, calm: 0.5, sleepy: 0 };
   let lastMoodUpdate = 0;
 
@@ -635,7 +637,6 @@ const Ember = (() => {
     const w = eff._geomWeight ?? 1;
     pose.squash += (-inhale * 0.2 + exhale * 0.18) * w;
     pose.y += (-inhale * 2.4 + exhale * 2.8) * w;
-    const k = bump(p, 0.25, 0.75);
     pose.massShiftY += exhale * 0.8;
     pose.lowerSag += exhale * 0.6;
     if (p > 0.5 && p < 0.55 && !eff.ashDone) {
@@ -831,8 +832,17 @@ const Ember = (() => {
     hazeTrackX += (pose.x * 0.1 - hazeTrackX) * 0.015;
     pose.glow += residualHeat;
 
+    // floating bob — медленное парение, отдельное от дыхания
+    bobPhase += 0.0008;
+    const bobY = Math.sin(bobPhase * 2 * Math.PI / 9) * 1.2;
+
+    // contact shadow — масштаб зависит от высоты
+    const shadowBase = 1 + Math.abs(pose.y) * 0.02 + Math.abs(bobY) * 0.05;
+    const shadowAlpha = clamp(0.45 - Math.abs(pose.y + bobY) * 0.01, 0.15, 0.55);
+    root.style.setProperty('--shadowScale', shadowBase.toFixed(3));
+
     const shiftX = heatOffsetX * 0.6 + pose.x * 0.35 + ashTrackX * 0.3;
-    const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.35;
+    const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.35 + bobY;
 
     root.style.setProperty('--shiftX', shiftX.toFixed(2) + 'px');
     root.style.setProperty('--shiftY', shiftY.toFixed(2) + 'px');
@@ -883,6 +893,11 @@ const Ember = (() => {
     coreEl.style.setProperty('--glintY', pose.glintY.toFixed(1) + '%');
     coreEl.style.setProperty('--glintRot', pose.glintRot.toFixed(1) + 'deg');
     coreEl.style.setProperty('--glintScale', pose.glintScale.toFixed(3));
+    // glint от курсора — блик скользит по поверхности при наклоне
+    const glintCursorX = (cursorLean.tiltY || 0) * 0.8;
+    const glintCursorY = (cursorLean.tiltX || 0) * -0.5;
+    coreEl.style.setProperty('--glintCursorX', glintCursorX.toFixed(1) + '%');
+    coreEl.style.setProperty('--glintCursorY', glintCursorY.toFixed(1) + '%');
 
     const sqBr = clamp(pose.squash, -1, 1);
     const absSqBr = Math.abs(sqBr);
@@ -1447,9 +1462,13 @@ const Ember = (() => {
     else statusText = 'Нет активности';
 
     const timeText = h < 1 ? 'менее часа' : `${h} ч. назад`;
+    const hoursToNextSeg = 2 - (hoursWithoutActivity() % 2);
+    const minsToNext = Math.round(hoursToNextSeg * 60);
+    const countdownText = rem > 0 && rem < 12 ? `Следующее деление погаснет через ~${minsToNext} мин` : null;
     const lines = [
       `Правка: ${timeText}`,
       `Осталось: ${rem}/12 делений`,
+      countdownText,
       statusState ? `Статус: ${statusText}` : null,
     ].filter(Boolean);
 
@@ -2346,6 +2365,14 @@ const Ember = (() => {
     ringAngle += dt * 0.008 * ringImpulse / sleepSlowdown();
     ringEl.style.setProperty('--ringRot', (ringAngle * 57.2958 % 360).toFixed(2) + 'deg');
 
+    // parallax: кольцо отстаёт от курсора (инерция 0.04 vs 0.08 у glow)
+    const ringTargetX = cursorLean.x * 0.3;
+    const ringTargetY = cursorLean.y * 0.25;
+    ringTrackX += (ringTargetX - ringTrackX) * 0.04;
+    ringTrackY += (ringTargetY - ringTrackY) * 0.04;
+    ringEl.style.setProperty('--ringParallaxX', ringTrackX.toFixed(2) + 'px');
+    ringEl.style.setProperty('--ringParallaxY', ringTrackY.toFixed(2) + 'px');
+
     if (egg.active) {
       updateEgg(now);
       applyEggVars();
@@ -2782,6 +2809,9 @@ const Ember = (() => {
       showTooltip();
       if (typeof onClickCallback === 'function') onClickCallback();
     };
+    handlers.keydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlers.click(); }
+    };
 
     root.addEventListener('mouseenter', handlers.mouseenter);
     root.addEventListener('mouseleave', handlers.mouseleave);
@@ -2789,6 +2819,7 @@ const Ember = (() => {
     root.addEventListener('blur', handlers.rootBlur);
     root.addEventListener('contextmenu', handlers.contextmenu);
     root.addEventListener('click', handlers.click);
+    root.addEventListener('keydown', handlers.keydown);
 
     const isEditable = (el) =>
       el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
@@ -2937,6 +2968,7 @@ const Ember = (() => {
     root.removeEventListener('blur', handlers.rootBlur);
     root.removeEventListener('contextmenu', handlers.contextmenu);
     root.removeEventListener('click', handlers.click);
+    root.removeEventListener('keydown', handlers.keydown);
     document.removeEventListener('input', handlers.input);
     document.removeEventListener('mousemove', handlers.mousemove);
     document.removeEventListener('selectionchange', handlers.selectionchange);

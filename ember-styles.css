@@ -3,6 +3,19 @@
   display: inline-flex;
   align-items: center;
   margin: 0 4px 0 0;
+  position: relative;
+}
+
+.ember-slot::after {
+  content: '';
+  position: absolute;
+  left: 50%; bottom: -3px;
+  width: 16px; height: 4px;
+  background: radial-gradient(ellipse, rgba(20, 8, 2, 0.45), transparent 70%);
+  transform: translateX(-50%) scale(var(--shadowScale, 1));
+  filter: blur(1px);
+  z-index: 0;
+  transition: transform 0.3s ease;
 }
 
 .ember {
@@ -71,7 +84,7 @@
   left: 50%;
   width: 30px;
   height: 30px;
-  transform: translate(-50%, -50%) rotate(var(--ringRot, 0deg)) scale(var(--ringPulse, 1));
+  transform: translate(calc(-50% + var(--ringParallaxX, 0px)), calc(-50% + var(--ringParallaxY, 0px))) rotate(var(--ringRot, 0deg)) scale(var(--ringPulse, 1));
   opacity: calc(0.14 + var(--ringOpacity) * 0.82 * var(--spawnRing));
   transition: opacity 0.4s ease;
   pointer-events: none;
@@ -137,6 +150,7 @@
   box-shadow:
     inset 0 0 4px rgba(20, 6, 0, 0.8),
     inset 0 -2px 5px rgba(0, 0, 0, 0.6),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.35),
     0 0 3px rgba(80, 25, 0, 0.5);
   animation: emberDeform 4s ease-in-out infinite;
   animation-delay: var(--deformPhase, 0s);
@@ -148,6 +162,11 @@
   border-radius: inherit;
   mix-blend-mode: screen;
   will-change: background;
+  background:
+    radial-gradient(circle at var(--cx, 50%) var(--cy, 50%),
+      rgba(255, 170, 70, calc(var(--heat, 0.5) * var(--zoneHeat, 0.6) * 0.7)) 0%,
+      rgba(200, 80, 20, calc(var(--heat, 0.5) * var(--zoneHeat, 0.6) * 0.3)) 40%,
+      transparent 65%);
 }
 
 .zone1 {
@@ -457,15 +476,15 @@
   position: absolute;
   width: 5px;
   height: 2px;
-  left: var(--glintX, 58%);
-  top: var(--glintY, 32%);
+  left: calc(var(--glintX, 58%) + var(--glintCursorX, 0%));
+  top: calc(var(--glintY, 32%) + var(--glintCursorY, 0%));
   border-radius: 999px;
   background: rgba(255, 245, 190, 0.95);
   box-shadow: 0 0 6px rgba(255, 210, 120, .9);
   opacity: var(--glintOpacity, 0);
   transform:
     translate(-50%, -50%)
-    rotate(var(--glintRot, -18deg))
+    rotate(calc(var(--glintRot, -18deg) + var(--cursorTiltY, 0) * 0.3deg))
     scale(var(--glintScale, 1));
   mix-blend-mode: screen;
   pointer-events: none;
