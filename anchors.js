@@ -135,29 +135,29 @@ const Anchors = (() => {
         ta.focus({ preventScroll: true });
         const s = Math.min(anchor.start, ta.value.length);
         const e = Math.min(anchor.end, ta.value.length);
-        const savedScroll = ta.scrollTop;
         ta.setSelectionRange(s, e);
-        ta.scrollTop = savedScroll;
         const pos = _measurePos(ta, s);
         const cs = getComputedStyle(ta);
         const pt = parseFloat(cs.paddingTop) || 0;
         const target = Math.max(0, pos.y - pt - ta.clientHeight / 2);
-        // Плавная прокрутка
-        const start = ta.scrollTop;
-        const dist = target - start;
-        if (Math.abs(dist) > 1) {
-          const dur = Math.min(350, Math.abs(dist) * 1.5);
-          const t0 = performance.now();
-          const ease = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-          const tick = now => {
-            const p = Math.min((now - t0) / dur, 1);
-            ta.scrollTop = start + dist * ease(p);
-            if (p < 1) requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-        } else {
+        // Восстанавливаем скролл после auto-scroll браузера
+        requestAnimationFrame(() => {
           ta.scrollTop = target;
-        }
+          // Плавная докрутка
+          const start = ta.scrollTop;
+          const dist = target - start;
+          if (Math.abs(dist) > 1) {
+            const dur = Math.min(350, Math.abs(dist) * 1.5);
+            const t0 = performance.now();
+            const ease = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+            const tick = now => {
+              const p = Math.min((now - t0) / dur, 1);
+              ta.scrollTop = start + dist * ease(p);
+              if (p < 1) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+          }
+        });
       }
     }));
   }
@@ -426,6 +426,35 @@ const Anchors = (() => {
     });
   }
 
+  function _renderMarkersNoGutter(blockEl, ta) {
+    blockEl.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
+    const anchors = _getAnchors();
+    const settings = getMarkerSettings();
+    const blockId = blockEl.dataset.id;
+    const blk = _findBlockById(State.getActive()?.blocks || [], blockId);
+    const activeSub = blk ? blk.activeSubtab : null;
+    const blockAnchors = anchors.filter(a => a.blockId === blockId && (a.subtabIdx == null || a.subtabIdx === activeSub));
+    if (!blockAnchors.length) return;
+    const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
+    if (!wrap) return;
+    wrap.style.position = 'relative';
+    const lineHeight = _getLineHeight(ta);
+    const scrollY = ta.scrollTop;
+    const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
+    blockAnchors.forEach(anchor => {
+      const pos = _measurePos(ta, anchor.start);
+      const rawTop = pos.y - scrollY - taPt;
+      const wrapH = wrap.clientHeight;
+      if (settings.lineMarkers) {
+        const mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+        const m = document.createElement('div');
+        m.className = 'anchor-marker-line';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 12) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        wrap.appendChild(m);
+      }
+    });
+  }
+
   /* ---- block buttons ---- */
   const SVG_ANCHOR = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="4.5" r="2.5"/><line x1="10" y1="7" x2="10" y2="18"/><path d="M6 12.5H4a8 8 0 0 0 12 0h-2"/></svg>';
 
@@ -496,18 +525,20 @@ const Anchors = (() => {
     State.onChange(rerender);
     State.onLive(rerender);
     let _scrollTimer = null;
+    let _isScrolling = false;
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
-        if (bel) {
-          // При скролле скрываем фон, оставляем левый маркер
-          bel.querySelectorAll('.anchor-marker-gutter').forEach(g => g.style.display = 'none');
-          clearTimeout(_scrollTimer);
-          _scrollTimer = setTimeout(() => {
-            if (bel.isConnected) _renderMarkers(bel, ta);
-          }, 250);
-        }
+        if (!bel) return;
+        _isScrolling = true;
+        // Рендерим маркеры (линии) при каждом скролле — следуют за текстом
+        _renderMarkersNoGutter(bel, ta);
+        clearTimeout(_scrollTimer);
+        _scrollTimer = setTimeout(() => {
+          _isScrolling = false;
+          if (bel.isConnected) _renderMarkers(bel, ta);
+        }, 300);
       }
     }, true);
     document.addEventListener('focusin', e => {
