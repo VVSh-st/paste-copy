@@ -688,19 +688,114 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       row.innerHTML = '';
       const end = Math.min(offset + VISIBLE_SUBTABS, State.SUBTABS_COUNT);
       for (let i = offset; i < end; i++) {
+        const sub = b.subtabs[i];
+        const displayName = sub.name || sub.label;
         const btn = document.createElement('span');
-        btn.className   = 'block-subtab' + (i === b.activeSubtab ? ' active' : '');
-        btn.textContent = b.subtabs[i].label;
-        if ((b.subtabs[i].value || '').trim()) btn.classList.add('filled');
-        if (b.subtabs[i].name) btn.title = b.subtabs[i].name;
-        btn.onclick = () => State.update(() => { b.activeSubtab = i; });
-        btn.ondblclick = e => {
+        btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '');
+        if ((sub.value || '').trim()) btn.classList.add('filled');
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'block-subtab-label';
+        labelSpan.textContent = displayName;
+        btn.appendChild(labelSpan);
+
+        const renameInput = document.createElement('input');
+        renameInput.className = 'block-subtab-rename';
+        renameInput.maxLength = 20;
+        renameInput.spellcheck = false;
+        renameInput.style.display = 'none';
+        btn.appendChild(renameInput);
+
+        let _mqTimer = null;
+        let _mqRaf = null;
+        let _tipEl = null;
+
+        function _removeTooltip() {
+          clearTimeout(_mqTimer);
+          cancelAnimationFrame(_mqRaf);
+          _mqTimer = null;
+          _mqRaf = null;
+          if (_tipEl) { _tipEl.remove(); _tipEl = null; }
+        }
+
+        function _startMarquee(txt) {
+          const sep = '   \u00b7   ';
+          _tipEl.textContent = txt + sep;
+          void _tipEl.offsetWidth;
+          const unitW = _tipEl.scrollWidth;
+          const dur = Math.max(350, unitW * 6);
+          const speed = unitW / dur;
+          const reps = Math.ceil(120000 / dur) + 2;
+          _tipEl.textContent = (txt + sep).repeat(reps);
+          let pos = 0;
+          let lastT = performance.now();
+          const tick = now => {
+            const dt = now - lastT;
+            lastT = now;
+            pos += dt * speed;
+            if (pos >= unitW * (reps - 1)) pos -= Math.floor(pos / unitW) * unitW;
+            _tipEl.scrollLeft = Math.round(pos);
+            _mqRaf = requestAnimationFrame(tick);
+          };
+          _mqRaf = requestAnimationFrame(tick);
+        }
+
+        btn.addEventListener('mouseenter', () => {
+          const txt = sub.name || '';
+          if (!txt || txt.length <= 6) return;
+          _mqTimer = setTimeout(() => {
+            _tipEl = document.createElement('div');
+            _tipEl.className = 'subtab-marquee-tip';
+            _tipEl.textContent = txt;
+            document.body.appendChild(_tipEl);
+            const r = btn.getBoundingClientRect();
+            _tipEl.style.left = (r.left + r.width / 2) + 'px';
+            _tipEl.style.top = (r.top - 6) + 'px';
+            if (_tipEl.scrollWidth - _tipEl.clientWidth > 2) {
+              _startMarquee(txt);
+            }
+          }, 500);
+        });
+
+        btn.addEventListener('mouseleave', _removeTooltip);
+
+        let _clickTimer = null;
+        btn.addEventListener('dblclick', e => {
           e.stopPropagation();
-          const cur  = b.subtabs[i].name || '';
-          const name = prompt('Название вкладки ' + b.subtabs[i].label + ':', cur);
-          if (name === null) return;
-          State.update(() => { b.subtabs[i].name = name.trim(); });
+          _removeTooltip();
+          clearTimeout(_clickTimer);
+          labelSpan.style.display = 'none';
+          renameInput.style.display = '';
+          renameInput.value = sub.name || '';
+          requestAnimationFrame(() => { renameInput.focus(); renameInput.select(); });
+        });
+
+        btn.onclick = e => {
+          _removeTooltip();
+          clearTimeout(_clickTimer);
+          _clickTimer = setTimeout(() => {
+            State.update(() => { b.activeSubtab = i; });
+          }, 220);
         };
+
+        const commitRename = () => {
+          const v = renameInput.value.trim();
+          State.update(() => { sub.name = v; });
+          renameInput.style.display = 'none';
+          labelSpan.textContent = v || sub.label;
+          labelSpan.style.display = '';
+        };
+        renameInput.onblur = commitRename;
+        renameInput.onkeydown = ev => {
+          ev.stopPropagation();
+          if (ev.key === 'Enter') { ev.preventDefault(); renameInput.blur(); }
+          if (ev.key === 'Escape') {
+            renameInput.style.display = 'none';
+            labelSpan.style.display = '';
+          }
+        };
+        renameInput.onclick = ev => ev.stopPropagation();
+
         row.appendChild(btn);
       }
       prevBtn.disabled = b.activeSubtab <= 0;

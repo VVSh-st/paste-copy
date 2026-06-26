@@ -317,6 +317,7 @@ body {
   border: 1px solid transparent; border-radius: 99px; cursor: pointer;
   color: var(--text3); user-select: none; font-weight: 500;
   transition: all var(--trans); white-space: nowrap; flex-shrink: 0;
+  max-width: 50px; overflow: hidden;
 }
 .block-subtab.active { background: rgba(79,142,247,0.15); color: var(--accent); border-color: rgba(79,142,247,0.28); }
 .block-subtab:hover:not(.active) { color: var(--text1); border-color: var(--border); background: var(--surface); }
@@ -324,6 +325,26 @@ body {
 .block-subtab.filled::after {
   content: ''; position: absolute; top: 2px; right: 2px;
   width: 4px; height: 4px; background: var(--green); border-radius: 50%;
+}
+.block-subtab-label {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.block-subtab-rename {
+  width: 44px; max-width: 60px; background: var(--bg0); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--text0); font-size: 10px; font-family: inherit;
+  font-weight: 600; padding: 0 3px; outline: none; text-align: center;
+}
+.subtab-marquee-tip {
+  position: fixed; z-index: 9999; pointer-events: none;
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 8px; overflow: hidden; white-space: nowrap;
+  font-size: 12px; font-weight: 500; color: var(--text1);
+  width: 20ch; max-width: 20ch;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  transform: translateX(-50%);
 }
 
 .block-font-controls { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
