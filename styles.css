@@ -419,6 +419,45 @@ body {
   max-height: 280px;
   overflow-y: auto;
 }
+.translate-engine-row {
+  display: flex;
+  gap: 2px;
+  padding: 4px 6px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.translate-engine-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text3);
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--trans);
+  white-space: nowrap;
+}
+.translate-engine-btn:hover {
+  color: var(--text1);
+  background: var(--bg2);
+}
+.translate-engine-btn.active {
+  color: var(--accent);
+  border-color: rgba(79,142,247,0.3);
+  background: rgba(79,142,247,0.1);
+  font-weight: 600;
+}
+.translate-engine-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
 .translate-lang-opt {
   display: block;
   width: 100%;
