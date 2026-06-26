@@ -1400,14 +1400,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       translateBtn.textContent = '⏳';
       Toast.show('Перевод → ' + langName + '...');
 
-      // При переводе всего блока — построчно, сохраняя переносы и шаблоны
-      const translatePromise = hasSelection
-        ? Translator.translateProtected(textToTranslate, targetLang)
-        : (async () => {
-            const lines = textToTranslate.split('\n');
-            const results = await Promise.all(lines.map(l => Translator.translateProtected(l, targetLang)));
-            return results.join('\n');
-          })();
+      // Построчно, сохраняя переносы и шаблоны
+      const lines = textToTranslate.split('\n');
+      const translatePromise = lines.length > 1
+        ? Promise.all(lines.map(l => Translator.translateProtected(l, targetLang))).then(r => r.join('\n'))
+        : Translator.translateProtected(textToTranslate, targetLang);
 
       translatePromise.then(result => {
         if (!result || result === textToTranslate) {
