@@ -64,6 +64,7 @@ const Ember = (() => {
 
   let prevRemaining = 12;
   let spawnStart = 0;
+  let lastWarnRemaining = 12;
 
   const active = new Map();
   let nextDue = {};
@@ -142,6 +143,7 @@ const Ember = (() => {
   let lastFrame = 0;
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let handlers = {};
+  let onClickCallback = null;
 
   // ---------- утилиты ----------
 
@@ -256,6 +258,7 @@ const Ember = (() => {
     state = loadState(currentTabId);
     spawnStart = performance.now();
     prevRemaining = remainingSegments();
+    lastWarnRemaining = remainingSegments();
   }
 
   // ---------- расчёт жизни угля ----------
@@ -314,6 +317,7 @@ const Ember = (() => {
     coreEl = document.createElement('div');
     coreEl.className = 'ember-core';
     coreEl.style.animationDuration = rand(3.4, 4.8).toFixed(2) + 's';
+    coreEl.style.setProperty('--deformPhase', (-rand(0, 4)).toFixed(2) + 's');
     ['zone1', 'zone2', 'zone3'].forEach((cls) => {
       const z = document.createElement('div');
       z.className = `heat-zone ${cls}`;
@@ -517,12 +521,11 @@ const Ember = (() => {
     const p = eff.phase;
     const inhale = p < 0.35 ? easeOutQuad(p / 0.35) : 0;
     const exhale = p > 0.45 ? easeOutQuad((p - 0.45) / 0.55) : 0;
-    if (!eff.skipGeometry) {
-      pose.squash += -inhale * 0.15 + exhale * 0.12;
-      pose.scaleX *= 1 - inhale * 0.04 + exhale * 0.08;
-      pose.y += -inhale * 1.2 + exhale * 1.4;
-      pose.rotate += Math.sin(p * Math.PI * 2) * 1.2 * (1 - p);
-    }
+    const w = eff._geomWeight ?? 1;
+    pose.squash += (-inhale * 0.15 + exhale * 0.12) * w;
+    pose.scaleX *= 1 + (-inhale * 0.04 + exhale * 0.08) * w;
+    pose.y += (-inhale * 1.2 + exhale * 1.4) * w;
+    pose.rotate += Math.sin(p * Math.PI * 2) * 1.2 * (1 - p) * w;
     const k = bump(p, 0.25, 0.75);
     pose.glow += k * (eff.glow ?? 0.2);
     pose.brightness += k * 0.12;
@@ -535,13 +538,12 @@ const Ember = (() => {
   function applyCalmBurnPose(pose, eff) {
     const k = bump(eff.phase, 0.25, 0.75);
     const sway = Math.sin(eff.phase * Math.PI * 2) * 0.8;
-    if (!eff.skipGeometry) {
-      pose.x += sway * 0.4;
-      pose.y += Math.sin(eff.phase * Math.PI) * -0.4;
-      pose.scaleX *= 1 + k * 0.035;
-      pose.squash += -k * 0.08;
-      pose.rotate += sway * 0.4;
-    }
+    const w = eff._geomWeight ?? 1;
+    pose.x += sway * 0.4 * w;
+    pose.y += Math.sin(eff.phase * Math.PI) * -0.4 * w;
+    pose.scaleX *= 1 + k * 0.035 * w;
+    pose.squash += -k * 0.08 * w;
+    pose.rotate += sway * 0.4 * w;
     pose.brightness += k * 0.15;
     pose.hue += k * (eff.hue ?? 0);
   }
@@ -551,12 +553,11 @@ const Ember = (() => {
     const decay = 1 - p;
     const shake = Math.sin(p * Math.PI * 8) * decay;
     const amp = eff.amp ?? 1;
-    if (!eff.skipGeometry) {
-      pose.x += shake * 1.4 * amp;
-      pose.rotate += shake * 5 * amp;
-      pose.scaleX *= 1 + Math.abs(shake) * 0.04 * amp;
-      pose.squash += shake * 0.06 * amp;
-    }
+    const w = eff._geomWeight ?? 1;
+    pose.x += shake * 1.4 * amp * w;
+    pose.rotate += shake * 5 * amp * w;
+    pose.scaleX *= 1 + Math.abs(shake) * 0.04 * amp * w;
+    pose.squash += shake * 0.06 * amp * w;
   }
 
   function applyTiltPose(pose, eff) {
@@ -613,12 +614,11 @@ const Ember = (() => {
     const bulge = p >= 0.08 && p < 0.22 ? Math.sin((p - 0.08) / 0.14 * Math.PI) : 0;
     const tremor = p >= 0.22 ? Math.sin((p - 0.22) * 40) * Math.exp(-(p - 0.22) * 6) : 0;
 
-    if (!eff.skipGeometry) {
-      pose.squash += (-snap * 0.6 + bulge * 0.45) * mag;
-      pose.scaleX *= 1 + (bulge * 0.1 - snap * 0.05) * mag;
-      pose.x += side * (bulge * 1.2 + tremor * 0.6) * mag;
-      pose.rotate += side * tremor * 5 * mag;
-    }
+    const w = eff._geomWeight ?? 1;
+    pose.squash += (-snap * 0.6 + bulge * 0.45) * mag * w;
+    pose.scaleX *= 1 + (bulge * 0.1 - snap * 0.05) * mag * w;
+    pose.x += side * (bulge * 1.2 + tremor * 0.6) * mag * w;
+    pose.rotate += side * tremor * 5 * mag * w;
     pose.brightness += (snap + bulge * 0.7) * mag;
 
     if (!eff.crackFired && p > 0.1 && p < 0.15) {
@@ -635,18 +635,17 @@ const Ember = (() => {
     const reach = p > 0.15 && p < 0.6 ? Math.sin((p - 0.15) / 0.45 * Math.PI) : 0;
     const settle = p > 0.55 ? easeOutQuad((p - 0.55) / 0.45) : 0;
 
-    if (!eff.skipGeometry) {
-      pose.squash += (-reach * 0.6 + crouch * 0.2) * amp;
-      pose.scaleX *= (1 + crouch * 0.1 - reach * 0.06 + settle * 0.06) * amp + (1 - amp);
-      pose.y += crouch * 1.2 - reach * 1.6 + settle * 0.8;
-      pose.rotate += Math.sin(p * Math.PI * 2) * 2 * (1 - p);
-    }
+    const w = eff._geomWeight ?? 1;
+    pose.squash += (-reach * 0.6 + crouch * 0.2) * amp * w;
+    pose.scaleX *= 1 + (crouch * 0.1 - reach * 0.06 + settle * 0.06) * w;
+    pose.y += (crouch * 1.2 - reach * 1.6 + settle * 0.8) * w;
+    pose.rotate += Math.sin(p * Math.PI * 2) * 2 * (1 - p) * w;
   }
 
   function applyGlintPose(pose, eff) {
     const k = bump(eff.phase, 0.2, 0.55);
     pose.glintOpacity = k;
-    pose.glintX = 45 + eff.phase * 20;
+    pose.glintX = 45 + k * 20 + eff.phase * 10;
     pose.glintScale = 1 + k * 0.8;
     pose.squash += -k * 0.1;
     pose.scaleX *= 1 + k * 0.025;
@@ -658,12 +657,11 @@ const Ember = (() => {
     const p = eff.phase;
     const sag = bump(p, 0.35, 0.8);
     const nod = Math.sin(p * Math.PI * 3) * (1 - p);
-    if (!eff.skipGeometry) {
-      pose.y += sag * 1.8;
-      pose.squash += sag * 0.25;
-      pose.scaleX *= 1 + sag * 0.08;
-      pose.rotate += sag * 4 + nod * 2;
-    }
+    const w = eff._geomWeight ?? 1;
+    pose.y += sag * 1.8 * w;
+    pose.squash += sag * 0.25 * w;
+    pose.scaleX *= 1 + sag * 0.08 * w;
+    pose.rotate += (sag * 4 + nod * 2) * w;
     pose.brightness -= sag * 0.2;
   }
 
@@ -712,12 +710,11 @@ const Ember = (() => {
   function applyGustPose(pose, eff) {
     const k = bump(eff.phase, 0.15, 0.6);
     const dir = eff.dir ?? 1;
-    if (!eff.skipGeometry) {
-      pose.x += dir * k * 2.2;
-      pose.rotate += dir * k * 8;
-      pose.scaleX *= 1 + k * 0.08;
-      pose.squash += -k * 0.12;
-    }
+    const w = eff._geomWeight ?? 1;
+    pose.x += dir * k * 2.2 * w;
+    pose.rotate += dir * k * 8 * w;
+    pose.scaleX *= 1 + k * 0.08 * w;
+    pose.squash += -k * 0.12 * w;
     pose.glowSkewX += dir * k * 12;
     pose.glowX += dir * k * 3;
     pose.brightness += k * 0.5;
@@ -989,10 +986,11 @@ const Ember = (() => {
     particles.push({
       el, born: performance.now(),
       dur: rand(2600, 5200),
-      rise: rand(-36, -20),
+      rise: rand(-20, -10),
       drift: rand(-12, 12),
       sway: rand(2, 6),
       isSpark: false,
+      scalePulse: true,
     });
   }
 
@@ -1111,6 +1109,7 @@ const Ember = (() => {
         ? (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85)
         : (t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78);
       const scale = p.isSpark ? (1 - t * 0.75) : (p.type === 'crumb' ? (1 - t * 0.5) : (1 - t * 0.3));
+      const finalScale = (p.scalePulse && t < 0.5) ? scale * (1 + Math.sin(t * Math.PI) * 0.2) : scale;
       const rot = p.isSpark ? t * 50 : 0;
 
       let shadow = '';
@@ -1119,7 +1118,7 @@ const Ember = (() => {
         shadow = `0 ${trailLen.toFixed(0)}px 3px rgba(255,150,50,${(0.6 * (1 - t)).toFixed(2)})`;
       }
 
-      p.el.style.transform = `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${rot}deg) scale(${scale.toFixed(2)})`;
+      p.el.style.transform = `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${rot}deg) scale(${finalScale.toFixed(2)})`;
       p.el.style.opacity = (opacity * (p.isSpark ? 1 : 0.92)).toFixed(3);
       if (shadow) p.el.style.boxShadow = shadow;
     }
@@ -1575,18 +1574,191 @@ const Ember = (() => {
 
     switch (egg.phase) {
 
-      case 1: { // ЗАМАХ перед прыжком — приседает в сторону, противоположную цели
-        const p = clamp(t / 260, 0, 1);
+      case 1: { // ЗАМАХ — приседает против хода, резко ~150мс
+        const p = clamp(t / 150, 0, 1);
         const e = easeOutQuad(p);
         const dir = Math.sign(egg.caretX) || 1;
-        egg.x = egg.startX - dir * 6 * e;
-        egg.y = egg.startY + 4 * e;
-        egg.scale = 1 - 0.12 * e;
-        egg.squish = 0.18 * e;
-        egg.tiltY = dir * 8 * e;
+        egg.x = egg.startX - dir * 7 * e;
+        egg.y = egg.startY + 5 * e;
+        egg.scale = 1 - 0.14 * e;
+        egg.squish = 0.2 * e;
+        egg.tiltY = dir * 10 * e;
         if (p >= 1) { egg.phase = 2; egg.phaseStart = now; }
         break;
       }
+
+      case 2: { // ПОЛЁТ — очень быстро easeIn→easeOut, 350мс, огненный хвост
+        const p = clamp(t / 350, 0, 1);
+        const e = p < 0.4 ? easeInQuad(p / 0.4) * 0.5 : easeOutQuad((p - 0.4) / 0.6) * 0.5 + 0.5;
+        egg.x = egg.startX + (egg.caretX - egg.startX) * e;
+        egg.y = egg.startY + (egg.caretY - egg.startY) * e
+                - Math.sin(p * Math.PI) * 28;
+        egg.scale = 1.12 + Math.sin(p * Math.PI) * 0.12;
+        egg.squish = -0.14 * Math.sin(p * Math.PI);
+        const dir = Math.sign(egg.caretX - egg.startX) || 1;
+        egg.tiltY = dir * 16 * (1 - p);
+        egg.tiltX = -12 * Math.sin(p * Math.PI);
+        if (Math.random() < 0.6) spawnSpark();
+        if (p >= 1) { egg.phase = 3; egg.phaseStart = now; }
+        break;
+      }
+
+      case 3: { // ПРИЗЕМЛЕНИЕ — пружинка ~200мс
+        const p = clamp(t / 200, 0, 1);
+        const spring = Math.sin(p * Math.PI * 3) * (1 - p);
+        egg.x = egg.caretX;
+        egg.y = egg.caretY;
+        egg.scale = 1 + spring * 0.14;
+        egg.squish = spring * 0.4;
+        egg.tiltX = 0; egg.tiltY = 0;
+        if (!egg._landGlowDone) {
+          egg._landGlowDone = true;
+          const ember = getEmberCenter();
+          spawnLandingGlow(
+            clamp((ember.x + egg.caretX) / window.innerWidth * 100, 10, 90),
+            clamp((ember.y + egg.caretY) / window.innerHeight * 100, 10, 90)
+          );
+        }
+        if (p >= 1) { egg.phase = 4; egg.phaseStart = now; egg._landGlowDone = false; }
+        break;
+      }
+
+      case 4: { // ОСМОТР — медленно 1800мс, паузы между поворотами
+        const p = clamp(t / 1800, 0, 1);
+        let lookX = 0, lookY = 0, tiltYVal = 0, bodyLean = 0;
+        if (p < 0.18) {
+          const lp = easeOutQuad(p / 0.18);
+          lookX = -8 * lp; tiltYVal = -26 * lp; bodyLean = -4 * lp;
+        } else if (p < 0.28) {
+          lookX = -8; tiltYVal = -26; bodyLean = -4;
+        } else if (p < 0.42) {
+          const lp = easeOutQuad((p - 0.28) / 0.14);
+          lookX = -8 + 16 * lp; tiltYVal = -26 + 52 * lp; bodyLean = -4 + 8 * lp;
+        } else if (p < 0.52) {
+          lookX = 8; tiltYVal = 26; bodyLean = 4;
+        } else if (p < 0.66) {
+          const lp = easeOutQuad((p - 0.52) / 0.14);
+          lookX = 8 * (1 - lp); tiltYVal = 26 * (1 - lp); lookY = -8 * lp; bodyLean = 4 * (1 - lp);
+        } else if (p < 0.78) {
+          lookY = -8; tiltYVal = 0;
+          egg.scale = 1.08 + 0.04;
+          egg.squish = -0.08;
+        } else {
+          lookY = -8; tiltYVal = 0;
+          egg.scale = 1.08;
+          egg.squish = 0;
+        }
+        egg.x = egg.caretX + lookX;
+        egg.y = egg.caretY + lookY;
+        egg.tiltY = tiltYVal;
+        egg.tiltX = Math.sin(p * Math.PI * 2) * 9 + bodyLean;
+        if (!egg._glint1 && p > 0.15 && p < 0.2) { egg._glint1 = true; spawnSpark(); spawnSpark(); }
+        if (!egg._glint2 && p > 0.39 && p < 0.44) { egg._glint2 = true; spawnSpark(); spawnSpark(); }
+        if (!egg._glint3 && p > 0.63 && p < 0.68) { egg._glint3 = true; spawnSpark(); }
+        if (p >= 1) { egg.phase = 5; egg.phaseStart = now; egg._glint1 = false; egg._glint2 = false; egg._glint3 = false; }
+        break;
+      }
+
+      case 5: { // «РУКИ В БОКИ» — гордость, scaleX>1, задержка 300мс
+        const p = clamp(t / 300, 0, 1);
+        const e = easeOutQuad(p);
+        egg.x = egg.caretX;
+        egg.y = egg.caretY - e * 3;
+        egg.tiltY = -20 * e;
+        egg.tiltX = 6 * e;
+        egg.scale = 1.08 + e * 0.14;
+        egg.squish = -0.14 * e;
+        if (p >= 1) { egg.phase = 6; egg.phaseStart = now; }
+        break;
+      }
+
+      case 6: { // ЗАЛП — мгновенно 100мс старт, 16-20 пепла + 8 искр
+        const p = clamp(t / 300, 0, 1);
+        egg.x = egg.caretX; egg.y = egg.caretY;
+        egg.tiltX = Math.sin(p * Math.PI * 4) * 4 * p;
+        egg.tiltY = 0;
+        egg.scale = 1.22 + easeOutQuad(p) * 0.18;
+        egg.squish = -0.18 * p;
+        if (!egg._burstDone && p > 0.08) {
+          egg._burstDone = true;
+          const burstDir = Math.random() < 0.5 ? -1 : 1;
+          for (let i = 0; i < 18; i++) setTimeout(spawnAshParticle, i * 18 + rand(0, 10));
+          for (let i = 0; i < 8; i++) setTimeout(spawnSpark, 30 + i * 30);
+          setTimeout(() => { egg.tiltY -= burstDir * 7; }, 200);
+        }
+        if (p >= 1) { egg.phase = 6.5; egg.phaseStart = now; egg._burstDone = false; }
+        break;
+      }
+
+      case 6.5: { // ОТДАЧА — быстрый дёрг назад, смущение
+        const p = clamp(t / 150, 0, 1);
+        const e = easeOutQuad(p);
+        egg.scale = 1.4 - e * 0.12;
+        egg.tiltX = -8 * (1 - e);
+        egg.squish = 0.08 * (1 - e);
+        if (p >= 1) { egg.phase = 7; egg.phaseStart = now; }
+        break;
+      }
+
+      case 7: { // СХЛОПЫВАНИЕ — mass утягивается в точку, easeIn
+        const p = clamp(t / 280, 0, 1);
+        egg.x = egg.caretX * (1 - easeInQuad(p) * 0.7);
+        egg.y = egg.caretY * (1 - easeInQuad(p) * 0.7);
+        egg.scale = 1.28 - easeInQuad(p) * 0.98;
+        egg.squish = easeInQuad(p) * 0.95;
+        egg.tiltY = Math.sign(-egg.caretX) * easeInQuad(p) * 14;
+        egg.tiltX = -easeInQuad(p) * 6;
+        if (p >= 1) { egg.phase = 8; egg.phaseStart = now; }
+        break;
+      }
+
+      case 8: { // ТЕЛЕПОРТ — дом, кольцо сжимается к центру
+        egg.x = 0; egg.y = 0; egg.scale = 0.5; egg.squish = 0.8;
+        egg.tiltY = 10; egg.tiltX = -4;
+        if (t > 90) { egg.phase = 9; egg.phaseStart = now; }
+        break;
+      }
+
+      case 9: { // ЗАГЛАТЫВАНИЕ КОЛЬЦОМ — кольцо сжимается внутрь, уголь выскакивает
+        const p = clamp(t / 500, 0, 1);
+        if (p < 0.2) {
+          const s = p / 0.2;
+          egg.scale = 0.5 * (1 - easeOutQuad(s) * 0.6);
+          egg.squish = 0.8 * (1 - easeOutQuad(s));
+          egg.tiltY = 10 * (1 - s);
+          egg.tiltX = -4 * (1 - s);
+          if (!egg._ringDone) {
+            egg._ringDone = true;
+            ringImpulse = rand(3, 5) * (Math.random() < 0.5 ? 1 : -1);
+            heatBoost = Math.max(heatBoost, 0.25);
+            root.style.setProperty('--ringOpacity', '1');
+            root.style.setProperty('--ringExpand', '-3px');
+            root.style.setProperty('--ringPulse', '0.7');
+          }
+        } else if (p < 0.4) {
+          const s = (p - 0.2) / 0.2;
+          egg.scale = 0.2;
+          egg.squish = 0;
+        } else {
+          const s = (p - 0.4) / 0.6;
+          const bounce = Math.sin(s * Math.PI * 2) * (1 - s) * 0.12;
+          egg.scale = 0.2 + easeOutQuad(s) * 0.8 + bounce;
+          egg.squish = -Math.sin(s * Math.PI) * 0.12;
+          egg.tiltY = Math.sin(s * Math.PI * 3) * 4 * (1 - s);
+          root.style.setProperty('--ringPulse', String(0.7 + easeOutQuad(s) * 0.38));
+          root.style.setProperty('--ringExpand', (-3 + easeOutQuad(s) * 6).toFixed(1) + 'px');
+        }
+        if (p >= 1) {
+          egg.scale = 1; egg.squish = 0; egg.active = false;
+          egg._ringDone = false;
+          root.style.removeProperty('--ringOpacity');
+          root.style.removeProperty('--ringExpand');
+          root.style.removeProperty('--ringPulse');
+        }
+        break;
+      }
+    }
+  }
 
       case 2: { // ПОЛЁТ к цели по дуге — огненный хвост
         const p = clamp(t / 620, 0, 1);
@@ -1599,8 +1771,8 @@ const Ember = (() => {
         const dir = Math.sign(egg.caretX - egg.startX) || 1;
         egg.tiltY = dir * 14 * (1 - p);
         egg.tiltX = -10 * Math.sin(p * Math.PI);
-        if (!egg._trailDone && Math.random() < 0.6) spawnSpark();
-        if (p >= 1) { egg.phase = 3; egg.phaseStart = now; egg._trailDone = false; }
+        if (Math.random() < 0.6) spawnSpark();
+        if (p >= 1) { egg.phase = 3; egg.phaseStart = now; }
         break;
       }
 
@@ -1880,15 +2052,16 @@ const Ember = (() => {
       const extras = {
         calmBurn: { mag: rand(0.05, 0.1), hue: rand(-6, 12) },
         sigh: { mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) },
-        wiggle: { amp: rand(0.9, 1.3) },
-        stretch: { amp: rand(0.9, 1.25) },
+        wiggle: { amp: rand(0.9, 1.3), mag: rand(0.7, 1.1) },
+        stretch: { amp: rand(0.9, 1.25), mag: rand(0.7, 1.1) },
         crackle: { mag: rand(0.9, 1.5), side: Math.random() < 0.5 ? -1 : 1 },
         glint: { hue: rand(15, 35), sat: rand(0.3, 0.6) },
         smolder: { hue: rand(10, 26), sat: rand(0.15, 0.32) },
         tilt: { target: rand(-1, 1) },
         microShift: { dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) },
         ashDrift: { dx: rand(-3, 3) },
-        gust: { power: rand(0.6, 1), dir: Math.random() < 0.5 ? -1 : 1 },
+        gust: { power: rand(0.6, 1), dir: Math.random() < 0.5 ? -1 : 1, mag: rand(0.7, 1.1) },
+        sleepySag: { mag: rand(0.6, 1.0) },
       };
       active.set(type, {
         phase: 0,
@@ -2013,7 +2186,15 @@ const Ember = (() => {
       updateCrackLayers(now, crackGlow);
       coreEl.style.filter = 'brightness(var(--brightness))';
 
-      applySegments();
+    applySegments();
+
+    const curRem = remainingSegments();
+    if (curRem <= 2 && curRem < lastWarnRemaining && curRem > 0 && !egg.active) {
+      heatBoost = Math.max(heatBoost, 0.5);
+      for (let i = 0; i < 6; i++) setTimeout(spawnSpark, i * 50);
+      ringImpulse = rand(4, 7) * (Math.random() < 0.5 ? 1 : -1);
+    }
+    lastWarnRemaining = curRem;
       advanceSegEffects(dt);
       applySegEffects();
       updateParticles(now, dt);
@@ -2057,18 +2238,18 @@ const Ember = (() => {
     if (!testMode) {
       tryStart('sigh', 0.5, [4000, 5000], () => ({ mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) }));
       tryStart('calmBurn', 0.8, [2000, 3000], () => ({ mag: rand(0.05, 0.1), hue: rand(-6, 12) }));
-      if (intensity > 0.5 && !reduceMotion) tryStart('wiggle', 0.3, [700, 1100], () => ({ amp: rand(0.9, 1.3) }));
+      if (intensity > 0.5 && !reduceMotion) tryStart('wiggle', 0.3, [700, 1100], () => ({ amp: rand(0.9, 1.3), mag: rand(0.7, 1.1) }));
       tryStart('tilt', 0.25, [2000, 2000], () => ({ target: rand(-1, 1) }));
       tryStart('microShift', 0.2, [1000, 2000], () => ({ dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }));
       tryStart('crackle', 0.4, [80, 160], () => ({ mag: rand(0.9, 1.5), side: Math.random() < 0.5 ? -1 : 1 }));
-      tryStart('stretch', 0.35, [3000, 4200], () => ({ amp: rand(0.9, 1.25) }));
+      tryStart('stretch', 0.35, [3000, 4200], () => ({ amp: rand(0.9, 1.25), mag: rand(0.7, 1.1) }));
       tryStart('glint', 0.3, [2000, 3000], () => ({ hue: rand(15, 35), sat: rand(0.3, 0.6) }));
-      if (intensity < 0.4) tryStart('sleepySag', 0.25, [3000, 5000]);
+      if (intensity < 0.4) tryStart('sleepySag', 0.25, [3000, 5000], () => ({ mag: rand(0.6, 1.0) }));
       tryStart('smolder', 0.3, [3000, 4000], () => ({ hue: rand(10, 26), sat: rand(0.15, 0.32) }));
       tryStart('heatRadiance', 0.25, [2500, 3500]);
       tryStart('glowPulse', 0.3, [2000, 3000]);
       tryStart('ashDrift', 0.3, [3000, 4000], () => ({ dx: rand(-3, 3) }));
-      tryStart('gust', 0.15, [1200, 1800], () => ({ power: rand(0.6, 1), dir: Math.random() < 0.5 ? -1 : 1 }));
+      tryStart('gust', 0.15, [1200, 1800], () => ({ power: rand(0.6, 1), dir: Math.random() < 0.5 ? -1 : 1, mag: rand(0.7, 1.1) }));
     }
 
     const sigh = advanceEffect('sigh', dt);
@@ -2090,10 +2271,14 @@ const Ember = (() => {
 
     const geomTypes = ['sigh', 'calmBurn', 'wiggle', 'crackle', 'stretch', 'sleepySag', 'gust'];
     const geomEffects = geomTypes.map(t => ({ type: t, eff: active.get(t) })).filter(e => e.eff);
-    const domGeom = geomEffects.sort((a, b) => (b.eff.mag ?? 1) - (a.eff.mag ?? 1))[0] || null;
+    const maxMag = geomEffects.reduce((m, e) => Math.max(m, e.eff.mag ?? 1), 0) || 1;
     geomTypes.forEach(t => {
       const eff = active.get(t);
-      if (eff) eff.skipGeometry = domGeom && domGeom.type !== t;
+      if (eff) {
+        const ratio = (eff.mag ?? 1) / maxMag;
+        eff._geomWeight = 0.35 + 0.65 * ratio;
+        eff.skipGeometry = false;
+      }
     });
 
     const tm = testMode ? 4 : 1;
@@ -2261,6 +2446,7 @@ const Ember = (() => {
       for (let i = 0; i < 8; i++) setTimeout(() => spawnSpark(), i * 60);
       for (let i = 0; i < 3; i++) setTimeout(() => spawnShootingSpark(), i * 120);
       showTooltip();
+      if (typeof onClickCallback === 'function') onClickCallback();
     };
 
     root.addEventListener('mouseenter', handlers.mouseenter);
@@ -2344,6 +2530,7 @@ const Ember = (() => {
     }
 
     prevRemaining = remainingSegments();
+    lastWarnRemaining = remainingSegments();
     const quickReload = state.lastInitTime && (Date.now() - state.lastInitTime < 3000);
     spawnStart = quickReload ? performance.now() - 600 : performance.now();
     lastFrame = 0;
@@ -2396,5 +2583,5 @@ const Ember = (() => {
     Object.keys(nextSegDue).forEach(k => delete nextSegDue[k]);
   }
 
-  return { init, destroy, notifyEdit, switchTab, setStatus, onPreviewOpen: startPreviewScare };
+  return { init, destroy, notifyEdit, switchTab, setStatus, onPreviewOpen: startPreviewScare, onClick(fn) { onClickCallback = fn; } };
 })();

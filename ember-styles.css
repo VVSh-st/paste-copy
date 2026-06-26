@@ -137,6 +137,7 @@
     inset 0 -2px 5px rgba(0, 0, 0, 0.6),
     0 0 3px rgba(80, 25, 0, 0.5);
   animation: emberDeform 4s ease-in-out infinite;
+  animation-delay: var(--deformPhase, 0s);
 }
 
 .heat-zone {
@@ -267,9 +268,9 @@
 
 @keyframes emberDeform {
   0%, 100% { border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%; }
-  25% { border-radius: 54% 46% 57% 43% / 45% 56% 48% 52%; }
-  50% { border-radius: 44% 56% 50% 50% / 55% 45% 47% 53%; }
-  75% { border-radius: 51% 49% 46% 54% / 47% 53% 51% 49%; }
+  25% { border-radius: 58% 42% 59% 41% / 42% 58% 46% 54%; }
+  50% { border-radius: 40% 60% 48% 52% / 58% 42% 45% 55%; }
+  75% { border-radius: 55% 45% 41% 59% / 44% 56% 53% 47%; }
 }
 
 .ember-glow {
@@ -351,8 +352,8 @@
   width: 2px;
   height: 2px;
   border-radius: 50%;
-  background: rgba(210, 150, 90, 0.95);
-  box-shadow: 0 0 4px rgba(255, 150, 70, 0.6), 0 0 8px rgba(255, 120, 40, 0.3);
+  background: rgba(180, 170, 165, 0.95);
+  box-shadow: 0 0 4px rgba(200, 180, 170, 0.6), 0 0 8px rgba(180, 140, 100, 0.3);
   opacity: 0;
   will-change: transform, opacity;
 }
