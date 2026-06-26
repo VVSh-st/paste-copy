@@ -1361,17 +1361,23 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (translateLongPressed) { translateLongPressed = false; return; }
       translateDropdown.style.display = 'none';
 
-      // Восстановление: если есть сохранённый оригинал — возвращаем
-      if (translateBtn._savedOriginal) {
-        ta.value = translateBtn._savedOriginal;
+      // Откат: если есть стек — возвращаем предыдущее состояние
+      if (translateBtn._undoStack?.length) {
+        const prev = translateBtn._undoStack.pop();
+        ta.value = prev.value;
+        ta.setSelectionRange(prev.selStart, prev.selEnd);
         ta.dispatchEvent(new Event('input', { bubbles: true }));
-        Toast.show('↩ Оригинал восстановлен');
-        translateBtn._savedOriginal = null;
-        translateBtn.dataset.state = '';
+        Toast.show('↩ Откат (' + translateBtn._undoStack.length + ' осталось)');
+        if (!translateBtn._undoStack.length) {
+          translateBtn._undoStack = null;
+          translateBtn.dataset.state = '';
+        }
         return;
       }
 
-      const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+      const selStart = ta.selectionStart;
+      const selEnd = ta.selectionEnd;
+      const sel = ta.value.substring(selStart, selEnd);
       const textToTranslate = sel.trim() || ta.value;
       if (!textToTranslate.trim()) return;
 
@@ -1396,12 +1402,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
         Translator.addHistory(textToTranslate, result, srcLang?.code || '?', targetLang);
 
-        translateBtn._savedOriginal = textToTranslate;
+        // Сохраняем в стек отката
+        if (!translateBtn._undoStack) translateBtn._undoStack = [];
+        translateBtn._undoStack.push({
+          value: ta.value,
+          selStart, selEnd,
+        });
         translateBtn.dataset.state = 'translated';
 
-        ta.value = result;
+        // Заменяем только выделение (или весь текст если выделения нет)
+        if (selStart !== selEnd) {
+          ta.setRangeText(result, selStart, selEnd, 'end');
+        } else {
+          ta.value = result;
+        }
         ta.dispatchEvent(new Event('input', { bubbles: true }));
-        Toast.show('✓ Переведено → ' + langName + ' (клик ↩ — вернуть)');
+        Toast.show('✓ Переведено → ' + langName + ' (клик ↩ — откат ' + translateBtn._undoStack.length + ')');
         if (typeof Ember !== 'undefined') Ember.triggerReaction('translate');
       }).catch(err => {
         console.error('[Translator]', err);
