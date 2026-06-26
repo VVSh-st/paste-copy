@@ -1,5 +1,4 @@
-/* ===== УГОЛЁК — CSS ===== */
-
+/* ===== EMBER ===== */
 .ember-slot {
   display: inline-flex;
   align-items: center;
@@ -33,6 +32,9 @@
   --cursorScale: 1;
   --cursorTiltX: 0;
   --cursorTiltY: 0;
+  --coreHue: 35;
+  --coreLight: 50%;
+  --ashCoverage: 0;
 
   position: relative;
   width: 38px;
@@ -96,9 +98,8 @@
   width: 20px;
   height: 20px;
   border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%;
-  /* тёмная угольная основа — чтобы это был уголёк, а не светящийся шар */
   background:
-    radial-gradient(circle at 50% 45%, #2a1308 0%, #190a04 60%, #0c0402 100%);
+    radial-gradient(circle at 50% 45%, hsl(var(--coreHue, 35), 60%, var(--coreLight, 50%)) 0%, #190a04 60%, #0c0402 100%);
   transform:
     translate(var(--shiftX), var(--shiftY))
     translate(var(--eggX, 0px), var(--eggY, 0px))
@@ -129,39 +130,38 @@
   will-change: background;
 }
 
-/* несколько небольших раскалённых "трещин" вместо одной точки */
 .zone1 {
   background:
     radial-gradient(circle at var(--cx, 38%) var(--cy, 42%),
-      rgba(255, 235, 160, calc(var(--heat) * 1)) 0%,
-      rgba(255, 170, 70, calc(var(--heat) * 0.6)) 35%,
+      rgba(255, 235, 160, calc(var(--heat) * var(--zoneHeat, 1))) 0%,
+      rgba(255, 170, 70, calc(var(--heat) * var(--zoneHeat, 1) * 0.6)) 35%,
       transparent 60%),
     radial-gradient(circle at 64% 56%,
-      rgba(255, 190, 95, calc(var(--heat) * 0.8)) 0%,
-      rgba(230, 110, 35, calc(var(--heat) * 0.4)) 38%,
+      rgba(255, 190, 95, calc(var(--heat) * var(--zoneHeat, 1) * 0.8)) 0%,
+      rgba(230, 110, 35, calc(var(--heat) * var(--zoneHeat, 1) * 0.4)) 38%,
       transparent 62%);
 }
 
 .zone2 {
   background:
     radial-gradient(circle at var(--cx, 52%) var(--cy, 66%),
-      rgba(255, 150, 55, calc(var(--heat) * 0.85)) 0%,
-      rgba(210, 80, 25, calc(var(--heat) * 0.45)) 40%,
+      rgba(255, 150, 55, calc(var(--heat) * var(--zoneHeat, 1) * 0.85)) 0%,
+      rgba(210, 80, 25, calc(var(--heat) * var(--zoneHeat, 1) * 0.45)) 40%,
       transparent 66%),
     radial-gradient(circle at 30% 60%,
-      rgba(255, 130, 45, calc(var(--heat) * 0.6)) 0%,
+      rgba(255, 130, 45, calc(var(--heat) * var(--zoneHeat, 1) * 0.6)) 0%,
       transparent 50%);
 }
 
 .zone3 {
   background:
     radial-gradient(ellipse at 50% 55%,
-      rgba(180, 55, 18, calc(var(--heat) * 0.4)) 0%,
-      rgba(100, 25, 5, calc(var(--heat) * 0.18)) 45%,
+      rgba(180, 55, 18, calc(var(--heat) * var(--zoneHeat, 1) * 0.4)) 0%,
+      rgba(100, 25, 5, calc(var(--heat) * var(--zoneHeat, 1) * 0.18)) 45%,
       transparent 78%);
 }
 
-/* угольная корка: тёмные неровные пятна, разбивающие гладкий градиент */
+/* угольная корка */
 .ember-crust {
   position: absolute;
   inset: 0;
@@ -175,6 +175,49 @@
     radial-gradient(circle at 82% 70%, rgba(8, 4, 1, 0.85) 0%, transparent 22%),
     radial-gradient(circle at 18% 64%, rgba(10, 4, 1, 0.8) 0%, transparent 24%);
   opacity: calc(0.5 + (1 - var(--intensity)) * 0.4);
+}
+
+/* трещины с прорывающимся жаром */
+.ember-cracks {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--crackGlow, 0.5);
+  background:
+    linear-gradient(137deg, transparent 42%, rgba(255, 180, 60, 0.9) 42.5%, rgba(255, 180, 60, 0.9) 43%, transparent 43.5%),
+    linear-gradient(53deg, transparent 55%, rgba(255, 140, 40, 0.7) 55.3%, rgba(255, 140, 40, 0.7) 55.7%, transparent 56%),
+    linear-gradient(170deg, transparent 30%, rgba(255, 200, 80, 0.6) 30.2%, rgba(255, 200, 80, 0.6) 30.6%, transparent 30.8%),
+    linear-gradient(95deg, transparent 65%, rgba(255, 160, 50, 0.5) 65.2%, rgba(255, 160, 50, 0.5) 65.5%, transparent 65.7%),
+    linear-gradient(210deg, transparent 48%, rgba(255, 120, 30, 0.4) 48.1%, rgba(255, 120, 30, 0.4) 48.4%, transparent 48.5%);
+  mix-blend-mode: screen;
+  filter: blur(0.3px);
+}
+
+/* зола, нарастающая со временем */
+.ember-ash-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--ashCoverage, 0);
+  background:
+    radial-gradient(circle at 30% 35%, rgba(140, 130, 120, 0.7) 0%, transparent 40%),
+    radial-gradient(circle at 65% 55%, rgba(120, 115, 105, 0.6) 0%, transparent 35%),
+    radial-gradient(circle at 50% 70%, rgba(130, 120, 110, 0.5) 0%, transparent 45%);
+  mix-blend-mode: overlay;
+  transition: opacity 0.5s ease;
+}
+
+.ember-hotspot {
+  position: absolute;
+  width: 2px; height: 2px;
+  border-radius: 50%;
+  background: rgba(255, 230, 170, 1);
+  box-shadow: 0 0 4px rgba(255, 170, 70, .9);
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
 }
 
 @keyframes emberDeform {
@@ -202,6 +245,34 @@
   z-index: -1;
   pointer-events: none;
   animation: glowFlicker 3s ease-in-out infinite;
+}
+
+/* марево/дым над угольком */
+.ember-haze {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  width: 6px;
+  height: 16px;
+  transform: translateX(-50%);
+  background: linear-gradient(to top,
+    rgba(255, 180, 90, 0.15),
+    rgba(255, 150, 60, 0.08) 40%,
+    transparent 100%
+  );
+  filter: blur(2px);
+  opacity: calc(var(--intensity, 1) * 0.6);
+  mask: linear-gradient(to top, white 0%, transparent 100%);
+  -webkit-mask: linear-gradient(to top, white 0%, transparent 100%);
+  animation: hazeDrift 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hazeDrift {
+  0%, 100% { transform: translateX(-50%) translateY(0) scaleY(1); opacity: calc(var(--intensity, 1) * 0.6); }
+  30% { transform: translateX(calc(-50% + 1px)) translateY(-2px) scaleY(1.15); opacity: calc(var(--intensity, 1) * 0.45); }
+  60% { transform: translateX(calc(-50% - 1px)) translateY(-1px) scaleY(0.9); opacity: calc(var(--intensity, 1) * 0.55); }
+  80% { transform: translateX(-50%) translateY(-3px) scaleY(1.1); opacity: calc(var(--intensity, 1) * 0.35); }
 }
 
 @keyframes glowFlicker {
@@ -255,6 +326,31 @@
     0 0 24px rgba(255, 100, 20, 0.4);
   opacity: 0;
   will-change: transform, opacity;
+}
+
+.ember-spark-shoot {
+  background: linear-gradient(to top, rgba(255, 200, 100, 1), rgba(255, 255, 220, 1));
+  box-shadow:
+    0 0 4px rgba(255, 220, 130, 1),
+    0 0 10px rgba(255, 180, 60, 0.9),
+    0 0 20px rgba(255, 140, 40, 0.6);
+}
+
+.ember-landing-glow {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(180, 50, 10, 0.9);
+  box-shadow: 0 0 4px rgba(200, 60, 15, 0.7);
+  transform: translate(-50%, -50%);
+  animation: landingFade 250ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes landingFade {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
 }
 
 /* ===== Дрожание воздуха ===== */
