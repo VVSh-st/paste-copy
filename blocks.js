@@ -1235,21 +1235,24 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       State.update(() => { b.pasteCursor = _getPasteCursorMode() === 'start' ? 'end' : 'start'; });
     };
 
-    const spellcheckBtn = mkBtn('font-ctrl-btn', '', 'Проверка орфографии');
-    const SPELLCHECK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11l3 3 4-7"/><path d="M10 4l2 2 4-4"/><path d="M2 4h4M2 7h3"/></svg>';
-    const SPELLCHECK_OFF_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"><path d="M2 11l3 3 4-7"/><path d="M10 4l2 2 4-4"/><path d="M2 4h4M2 7h3"/></svg>';
+    const spellcheckBtn = document.createElement('button');
+    spellcheckBtn.type = 'button';
+    spellcheckBtn.className = 'font-ctrl-btn';
+    spellcheckBtn.title = 'Проверка орфографии';
     function _syncSpellcheckBtn() {
       const on = b.spellcheck !== false;
-      spellcheckBtn.innerHTML = on ? SPELLCHECK_SVG : SPELLCHECK_OFF_SVG;
+      spellcheckBtn.innerHTML = on
+        ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>'
+        : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;opacity:0.35"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>';
       spellcheckBtn.title = on ? 'Орфография: вкл. Нажми чтобы выключить' : 'Орфография: выкл. Нажми чтобы включить';
       spellcheckBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     _syncSpellcheckBtn();
     spellcheckBtn.onclick = e => {
       e.stopPropagation();
-      State.update(() => { b.spellcheck = b.spellcheck === false ? true : false; });
-      _syncSpellcheckBtn();
+      b.spellcheck = b.spellcheck === false ? true : false;
       ta.spellcheck = b.spellcheck !== false;
+      _syncSpellcheckBtn();
     };
 
     function _jumpBlockScroll(toEnd) {
