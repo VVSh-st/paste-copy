@@ -1196,6 +1196,10 @@ const Snapshots = (() => {
   }
 
   /* ---- Diff overlay ---- */
+  let _diffFontSize = 13;
+  let _diffChanges = [];
+  let _diffCurrent = 0;
+
   function showDiff(snap) {
     try {
       const snapData = JSON.parse(snap.data);
@@ -1214,25 +1218,105 @@ const Snapshots = (() => {
         overlay.innerHTML = `
           <div class="snap-diff-panel">
             <div class="snap-diff-header">
-              <span class="snap-diff-title">Diff: версия vs текущее</span>
+              <span class="snap-diff-title">Diff</span>
               <span class="snap-diff-stats"></span>
+              <span class="snap-diff-nav">
+                <button type="button" class="snap-diff-nav-btn" data-dir="-1" title="Предыдущее изменение" aria-label="Предыдущее изменение">▲</button>
+                <span class="snap-diff-counter">0/0</span>
+                <button type="button" class="snap-diff-nav-btn" data-dir="1" title="Следующее изменение" aria-label="Следующее изменение">▼</button>
+              </span>
+              <span class="snap-diff-font-ctrl">
+                <button type="button" class="snap-diff-font-btn" data-diff-font="dec" title="Уменьшить шрифт" aria-label="Уменьшить шрифт">A−</button>
+                <button type="button" class="snap-diff-font-btn" data-diff-font="inc" title="Увеличить шрифт" aria-label="Увеличить шрифт">A+</button>
+              </span>
+              <button type="button" class="snap-diff-copy-btn" title="Копировать изменения" aria-label="Копировать изменения">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3a1.5 1.5 0 011.5-1.5H11"/></svg>
+              </button>
               <button type="button" class="snap-diff-close" aria-label="Закрыть">✕</button>
             </div>
             <div class="snap-diff-body"></div>
           </div>`;
         document.body.appendChild(overlay);
+
         overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
         overlay.querySelector('.snap-diff-close').addEventListener('click', () => overlay.style.display = 'none');
+
+        overlay.querySelector('.snap-diff-nav').addEventListener('click', e => {
+          const btn = e.target.closest('[data-dir]');
+          if (!btn) return;
+          _diffNavigate(Number(btn.dataset.dir));
+        });
+
+        overlay.querySelectorAll('.snap-diff-font-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            _diffFontSize = Math.max(9, Math.min(22, _diffFontSize + (btn.dataset.diffFont === 'inc' ? 1 : -1)));
+            overlay.querySelector('.snap-diff-body').style.fontSize = _diffFontSize + 'px';
+          });
+        });
+
+        overlay.querySelector('.snap-diff-copy-btn').addEventListener('click', _diffCopyChanges);
       }
 
       overlay.querySelector('.snap-diff-title').textContent = `Diff: «${snap.name}» vs текущее`;
-      overlay.querySelector('.snap-diff-stats').textContent = stats.ins || stats.del ? `+${stats.ins} / -${stats.del}` : '';
-      overlay.querySelector('.snap-diff-body').innerHTML = html;
+      overlay.querySelector('.snap-diff-stats').textContent = stats.ins || stats.del ? `+${stats.ins} / −${stats.del}` : '';
+
+      const body = overlay.querySelector('.snap-diff-body');
+      body.innerHTML = html;
+      body.style.fontSize = _diffFontSize + 'px';
+
+      _diffChanges = Array.from(body.querySelectorAll('.diff-del, .diff-ins'));
+      _diffCurrent = 0;
+      _diffUpdateCounter();
+
+      if (_diffChanges.length) {
+        _diffChanges[0].classList.add('snap-diff-highlight');
+        _diffChanges[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+
       overlay.style.display = 'flex';
     } catch (err) {
       console.error('Snapshots: diff failed', err);
       Toast.show('Ошибка построения diff', 'error');
     }
+  }
+
+  function _diffNavigate(dir) {
+    if (!_diffChanges.length) return;
+    _diffChanges[_diffCurrent]?.classList.remove('snap-diff-highlight');
+    _diffCurrent = (_diffCurrent + dir + _diffChanges.length) % _diffChanges.length;
+    _diffChanges[_diffCurrent].classList.add('snap-diff-highlight');
+    _diffChanges[_diffCurrent].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    _diffUpdateCounter();
+  }
+
+  function _diffUpdateCounter() {
+    const overlay = document.getElementById('snap-diff-overlay');
+    if (!overlay) return;
+    const counter = overlay.querySelector('.snap-diff-counter');
+    if (counter) counter.textContent = _diffChanges.length ? `${_diffCurrent + 1}/${_diffChanges.length}` : '0/0';
+  }
+
+  function _diffCopyChanges() {
+    const overlay = document.getElementById('snap-diff-overlay');
+    if (!overlay) return;
+    const body = overlay.querySelector('.snap-diff-body');
+    if (!body) return;
+
+    const parts = [];
+    body.querySelectorAll('.diff-del, .diff-ins').forEach(el => {
+      const prefix = el.classList.contains('diff-del') ? '− ' : '+ ';
+      parts.push(prefix + el.textContent);
+    });
+
+    if (!parts.length) {
+      Toast.show('Нет изменений для копирования', 'warning');
+      return;
+    }
+
+    navigator.clipboard.writeText(parts.join('\n')).then(
+      () => Toast.show('Изменения скопированы ✓', 'success'),
+      () => Toast.show('Не удалось скопировать', 'error')
+    );
   }
 
   /* ---- Рендер списка ---- */

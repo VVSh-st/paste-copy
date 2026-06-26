@@ -946,11 +946,11 @@ textarea.block-textarea:focus {
   box-shadow: 0 12px 40px rgba(0,0,0,0.25);
 }
 .snap-diff-header {
-  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
 }
-.snap-diff-title { font-weight: 600; font-size: 13px; color: var(--text0); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.snap-diff-stats { font-size: 11px; color: var(--text2); flex-shrink: 0; }
+.snap-diff-title { font-weight: 600; font-size: 13px; color: var(--text0); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snap-diff-stats { font-size: 11px; color: var(--text2); flex-shrink: 0; margin-left: auto; }
 .snap-diff-close {
   background: transparent; border: none; color: var(--text3); cursor: pointer;
   font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: var(--radius-sm);
@@ -966,6 +966,39 @@ textarea.block-textarea:focus {
 .snap-diff-body .diff-ins { background: rgba(92,184,122,0.15); color: var(--green); border-radius: 2px; padding: 0 2px; }
 .snap-diff-body .diff-eq { color: var(--text2); }
 .snap-diff-body .snap-diff-empty { color: var(--text3); font-style: italic; }
+.snap-diff-nav { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.snap-diff-nav-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text2); cursor: pointer;
+  width: 24px; height: 22px; border-radius: var(--radius-sm); font-size: 10px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: color var(--trans), background var(--trans), border-color var(--trans);
+}
+.snap-diff-nav-btn:hover { color: var(--text0); border-color: var(--border2); background: rgba(255,255,255,0.04); }
+.snap-diff-counter { font-size: 11px; color: var(--text3); min-width: 30px; text-align: center; font-variant-numeric: tabular-nums; }
+.snap-diff-font-ctrl { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.snap-diff-font-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text2); cursor: pointer;
+  padding: 2px 7px; border-radius: var(--radius-sm); font-size: 11px; font-family: inherit;
+  transition: color var(--trans), background var(--trans), border-color var(--trans);
+}
+.snap-diff-font-btn:hover { color: var(--text0); border-color: var(--border2); background: rgba(255,255,255,0.04); }
+.snap-diff-copy-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--text2); cursor: pointer;
+  padding: 3px 6px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center;
+  transition: color var(--trans), background var(--trans), border-color var(--trans);
+}
+.snap-diff-copy-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; }
+.snap-diff-copy-btn:hover { color: var(--accent, #6ea8fe); border-color: rgba(110,168,254,0.25); background: rgba(110,168,254,0.08); }
+.snap-diff-highlight {
+  outline: 2px solid var(--accent, #6ea8fe);
+  outline-offset: 1px;
+  border-radius: 3px;
+  animation: snapDiffPulse 1.2s ease-out;
+}
+@keyframes snapDiffPulse {
+  0% { background-color: rgba(110,168,254,0.3); }
+  100% { background-color: transparent; }
+}
 
 /* Search */
 .search-row { display: flex; gap: 8px; align-items: center; }
