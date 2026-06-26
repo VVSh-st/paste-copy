@@ -1270,7 +1270,8 @@ const Snapshots = (() => {
 
       if (_diffChanges.length) {
         _diffChanges[0].classList.add('snap-diff-highlight');
-        _diffChanges[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const lineHeight = parseFloat(getComputedStyle(body).lineHeight) || 21;
+        body.scrollTop = _diffChanges[0].offsetTop - body.offsetTop - lineHeight * 2;
       }
 
       overlay.style.display = 'flex';
@@ -1285,7 +1286,12 @@ const Snapshots = (() => {
     _diffChanges[_diffCurrent]?.classList.remove('snap-diff-highlight');
     _diffCurrent = (_diffCurrent + dir + _diffChanges.length) % _diffChanges.length;
     _diffChanges[_diffCurrent].classList.add('snap-diff-highlight');
-    _diffChanges[_diffCurrent].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const body = document.getElementById('snap-diff-overlay')?.querySelector('.snap-diff-body');
+    if (body) {
+      const el = _diffChanges[_diffCurrent];
+      const lineHeight = parseFloat(getComputedStyle(body).lineHeight) || 21;
+      body.scrollTop = el.offsetTop - body.offsetTop - lineHeight * 2;
+    }
     _diffUpdateCounter();
   }
 

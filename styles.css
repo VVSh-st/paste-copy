@@ -990,13 +990,12 @@ textarea.block-textarea:focus {
 .snap-diff-copy-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; }
 .snap-diff-copy-btn:hover { color: var(--accent, #6ea8fe); border-color: rgba(110,168,254,0.25); background: rgba(110,168,254,0.08); }
 .snap-diff-highlight {
-  outline: 2px solid var(--accent, #6ea8fe);
-  outline-offset: 1px;
+  box-shadow: 0 0 0 2px rgba(110,168,254,0.25), 0 0 8px rgba(110,168,254,0.12);
   border-radius: 3px;
   animation: snapDiffPulse 1.2s ease-out;
 }
 @keyframes snapDiffPulse {
-  0% { background-color: rgba(110,168,254,0.3); }
+  0% { background-color: rgba(110,168,254,0.15); }
   100% { background-color: transparent; }
 }
 
