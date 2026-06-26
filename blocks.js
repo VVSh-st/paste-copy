@@ -1361,8 +1361,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (translateLongPressed) { translateLongPressed = false; return; }
       translateDropdown.style.display = 'none';
 
-      // Откат: если есть стек — возвращаем предыдущее состояние
-      if (translateBtn._undoStack?.length) {
+      const selStart = ta.selectionStart;
+      const selEnd = ta.selectionEnd;
+      const hasSelection = selEnd > selStart;
+
+      // Откат: только если нет нового выделения
+      if (!hasSelection && translateBtn._undoStack?.length) {
         const prev = translateBtn._undoStack.pop();
         ta.value = prev.value;
         ta.setSelectionRange(prev.selStart, prev.selEnd);
@@ -1375,11 +1379,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         return;
       }
 
-      const selStart = ta.selectionStart;
-      const selEnd = ta.selectionEnd;
       const sel = ta.value.substring(selStart, selEnd);
       const textToTranslate = sel.trim() || ta.value;
       if (!textToTranslate.trim()) return;
+
+      // Запоминаем пробелы в начале/конце выделения
+      const leadSpace = sel.match(/^(\s*)/)[1];
+      const trailSpace = sel.match(/(\s*)$/)[1];
 
       const targetLang = Translator.targetLang;
       const srcLang = Translator.detectLang(textToTranslate);
@@ -1410,11 +1416,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         });
         translateBtn.dataset.state = 'translated';
 
-        // Заменяем только выделение (или весь текст если выделения нет)
-        if (selStart !== selEnd) {
-          ta.setRangeText(result, selStart, selEnd, 'end');
+        // Восстанавливаем пробелы и заменяем выделение
+        const finalResult = leadSpace + result + trailSpace;
+        if (hasSelection) {
+          ta.setRangeText(finalResult, selStart, selEnd, 'end');
         } else {
-          ta.value = result;
+          ta.value = finalResult;
         }
         ta.dispatchEvent(new Event('input', { bubbles: true }));
         Toast.show('✓ Переведено → ' + langName + ' (клик ↩ — откат ' + translateBtn._undoStack.length + ')');
