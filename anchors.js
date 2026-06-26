@@ -117,7 +117,7 @@ const Anchors = (() => {
     if (!blk) { Toast.show('Блок не найден', 'error'); return; }
     if (blk.collapsed) State.update(() => { blk.collapsed = false; });
     if (anchor.subtabIdx != null && blk.activeSubtab !== anchor.subtabIdx) {
-      State.updateLive(() => { blk.activeSubtab = anchor.subtabIdx; });
+      State.update(() => { blk.activeSubtab = anchor.subtabIdx; });
     }
 
     // Ждём 2 кадра чтобы DOM обновился после смены вкладки/субвкладки
