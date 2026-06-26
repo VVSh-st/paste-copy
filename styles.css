@@ -5600,7 +5600,7 @@ body.help-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: 8px;
+  margin-left: 2px;
   border-radius: 4px;
   font-size: 10px;
   color: var(--text3);
@@ -5610,6 +5610,11 @@ body.help-open {
 .anchor-palette-del:hover {
   background: rgba(224,92,106,0.15);
   color: var(--red);
+}
+.anchor-palette-del.anchor-palette-del-pending {
+  background: rgba(224,92,106,0.25);
+  color: var(--red);
+  box-shadow: 0 0 0 1px rgba(224,92,106,0.4);
 }
 
 /* =Anchor marker lines= */

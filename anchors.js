@@ -168,6 +168,7 @@ const Anchors = (() => {
 
     _palette = document.createElement('div');
     _palette.className = 'anchor-palette';
+    _palette._anchorBtn = btn;
     _palette.setAttribute('role', 'listbox');
     document.body.appendChild(_palette);
 
@@ -187,12 +188,23 @@ const Anchors = (() => {
       const del = document.createElement('span');
       del.className = 'anchor-palette-del';
       del.textContent = '✕';
-      del.title = 'Удалить якорь';
+      del.title = 'Двойное нажатие — удалить';
+      let delClicks = 0;
+      let delTimer = null;
       del.addEventListener('click', ev => {
         ev.stopPropagation();
-        removeAnchorById(a.id);
-        _closePalette();
-        Toast.show('Якорь удалён', 'success');
+        delClicks++;
+        if (delClicks >= 2) {
+          clearTimeout(delTimer);
+          delClicks = 0;
+          removeAnchorById(a.id);
+          _showPalette(_palette?._anchorBtn);
+          Toast.show('Якорь удалён', 'success');
+          return;
+        }
+        del.classList.add('anchor-palette-del-pending');
+        clearTimeout(delTimer);
+        delTimer = setTimeout(() => { delClicks = 0; del.classList.remove('anchor-palette-del-pending'); }, 1800);
       });
 
       row.addEventListener('click', ev => {
