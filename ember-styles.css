@@ -542,5 +542,6 @@
   box-shadow: 0 2px 12px rgba(0,0,0,0.5);
   border: 1px solid rgba(255, 140, 50, 0.25);
   line-height: 1.6;
-  min-width: 140px;
+  min-width: 0;
+  width: fit-content;
 }
