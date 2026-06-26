@@ -32,6 +32,9 @@ const Ember = (() => {
   let particleLayer = null;
   let hotspots = [];
   let windGust = 0;
+  let heatWaveEl = null;
+  let statusState = null;
+  let statusTimer = null;
 
   let hover = false;
   let hoverVal = 0;
@@ -179,6 +182,43 @@ const Ember = (() => {
     broadcast();
   }
 
+  function setStatus(type) {
+    clearTimeout(statusTimer);
+    statusState = type;
+    if (type === 'saving' || type === 'saved' || type === 'error') {
+      statusTimer = setTimeout(() => { statusState = null; }, type === 'error' ? 2500 : 1500);
+    }
+  }
+
+  function applyStatus() {
+    if (!statusState) return;
+    const now = performance.now();
+    switch (statusState) {
+      case 'dirty':
+        heatBoost = Math.max(heatBoost, 0.05);
+        break;
+      case 'saving': {
+        const pulse = Math.sin(now * 0.005) * 0.5 + 0.5;
+        heatBoost = Math.max(heatBoost, pulse * 0.15);
+        break;
+      }
+      case 'saved': {
+        const t = statusTimer ? clamp(1 - (statusTimer - now) / 1500, 0, 1) : 0;
+        if (t < 0.15) {
+          heatBoost = Math.max(heatBoost, 0.3);
+          if (Math.random() < 0.3) spawnSpark();
+        }
+        break;
+      }
+      case 'error': {
+        root.style.setProperty('--coreHue', '210');
+        root.style.setProperty('--coreLight', '25%');
+        heatBoost = Math.max(heatBoost - 0.1, 0);
+        break;
+      }
+    }
+  }
+
   function switchTab(newTabId) {
     if (newTabId === currentTabId) return;
     if (currentTabId) saveState();
@@ -258,6 +298,10 @@ const Ember = (() => {
     glowEl.style.animationDuration = rand(2.6, 3.6).toFixed(2) + 's';
     coreEl.appendChild(glowEl);
 
+    heatWaveEl = document.createElement('div');
+    heatWaveEl.className = 'ember-heatwave';
+    coreEl.appendChild(heatWaveEl);
+
     hazeEl = document.createElement('div');
     hazeEl.className = 'ember-haze';
 
@@ -329,6 +373,8 @@ const Ember = (() => {
       const pulse = 0.6 + Math.sin(heatPhase * (1.3 + i * 0.4) + i * 2) * 0.4;
       zone.style.setProperty('--zoneHeat', pulse.toFixed(3));
     });
+    const avgHeat = zones.reduce((s, z) => s + parseFloat(z.style.getPropertyValue('--zoneHeat') || 0.6), 0) / zones.length;
+    if (crustEl) crustEl.style.opacity = (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3);
   }
 
   // ---------- менеджер эффектов ядра ----------
@@ -575,7 +621,7 @@ const Ember = (() => {
       const p = particles[i];
       const t = clamp((now - p.born) / p.dur, 0, 1);
       if (t >= 1) {
-        if (p.type === 'shooting' || (p.isSpark && p.type === 'spark')) {
+        if (p.type === 'shooting' || (p.isSpark && p.type === 'spark') || p.type === 'crumb') {
           const px = parseFloat(p.el.style.left);
           const py = parseFloat(p.el.style.top);
           if (!isNaN(px) && !isNaN(py)) spawnLandingGlow(px, py);
@@ -621,10 +667,11 @@ const Ember = (() => {
 
   function updateHotspots(now, dt) {
     if (reduceMotion) return;
+    const spawnChance = 0.0008 * dt * intensity + windGust * 0.004 * dt;
     for (let i = 0; i < hotspots.length; i++) {
       const hs = hotspots[i];
       if (hs.born === 0) {
-        if (Math.random() < 0.0008 * dt * intensity) {
+        if (Math.random() < spawnChance) {
           hs.born = now;
           hs.dur = rand(200, 600);
           hs.x = rand(25, 75);
@@ -729,6 +776,33 @@ const Ember = (() => {
     if (isSleeping()) return 'Проект спит — давно не было правок';
     if (h < 1) return 'Проект активен, уголёк горит ярко';
     return `Без активности ~${h} ч; осталось ${remainingSegments()}/12 делений`;
+  }
+
+  let tooltipEl = null;
+
+  function showTooltip() {
+    if (tooltipEl) tooltipEl.remove();
+    const h = Math.floor(hoursWithoutActivity());
+    const rem = remainingSegments();
+    let statusText;
+    if (statusState === 'saving') statusText = 'Сохранение...';
+    else if (statusState === 'saved') statusText = 'Сохранено';
+    else if (statusState === 'error') statusText = 'Ошибка сохранения';
+    else if (statusState === 'dirty') statusText = 'Есть несохранённые изменения';
+    else statusText = 'Нет активности';
+
+    const timeText = h < 1 ? 'менее часа' : `${h} ч. назад`;
+    const lines = [
+      `Правка: ${timeText}`,
+      `Осталось: ${rem}/12 делений`,
+      statusState ? `Статус: ${statusText}` : null,
+    ].filter(Boolean);
+
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'ember-tooltip';
+    tooltipEl.textContent = lines.join(' · ');
+    root.appendChild(tooltipEl);
+    setTimeout(() => { if (tooltipEl) { tooltipEl.style.opacity = '0'; setTimeout(() => tooltipEl?.remove(), 300); } }, 3000);
   }
 
   function updateCursorLean(now, dt) {
@@ -915,7 +989,12 @@ const Ember = (() => {
     }
 
     // каретка при печати — дополнительный импульс к текущему lean
-    if (caret.active && caret.typing && peek.state === 'idle') {
+    if (caret.active && caret.typing) {
+      if (peek.state !== 'idle') {
+        peek.state = 'idle';
+        peek.cooldown = rand(8000, 20000);
+        peek.timer = 0;
+      }
       const cDx = caret.x - ember.x;
       const cDy = caret.y - ember.y;
       const cDist = Math.hypot(cDx, cDy);
@@ -932,19 +1011,26 @@ const Ember = (() => {
 
   function getCaretRectSafe() {
     const sel = window.getSelection();
+    let x, y;
     if (sel && sel.rangeCount) {
       const r = sel.getRangeAt(0);
       if (r.collapsed) {
         const rect = r.getBoundingClientRect();
-        if (rect.width || rect.height) return { x: rect.left + rect.width / 2, y: rect.top };
+        if (rect.width || rect.height) { x = rect.left + rect.width / 2; y = rect.top; }
       }
     }
-    const el = document.activeElement;
-    if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT')) {
-      const r = el.getBoundingClientRect();
-      return { x: r.left + 12, y: r.top + 12 };
+    if (x === undefined) {
+      const el = document.activeElement;
+      if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT')) {
+        const r = el.getBoundingClientRect();
+        x = r.left + 12; y = r.top + 12;
+      }
     }
-    return null;
+    if (x === undefined) return null;
+    return {
+      x: clamp(x, 30, window.innerWidth - 30),
+      y: clamp(y, 30, window.innerHeight - 30),
+    };
   }
 
   function checkEggTrigger() {
@@ -1198,8 +1284,10 @@ const Ember = (() => {
       setTimeout(() => { caret.typing = false; }, 2200);
     }
     if (type === 'eggFly') {
+      const savedFlag = egg.triggeredToday;
       egg.triggeredToday = false;
       startEgg();
+      setTimeout(() => { egg.triggeredToday = savedFlag; }, 5000);
     }
     if (type === 'shootingSpark') {
       for (let i = 0; i < 5; i++) setTimeout(() => spawnShootingSpark(), i * 200);
@@ -1269,12 +1357,17 @@ const Ember = (() => {
     const breathBase = intensity > 0.3 ? 0.00055 : 0.0002;
     breathPhase += breathBase * speedMult * dt;
     const hoverBreath = hover ? Math.sin(breathPhase * 2.5) * 0.05 * hoverVal : 0;
-    const breathScale = 1 + Math.sin(breathPhase * 2.5) * 0.012 * intensity + hoverBreath + windGust * 0.04;
+    const flicker =
+      Math.sin(breathPhase * 2.5) * 0.5 +
+      Math.sin(breathPhase * 6.3 + 1.7) * 0.3 +
+      Math.sin(breathPhase * 11.1 + 4.2) * 0.2;
+    const breathScale = 1 + flicker * 0.012 * intensity + hoverBreath + windGust * 0.04;
 
     updateHeatZones(dt);
     updateHotspots(now, dt);
     updateWind(now, dt);
-    if (heatBoost > 0) heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
+    applyStatus();
+    if (heatBoost > 0 && statusState !== 'error') heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
 
     // --- запуск эффектов ядра с рандомными параметрами ---
     if (!testMode) {
@@ -1297,8 +1390,9 @@ const Ember = (() => {
     const sigh = advanceEffect('sigh', dt);
     const calmBurn = advanceEffect('calmBurn', dt);
     const wiggle = advanceEffect('wiggle', dt);
-    advanceEffect('tilt', dt, () => { tiltTarget = 0; });
-    const tilt = active.get('tilt');
+    const tilt = advanceEffect('tilt', dt);
+    if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
+    else tiltTarget = 0;
     const microShift = advanceEffect('microShift', dt);
     const crackle = advanceEffect('crackle', dt);
     const stretch = advanceEffect('stretch', dt);
@@ -1368,10 +1462,9 @@ const Ember = (() => {
     const glowPulseMult = glowPulse ? bump(glowPulse.phase, 0.2, 0.6) * 0.3 * tm : 0;
     const ashDriftX = ashDrift ? bump(ashDrift.phase, 0.3, 0.7) * (ashDrift.dx ?? 0) * 2 * tm : 0;
 
-    if (tilt) tiltTarget = tilt.target * (1 - Math.abs(2 * tilt.phase - 1));
-    tiltCurrent += (tiltTarget - tiltCurrent) * clamp(0.08 * (dt / 16.7), 0, 1);
-
     const microShiftPx = microShift ? bump(microShift.phase, 0.5, 0.5) * (microShift.dx ?? 0.5) : 0;
+
+    tiltCurrent += (tiltTarget - tiltCurrent) * clamp(0.08 * (dt / 16.7), 0, 1);
 
     const finalScaleX = breathScale * scaleX * calmMult * sighMult * sleepyMult * crackleScale * cursorLean.scale;
     const finalScaleY = breathScale * scaleY * calmMult * sighMult * sleepyMult * crackleScale * cursorLean.scale;
@@ -1390,9 +1483,9 @@ const Ember = (() => {
       0.35, 2.5
     );
 
-    // цветовая температура по жизни угля
-    const coreHue = 15 + intensity * 35;
-    const coreLight = 35 + intensity * 35;
+    // цветовая температура по жизни угля + ветер сдвигает к жёлтому
+    const coreHue = 15 + intensity * 35 + windGust * 15;
+    const coreLight = 35 + intensity * 35 + windGust * 8;
     root.style.setProperty('--coreHue', coreHue.toFixed(1));
     root.style.setProperty('--coreLight', coreLight.toFixed(1) + '%');
 
@@ -1402,8 +1495,12 @@ const Ember = (() => {
     root.style.setProperty('--ashCoverage', ashCoverage.toFixed(3));
 
     // трещины — пульсация с дыханием, ярче при нагреве
-    const crackGlow = 0.4 + Math.sin(breathPhase * 2.5) * 0.3 + heatBoost * 1.5 + windGust * 0.4;
+    const crackGlow = 0.4 + flicker * 0.3 + heatBoost * 1.5 + windGust * 0.4;
     crackEl.style.setProperty('--crackGlow', crackGlow.toFixed(3));
+
+    // волна жара по поверхности
+    const waveOffset = ((now * 0.00003) % 1) * 100;
+    if (heatWaveEl) heatWaveEl.style.setProperty('--waveOffset', waveOffset.toFixed(1) + '%');
 
     const shiftX = heatOffsetX * 0.6 + microShiftPx + ashDriftX;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5;
@@ -1501,12 +1598,18 @@ const Ember = (() => {
     }
   }
 
+  let reduceMotionFrameSkip = 0;
+
   function animate(timestamp) {
     if (!root) return;
     if (lastFrame === 0) lastFrame = timestamp;
     const dt = Math.min(timestamp - lastFrame, 50);
     lastFrame = timestamp;
-    try { update(timestamp, dt); } catch (e) { console.error('Ember update error:', e); }
+    if (reduceMotion) {
+      reduceMotionFrameSkip++;
+      if (reduceMotionFrameSkip % 6 !== 0) { rafId = requestAnimationFrame(animate); return; }
+    }
+    try { update(timestamp, dt * (reduceMotion ? 6 : 1)); } catch (e) { console.error('Ember update error:', e); }
     rafId = requestAnimationFrame(animate);
   }
 
@@ -1540,12 +1643,19 @@ const Ember = (() => {
     handlers.rootFocus = () => { hover = true; };
     handlers.rootBlur = () => { hover = false; };
     handlers.contextmenu = (e) => { e.preventDefault(); if (!testMode) startTestMode(); };
+    handlers.click = () => {
+      heatBoost = 0.4;
+      for (let i = 0; i < 8; i++) setTimeout(() => spawnSpark(), i * 60);
+      for (let i = 0; i < 3; i++) setTimeout(() => spawnShootingSpark(), i * 120);
+      showTooltip();
+    };
 
     root.addEventListener('mouseenter', handlers.mouseenter);
     root.addEventListener('mouseleave', handlers.mouseleave);
     root.addEventListener('focus', handlers.rootFocus);
     root.addEventListener('blur', handlers.rootBlur);
     root.addEventListener('contextmenu', handlers.contextmenu);
+    root.addEventListener('click', handlers.click);
 
     const isEditable = (el) =>
       el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
@@ -1618,6 +1728,9 @@ const Ember = (() => {
 
     ['segTremor', 'segTryIgnite', 'segHeatRipple', 'segFlicker', 'segHeatWave']
       .forEach(rescheduleSegDue);
+    Object.keys(PRIORITY).forEach(t => {
+      nextDue[t] = Date.now() + rand(2000, 15000);
+    });
 
     startLoop();
   }
@@ -1638,6 +1751,7 @@ const Ember = (() => {
     root.removeEventListener('focus', handlers.rootFocus);
     root.removeEventListener('blur', handlers.rootBlur);
     root.removeEventListener('contextmenu', handlers.contextmenu);
+    root.removeEventListener('click', handlers.click);
     document.removeEventListener('input', handlers.input);
     document.removeEventListener('mousemove', handlers.mousemove);
     document.removeEventListener('selectionchange', handlers.selectionchange);
@@ -1647,5 +1761,5 @@ const Ember = (() => {
     handlers = {};
   }
 
-  return { init, destroy, notifyEdit, switchTab };
+  return { init, destroy, notifyEdit, switchTab, setStatus };
 })();
