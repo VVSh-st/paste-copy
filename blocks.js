@@ -1008,7 +1008,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(tools);
 
     ta.className   = 'block-textarea';
-    ta.spellcheck  = b.type === 'text';
+    ta.spellcheck  = b.spellcheck !== false;
     ta.value       = b.subtabs[b.activeSubtab].value || '';
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
@@ -1235,6 +1235,23 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       State.update(() => { b.pasteCursor = _getPasteCursorMode() === 'start' ? 'end' : 'start'; });
     };
 
+    const spellcheckBtn = mkBtn('font-ctrl-btn', '', 'Проверка орфографии');
+    const SPELLCHECK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 11l3 3 4-7"/><path d="M10 4l2 2 4-4"/><path d="M2 4h4M2 7h3"/></svg>';
+    const SPELLCHECK_OFF_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"><path d="M2 11l3 3 4-7"/><path d="M10 4l2 2 4-4"/><path d="M2 4h4M2 7h3"/></svg>';
+    function _syncSpellcheckBtn() {
+      const on = b.spellcheck !== false;
+      spellcheckBtn.innerHTML = on ? SPELLCHECK_SVG : SPELLCHECK_OFF_SVG;
+      spellcheckBtn.title = on ? 'Орфография: вкл. Нажми чтобы выключить' : 'Орфография: выкл. Нажми чтобы включить';
+      spellcheckBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    _syncSpellcheckBtn();
+    spellcheckBtn.onclick = e => {
+      e.stopPropagation();
+      State.update(() => { b.spellcheck = b.spellcheck === false ? true : false; });
+      _syncSpellcheckBtn();
+      ta.spellcheck = b.spellcheck !== false;
+    };
+
     function _jumpBlockScroll(toEnd) {
       const pos = toEnd ? ta.value.length : 0;
       ta.focus({ preventScroll: true });
@@ -1451,6 +1468,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     footer.appendChild(fDecBtn);
     footer.appendChild(fIncBtn);
     footer.appendChild(pasteCursorBtn);
+    footer.appendChild(spellcheckBtn);
     footer.appendChild(translateBtn);
     footer.appendChild(scrollControls);
     body.appendChild(footer);
