@@ -93,7 +93,7 @@ const Ember = (() => {
   let nextSparkCheck = 0;
   let activeSparks = 0;
 
-  const POOL_SIZE = 25;
+  const POOL_SIZE = 40;
   let particlePool = [];
   let poolInited = false;
 
@@ -572,8 +572,8 @@ const Ember = (() => {
     const now = Date.now();
     if (active.has(type)) return;
     if ((nextDue[type] ?? 0) > now) return;
-    if (Math.random() >= probability) { rescheduleDue(type); return; }
-    if (Math.random() < 0.35) { rescheduleDue(type); return; }
+    const GLOBAL_DAMPING = 0.65;
+    if (Math.random() >= probability * GLOBAL_DAMPING) { rescheduleDue(type); return; }
     if (active.size >= MAX_EFFECTS) {
       let worstType = null, worstPri = -1;
       for (const t of active.keys()) {
@@ -633,15 +633,11 @@ const Ember = (() => {
     const inhale = p < 0.35 ? easeOutQuad(p / 0.35) : 0;
     const exhale = p > 0.45 ? easeOutQuad((p - 0.45) / 0.55) : 0;
     const w = eff._geomWeight ?? 1;
-    pose.squash += (-inhale * 0.15 + exhale * 0.12) * w;
-    pose.scaleX *= 1 + (-inhale * 0.04 + exhale * 0.08) * w;
-    pose.y += (-inhale * 1.2 + exhale * 1.4) * w;
-    pose.rotate += Math.sin(p * Math.PI * 2) * 1.2 * (1 - p) * w;
+    pose.squash += (-inhale * 0.2 + exhale * 0.18) * w;
+    pose.y += (-inhale * 2.4 + exhale * 2.8) * w;
+    const k = bump(p, 0.25, 0.75);
     pose.massShiftY += exhale * 0.8;
     pose.lowerSag += exhale * 0.6;
-    const k = bump(p, 0.25, 0.75);
-    pose.glow += k * (eff.glow ?? 0.2);
-    pose.brightness += k * 0.12;
     if (p > 0.5 && p < 0.55 && !eff.ashDone) {
       eff.ashDone = true;
       for (let i = 0; i < 3; i++) setTimeout(spawnAshParticle, i * 80);
@@ -650,15 +646,9 @@ const Ember = (() => {
 
   function applyCalmBurnPose(pose, eff) {
     const k = bump(eff.phase, 0.25, 0.75);
-    const sway = Math.sin(eff.phase * Math.PI * 2) * 0.8;
     const w = eff._geomWeight ?? 1;
-    pose.x += sway * 0.4 * w;
-    pose.y += Math.sin(eff.phase * Math.PI) * -0.4 * w;
-    pose.scaleX *= 1 + k * 0.035 * w;
-    pose.squash += -k * 0.08 * w;
-    pose.massShiftX += sway * 0.3;
-    pose.rotate += sway * 0.4 * w;
-    pose.brightness += k * 0.15;
+    pose.glow += k * 0.25 * w;
+    pose.brightness += k * 0.2 * w;
     pose.hue += k * (eff.hue ?? 0);
   }
 
@@ -668,14 +658,8 @@ const Ember = (() => {
     const shake = Math.sin(p * Math.PI * 8) * decay;
     const amp = eff.amp ?? 1;
     const w = eff._geomWeight ?? 1;
-    pose.x += shake * 1.4 * amp * w;
-    pose.rotate += shake * 5 * amp * w;
-    pose.scaleX *= 1 + Math.abs(shake) * 0.04 * amp * w;
-    pose.squash += shake * 0.06 * amp * w;
-    pose.massShiftX += shake * 0.6 * amp;
-    pose.sideBulge += Math.abs(shake) * 0.3 * amp;
-    pose.crustX = -shake * 0.7;
-    pose.ashShiftX = shake * 1.2;
+    pose.x += shake * 2.8 * amp * w;
+    pose.rotate += shake * 10 * amp * w;
   }
 
   function applyTiltPose(pose, eff) {
@@ -733,14 +717,8 @@ const Ember = (() => {
     const tremor = p >= 0.22 ? Math.sin((p - 0.22) * 40) * Math.exp(-(p - 0.22) * 6) : 0;
 
     const w = eff._geomWeight ?? 1;
-    pose.squash += (-snap * 0.6 + bulge * 0.45) * mag * w;
-    pose.scaleX *= 1 + (bulge * 0.16 - snap * 0.05) * mag * w;
-    pose.x += side * (bulge * 1.2 + tremor * 0.6 + 2.5) * mag * w;
-    pose.rotate += side * tremor * 7 * mag * w;
-    pose.massShiftX += side * bulge * 1.5 * mag;
-    pose.upperBulge += bulge * 0.8 * mag;
-    pose.sideBulge += snap * 0.5 * mag;
-    pose.brightness += (snap + bulge * 0.7) * mag;
+    pose.x += side * (bulge * 2.4 + tremor * 1.2 + 5) * mag * w;
+    pose.rotate += side * tremor * 14 * mag * w;
 
     if (!eff.crackFired && p > 0.1 && p < 0.15) {
       eff.crackFired = true;
@@ -758,26 +736,21 @@ const Ember = (() => {
   function applyStretchPose(pose, eff) {
     const p = eff.phase;
     const amp = eff.amp ?? 1;
-    const crouch = p < 0.2 ? easeOutQuad(p / 0.2) : 0;
     const reach = p > 0.15 && p < 0.6 ? Math.sin((p - 0.15) / 0.45 * Math.PI) : 0;
-    const settle = p > 0.55 ? easeOutQuad((p - 0.55) / 0.45) : 0;
+    const k = bump(p, 0.15, 0.65);
 
     const w = eff._geomWeight ?? 1;
-    pose.squash += (-reach * 0.6 + crouch * 0.2) * amp * w;
-    pose.scaleX *= 1 + (crouch * 0.1 - reach * 0.06 + settle * 0.06) * w;
-    pose.y += (crouch * 1.2 - reach * 1.6 + settle * 0.8) * w;
-    pose.massShiftY += (-reach * 1.2 + crouch * 0.5) * amp;
-    pose.upperBulge += reach * 0.9 * amp;
-    pose.rotate += Math.sin(p * Math.PI * 2) * 2 * (1 - p) * w;
-    pose.glowY -= reach * 2;
-    pose.glintX += reach * 8;
+    pose.scaleY *= 1 + reach * 0.12 * amp * w;
+    pose.glow += k * 0.15 * w;
+    pose.glowY -= reach * 3;
+    pose.glintX += reach * 10;
   }
 
   function applyGlintPose(pose, eff) {
     const k = bump(eff.phase, 0.2, 0.55);
     pose.glintOpacity = k;
-    pose.glintX = 45 + k * 20 + eff.phase * 10;
-    pose.glintScale = 1 + k * 0.8;
+    pose.glintX = 45 + k * 30 + eff.phase * 10;
+    pose.glintScale = 1 + k * 1.2;
     pose.squash += -k * 0.1;
     pose.scaleX *= 1 + k * 0.025;
     pose.hue += k * (eff.hue ?? 25);
@@ -787,39 +760,32 @@ const Ember = (() => {
   function applySleepySagPose(pose, eff) {
     const p = eff.phase;
     const sag = bump(p, 0.35, 0.8);
-    const nod = Math.sin(p * Math.PI * 3) * (1 - p);
     const w = eff._geomWeight ?? 1;
-    pose.y += sag * 1.8 * w;
-    pose.squash += sag * 0.25 * w;
-    pose.scaleX *= 1 + sag * 0.08 * w;
+    pose.y += sag * 3.2 * w;
+    pose.squash += sag * 0.35 * w;
     pose.massShiftY += sag * 1.0;
     pose.lowerSag += sag * 0.7;
-    pose.rotate += (sag * 4 + nod * 2) * w;
-    pose.brightness -= sag * 0.2;
   }
 
   function applySmolderPose(pose, eff) {
     const k = bump(eff.phase, 0.25, 0.85);
     const inner = Math.sin(eff.phase * Math.PI * 2.5) * 0.5 + 0.5;
-    pose.scaleX *= 1 + k * inner * 0.04;
-    pose.scaleY *= 1 - k * inner * 0.03;
-    pose.squash += k * inner * 0.06;
-    pose.massShiftY -= k * inner * 0.5;
-    pose.sideBulge += k * inner * 0.4;
     pose.hue += k * (eff.hue ?? 20);
     pose.saturation += k * (eff.sat ?? 0.25);
+    pose.glow += k * inner * 0.3;
+    pose.brightness += k * inner * 0.15;
     crackGlowMod += k * inner * 0.8;
   }
 
   function applyHeatRadiancePose(pose, eff) {
     const k = bump(eff.phase, 0.3, 0.7);
-    pose.glow += k * 0.4;
-    pose.ringExpandX += k * 4;
-    pose.ringExpandY += k * 1.5;
-    pose.glowY -= k * 2;
-    pose.glowSkewX += Math.sin(eff.phase * Math.PI * 3) * 8;
-    pose.squash += -k * 0.05;
-    pose.scaleX *= 1 + k * 0.01;
+    pose.glow += k * 0.6;
+    pose.ringExpandX += k * 6;
+    pose.ringExpandY += k * 2.5;
+    pose.glowY -= k * 3;
+    pose.glowSkewX += Math.sin(eff.phase * Math.PI * 3) * 12;
+    pose.squash += -k * 0.08;
+    pose.scaleX *= 1 + k * 0.015;
   }
 
   function applyGlowPulsePose(pose, eff) {
@@ -827,10 +793,8 @@ const Ember = (() => {
     const beat1 = Math.exp(-Math.pow((p - 0.25) / 0.08, 2));
     const beat2 = Math.exp(-Math.pow((p - 0.48) / 0.11, 2));
     const beat = beat1 * 0.5 + beat2;
-    pose.scaleX *= 1 + beat * 0.05;
-    pose.squash += -beat * 0.15;
-    pose.y -= beat * 0.5;
-    pose.glow += beat * 0.8;
+    pose.scaleY *= 1 + beat * 0.1;
+    pose.glow += beat * 1.0;
     pose.ringExpandX += beat * 3;
     pose.ringExpandY += beat * 4;
   }
@@ -855,16 +819,8 @@ const Ember = (() => {
     const k = bump(eff.phase, 0.15, 0.6);
     const dir = eff.dir ?? 1;
     const w = eff._geomWeight ?? 1;
-    pose.x += dir * k * 2.2 * w;
-    pose.rotate += dir * k * 8 * w;
-    pose.scaleX *= 1 + k * 0.08 * w;
-    pose.squash += -k * 0.12 * w;
-    pose.massShiftX += dir * k * 1.0;
-    pose.sideBulge += k * 0.6;
-    pose.glowSkewX += dir * k * 12;
-    pose.glowX += dir * k * 3;
-    pose.brightness += k * 0.5;
-    pose.hue += k * 20;
+    pose.x += dir * k * 4.4 * w;
+    pose.rotate += dir * k * 16 * w;
   }
 
   function commitPose(pose, now, dt) {
@@ -875,8 +831,8 @@ const Ember = (() => {
     hazeTrackX += (pose.x * 0.1 - hazeTrackX) * 0.015;
     pose.glow += residualHeat;
 
-    const shiftX = heatOffsetX * 0.6 + pose.x * 0.1 + ashTrackX * 0.3;
-    const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.1;
+    const shiftX = heatOffsetX * 0.6 + pose.x * 0.35 + ashTrackX * 0.3;
+    const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.35;
 
     root.style.setProperty('--shiftX', shiftX.toFixed(2) + 'px');
     root.style.setProperty('--shiftY', shiftY.toFixed(2) + 'px');
@@ -940,7 +896,7 @@ const Ember = (() => {
       hasActiveSquash = true;
       coreEl.style.animation = 'none';
       coreEl.style.borderRadius =
-        `${(48+sqBr*1.5+uB*8-lS*3).toFixed(1)}% ${(52-sqBr*1.5+sB*6-uB*4).toFixed(1)}% ${(52-sqBr*2+lS*7-sB*3).toFixed(1)}% ${(48+sqBr*2+msX*3).toFixed(1)}% / ${(50-sqBr*4+msY*5-uB*4).toFixed(1)}% ${(46+sqBr*2+msX*2).toFixed(1)}% ${(50+sqBr*3+lS*5).toFixed(1)}% ${(50-sqBr*2+msY*3).toFixed(1)}%`;
+        `${(48+sqBr*4.5+uB*24-lS*9).toFixed(1)}% ${(52-sqBr*4.5+sB*18-uB*12).toFixed(1)}% ${(52-sqBr*6+lS*21-sB*9).toFixed(1)}% ${(48+sqBr*6+msX*9).toFixed(1)}% / ${(50-sqBr*12+msY*15-uB*12).toFixed(1)}% ${(46+sqBr*6+msX*6).toFixed(1)}% ${(50+sqBr*9+lS*15).toFixed(1)}% ${(50-sqBr*6+msY*9).toFixed(1)}%`;
     } else if (hasActiveSquash) {
       hasActiveSquash = false;
       coreEl.style.animation = '';
@@ -1122,11 +1078,16 @@ const Ember = (() => {
   }
 
   function releaseEl(el) {
-    for (const slot of particlePool) {
-      if (slot.el === el) {
-        slot.free = true;
-        el.style.display = 'none';
-        el.className = 'ember-ash';
+    for (let i = 0; i < particlePool.length; i++) {
+      if (particlePool[i].el === el) {
+        if (i >= POOL_SIZE) {
+          el.remove();
+          particlePool.splice(i, 1);
+        } else {
+          particlePool[i].free = true;
+          el.style.display = 'none';
+          el.className = 'ember-ash';
+        }
         return;
       }
     }
@@ -2597,9 +2558,9 @@ const Ember = (() => {
       updateRingSegments(now);
 
       if (Date.now() > nextAshSpawn) {
-        if (Math.random() < (lowFpsMode ? 0.4 : 0.88)) spawnAshParticle();
-        if (intensity > 0.6 && Math.random() < (lowFpsMode ? 0.1 : 0.3)) spawnAshParticle();
-        nextAshSpawn = Date.now() + rand(lowFpsMode ? 500 : 280, lowFpsMode ? 1200 : 720);
+        if (Math.random() < (lowFpsMode ? 0.3 : 0.55)) spawnAshParticle();
+        if (intensity > 0.6 && Math.random() < (lowFpsMode ? 0.05 : 0.15)) spawnAshParticle();
+        nextAshSpawn = Date.now() + rand(lowFpsMode ? 500 : 600, lowFpsMode ? 1200 : 1100);
       }
 
       if (Date.now() > nextSparkCheck) {
