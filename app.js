@@ -161,6 +161,7 @@
   onClick('btn-save', () => {
       Storage.save(State.serialize());
       window.Intelligence?.track?.('state.save');
+      if (typeof Ember !== 'undefined') Ember.triggerReaction('save');
       if (typeof GistSync !== 'undefined') {
         GistSync.onSaveTrigger();
     } else {

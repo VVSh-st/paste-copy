@@ -225,6 +225,7 @@ const Tabs = (() => {
 
         if (e.detail >= 2 || isSecondClick) { startRename(e); return; }
         State.setActive(tab.id);
+        if (typeof Ember !== 'undefined') Ember.triggerReaction('tabSwitch');
       };
       el.onmousedown = e => {
         if (e.button === 1) { e.preventDefault(); State.closeTab(tab.id); }

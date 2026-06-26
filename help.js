@@ -65,6 +65,7 @@
 
     copyButton.parentNode.insertBefore(button, copyButton);
     button.addEventListener('click', openHelp);
+    button.addEventListener('mouseenter', () => { if (typeof Ember !== 'undefined') Ember.triggerReaction('helpHover'); });
   }
 
   function createHelpOverlay() {
@@ -160,6 +161,9 @@
                 ${kbd('Ctrl + W', 'Закрыть вкладку')}
                 ${kbd('Ctrl + D', 'Дублировать вкладку')}
                 ${kbd('Ctrl + Shift + C', 'Копировать превью')}
+                ${kbd('Ctrl + Shift + 1', 'Установить якорь')}
+                ${kbd('Ctrl + Shift + 2', 'Навигация по якорям')}
+                ${kbd('Ctrl + Shift + 3', 'Удалить все якоря')}
                 ${kbd('Alt + L', 'LLM-инструменты')}
                 ${kbd('Ctrl + Enter', 'Отправить сообщение в мини-чате')}
               </div>
@@ -252,6 +256,17 @@
                   <button type="button" data-copy-example>Скопировать</button>
                 </div>
               `, 'variables переменные product audience')}
+
+              ${card('blocks', '⚓', 'Якоря', 'Закладки на нужные места в тексте.', `
+                <ul class="help-list">
+                  <li><b>Установить</b> ⚓ — поставить якорь на выделение или позицию курсора.</li>
+                  <li><b>Навигация</b> ⟳ — перейти к следующему якорю. Длинное нажатие — список всех якорей.</li>
+                  <li><b>Удалить</b> ✕ — очистить все якоря (двойное нажатие для подтверждения).</li>
+                  <li>Цветные полосы и подсветка показывают расположение якоря.</li>
+                  <li>Счётчик якорей отображается в правом нижнем углу блока.</li>
+                  <li>Palette показывает превью текста и номер для быстрого перехода.</li>
+                </ul>
+              `, 'anchors якоря закладки bookmark navigation palette')}
             </div>
           </section>
 

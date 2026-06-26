@@ -2034,6 +2034,141 @@ const Ember = (() => {
     }
   }
 
+  // ---------- реакции на действия пользователя ----------
+
+  const reactionCooldowns = {};
+  const reactionQueue = [];
+
+  function canReact(type, cooldownMs) {
+    const now = Date.now();
+    if ((reactionCooldowns[type] ?? 0) > now) return false;
+    if (Math.random() > 0.45) { reactionCooldowns[type] = now + (cooldownMs || 3000); return false; }
+    reactionCooldowns[type] = now + (cooldownMs || 3000);
+    return true;
+  }
+
+  function queueReaction(type, data) {
+    if (previewScare.active || egg.active) return;
+    reactionQueue.push({ type, data: data || {} });
+  }
+
+  function processReactions(now) {
+    while (reactionQueue.length) {
+      const r = reactionQueue.shift();
+      applyReaction(r.type, r.data, now);
+    }
+  }
+
+  function applyReaction(type, d, now) {
+    switch (type) {
+
+      case 'blockCollapse': {
+        if (!canReact('blockCollapse', 2500)) return;
+        const dir = d.collapsed ? -1 : 1;
+        cursorLean.y += dir * rand(-14, -6);
+        cursorLean.squish += rand(0.05, 0.12);
+        cursorLean.tiltY += dir * rand(-3, 3);
+        heatBoost = Math.max(heatBoost, 0.12);
+        setTimeout(() => spawnAshParticle(), 80);
+        break;
+      }
+
+      case 'delete': {
+        if (Math.random() > 0.30) return;
+        reactionCooldowns['delete'] = now + 4000;
+        const rx = rand(15, 30) * (Math.random() < 0.5 ? -1 : 1);
+        const ry = -rand(18, 35);
+        cursorLean.x += rx;
+        cursorLean.y += ry;
+        cursorLean.squish += 0.18;
+        cursorLean.scale *= 0.88;
+        cursorLean.tiltX += ry * 0.3;
+        cursorLean.tiltY += -rx * 0.25;
+        heatBoost = Math.max(heatBoost, 0.25);
+        ringImpulse = rand(5, 10) * (Math.random() < 0.5 ? 1 : -1);
+        for (let i = 0; i < 8; i++) setTimeout(() => spawnSpark(), i * 60);
+        for (let i = 0; i < 4; i++) setTimeout(() => spawnAshParticle(), i * 100);
+        setTimeout(() => spawnShootingSpark(), 100);
+        break;
+      }
+
+      case 'subtabSwitch': {
+        if (!canReact('subtabSwitch', 1800)) return;
+        const dir = d.dir || 1;
+        cursorLean.x += dir * rand(6, 14);
+        cursorLean.squish += rand(-0.08, -0.03);
+        cursorLean.tiltY += dir * rand(-5, -2);
+        ringImpulse = dir * rand(3, 6);
+        heatBoost = Math.max(heatBoost, 0.08);
+        break;
+      }
+
+      case 'translate': {
+        if (!canReact('translate', 4000)) return;
+        cursorLean.y += rand(-10, -5);
+        cursorLean.scale *= 1.06;
+        cursorLean.squish += rand(-0.06, -0.02);
+        heatBoost = Math.max(heatBoost, 0.18);
+        setTimeout(() => spawnSpark(), 120);
+        setTimeout(() => spawnSpark(), 250);
+        setTimeout(() => spawnAshParticle(), 200);
+        break;
+      }
+
+      case 'copy': {
+        if (!canReact('copy', 2500)) return;
+        cursorLean.y += rand(-12, -6);
+        cursorLean.squish += rand(0.04, 0.1);
+        heatBoost = Math.max(heatBoost, 0.15);
+        for (let i = 0; i < 5; i++) setTimeout(() => spawnSpark(), i * 70);
+        break;
+      }
+
+      case 'helpHover': {
+        if (!canReact('helpHover', 5000)) return;
+        const rx = rand(6, 14) * (Math.random() < 0.5 ? -1 : 1);
+        cursorLean.x += rx;
+        cursorLean.y += rand(3, 8);
+        cursorLean.squish += rand(0.06, 0.12);
+        cursorLean.scale *= 0.94;
+        heatBoost = Math.max(heatBoost - 0.05, 0);
+        for (let i = 0; i < 6; i++) setTimeout(() => spawnAshParticle(), i * 80);
+        break;
+      }
+
+      case 'undoRedo': {
+        if (!canReact('undoRedo', 2000)) return;
+        const tilt = d.dir || (Math.random() < 0.5 ? -1 : 1);
+        cursorLean.tiltY += tilt * rand(4, 8);
+        cursorLean.x += tilt * rand(-3, 3);
+        cursorLean.squish += rand(0.03, 0.08);
+        heatBoost = Math.max(heatBoost, 0.06);
+        break;
+      }
+
+      case 'save': {
+        if (!canReact('save', 5000)) return;
+        cursorLean.y += rand(-8, -3);
+        cursorLean.scale *= 1.03;
+        cursorLean.squish += rand(-0.04, -0.01);
+        heatBoost = Math.max(heatBoost, 0.1);
+        residualHeat += 0.15;
+        for (let i = 0; i < 3; i++) setTimeout(() => spawnSpark(), i * 100);
+        break;
+      }
+
+      case 'tabSwitch': {
+        if (!canReact('tabSwitch', 2000)) return;
+        cursorLean.y += rand(-10, -4);
+        cursorLean.squish += rand(0.04, 0.09);
+        cursorLean.tiltY += rand(-4, 4);
+        heatBoost = Math.max(heatBoost, 0.1);
+        setTimeout(() => spawnAshParticle(), 150);
+        break;
+      }
+    }
+  }
+
   // ---------- ПКМ тестирование ----------
 
   const TEST_EFFECTS = [
@@ -2374,6 +2509,7 @@ const Ember = (() => {
 
     updateCursorLean(now, dt);
     updatePreviewScare(now);
+    processReactions(now);
 
     const since = now - spawnStart;
     spawnCore = clamp(since / 500, 0, 1);
@@ -2819,5 +2955,5 @@ const Ember = (() => {
     Object.keys(nextSegDue).forEach(k => delete nextSegDue[k]);
   }
 
-  return { init, destroy, notifyEdit, switchTab, setStatus, onPreviewOpen: startPreviewScare, onClick(fn) { onClickCallback = fn; } };
+  return { init, destroy, notifyEdit, switchTab, setStatus, onPreviewOpen: startPreviewScare, onClick(fn) { onClickCallback = fn; }, triggerReaction(type, data) { queueReaction(type, data); } };
 })();

@@ -614,7 +614,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     const collapseBtn = makeIconBtn(svgIcon('chevron'), 'Свернуть / развернуть');
     collapseBtn.classList.add('block-toggle-collapse');
-    collapseBtn.onclick = e => { e.stopPropagation(); State.update(() => { b.collapsed = !b.collapsed; }); };
+    collapseBtn.onclick = e => { e.stopPropagation(); State.update(() => { b.collapsed = !b.collapsed; }); if (typeof Ember !== 'undefined') Ember.triggerReaction('blockCollapse', { collapsed: b.collapsed }); };
     actions.appendChild(collapseBtn);
 
     const delBtn = makeIconBtn(svgIcon('trash'), '');
@@ -635,6 +635,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           observerMap.delete(b.id);
         }
         State.update(tab => { State.removeBlock(tab.blocks, b.id); });
+        if (typeof Ember !== 'undefined') Ember.triggerReaction('delete');
       }
     };
     actions.appendChild(delBtn);
@@ -774,7 +775,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           _removeTooltip();
           clearTimeout(_clickTimer);
           _clickTimer = setTimeout(() => {
+            const dir = i > b.activeSubtab ? 1 : -1;
             State.update(() => { b.activeSubtab = i; });
+            if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir });
           }, 220);
         };
 
@@ -804,11 +807,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     prevBtn.onclick = e => {
       e.stopPropagation();
-      if (b.activeSubtab > 0) State.update(() => { b.activeSubtab--; });
+      if (b.activeSubtab > 0) { State.update(() => { b.activeSubtab--; }); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: -1 }); }
     };
     nextBtn.onclick = e => {
       e.stopPropagation();
-      if (b.activeSubtab < State.SUBTABS_COUNT - 1) State.update(() => { b.activeSubtab++; });
+      if (b.activeSubtab < State.SUBTABS_COUNT - 1) { State.update(() => { b.activeSubtab++; }); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: 1 }); }
     };
 
     buildTabs();
@@ -840,6 +843,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     const undoBtn  = makeToolBtn(svgIcon('undo'), 'Отменить (блок)', () => {
       State.blockUndo(b.id);
+      if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: -1 });
       requestAnimationFrame(() => {
         const val = b.subtabs[b.activeSubtab]?.value ?? '';
         if (ta.value !== val) {
@@ -854,6 +858,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     const redoBtn  = makeToolBtn(svgIcon('redo'), 'Повторить (блок)', () => {
       State.blockRedo(b.id);
+      if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: 1 });
       requestAnimationFrame(() => {
         const val = b.subtabs[b.activeSubtab]?.value ?? '';
         if (ta.value !== val) {
@@ -909,6 +914,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
             kind: window.PromptLoom?.classify?.(text) || ''
           });
           Toast.show('Скопировано ✓', 'success');
+          if (typeof Ember !== 'undefined') Ember.triggerReaction('copy');
         })
         .catch(() => Toast.show('Ошибка копирования', 'error'));
     });
@@ -1372,6 +1378,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.value = result;
         ta.dispatchEvent(new Event('input', { bubbles: true }));
         Toast.show('✓ Переведено → ' + langName + ' (клик ↩ — вернуть)');
+        if (typeof Ember !== 'undefined') Ember.triggerReaction('translate');
       }).catch(err => {
         console.error('[Translator]', err);
         Toast.show('Ошибка перевода: ' + err.message);
