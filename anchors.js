@@ -375,10 +375,11 @@ const Anchors = (() => {
 
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
+    const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
 
     blockAnchors.forEach((anchor, localIdx) => {
       const pos = _measurePos(ta, anchor.start);
-      const rawTop = pos.y - scrollY;
+      const rawTop = pos.y - scrollY - taPt;
       const wrapH = wrap.clientHeight;
 
       const idx = anchors.indexOf(anchor);
