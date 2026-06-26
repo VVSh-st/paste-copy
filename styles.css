@@ -5586,7 +5586,7 @@ body.help-open {
 .anchor-palette .slash-item {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 6px;
   padding-right: 0;
 }
 .anchor-palette .slash-text {
@@ -5602,7 +5602,7 @@ body.help-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: 2px;
+  margin: 0;
   padding: 0 2px;
   border-radius: 4px;
   font-size: 10px;

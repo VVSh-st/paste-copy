@@ -110,15 +110,18 @@ const Anchors = (() => {
     const tab = State.getActive();
     if (!tab || anchor.tabId !== tab.id) {
       State.setActive(anchor.tabId);
-      requestAnimationFrame(() => _jumpToAnchor(anchor, _depth));
+      setTimeout(() => _jumpToAnchor(anchor, _depth), 60);
       return;
     }
     const blk = _findBlockById(tab.blocks, anchor.blockId);
     if (!blk) { Toast.show('Блок не найден', 'error'); return; }
     if (blk.collapsed) State.update(() => { blk.collapsed = false; });
-    if (anchor.subtabIdx != null) State.updateLive(() => { blk.activeSubtab = anchor.subtabIdx; });
+    if (anchor.subtabIdx != null && blk.activeSubtab !== anchor.subtabIdx) {
+      State.updateLive(() => { blk.activeSubtab = anchor.subtabIdx; });
+    }
 
-    requestAnimationFrame(() => {
+    // Ждём 2 кадра чтобы DOM обновился после смены вкладки/субвкладки
+    requestAnimationFrame(() => requestAnimationFrame(() => {
       const blockEl = document.querySelector(`.block[data-id="${anchor.blockId}"]`);
       if (!blockEl) return;
       blockEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -138,7 +141,7 @@ const Anchors = (() => {
         const pt = parseFloat(cs.paddingTop) || 0;
         ta.scrollTop = Math.max(0, pos.y - pt - ta.clientHeight / 2);
       }
-    });
+    }));
   }
 
   function removeAnchorById(anchorId) {
