@@ -1467,14 +1467,14 @@ const Ember = (() => {
     const countdownText = rem > 0 && rem < 12 ? `Следующее деление погаснет через ~${minsToNext} мин` : null;
     const lines = [
       `Правка: ${timeText}`,
-      `Осталось: ${rem}/12 делений`,
+      `Осталось: ${rem}/12`,
       countdownText,
       statusState ? `Статус: ${statusText}` : null,
     ].filter(Boolean);
 
     tooltipEl = document.createElement('div');
     tooltipEl.className = 'ember-tooltip';
-    tooltipEl.textContent = lines.join(' · ');
+    tooltipEl.textContent = lines.join('\n');
     root.appendChild(tooltipEl);
     setTimeout(() => { if (tooltipEl) { tooltipEl.style.opacity = '0'; setTimeout(() => tooltipEl?.remove(), 300); } }, 3000);
   }

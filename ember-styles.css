@@ -11,9 +11,9 @@
   position: absolute;
   left: 50%; bottom: -3px;
   width: 16px; height: 4px;
-  background: radial-gradient(ellipse, rgba(20, 8, 2, 0.45), transparent 70%);
+  background: radial-gradient(ellipse, rgba(255, 120, 40, 0.3), rgba(180, 60, 10, 0.12) 50%, transparent 75%);
   transform: translateX(-50%) scale(var(--shadowScale, 1));
-  filter: blur(1px);
+  filter: blur(2px);
   z-index: 0;
   transition: transform 0.3s ease;
 }
@@ -150,7 +150,7 @@
   box-shadow:
     inset 0 0 4px rgba(20, 6, 0, 0.8),
     inset 0 -2px 5px rgba(0, 0, 0, 0.6),
-    inset 0 -4px 8px rgba(0, 0, 0, 0.35),
+    inset 0 -3px 6px rgba(120, 40, 10, 0.2),
     0 0 3px rgba(80, 25, 0, 0.5);
   animation: emberDeform 4s ease-in-out infinite;
   animation-delay: var(--deformPhase, 0s);
@@ -528,17 +528,18 @@
   bottom: -28px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(20, 12, 6, 0.92);
+  background: rgba(30, 18, 10, 0.95);
   color: rgba(255, 180, 100, 0.95);
   font-size: 10px;
   font-family: var(--mono);
-  padding: 4px 8px;
-  border-radius: 4px;
-  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 6px;
+  white-space: pre-line;
   pointer-events: none;
   z-index: 30;
   opacity: 1;
   transition: opacity 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-  border: 1px solid rgba(255, 140, 50, 0.2);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  border: 1px solid rgba(255, 140, 50, 0.25);
+  line-height: 1.5;
 }
