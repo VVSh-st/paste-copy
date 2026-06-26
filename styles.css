@@ -324,7 +324,7 @@ body {
 .block-subtab:hover:not(.active) { color: var(--text1); border-color: var(--border); background: var(--surface); }
 .block-subtab.filled { position: relative; }
 .block-subtab.filled::after {
-  content: ''; position: absolute; top: 2px; right: 2px;
+  content: ''; position: absolute; top: 3px; right: 5px;
   width: 4px; height: 4px; background: var(--green); border-radius: 50%;
 }
 .block-subtab-label {
