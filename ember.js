@@ -34,6 +34,7 @@ const Ember = (() => {
   let hotspots = [];
   let windGust = 0;
   let heatWaveEl = null;
+  let hotAttnEl = null;
   let statusState = null;
   let statusTimer = null;
   let statusSince = 0;
@@ -57,6 +58,18 @@ const Ember = (() => {
   let nextHeatShift = 0;
   let heatPhase = 0;
   const heatPhaseSpeed = 0.0009;
+
+  let residualHeat = 0;
+
+  let breathPattern = [1, 0.8, 1.2, 0.5, 0.9];
+  let breathPatternIdx = 0;
+  let nextBreathSwitch = 0;
+
+  const attn = {
+    state: 'idle', timer: 0, dirX: 0,
+    hotX: 50, hotY: 50, hotHeat: 0,
+    activeHsIdx: -1,
+  };
 
   let typedChars = 0;
   let heatBoost = 0;
@@ -301,6 +314,7 @@ const Ember = (() => {
     hazeEl = null;
     particleLayer = null;
     heatWaveEl = null;
+    hotAttnEl = null;
   }
 
   function createDOM() {
@@ -378,6 +392,11 @@ const Ember = (() => {
     heatWaveEl.className = 'ember-heatwave';
     coreEl.appendChild(heatWaveEl);
 
+    hotAttnEl = document.createElement('div');
+    hotAttnEl.className = 'ember-hotspot attn-hotspot';
+    hotAttnEl.style.opacity = '0';
+    coreEl.appendChild(hotAttnEl);
+
     hazeEl = document.createElement('div');
     hazeEl.className = 'ember-haze';
 
@@ -433,23 +452,45 @@ const Ember = (() => {
     heatOffsetY += (heatTargetY - heatOffsetY) * clamp(0.003 * dt, 0, 1);
     heatPhase += heatPhaseSpeed * dt;
 
-    const cxBase = 50 + heatOffsetX * 2.5;
-    const cyBase = 50 + heatOffsetY * 2.5;
-    const wander = [
-      { dx: -12, dy: -8, fx: 2.1, fy: 1.7 },
-      { dx: 2, dy: 16, fx: 1.4, fy: 2.3 },
-      { dx: 0, dy: 5, fx: 1.9, fy: 1.1 },
-    ];
     zones.forEach((zone, i) => {
-      const w = wander[i];
-      const cx = cxBase + w.dx + Math.sin(heatPhase * w.fx + i) * 6;
-      const cy = cyBase + w.dy + Math.cos(heatPhase * w.fy + i) * 6;
-      zone.style.setProperty('--cx', clamp(cx, 20, 80).toFixed(1) + '%');
-      zone.style.setProperty('--cy', clamp(cy, 20, 80).toFixed(1) + '%');
-      const pulse = 0.6 + Math.sin(heatPhase * (1.3 + i * 0.4) + i * 2) * 0.4;
-      zone.style.setProperty('--zoneHeat', pulse.toFixed(3));
+      if (!zone._life) {
+        zone._life = rand(4000, 10000);
+        zone._targetHeat = rand(0.4, 1.3);
+        zone._targetX = rand(20, 80);
+        zone._targetY = rand(20, 80);
+        zone._curHeat = 0.6;
+        zone._curX = 50;
+        zone._curY = 50;
+      }
+      zone._life -= dt;
+      if (zone._life <= 0) {
+        zone._life = rand(4000, 10000);
+        zone._targetHeat = rand(0.4, 1.3);
+        zone._targetX = rand(20, 80);
+        zone._targetY = rand(20, 80);
+        if (Math.random() < 0.1 && zones.length < 6) {
+          const nz = document.createElement('div');
+          nz.className = 'heat-zone';
+          coreEl.insertBefore(nz, crustEl);
+          zones.push(nz);
+          nz._life = rand(2000, 5000);
+          nz._targetHeat = rand(0.3, 0.9);
+          nz._targetX = rand(20, 80);
+          nz._targetY = rand(20, 80);
+          nz._curHeat = 0.3;
+          nz._curX = zone._curX;
+          nz._curY = zone._curY;
+        }
+      }
+      const lerpSpeed = 0.0015 * dt;
+      zone._curHeat += (zone._targetHeat - zone._curHeat) * clamp(lerpSpeed, 0, 1);
+      zone._curX += (zone._targetX - zone._curX) * clamp(lerpSpeed * 0.8, 0, 1);
+      zone._curY += (zone._targetY - zone._curY) * clamp(lerpSpeed * 0.8, 0, 1);
+      zone.style.setProperty('--cx', clamp(zone._curX, 10, 90).toFixed(1) + '%');
+      zone.style.setProperty('--cy', clamp(zone._curY, 10, 90).toFixed(1) + '%');
+      zone.style.setProperty('--zoneHeat', clamp(zone._curHeat, 0, 1.5).toFixed(3));
     });
-    const avgHeat = zones.reduce((s, z) => s + parseFloat(z.style.getPropertyValue('--zoneHeat') || 0.6), 0) / zones.length;
+    const avgHeat = zones.reduce((s, z) => s + (z._curHeat || 0.6), 0) / Math.max(zones.length, 1);
     if (crustEl) crustEl.style.opacity = (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3);
   }
 
@@ -639,6 +680,10 @@ const Ember = (() => {
       setTimeout(() => spawnSpark(side > 0 ? 0.7 : 0.3), 40);
       setTimeout(() => spawnAshParticle(), 50);
       setTimeout(() => spawnAshParticle(), 140);
+      residualHeat += 0.2;
+      pose.crustX += rand(-1.5, 1.5) * mag;
+      pose.crustRot += rand(-2, 2) * mag;
+      spawnCrumb();
     }
   }
 
@@ -749,6 +794,7 @@ const Ember = (() => {
     ashTrackX += (pose.ashShiftX - ashTrackX) * 0.03;
     ashTrackY += (pose.ashShiftY - ashTrackY) * 0.03;
     hazeTrackX += (pose.x * 0.1 - hazeTrackX) * 0.015;
+    pose.glow += residualHeat;
 
     const shiftX = heatOffsetX * 0.6 + pose.x * 0.1 + ashTrackX * 0.3;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.1;
@@ -1201,6 +1247,53 @@ const Ember = (() => {
     if (windGust > 0.15 && heatBoost < 0.1) {
       heatBoost = Math.min(heatBoost + windGust * 0.001 * dt, 0.2);
       if (Math.random() < windGust * 0.01 * dt) spawnSpark();
+    }
+  }
+
+  // ---------- внимание — горячая зона со стороны курсора ----------
+
+  function updateAttention(now, dt) {
+    if (reduceMotion || attn.state === 'cooling') {
+      if (attn.state === 'cooling') {
+        attn.timer -= dt;
+        attn.hotHeat *= 0.97;
+        if (attn.timer <= 0 || attn.hotHeat < 0.05) {
+          attn.state = 'idle';
+          attn.hotHeat = 0;
+        }
+      }
+      return;
+    }
+    const ember = getEmberCenter();
+    const dx = mouse.x - ember.x;
+    const dy = mouse.y - ember.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (attn.state === 'idle') {
+      if (dist > 40 && dist < 250 && mouse.speed > 15 && Math.random() < 0.001 * dt) {
+        attn.state = 'noticing';
+        attn.timer = rand(300, 800);
+        attn.dirX = Math.sign(dx) || 1;
+      }
+    } else if (attn.state === 'noticing') {
+      attn.timer -= dt;
+      attn.hotHeat += (0.7 - attn.hotHeat) * 0.005 * dt;
+      attn.hotX += (50 + attn.dirX * 25 - attn.hotX) * 0.003 * dt;
+      attn.hotY += (50 + dy * 0.05 - attn.hotY) * 0.002 * dt;
+      if (attn.timer <= 0) {
+        attn.state = 'looking';
+        attn.timer = rand(1500, 4000);
+      }
+    } else if (attn.state === 'looking') {
+      attn.timer -= dt;
+      attn.hotHeat += (attn.hotHeat > 0.9 ? 0 : 0.0008 * dt);
+      attn.hotX += (50 + attn.dirX * 30 - attn.hotX) * 0.002 * dt;
+      attn.hotY += (50 + dy * 0.08 - attn.hotY) * 0.001 * dt;
+      if (Math.random() < 0.0005 * dt) spawnSpark();
+      if (attn.timer <= 0) {
+        attn.state = 'cooling';
+        attn.timer = rand(3000, 6000);
+      }
     }
   }
 
@@ -2046,11 +2139,16 @@ const Ember = (() => {
 
       const breathBase = intensity > 0.3 ? 0.00055 : 0.0002;
       breathPhase += breathBase * dt;
+      if (Date.now() > nextBreathSwitch) {
+        breathPatternIdx = (breathPatternIdx + 1) % breathPattern.length;
+        nextBreathSwitch = Date.now() + rand(2000, 6000);
+      }
+      const breathAmp = breathPattern[breathPatternIdx];
       const flicker =
         Math.sin(breathPhase * 2.5) * 0.5 +
         Math.sin(breathPhase * 6.3 + 1.7) * 0.3 +
         Math.sin(breathPhase * 11.1 + 4.2) * 0.2;
-      breathScale = 1 + flicker * 0.012 * intensity;
+      breathScale = 1 + flicker * 0.012 * intensity * breathAmp;
 
       updateHeatZones(dt);
       updateHotspots(now, dt);
@@ -2116,19 +2214,26 @@ const Ember = (() => {
     const speedMult = (1 + hoverVal * 0.8) / sleepSlowdown();
     const breathBase = intensity > 0.3 ? 0.00055 : 0.0002;
     breathPhase += breathBase * speedMult * dt;
+    if (Date.now() > nextBreathSwitch) {
+      breathPatternIdx = (breathPatternIdx + 1) % breathPattern.length;
+      nextBreathSwitch = Date.now() + rand(2000, 6000);
+    }
+    const breathAmp = breathPattern[breathPatternIdx];
     const hoverBreath = hover ? Math.sin(breathPhase * 2.5) * 0.05 * hoverVal : 0;
     const flicker =
       Math.sin(breathPhase * 2.5) * 0.5 +
       Math.sin(breathPhase * 6.3 + 1.7) * 0.3 +
       Math.sin(breathPhase * 11.1 + 4.2) * 0.2;
-    breathScale = 1 + flicker * 0.012 * intensity + hoverBreath + windGust * 0.04;
+    breathScale = 1 + flicker * 0.012 * intensity * breathAmp + hoverBreath + windGust * 0.04;
 
     updateHeatZones(dt);
     updateHotspots(now, dt);
     updateWind(now, dt);
+    updateAttention(now, dt);
     updateMood(now);
     applyStatus();
     if (heatBoost > 0 && statusState !== 'error') heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
+    residualHeat *= 0.992;
 
     // --- запуск эффектов ядра с рандомными параметрами ---
     if (!testMode) {
@@ -2227,6 +2332,21 @@ const Ember = (() => {
     root.style.setProperty('--breathScale', breathScale.toFixed(4));
 
     applySegments();
+
+    if (hotAttnEl) {
+      if (attn.hotHeat > 0.01) {
+        hotAttnEl.style.left = clamp(attn.hotX, 15, 85) + '%';
+        hotAttnEl.style.top = clamp(attn.hotY, 15, 85) + '%';
+        hotAttnEl.style.opacity = clamp(attn.hotHeat * 0.7, 0, 0.8).toFixed(3);
+      } else {
+        hotAttnEl.style.opacity = '0';
+      }
+    }
+
+    if (!testMode && Math.random() < 0.0004 * dt * heatBoost) {
+      spawnCrumb();
+      igniteCrackSide(Math.random() < 0.5 ? -1 : 1);
+    }
 
     if (!reduceMotion) {
       if (!testMode) {
@@ -2460,6 +2580,10 @@ const Ember = (() => {
     ashTrackX = 0; ashTrackY = 0;
     hazeTrackX = 0;
     emberMood = 'calm';
+    residualHeat = 0;
+    breathPatternIdx = 0;
+    nextBreathSwitch = 0;
+    attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
 
     root.removeEventListener('mouseenter', handlers.mouseenter);
     root.removeEventListener('mouseleave', handlers.mouseleave);
