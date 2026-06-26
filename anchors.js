@@ -385,10 +385,10 @@ const Anchors = (() => {
       const idx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {
-        const mTop = Math.max(0, Math.min(rawTop + 1, wrapH - lineHeight));
+        const mTop = Math.max(0, Math.min(rawTop - 2, wrapH - lineHeight));
         const m = document.createElement('div');
         m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 4) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 6) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
@@ -399,10 +399,10 @@ const Anchors = (() => {
         let selW = Math.max(2, Math.abs(endPos.x - pos.x));
         const gLeft = Math.min(pos.x, endPos.x);
         if (gLeft + selW > wrapW) selW = Math.max(2, wrapW - gLeft);
-        const gTop = Math.max(0, Math.min(rawTop, wrapH - lineHeight));
+        const gTop = Math.max(0, Math.min(rawTop - 2, wrapH - lineHeight));
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + (lineHeight - 4) + 'px;top:' + (gTop + 2) + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + (lineHeight - 6) + 'px;top:' + (gTop + 1) + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });
