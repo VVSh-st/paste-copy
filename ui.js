@@ -522,9 +522,11 @@ const Preview = (() => {
 
   function toggleCollapse() {
     if (!panel) return;
+    const wasCollapsed = panel.classList.contains('collapsed');
     panel.classList.toggle('collapsed');
     const btn = document.getElementById('prev-toggle');
     if (btn) btn.textContent = panel.classList.contains('collapsed') ? '▲' : '▼';
+    if (wasCollapsed && typeof Ember !== 'undefined') Ember.onPreviewOpen();
   }
 
   function toggleWrap() {
@@ -1193,6 +1195,46 @@ const Snapshots = (() => {
     lastFocusedEl = null;
   }
 
+  /* ---- Diff overlay ---- */
+  function showDiff(snap) {
+    try {
+      const snapData = JSON.parse(snap.data);
+      const snapText = DiffEngine.extractTextFromSnapshot(snapData);
+      const curTab = State.getActive();
+      const curText = DiffEngine.extractTextFromSnapshot({ blocks: curTab?.blocks, separator: curTab?.separator });
+      const ops = DiffEngine.computeDiff(snapText, curText);
+      const stats = DiffEngine.renderStats(ops);
+      const html = DiffEngine.renderInlineDiff(ops);
+
+      let overlay = document.getElementById('snap-diff-overlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'snap-diff-overlay';
+        overlay.className = 'snap-diff-overlay';
+        overlay.innerHTML = `
+          <div class="snap-diff-panel">
+            <div class="snap-diff-header">
+              <span class="snap-diff-title">Diff: версия vs текущее</span>
+              <span class="snap-diff-stats"></span>
+              <button type="button" class="snap-diff-close" aria-label="Закрыть">✕</button>
+            </div>
+            <div class="snap-diff-body"></div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+        overlay.querySelector('.snap-diff-close').addEventListener('click', () => overlay.style.display = 'none');
+      }
+
+      overlay.querySelector('.snap-diff-title').textContent = `Diff: «${snap.name}» vs текущее`;
+      overlay.querySelector('.snap-diff-stats').textContent = stats.ins || stats.del ? `+${stats.ins} / -${stats.del}` : '';
+      overlay.querySelector('.snap-diff-body').innerHTML = html;
+      overlay.style.display = 'flex';
+    } catch (err) {
+      console.error('Snapshots: diff failed', err);
+      Toast.show('Ошибка построения diff', 'error');
+    }
+  }
+
   /* ---- Рендер списка ---- */
   function renderList() {
     if (!listEl) return;
@@ -1256,7 +1298,16 @@ const Snapshots = (() => {
         }
       });
 
+      const diffBtn = document.createElement('button');
+      diffBtn.type = 'button';
+      diffBtn.className = 'btn-snap-diff';
+      diffBtn.setAttribute('aria-label', 'Показать diff');
+      diffBtn.title = 'Сравнить с текущим';
+      diffBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M10 10l4 4"/></svg>`;
+      diffBtn.addEventListener('click', () => showDiff(snap));
+
       acts.appendChild(restoreBtn);
+      acts.appendChild(diffBtn);
       acts.appendChild(delBtn);
       row.appendChild(info);
       row.appendChild(acts);
