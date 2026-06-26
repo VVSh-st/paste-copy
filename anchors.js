@@ -384,10 +384,10 @@ const Anchors = (() => {
       const idx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {
-        const clampedTop = Math.max(0, Math.min(rawTop, wrapH - lineHeight));
+        const clampedTop = Math.max(0, Math.min(rawTop - 1, wrapH - lineHeight));
         const m = document.createElement('div');
         m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + lineHeight + 'px;top:' + clampedTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 2) + 'px;top:' + clampedTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
@@ -401,7 +401,7 @@ const Anchors = (() => {
         const gTop = Math.max(0, Math.min(rawTop, wrapH - lineHeight));
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + lineHeight + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + (lineHeight - 2) + 'px;top:' + (gTop + 1) + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });
