@@ -525,7 +525,7 @@
 /* ===== Tooltip ===== */
 .ember-tooltip {
   position: absolute;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
   background: rgba(30, 18, 10, 0.95);
