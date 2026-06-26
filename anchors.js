@@ -401,10 +401,10 @@ const Anchors = (() => {
       const idx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {
-        const mTop = Math.max(0, Math.min(rawTop + 6, wrapH - lineHeight));
+        const mTop = Math.max(0, Math.min(rawTop + 10, wrapH - lineHeight));
         const m = document.createElement('div');
         m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 8) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 10) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
@@ -415,10 +415,10 @@ const Anchors = (() => {
         let selW = Math.max(2, Math.abs(endPos.x - pos.x));
         const gLeft = Math.min(pos.x, endPos.x);
         if (gLeft + selW > wrapW) selW = Math.max(2, wrapW - gLeft);
-        const gTop = Math.max(0, Math.min(rawTop + 6, wrapH - lineHeight));
+        const gTop = Math.max(0, Math.min(rawTop + 10, wrapH - lineHeight));
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + (lineHeight - 8) + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + (lineHeight - 10) + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });
@@ -493,13 +493,17 @@ const Anchors = (() => {
     const rerender = () => _renderMarkersAll();
     State.onChange(rerender);
     State.onLive(rerender);
+    let _scrollTimer = null;
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
         if (bel) {
-          // При скролле убираем фон, оставляем только левый маркер
+          // При скролле убираем фон
           bel.querySelectorAll('.anchor-marker-gutter').forEach(g => g.remove());
+          // Через 200мс после остановки — перерисовываем
+          clearTimeout(_scrollTimer);
+          _scrollTimer = setTimeout(() => { if (bel.isConnected) _renderMarkers(bel, ta); }, 200);
         }
       }
     }, true);
