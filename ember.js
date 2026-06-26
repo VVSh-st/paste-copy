@@ -1000,7 +1000,7 @@ const Ember = (() => {
     if (lastFrame === 0) lastFrame = timestamp;
     const dt = Math.min(timestamp - lastFrame, 50);
     lastFrame = timestamp;
-    update(timestamp, dt);
+    try { update(timestamp, dt); } catch (e) { console.error('Ember update error:', e); }
     rafId = requestAnimationFrame(animate);
   }
 
