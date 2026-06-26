@@ -176,10 +176,6 @@ const Anchors = (() => {
       row.className = 'slash-item' + (idx === _navIdx ? ' focused' : '');
       row.setAttribute('role', 'option');
 
-      const hotkey = document.createElement('span');
-      hotkey.className = 'slash-hotkey';
-      hotkey.textContent = String(idx + 1);
-
       const kind = document.createElement('span');
       kind.className = 'slash-kind';
       kind.textContent = '⚓';
@@ -191,22 +187,12 @@ const Anchors = (() => {
       const del = document.createElement('span');
       del.className = 'anchor-palette-del';
       del.textContent = '✕';
-      del.title = 'Двойное нажатие — удалить';
-      let delClicks = 0;
-      let delTimer = null;
+      del.title = 'Удалить якорь';
       del.addEventListener('click', ev => {
         ev.stopPropagation();
-        delClicks++;
-        if (delClicks >= 2) {
-          clearTimeout(delTimer);
-          removeAnchorById(a.id);
-          _closePalette();
-          Toast.show('Якорь удалён', 'success');
-          return;
-        }
-        del.classList.add('anchor-palette-del-pending');
-        clearTimeout(delTimer);
-        delTimer = setTimeout(() => { delClicks = 0; del.classList.remove('anchor-palette-del-pending'); }, 600);
+        removeAnchorById(a.id);
+        _closePalette();
+        Toast.show('Якорь удалён', 'success');
       });
 
       row.addEventListener('click', ev => {
@@ -216,7 +202,7 @@ const Anchors = (() => {
         _closePalette();
       });
 
-      row.append(hotkey, kind, text, del);
+      row.append(kind, text, del);
       _palette.appendChild(row);
     });
 
@@ -356,7 +342,9 @@ const Anchors = (() => {
     const anchors = _getAnchors();
     const settings = getMarkerSettings();
     const blockId = blockEl.dataset.id;
-    const blockAnchors = anchors.filter(a => a.blockId === blockId);
+    const blk = _findBlockById(State.getActive()?.blocks || [], blockId);
+    const activeSub = blk ? blk.activeSubtab : null;
+    const blockAnchors = anchors.filter(a => a.blockId === blockId && (a.subtabIdx == null || a.subtabIdx === activeSub));
     if (!blockAnchors.length) return;
 
     const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
