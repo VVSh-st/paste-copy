@@ -1008,6 +1008,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(tools);
 
     ta.className   = 'block-textarea';
+    ta.spellcheck  = b.type === 'text';
     ta.value       = b.subtabs[b.activeSubtab].value || '';
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
