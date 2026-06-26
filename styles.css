@@ -5562,7 +5562,9 @@ body.help-open {
   position: fixed;
   z-index: 9999;
   display: block;
-  width: min(260px, calc(100vw - 16px));
+  width: fit-content;
+  min-width: 80px;
+  max-width: min(260px, calc(100vw - 16px));
   max-height: min(260px, calc(100vh - 18px));
   overflow-y: auto;
   padding: 5px;
