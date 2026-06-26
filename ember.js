@@ -95,6 +95,12 @@ const Ember = (() => {
   let io = null;
   let hasActiveSquash = false;
 
+  let glowTrackX = 0, glowTrackY = 0;
+  let ashTrackX = 0, ashTrackY = 0;
+  let hazeTrackX = 0;
+  let emberMood = 'calm';
+  let lastMoodCheck = 0;
+
   // --- курсор ---
   const mouse = { x: 0, y: 0, lastSampleX: 0, lastSampleY: 0, lastSampleTime: 0, speed: 0 };
   const caret = { x: 0, y: 0, active: false, typing: false, _typingTimer: null };
@@ -469,6 +475,7 @@ const Ember = (() => {
     if (active.has(type)) return;
     if ((nextDue[type] ?? 0) > now) return;
     if (Math.random() >= probability) { rescheduleDue(type); return; }
+    if (Math.random() < 0.35) { rescheduleDue(type); return; }
     if (active.size >= MAX_EFFECTS) {
       let worstType = null, worstPri = -1;
       for (const t of active.keys()) {
@@ -481,6 +488,9 @@ const Ember = (() => {
     }
     const extra = typeof extraFn === 'function' ? extraFn() : (extraFn || {});
     active.set(type, { phase: 0, durMs: rand(durRangeMs[0], durRangeMs[1]), ...extra });
+    const eff = active.get(type);
+    if (eff.mag !== undefined) eff.mag *= rand(0.7, 1.4);
+    if (eff.side !== undefined && Math.random() < 0.15) eff.side *= -1;
   }
 
   function advanceEffect(type, dt, onEnd) {
@@ -558,6 +568,8 @@ const Ember = (() => {
     pose.rotate += shake * 5 * amp * w;
     pose.scaleX *= 1 + Math.abs(shake) * 0.04 * amp * w;
     pose.squash += shake * 0.06 * amp * w;
+    pose.crustX = -shake * 0.7;
+    pose.ashShiftX = shake * 1.2;
   }
 
   function applyTiltPose(pose, eff) {
@@ -616,15 +628,17 @@ const Ember = (() => {
 
     const w = eff._geomWeight ?? 1;
     pose.squash += (-snap * 0.6 + bulge * 0.45) * mag * w;
-    pose.scaleX *= 1 + (bulge * 0.1 - snap * 0.05) * mag * w;
-    pose.x += side * (bulge * 1.2 + tremor * 0.6) * mag * w;
-    pose.rotate += side * tremor * 5 * mag * w;
+    pose.scaleX *= 1 + (bulge * 0.16 - snap * 0.05) * mag * w;
+    pose.x += side * (bulge * 1.2 + tremor * 0.6 + 2.5) * mag * w;
+    pose.rotate += side * tremor * 7 * mag * w;
     pose.brightness += (snap + bulge * 0.7) * mag;
 
     if (!eff.crackFired && p > 0.1 && p < 0.15) {
       eff.crackFired = true;
       igniteCrackSide(side);
       setTimeout(() => spawnSpark(side > 0 ? 0.7 : 0.3), 40);
+      setTimeout(() => spawnAshParticle(), 50);
+      setTimeout(() => spawnAshParticle(), 140);
     }
   }
 
@@ -640,6 +654,8 @@ const Ember = (() => {
     pose.scaleX *= 1 + (crouch * 0.1 - reach * 0.06 + settle * 0.06) * w;
     pose.y += (crouch * 1.2 - reach * 1.6 + settle * 0.8) * w;
     pose.rotate += Math.sin(p * Math.PI * 2) * 2 * (1 - p) * w;
+    pose.glowY -= reach * 2;
+    pose.glintX += reach * 8;
   }
 
   function applyGlintPose(pose, eff) {
@@ -679,7 +695,8 @@ const Ember = (() => {
     const k = bump(eff.phase, 0.3, 0.7);
     pose.glow += k * 0.4;
     pose.ringExpand += k * 2.5;
-    pose.glowY -= k * 1;
+    pose.glowY -= k * 2;
+    pose.glowSkewX += Math.sin(eff.phase * Math.PI * 3) * 8;
     pose.squash += -k * 0.05;
     pose.scaleX *= 1 + k * 0.01;
   }
@@ -692,19 +709,24 @@ const Ember = (() => {
     pose.scaleX *= 1 + beat * 0.05;
     pose.squash += -beat * 0.15;
     pose.y -= beat * 0.5;
-    pose.glow += beat * 0.45;
+    pose.glow += beat * 0.8;
+    pose.ringExpand += beat * 4;
   }
 
   function applyAshDriftPose(pose, eff) {
     const k = bump(eff.phase, 0.2, 0.8);
     const dx = (eff.dx ?? 0) * k;
-    pose.ashShiftX = dx;
+    pose.ashShiftX = dx * 2.2;
     pose.ashShiftY = Math.sin(eff.phase * Math.PI) * 0.5;
-    pose.ashRot = dx * 1.5;
+    pose.ashRot = dx * 4;
     pose.crustX = dx * 0.3;
     pose.crustRot = -dx * 0.4;
     pose.squash += Math.abs(dx) * 0.03;
     pose.rotate -= dx * 0.4;
+    if (k > 0.6 && !eff.spawned) {
+      eff.spawned = true;
+      spawnAshParticle();
+    }
   }
 
   function applyGustPose(pose, eff) {
@@ -722,7 +744,13 @@ const Ember = (() => {
   }
 
   function commitPose(pose, now, dt) {
-    const shiftX = heatOffsetX * 0.6 + pose.x * 0.1 + pose.ashShiftX * 0.3;
+    glowTrackX += (pose.glowX - glowTrackX) * 0.08;
+    glowTrackY += (pose.glowY - glowTrackY) * 0.08;
+    ashTrackX += (pose.ashShiftX - ashTrackX) * 0.03;
+    ashTrackY += (pose.ashShiftY - ashTrackY) * 0.03;
+    hazeTrackX += (pose.x * 0.1 - hazeTrackX) * 0.015;
+
+    const shiftX = heatOffsetX * 0.6 + pose.x * 0.1 + ashTrackX * 0.3;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.1;
 
     root.style.setProperty('--shiftX', shiftX.toFixed(2) + 'px');
@@ -754,16 +782,16 @@ const Ember = (() => {
 
     root.style.setProperty('--glowSkewX', pose.glowSkewX.toFixed(1) + 'deg');
     root.style.setProperty('--glowSkewY', pose.glowSkewY.toFixed(1) + 'deg');
-    root.style.setProperty('--glowX', pose.glowX.toFixed(2) + 'px');
-    root.style.setProperty('--glowY', pose.glowY.toFixed(2) + 'px');
+    root.style.setProperty('--glowX', glowTrackX.toFixed(2) + 'px');
+    root.style.setProperty('--glowY', glowTrackY.toFixed(2) + 'px');
 
     root.style.setProperty('--crustX', pose.crustX.toFixed(2) + 'px');
     root.style.setProperty('--crustY', pose.crustY.toFixed(2) + 'px');
     root.style.setProperty('--crustRot', pose.crustRot.toFixed(2) + 'deg');
     root.style.setProperty('--crustScale', pose.crustScale.toFixed(3));
 
-    root.style.setProperty('--ashShiftX', pose.ashShiftX.toFixed(2) + 'px');
-    root.style.setProperty('--ashShiftY', pose.ashShiftY.toFixed(2) + 'px');
+    root.style.setProperty('--ashShiftX', ashTrackX.toFixed(2) + 'px');
+    root.style.setProperty('--ashShiftY', ashTrackY.toFixed(2) + 'px');
     root.style.setProperty('--ashRot', pose.ashRot.toFixed(2) + 'deg');
 
     root.style.setProperty('--ringExpand', pose.ringExpand.toFixed(2) + 'px');
@@ -1085,6 +1113,10 @@ const Ember = (() => {
           const px = parseFloat(p.el.style.left);
           const py = parseFloat(p.el.style.top);
           if (!isNaN(px) && !isNaN(py)) spawnLandingGlow(px, py);
+        }
+        if (p.isSpark && t > 0.8 && !p.ashSpawned) {
+          p.ashSpawned = true;
+          spawnAshParticle();
         }
         releaseEl(p.el);
         if (p.isSpark) activeSparks = Math.max(0, activeSparks - 1);
@@ -1961,6 +1993,27 @@ const Ember = (() => {
 
   // ---------- основной кадр ----------
 
+  function updateMood(now) {
+    if (now - lastMoodCheck < 3000) return;
+    lastMoodCheck = now;
+    const recentActivity = heatBoost;
+    const h = hoursWithoutActivity();
+    if (recentActivity > 0.3) emberMood = 'overheated';
+    else if (h < 1) emberMood = 'active';
+    else if (h < 24) emberMood = 'calm';
+    else emberMood = 'sleepy';
+  }
+
+  function updateRingSegments(now) {
+    if (Math.random() < 0.3) {
+      const start = Math.floor(rand(0, 12));
+      const len = Math.floor(rand(2, 5));
+      for (let i = start; i < start + len; i++) {
+        segments[i % 12].style.setProperty('--seg-flash', '0.8');
+      }
+    }
+  }
+
   function applyEggVars() {
     coreEl.style.setProperty('--cursorLeanX', '0');
     coreEl.style.setProperty('--cursorLeanY', '0');
@@ -2073,25 +2126,27 @@ const Ember = (() => {
     updateHeatZones(dt);
     updateHotspots(now, dt);
     updateWind(now, dt);
+    updateMood(now);
     applyStatus();
     if (heatBoost > 0 && statusState !== 'error') heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
 
     // --- запуск эффектов ядра с рандомными параметрами ---
     if (!testMode) {
-      tryStart('sigh', 0.5, [4000, 5000], () => ({ mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) }));
-      tryStart('calmBurn', 0.8, [2000, 3000], () => ({ mag: rand(0.05, 0.1), hue: rand(-6, 12) }));
-      if (intensity > 0.5 && !reduceMotion) tryStart('wiggle', 0.3, [700, 1100], () => ({ amp: rand(0.9, 1.3), mag: rand(0.7, 1.1) }));
-      tryStart('tilt', 0.25, [2000, 2000], () => ({ target: rand(-1, 1) }));
-      tryStart('microShift', 0.2, [1000, 2000], () => ({ dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }));
-      tryStart('crackle', 0.4, [80, 160], () => ({ mag: rand(0.9, 1.5), side: Math.random() < 0.5 ? -1 : 1 }));
-      tryStart('stretch', 0.35, [3000, 4200], () => ({ amp: rand(0.9, 1.25), mag: rand(0.7, 1.1) }));
-      tryStart('glint', 0.3, [2000, 3000], () => ({ hue: rand(15, 35), sat: rand(0.3, 0.6) }));
-      if (intensity < 0.4) tryStart('sleepySag', 0.25, [3000, 5000], () => ({ mag: rand(0.6, 1.0) }));
-      tryStart('smolder', 0.3, [3000, 4000], () => ({ hue: rand(10, 26), sat: rand(0.15, 0.32) }));
-      tryStart('heatRadiance', 0.25, [2500, 3500]);
-      tryStart('glowPulse', 0.3, [2000, 3000]);
-      tryStart('ashDrift', 0.3, [3000, 4000], () => ({ dx: rand(-3, 3) }));
-      tryStart('gust', 0.15, [1200, 1800], () => ({ power: rand(0.6, 1), dir: Math.random() < 0.5 ? -1 : 1, mag: rand(0.7, 1.1) }));
+      const moodMul = emberMood === 'active' ? 1.4 : emberMood === 'overheated' ? 1.6 : emberMood === 'sleepy' ? 0.5 : 1;
+      tryStart('sigh', 0.5 * moodMul, [4000, 5000], () => ({ mag: rand(0.04, 0.08), glow: rand(0.15, 0.28) }));
+      tryStart('calmBurn', 0.8 * moodMul, [2000, 3000], () => ({ mag: rand(0.05, 0.1), hue: rand(-6, 12) }));
+      if (intensity > 0.5 && !reduceMotion) tryStart('wiggle', 0.3 * moodMul, [700, 1100], () => ({ amp: rand(0.9, 1.3), mag: rand(0.7, 1.1) }));
+      tryStart('tilt', 0.25 * moodMul, [2000, 2000], () => ({ target: rand(-1, 1) }));
+      tryStart('microShift', 0.2 * moodMul, [1000, 2000], () => ({ dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }));
+      tryStart('crackle', 0.4 * moodMul, [80, 160], () => ({ mag: rand(0.9, 1.5), side: Math.random() < 0.5 ? -1 : 1 }));
+      tryStart('stretch', 0.35 * moodMul, [3000, 4200], () => ({ amp: rand(0.9, 1.25), mag: rand(0.7, 1.1) }));
+      tryStart('glint', 0.3 * moodMul, [2000, 3000], () => ({ hue: rand(15, 35), sat: rand(0.3, 0.6) }));
+      if (intensity < 0.4 || emberMood === 'sleepy') tryStart('sleepySag', 0.25 * moodMul, [3000, 5000], () => ({ mag: rand(0.6, 1.0) }));
+      tryStart('smolder', 0.3 * moodMul, [3000, 4000], () => ({ hue: rand(10, 26), sat: rand(0.15, 0.32) }));
+      tryStart('heatRadiance', 0.25 * moodMul, [2500, 3500]);
+      tryStart('glowPulse', 0.3 * moodMul, [2000, 3000]);
+      tryStart('ashDrift', 0.3 * moodMul, [3000, 4000], () => ({ dx: rand(-3, 3) }));
+      tryStart('gust', 0.15 * moodMul, [1200, 1800], () => ({ power: rand(0.6, 1), dir: Math.random() < 0.5 ? -1 : 1, mag: rand(0.7, 1.1) }));
     }
 
     const sigh = advanceEffect('sigh', dt);
@@ -2200,6 +2255,7 @@ const Ember = (() => {
 
       advanceSegEffects(dt);
       applySegEffects();
+      updateRingSegments(now);
 
       if (Date.now() > nextAshSpawn) {
         if (Math.random() < (lowFpsMode ? 0.4 : 0.88)) spawnAshParticle();
@@ -2400,6 +2456,10 @@ const Ember = (() => {
     particlePool = [];
     poolInited = false;
     activeSparks = 0;
+    glowTrackX = 0; glowTrackY = 0;
+    ashTrackX = 0; ashTrackY = 0;
+    hazeTrackX = 0;
+    emberMood = 'calm';
 
     root.removeEventListener('mouseenter', handlers.mouseenter);
     root.removeEventListener('mouseleave', handlers.mouseleave);

@@ -71,7 +71,7 @@
   width: 30px;
   height: 30px;
   transform: translate(-50%, -50%) rotate(var(--ringRot, 0deg)) scale(var(--ringPulse, 1));
-  opacity: calc(0.06 + var(--ringOpacity) * 0.78 * var(--spawnRing));
+  opacity: calc(0.14 + var(--ringOpacity) * 0.82 * var(--spawnRing));
   transition: opacity 0.4s ease;
   pointer-events: none;
 }
@@ -267,10 +267,10 @@
 }
 
 @keyframes emberDeform {
-  0%, 100% { border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%; }
-  25% { border-radius: 58% 42% 59% 41% / 42% 58% 46% 54%; }
-  50% { border-radius: 40% 60% 48% 52% / 58% 42% 45% 55%; }
-  75% { border-radius: 55% 45% 41% 59% / 44% 56% 53% 47%; }
+  0%, 100% { border-radius: 60% 40% 55% 45% / 38% 62% 42% 58%; }
+  25% { border-radius: 35% 65% 42% 58% / 60% 40% 55% 45%; }
+  50% { border-radius: 55% 45% 30% 70% / 50% 55% 45% 50%; }
+  75% { border-radius: 42% 58% 60% 40% / 45% 55% 48% 52%; }
 }
 
 .ember-glow {
