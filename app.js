@@ -741,7 +741,11 @@
   if (window.MemorySync?.init) window.MemorySync.init();
   if (typeof Anchors !== 'undefined') Anchors.init();
   if (typeof Translator !== 'undefined') Translator.init();
-  if (typeof Ember !== 'undefined') Ember.init();
+  if (typeof Ember !== 'undefined') Ember.init(null, State.getActive()?.id);
+
+  State.onChange(() => {
+    if (typeof Ember !== 'undefined') Ember.switchTab(State.getActive()?.id);
+  });
 
   window.addEventListener('beforeunload', () => Storage.save(State.serialize()));
 

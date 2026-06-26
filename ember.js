@@ -7,7 +7,7 @@ const Ember = (() => {
   'use strict';
 
   const LIFE = 7 * 24 * 60 * 60 * 1000;
-  const STORAGE_KEY = 'ember-state';
+  const STORAGE_KEY_PREFIX = 'ember-state-';
   const BROADCAST_KEY = 'ember-sync';
 
   const PRIORITY = {
@@ -18,6 +18,7 @@ const Ember = (() => {
   const MAX_EFFECTS = 3;
 
   let state = null;
+  let currentTabId = null;
   let root = null;
   let segments = [];
   let zones = [];
@@ -129,9 +130,13 @@ const Ember = (() => {
 
   // ---------- состояние / синхронизация ----------
 
-  function loadState() {
+  function getStorageKey(tabId) {
+    return STORAGE_KEY_PREFIX + (tabId || 'unknown');
+  }
+
+  function loadState(tabId) {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(getStorageKey(tabId));
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.lastEditTime === 'number') return parsed;
@@ -141,22 +146,24 @@ const Ember = (() => {
   }
 
   function saveState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+    try { localStorage.setItem(getStorageKey(currentTabId), JSON.stringify(state)); } catch {}
   }
 
   function broadcast() {
-    try { channel && channel.postMessage({ type: 'update', state }); } catch {}
+    try { channel && channel.postMessage({ type: 'update', tabId: currentTabId, state }); } catch {}
   }
 
   function setupBroadcast() {
     try {
       channel = new BroadcastChannel(BROADCAST_KEY);
       channel.onmessage = (e) => {
-        if (e.data?.type === 'update' && e.data?.state) state = e.data.state;
+        if (e.data?.type === 'update' && e.data?.tabId === currentTabId && e.data?.state) {
+          state = e.data.state;
+        }
       };
     } catch {}
     handlers.storageSync = (e) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
+      if (e.key === getStorageKey(currentTabId) && e.newValue) {
         try {
           const s = JSON.parse(e.newValue);
           if (s && typeof s.lastEditTime === 'number') state = s;
@@ -170,6 +177,15 @@ const Ember = (() => {
     state.lastEditTime = Date.now();
     saveState();
     broadcast();
+  }
+
+  function switchTab(newTabId) {
+    if (newTabId === currentTabId) return;
+    if (currentTabId) saveState();
+    currentTabId = newTabId;
+    state = loadState(currentTabId);
+    spawnStart = performance.now();
+    prevRemaining = remainingSegments();
   }
 
   // ---------- расчёт жизни угля ----------
@@ -1573,8 +1589,9 @@ const Ember = (() => {
 
   // ---------- инициализация ----------
 
-  function init(mountEl) {
-    state = loadState();
+  function init(mountEl, tabId) {
+    currentTabId = tabId || null;
+    state = loadState(currentTabId);
     createDOM();
     setupBroadcast();
     setupEventListeners();
@@ -1630,5 +1647,5 @@ const Ember = (() => {
     handlers = {};
   }
 
-  return { init, destroy, notifyEdit };
+  return { init, destroy, notifyEdit, switchTab };
 })();
