@@ -5587,11 +5587,13 @@ body.help-open {
   display: flex;
   align-items: center;
   gap: 0;
+  padding-right: 0;
 }
 .anchor-palette .slash-text {
   flex: 1;
   min-width: 0;
   max-width: none;
+  margin-right: 0;
 }
 .anchor-palette-del {
   flex-shrink: 0;
@@ -5601,6 +5603,7 @@ body.help-open {
   align-items: center;
   justify-content: center;
   margin-left: 2px;
+  padding: 0 2px;
   border-radius: 4px;
   font-size: 10px;
   color: var(--text3);

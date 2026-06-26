@@ -60,6 +60,13 @@ const Anchors = (() => {
     const blk = _findBlockById(tab.blocks || [], blockId);
     const subtabIdx = blk ? (blk.activeSubtab ?? null) : null;
 
+    // Если нет выделенного текста — используем название блока
+    let finalSnippet = snippet;
+    if (!finalSnippet && blk) {
+      const title = (blk.title || '').trim();
+      finalSnippet = title ? title.slice(0, 20) : '(пусто)';
+    }
+
     State.updateLive(t => {
       if (!t.anchors) t.anchors = [];
       t.anchors.push({
@@ -69,7 +76,7 @@ const Anchors = (() => {
         subtabIdx: subtabIdx,
         start: start,
         end: end,
-        snippet: snippet || '(пусто)',
+        snippet: finalSnippet,
         createdAt: Date.now(),
       });
       _navIdx = t.anchors.length - 1;
