@@ -525,21 +525,22 @@
 /* ===== Tooltip ===== */
 .ember-tooltip {
   position: absolute;
-  bottom: -28px;
+  bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
   background: rgba(30, 18, 10, 0.95);
   color: rgba(255, 180, 100, 0.95);
   font-size: 10px;
   font-family: var(--mono);
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: 6px;
-  white-space: pre-line;
+  white-space: pre;
   pointer-events: none;
   z-index: 30;
   opacity: 1;
   transition: opacity 0.3s ease;
   box-shadow: 0 2px 12px rgba(0,0,0,0.5);
   border: 1px solid rgba(255, 140, 50, 0.25);
-  line-height: 1.5;
+  line-height: 1.6;
+  min-width: 140px;
 }

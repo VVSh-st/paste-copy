@@ -1454,23 +1454,19 @@ const Ember = (() => {
     if (tooltipEl) tooltipEl.remove();
     const h = Math.floor(hoursWithoutActivity());
     const rem = remainingSegments();
-    let statusText;
-    if (statusState === 'saving') statusText = 'Сохранение...';
-    else if (statusState === 'saved') statusText = 'Сохранено';
-    else if (statusState === 'error') statusText = 'Ошибка сохранения';
-    else if (statusState === 'dirty') statusText = 'Есть несохранённые изменения';
-    else statusText = 'Нет активности';
 
-    const timeText = h < 1 ? 'менее часа' : `${h} ч. назад`;
+    const hoursAgo = h < 1 ? '< 1 ч' : `${h} ч`;
     const hoursToNextSeg = 2 - (hoursWithoutActivity() % 2);
     const minsToNext = Math.round(hoursToNextSeg * 60);
-    const countdownText = rem > 0 && rem < 12 ? `Следующее деление погаснет через ~${minsToNext} мин` : null;
+
     const lines = [
-      `Правка: ${timeText}`,
-      `Осталось: ${rem}/12`,
-      countdownText,
-      statusState ? `Статус: ${statusText}` : null,
-    ].filter(Boolean);
+      `⏱ ${hoursAgo} назад`,
+      `🔥 ${rem}/12`,
+    ];
+    if (rem > 0 && rem < 12) lines.push(`⏳ ~${minsToNext} мин`);
+    if (statusState === 'saving') lines.push('💾 сохранение...');
+    else if (statusState === 'saved') lines.push('✓ сохранено');
+    else if (statusState === 'error') lines.push('✗ ошибка');
 
     tooltipEl = document.createElement('div');
     tooltipEl.className = 'ember-tooltip';
