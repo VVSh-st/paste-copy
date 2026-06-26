@@ -517,6 +517,38 @@ const Ember = (() => {
 
   function normD(dx, dy, dist) { return dist > 0 ? { x: dx / dist, y: dy / dist } : { x: 0, y: 0 }; }
 
+  function updateCursorLean(now, dt) {
+    if (!browserFocused) {
+      cursorLean.x += (0 - cursorLean.x) * clamp(dt * 0.005, 0, 1);
+      cursorLean.y += (0 - cursorLean.y) * clamp(dt * 0.005, 0, 1);
+      cursorLean.squish += (0 - cursorLean.squish) * clamp(dt * 0.005, 0, 1);
+      cursorLean.scale += (1 - cursorLean.scale) * clamp(dt * 0.005, 0, 1);
+      cursorLean.tiltX += (0 - cursorLean.tiltX) * clamp(dt * 0.005, 0, 1);
+      cursorLean.tiltY += (0 - cursorLean.tiltY) * clamp(dt * 0.005, 0, 1);
+      return;
+    }
+    const ember = getEmberCenter();
+    let tx = 0, ty = 0, tScale = 1, tTiltX = 0, tTiltY = 0, tSquish = 0;
+    if (caret.active && caret.typing) {
+      const cDx = caret.x - ember.x;
+      const cDy = caret.y - ember.y;
+      const cDist = Math.sqrt(cDx * cDx + cDy * cDy);
+      if (cDist > 10 && cDist < 400) {
+        const cn = normD(cDx, cDy, cDist);
+        const cs = clamp(1 - cDist / 400, 0, 0.6);
+        tx = cn.x * cs * 5;
+        ty = cn.y * cs * 4;
+      }
+    }
+    const lerp = clamp(dt * 0.012, 0, 1);
+    cursorLean.x += (tx - cursorLean.x) * lerp;
+    cursorLean.y += (ty - cursorLean.y) * lerp;
+    cursorLean.squish += (tSquish - cursorLean.squish) * lerp;
+    cursorLean.scale += (tScale - cursorLean.scale) * lerp;
+    cursorLean.tiltX += (tTiltX - cursorLean.tiltX) * lerp;
+    cursorLean.tiltY += (tTiltY - cursorLean.tiltY) * lerp;
+  }
+
   // ---------- пасхалка ----------
 
   function checkEggTrigger() {
