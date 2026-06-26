@@ -139,7 +139,23 @@ const Anchors = (() => {
         const pos = _measurePos(ta, s);
         const cs = getComputedStyle(ta);
         const pt = parseFloat(cs.paddingTop) || 0;
-        ta.scrollTop = Math.max(0, pos.y - pt - ta.clientHeight / 2);
+        const target = Math.max(0, pos.y - pt - ta.clientHeight / 2);
+        // Плавная прокрутка
+        const start = ta.scrollTop;
+        const dist = target - start;
+        if (Math.abs(dist) > 1) {
+          const dur = Math.min(350, Math.abs(dist) * 1.5);
+          const t0 = performance.now();
+          const ease = t => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+          const tick = now => {
+            const p = Math.min((now - t0) / dur, 1);
+            ta.scrollTop = start + dist * ease(p);
+            if (p < 1) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        } else {
+          ta.scrollTop = target;
+        }
       }
     }));
   }
@@ -385,10 +401,10 @@ const Anchors = (() => {
       const idx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {
-        const mTop = Math.max(0, Math.min(rawTop + 3, wrapH - lineHeight));
+        const mTop = Math.max(0, Math.min(rawTop + 6, wrapH - lineHeight));
         const m = document.createElement('div');
         m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 4) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 8) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
@@ -399,10 +415,10 @@ const Anchors = (() => {
         let selW = Math.max(2, Math.abs(endPos.x - pos.x));
         const gLeft = Math.min(pos.x, endPos.x);
         if (gLeft + selW > wrapW) selW = Math.max(2, wrapW - gLeft);
-        const gTop = Math.max(0, Math.min(rawTop + 3, wrapH - lineHeight));
+        const gTop = Math.max(0, Math.min(rawTop + 6, wrapH - lineHeight));
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + (lineHeight - 4) + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + (lineHeight - 8) + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });
@@ -481,7 +497,10 @@ const Anchors = (() => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
-        if (bel) _renderMarkers(bel, ta);
+        if (bel) {
+          // При скролле убираем фон, оставляем только левый маркер
+          bel.querySelectorAll('.anchor-marker-gutter').forEach(g => g.remove());
+        }
       }
     }, true);
     document.addEventListener('focusin', e => {
