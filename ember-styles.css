@@ -47,6 +47,8 @@
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   will-change: transform;
+  z-index: 2;
+  overflow: visible;
 }
 
 .ember-ring {
