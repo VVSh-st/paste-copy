@@ -565,6 +565,8 @@ const Ember = (() => {
       ringExpand: 0,
       segScaleX: 1, segScaleY: 1,
       glintOpacity: 0, glintX: 58, glintY: 32, glintRot: -18, glintScale: 1,
+      massShiftX: 0, massShiftY: 0,
+      upperBulge: 0, lowerSag: 0, sideBulge: 0,
     };
   }
 
@@ -577,6 +579,8 @@ const Ember = (() => {
     pose.scaleX *= 1 + (-inhale * 0.04 + exhale * 0.08) * w;
     pose.y += (-inhale * 1.2 + exhale * 1.4) * w;
     pose.rotate += Math.sin(p * Math.PI * 2) * 1.2 * (1 - p) * w;
+    pose.massShiftY += exhale * 0.8;
+    pose.lowerSag += exhale * 0.6;
     const k = bump(p, 0.25, 0.75);
     pose.glow += k * (eff.glow ?? 0.2);
     pose.brightness += k * 0.12;
@@ -594,6 +598,7 @@ const Ember = (() => {
     pose.y += Math.sin(eff.phase * Math.PI) * -0.4 * w;
     pose.scaleX *= 1 + k * 0.035 * w;
     pose.squash += -k * 0.08 * w;
+    pose.massShiftX += sway * 0.3;
     pose.rotate += sway * 0.4 * w;
     pose.brightness += k * 0.15;
     pose.hue += k * (eff.hue ?? 0);
@@ -609,6 +614,8 @@ const Ember = (() => {
     pose.rotate += shake * 5 * amp * w;
     pose.scaleX *= 1 + Math.abs(shake) * 0.04 * amp * w;
     pose.squash += shake * 0.06 * amp * w;
+    pose.massShiftX += shake * 0.6 * amp;
+    pose.sideBulge += Math.abs(shake) * 0.3 * amp;
     pose.crustX = -shake * 0.7;
     pose.ashShiftX = shake * 1.2;
   }
@@ -672,6 +679,9 @@ const Ember = (() => {
     pose.scaleX *= 1 + (bulge * 0.16 - snap * 0.05) * mag * w;
     pose.x += side * (bulge * 1.2 + tremor * 0.6 + 2.5) * mag * w;
     pose.rotate += side * tremor * 7 * mag * w;
+    pose.massShiftX += side * bulge * 1.5 * mag;
+    pose.upperBulge += bulge * 0.8 * mag;
+    pose.sideBulge += snap * 0.5 * mag;
     pose.brightness += (snap + bulge * 0.7) * mag;
 
     if (!eff.crackFired && p > 0.1 && p < 0.15) {
@@ -698,6 +708,8 @@ const Ember = (() => {
     pose.squash += (-reach * 0.6 + crouch * 0.2) * amp * w;
     pose.scaleX *= 1 + (crouch * 0.1 - reach * 0.06 + settle * 0.06) * w;
     pose.y += (crouch * 1.2 - reach * 1.6 + settle * 0.8) * w;
+    pose.massShiftY += (-reach * 1.2 + crouch * 0.5) * amp;
+    pose.upperBulge += reach * 0.9 * amp;
     pose.rotate += Math.sin(p * Math.PI * 2) * 2 * (1 - p) * w;
     pose.glowY -= reach * 2;
     pose.glintX += reach * 8;
@@ -722,6 +734,8 @@ const Ember = (() => {
     pose.y += sag * 1.8 * w;
     pose.squash += sag * 0.25 * w;
     pose.scaleX *= 1 + sag * 0.08 * w;
+    pose.massShiftY += sag * 1.0;
+    pose.lowerSag += sag * 0.7;
     pose.rotate += (sag * 4 + nod * 2) * w;
     pose.brightness -= sag * 0.2;
   }
@@ -729,8 +743,11 @@ const Ember = (() => {
   function applySmolderPose(pose, eff) {
     const k = bump(eff.phase, 0.25, 0.85);
     const inner = Math.sin(eff.phase * Math.PI * 2.5) * 0.5 + 0.5;
-    pose.scaleX *= 1 + k * inner * 0.025;
+    pose.scaleX *= 1 + k * inner * 0.04;
+    pose.scaleY *= 1 - k * inner * 0.03;
     pose.squash += k * inner * 0.06;
+    pose.massShiftY -= k * inner * 0.5;
+    pose.sideBulge += k * inner * 0.4;
     pose.hue += k * (eff.hue ?? 20);
     pose.saturation += k * (eff.sat ?? 0.25);
     crackGlowMod += k * inner * 0.8;
@@ -782,6 +799,8 @@ const Ember = (() => {
     pose.rotate += dir * k * 8 * w;
     pose.scaleX *= 1 + k * 0.08 * w;
     pose.squash += -k * 0.12 * w;
+    pose.massShiftX += dir * k * 1.0;
+    pose.sideBulge += k * 0.6;
     pose.glowSkewX += dir * k * 12;
     pose.glowX += dir * k * 3;
     pose.brightness += k * 0.5;
@@ -850,11 +869,17 @@ const Ember = (() => {
 
     const sqBr = clamp(pose.squash, -1, 1);
     const absSqBr = Math.abs(sqBr);
-    if (absSqBr > 0.005) {
+    const msX = pose.massShiftX || 0;
+    const msY = pose.massShiftY || 0;
+    const uB = pose.upperBulge || 0;
+    const lS = pose.lowerSag || 0;
+    const sB = pose.sideBulge || 0;
+    const hasDeform = absSqBr > 0.005 || Math.abs(msX) > 0.05 || Math.abs(msY) > 0.05 || uB > 0.05 || lS > 0.05 || sB > 0.05;
+    if (hasDeform) {
       hasActiveSquash = true;
       coreEl.style.animation = 'none';
       coreEl.style.borderRadius =
-        `${(48+sqBr*1.5).toFixed(1)}% ${(52-sqBr*1.5).toFixed(1)}% ${(52-sqBr*2).toFixed(1)}% ${(48+sqBr*2).toFixed(1)}% / ${(50-sqBr*4).toFixed(1)}% ${(46+sqBr*2).toFixed(1)}% ${(50+sqBr*3).toFixed(1)}% ${(50-sqBr*2).toFixed(1)}%`;
+        `${(48+sqBr*1.5+uB*8-lS*3).toFixed(1)}% ${(52-sqBr*1.5+sB*6-uB*4).toFixed(1)}% ${(52-sqBr*2+lS*7-sB*3).toFixed(1)}% ${(48+sqBr*2+msX*3).toFixed(1)}% / ${(50-sqBr*4+msY*5-uB*4).toFixed(1)}% ${(46+sqBr*2+msX*2).toFixed(1)}% ${(50+sqBr*3+lS*5).toFixed(1)}% ${(50-sqBr*2+msY*3).toFixed(1)}%`;
     } else if (hasActiveSquash) {
       hasActiveSquash = false;
       coreEl.style.animation = '';
@@ -1022,6 +1047,9 @@ const Ember = (() => {
         slot.el.style.opacity = '0';
         slot.el.style.boxShadow = '';
         slot.el.style.transform = '';
+        slot.el.style.borderRadius = '';
+        slot.el.style.width = '';
+        slot.el.style.height = '';
         return slot.el;
       }
     }
@@ -1049,9 +1077,11 @@ const Ember = (() => {
     const roll = Math.random();
     const cls = 'ember-ash' + (roll < 0.33 ? ' dark' : roll > 0.8 ? ' bright' : '');
     const el = acquireEl(cls);
-    const size = rand(1.4, 3);
+    let size = rand(2.2, 4.8);
+    if (Math.random() < 0.06) size *= 2.2;
     el.style.width = size.toFixed(1) + 'px';
-    el.style.height = size.toFixed(1) + 'px';
+    el.style.height = (size * rand(0.7, 1.4)).toFixed(1) + 'px';
+    el.style.borderRadius = '60% 40% 70% 30% / 45% 55% 35% 65%';
     const startX = rand(28, 72);
     const startY = rand(35, 70);
     el.style.left = startX + '%';
@@ -1070,10 +1100,22 @@ const Ember = (() => {
 
   function spawnSpark(hBias) {
     if (activeSparks >= 7) return;
-    const el = acquireEl('ember-spark');
-    const size = rand(1.6, 3.4);
-    el.style.width = size.toFixed(1) + 'px';
-    el.style.height = (size * rand(1.4, 2.2)).toFixed(1) + 'px';
+    const sparkTypes = ['spark-point', 'spark-elongated', 'spark-broken', 'spark-double'];
+    const typeIdx = Math.floor(Math.random() * sparkTypes.length);
+    const sparkType = sparkTypes[typeIdx];
+    const el = acquireEl('ember-spark ' + sparkType);
+    let w, h;
+    if (sparkType === 'spark-point') {
+      w = rand(1.6, 2.4); h = w;
+    } else if (sparkType === 'spark-elongated') {
+      w = rand(1.2, 2); h = rand(3.5, 6);
+    } else if (sparkType === 'spark-broken') {
+      w = rand(2, 3.2); h = rand(2, 4);
+    } else {
+      w = rand(1.4, 2.2); h = rand(2.4, 4);
+    }
+    el.style.width = w.toFixed(1) + 'px';
+    el.style.height = h.toFixed(1) + 'px';
     const startX = hBias != null ? (hBias * 100) : rand(30, 70);
     const startY = rand(35, 60);
     el.style.left = startX + '%';
@@ -1087,7 +1129,7 @@ const Ember = (() => {
       drift: rand(-8, 8),
       sway: rand(1, 3),
       isSpark: true,
-      type: 'spark',
+      type: sparkType,
     });
   }
 
@@ -1189,6 +1231,7 @@ const Ember = (() => {
       const scale = p.isSpark ? (1 - t * 0.75) : (p.type === 'crumb' ? (1 - t * 0.5) : (1 - t * 0.3));
       const finalScale = (p.scalePulse && t < 0.5) ? scale * (1 + Math.sin(t * Math.PI) * 0.2) : scale;
       const rot = p.isSpark ? t * 50 : 0;
+      const wobble = (p.type === 'spark-broken') ? Math.sin(t * Math.PI * 6) * 15 : 0;
 
       let shadow = '';
       if (p.trail && p.type === 'shooting') {
@@ -1196,7 +1239,7 @@ const Ember = (() => {
         shadow = `0 ${trailLen.toFixed(0)}px 3px rgba(255,150,50,${(0.6 * (1 - t)).toFixed(2)})`;
       }
 
-      p.el.style.transform = `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${rot}deg) scale(${finalScale.toFixed(2)})`;
+      p.el.style.transform = `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${(rot + wobble).toFixed(1)}deg) scale(${finalScale.toFixed(2)})`;
       p.el.style.opacity = (opacity * (p.isSpark ? 1 : 0.92)).toFixed(3);
       if (shadow) p.el.style.boxShadow = shadow;
     }
