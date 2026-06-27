@@ -607,7 +607,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       sp.style.flex = '1';
       h.appendChild(sp);
       h.appendChild(createTodoSubtabNav(b));
-      const colsPicker = createColsPicker(b, el);
+      const colsPicker = createColsPicker(b);
       h.appendChild(colsPicker);
 
     } else {
@@ -2349,7 +2349,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     badge.textContent = `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
   }
 
-  function createColsPicker(b, el) {
+  function createColsPicker(b) {
     const wrap = document.createElement('span');
     wrap.className = 'cols-picker';
     for (let c = 1; c <= 4; c++) {
