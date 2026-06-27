@@ -607,8 +607,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       sp.style.flex = '1';
       h.appendChild(sp);
       h.appendChild(createTodoSubtabNav(b));
-      const colsPicker = createColsPicker(b);
-      h.appendChild(colsPicker);
 
     } else {
       const sp = document.createElement('span');
@@ -2277,17 +2275,26 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   function renderTableBody(b, body) {
     body.style.display = 'flex';
     body.style.flexDirection = 'column';
+    body.style.gap = '6px';
     const sub = b.subtabs[b.activeSubtab];
     if (!sub) return;
-    const cols = sub.cols || 2;
-    const rows = sub.rows || [['', ''], ['', '']];
+
+    function getCols() { return sub.cols || 2; }
+    function getRows() { return sub.rows || [['', ''], ['', '']]; }
 
     function renderGrid() {
-      const existing = body.querySelector('.table-grid');
-      if (existing) existing.remove();
+      const old = body.querySelector('.table-grid');
+      if (old) old.remove();
+      const oldFooter = body.querySelector('.table-footer');
+      if (oldFooter) oldFooter.remove();
+
+      const cols = getCols();
+      const rows = getRows();
+
       const grid = document.createElement('div');
       grid.className = 'table-grid';
       grid.style.setProperty('--table-cols', cols);
+
       rows.forEach((row, ri) => {
         while (row.length < cols) row.push('');
         if (row.length > cols) row.length = cols;
@@ -2298,46 +2305,102 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           cell.type = 'text';
           cell.className = 'table-cell';
           cell.value = row[ci] || '';
-          cell.placeholder = ri === 0 ? `Col ${ci + 1}` : '';
-          if (ri === 0) cell.style.fontWeight = '600';
+          if (ri === 0 && !row[ci]) cell.placeholder = `Col ${ci + 1}`;
+          cell.onfocus = () => { if (cell.placeholder) cell.placeholder = ''; };
           cell.oninput = () => { row[ci] = cell.value; State.updateLive(() => {}); };
           cell.onblur = () => State.snapshot();
           tr.appendChild(cell);
         }
-        if (ri > 0) {
-          const del = document.createElement('button');
-          del.type = 'button';
-          del.className = 'table-row-del';
-          del.textContent = '✕';
-          del.title = 'Удалить строку';
-          del.onclick = () => {
-            rows.splice(ri, 1);
-            State.updateLive(() => {});
-            renderGrid();
-            updateTableBadge(b);
-            State.snapshot();
-          };
-          tr.appendChild(del);
-        }
         grid.appendChild(tr);
       });
       body.appendChild(grid);
+
+      const footer = document.createElement('div');
+      footer.className = 'table-footer';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'table-ctrl-btn';
+      addBtn.textContent = '+';
+      addBtn.title = 'Добавить строку';
+      addBtn.onclick = () => {
+        getRows().push(Array(getCols()).fill(''));
+        State.updateLive(() => {});
+        renderGrid();
+        updateTableBadge(b);
+        State.snapshot();
+      };
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'table-ctrl-btn';
+      delBtn.textContent = '−';
+      delBtn.title = 'Удалить последнюю строку';
+      delBtn.onclick = () => {
+        const r = getRows();
+        if (r.length > 1) {
+          r.pop();
+          State.updateLive(() => {});
+          renderGrid();
+          updateTableBadge(b);
+          State.snapshot();
+        }
+      };
+
+      const sep = document.createElement('span');
+      sep.className = 'table-footer-sep';
+
+      const colLabel = document.createElement('span');
+      colLabel.className = 'table-col-label';
+
+      const colPrev = document.createElement('button');
+      colPrev.type = 'button';
+      colPrev.className = 'table-ctrl-btn';
+      colPrev.textContent = '◀';
+      colPrev.title = 'Меньше столбцов';
+      colPrev.onclick = () => {
+        const c = getCols();
+        if (c <= 1) return;
+        getRows().forEach(r => { if (r.length > c - 1) r.length = c - 1; });
+        sub.cols = c - 1;
+        State.updateLive(() => {});
+        renderGrid();
+        updateTableBadge(b);
+        State.snapshot();
+      };
+
+      const colNum = document.createElement('span');
+      colNum.className = 'table-col-num';
+      colNum.textContent = getCols();
+
+      const colNext = document.createElement('button');
+      colNext.type = 'button';
+      colNext.className = 'table-ctrl-btn';
+      colNext.textContent = '▶';
+      colNext.title = 'Больше столбцов';
+      colNext.onclick = () => {
+        const c = getCols();
+        if (c >= 15) return;
+        getRows().forEach(r => { while (r.length < c + 1) r.push(''); });
+        sub.cols = c + 1;
+        State.updateLive(() => {});
+        renderGrid();
+        updateTableBadge(b);
+        State.snapshot();
+      };
+
+      colLabel.appendChild(colPrev);
+      colLabel.appendChild(colNum);
+      colLabel.appendChild(colNext);
+
+      footer.appendChild(addBtn);
+      footer.appendChild(delBtn);
+      footer.appendChild(sep);
+      footer.appendChild(colLabel);
+      body.appendChild(footer);
     }
 
     renderGrid();
-
-    const addRowBtn = document.createElement('button');
-    addRowBtn.type = 'button';
-    addRowBtn.className = 'todo-add-btn';
-    addRowBtn.textContent = '+ Добавить строку';
-    addRowBtn.onclick = () => {
-      rows.push(Array(cols).fill(''));
-      State.updateLive(() => {});
-      renderGrid();
-      updateTableBadge(b);
-      State.snapshot();
-    };
-    body.appendChild(addRowBtn);
     b._renderGrid = renderGrid;
   }
 
@@ -2347,38 +2410,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     if (!badge) return;
     const sub = b.subtabs[b.activeSubtab];
     badge.textContent = `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
-  }
-
-  function createColsPicker(b) {
-    const wrap = document.createElement('span');
-    wrap.className = 'cols-picker';
-    for (let c = 1; c <= 4; c++) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'cols-btn' + ((b.subtabs[b.activeSubtab]?.cols || 2) === c ? ' active' : '');
-      btn.textContent = c;
-      btn.title = `${c} столбцов`;
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const sub = b.subtabs[b.activeSubtab];
-        if (!sub) return;
-        const oldCols = sub.cols || 2;
-        if (c === oldCols) return;
-        if (c > oldCols) {
-          sub.rows.forEach(r => { while (r.length < c) r.push(''); });
-        } else {
-          sub.rows.forEach(r => { if (r.length > c) r.length = c; });
-        }
-        sub.cols = c;
-        State.updateLive(() => {});
-        if (b._renderGrid) b._renderGrid();
-        updateTableBadge(b);
-        wrap.querySelectorAll('.cols-btn').forEach((b2, i) => b2.classList.toggle('active', i + 1 === c));
-        State.snapshot();
-      };
-      wrap.appendChild(btn);
-    }
-    return wrap;
   }
 
   function createTodoSubtabNav(b) {
