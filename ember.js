@@ -168,7 +168,7 @@ const Ember = (() => {
   let channel = null;
   let rafId = null;
   let lastFrame = 0;
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let handlers = {};
   let onClickCallback = null;
 
@@ -2799,12 +2799,32 @@ const Ember = (() => {
     handlers.rootFocus = () => { hover = true; };
     handlers.rootBlur = () => { hover = false; };
     handlers.contextmenu = (e) => { e.preventDefault(); if (!testMode) startTestMode(); };
+    let _clickTimer = null;
     handlers.click = () => {
-      heatBoost = 0.4;
-      for (let i = 0; i < 8; i++) setTimeout(() => spawnSpark(), i * 60);
-      for (let i = 0; i < 3; i++) setTimeout(() => spawnShootingSpark(), i * 120);
-      showTooltip();
-      if (typeof onClickCallback === 'function') onClickCallback();
+      clearTimeout(_clickTimer);
+      _clickTimer = setTimeout(() => {
+        heatBoost = 0.4;
+        for (let i = 0; i < 8; i++) setTimeout(() => spawnSpark(), i * 60);
+        for (let i = 0; i < 3; i++) setTimeout(() => spawnShootingSpark(), i * 120);
+        showTooltip();
+        if (typeof onClickCallback === 'function') onClickCallback();
+      }, 200);
+    };
+    handlers.dblclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clearTimeout(_clickTimer);
+      reduceMotion = !reduceMotion;
+      reduceMotionFrameSkip = 0;
+      const label = reduceMotion ? 'Economy ON ⚡' : 'Economy OFF 🔥';
+      const existing = root.querySelector('.ember-eco-toast');
+      if (existing) existing.remove();
+      const toast = document.createElement('div');
+      toast.className = 'ember-eco-toast';
+      toast.textContent = label;
+      root.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('show'));
+      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 1500);
     };
     handlers.keydown = (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlers.click(); }
@@ -2816,6 +2836,7 @@ const Ember = (() => {
     root.addEventListener('blur', handlers.rootBlur);
     root.addEventListener('contextmenu', handlers.contextmenu);
     root.addEventListener('click', handlers.click);
+    root.addEventListener('dblclick', handlers.dblclick);
     root.addEventListener('keydown', handlers.keydown);
 
     const isEditable = (el) =>

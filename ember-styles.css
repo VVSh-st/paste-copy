@@ -545,3 +545,13 @@
   min-width: 0;
   width: fit-content;
 }
+
+.ember-eco-toast {
+  position: absolute; bottom: -28px; left: 50%; transform: translateX(-50%);
+  background: rgba(30,30,30,0.92); color: #f5c542;
+  font-size: 11px; padding: 3px 10px; border-radius: 10px;
+  white-space: nowrap; pointer-events: none; opacity: 0;
+  transition: opacity 0.25s ease;
+  z-index: 10;
+}
+.ember-eco-toast.show { opacity: 1; }
