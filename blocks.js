@@ -448,7 +448,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = '{{' + (b.variableName || '?') + '}}';
         badge.title = 'Переменная';
       } else if (b.type === 'sticky') {
-        badge.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" width="14" height="14"><path d="M8 2v12M5 5h6M5 8h4M5 11h3"/><circle cx="12" cy="3" r="2.5" fill="var(--text-muted)" stroke="none" opacity=".4"/></svg>';
+        badge.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5.5h4M6 8h3M6 10.5h2"/></svg>';
         badge.title = 'Личная заметка — не попадёт в превью';
         badge.style.cursor = 'default';
       } else if (b.type === 'todo') {
@@ -2283,14 +2283,16 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         items.splice(idx + 1, 0, newItem);
         State.update(() => {});
         b._renderItems?.();
-        const inputs = row.parentElement.querySelectorAll('.todo-text');
+        const blockEl = row.closest('.block');
+        const inputs = blockEl?.querySelectorAll('.todo-text') || [];
         inputs[idx + 1]?.focus();
       } else if (e.key === 'Backspace' && !text.value && idx > 0) {
         e.preventDefault();
         items.splice(idx, 1);
         State.update(() => {});
         b._renderItems?.();
-        const inputs = row.parentElement.querySelectorAll('.todo-text');
+        const blockEl = row.closest('.block');
+        const inputs = blockEl?.querySelectorAll('.todo-text') || [];
         inputs[idx - 1]?.focus();
       } else if (e.key === 'Enter' && e.shiftKey) {
         // Shift+Enter = newline (allow default for contenteditable, but input doesn't support newlines)
@@ -2302,7 +2304,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
         State.update(() => {});
         b._renderItems?.();
-        const inputs = row.parentElement.querySelectorAll('.todo-text');
+        const blockEl = row.closest('.block');
+        const inputs = blockEl?.querySelectorAll('.todo-text') || [];
         inputs[newIdx]?.focus();
       }
     };
@@ -2420,6 +2423,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       commands: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 5l4 3-4 3M9 11h4"/></svg>',
       group:    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>',
       variable: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 3c0 0 1 1 1 5s-1 5-1 5M12 3c0 0-1 1-1 5s1 5 1 5M6 8h4"/></svg>',
+      sticky:   '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5.5h4M6 8h3M6 10.5h2"/><circle cx="11" cy="3.5" r="1.2" fill="var(--note-color, #d4c373)" stroke="none"/></svg>',
+      todo:     '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M5.5 7l1.5 1.5 3-3"/><path d="M5.5 11l1.5 1.5 3-3" opacity=".4"/></svg>',
     };
     return icons[type] || icons.text;
   }

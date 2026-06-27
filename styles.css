@@ -5691,7 +5691,7 @@ body.help-open {
 .todo-text {
   flex: 1; border: none; background: transparent;
   color: var(--text); font-size: inherit; outline: none;
-  min-width: 0;
+  min-width: 0; transition: opacity 0.15s;
 }
 .todo-text.done {
   opacity: 0.55; text-decoration: line-through;

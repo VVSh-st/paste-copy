@@ -309,7 +309,10 @@ const State = (() => {
             label: String(i + 1), name: '', items: [],
           }));
         }
+        while (b.subtabs.length > 5) b.subtabs.pop();
+        while (b.subtabs.length < 5) b.subtabs.push({ label: String(b.subtabs.length + 1), name: '', items: [] });
         if (b.activeSubtab === undefined) b.activeSubtab = 0;
+        if (b.activeSubtab >= 5) b.activeSubtab = 0;
       }
 
       return b;
