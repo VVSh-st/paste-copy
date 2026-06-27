@@ -21,6 +21,11 @@ window.TextLinter = (() => {
     redLine: false,
     paragraphBreaks: false,
     matrixAcceptEffect: true,
+    removeInvisibleChars: true,
+    normalizeDashes: false,
+    normalizeQuotes: false,
+    normalizeEllipsis: true,
+    normalizeAllNbsp: false,
   };
 
   const SAFE_LINE_SKIP_RE = /^\s*(?:!\S*|\/(?:system|user|assistant|developer)\b|```|~~~)/i;
@@ -109,6 +114,11 @@ window.TextLinter = (() => {
       { key: 'collapseSpaces', label: 'Схлопывать лишние пробелы' },
       { key: 'punctuationSpacing', label: 'Пробелы у знаков препинания' },
       { key: 'normalizeNbsp', label: 'Неразрывные пробелы после коротких предлогов', risky: true },
+      { key: 'removeInvisibleChars', label: 'Удалить невидимые символы (zero-width)', hint: 'Нулевые пробелы, символы соединения слов и другие невидимые Unicode-артефакты AI-текста' },
+      { key: 'normalizeDashes', label: 'Нормализовать тире (—, – → -)', risky: true, hint: 'Длинное и короткое тире заменяются дефисом' },
+      { key: 'normalizeQuotes', label: 'Нормализовать кавычки («умные» → прямые)', risky: true, hint: '" " \' \' → " \' — ломает типографику, но безопасно для кода/JSON' },
+      { key: 'normalizeEllipsis', label: 'Нормализовать многоточие (... → …)', hint: 'Три точки заменяются символом многоточия' },
+      { key: 'normalizeAllNbsp', label: 'Все неразрывные пробелы → обычные', risky: true, hint: 'Конвертирует ВСЕ \\u00A0 в обычные пробелы' },
       { key: 'normalizeAbbreviations', label: 'Нормализовать сокращения: т. д., т. п.', hint: 'По ГОСТ/Розенталю нужен пробел: «и т. д.». Если хочется бытовой компактности — включи опцию ниже.' },
       { key: 'compactAbbreviations', label: 'Компактные сокращения: т.д., т.п.', risky: true, hint: 'Личный стиль поверх типографики. Удобно, если пробел в сокращениях бесит сильнее, чем баг в пятницу.' },
       { key: 'collapseBlankLines', label: 'Убирать лишние пустые строки' },
@@ -136,6 +146,10 @@ window.TextLinter = (() => {
       finalPeriod: 0,
       paragraphs: 0,
       redLine: 0,
+      invisibleChars: 0,
+      dashes: 0,
+      quotes: 0,
+      ellipsis: 0,
       protected: 0,
     };
   }
@@ -344,6 +358,10 @@ window.TextLinter = (() => {
     const { indent: leadingIndent, body } = preserveIndent ? splitLeadingIndent(masked.text) : { indent: '', body: masked.text };
     let line = body;
 
+    if (opts.removeInvisibleChars) {
+      line = replaceTracked(line, /[\u200B\u200C\u200D\uFEFF\u00AD\u2060]/g, '', stats, 'invisibleChars');
+    }
+
     if (opts.trimLines) {
       const next = preserveIndent ? line.trimEnd() : line.trim();
       inc(stats, 'trim', countTrimDiff(line, next));
@@ -413,6 +431,23 @@ window.TextLinter = (() => {
 
     if (opts.normalizeNbsp) {
       line = normalizeNbsp(line, stats);
+    }
+
+    if (opts.normalizeAllNbsp) {
+      line = replaceTracked(line, /\u00A0/g, ' ', stats, 'nbsp');
+    }
+
+    if (opts.normalizeDashes) {
+      line = replaceTracked(line, /[—–]/g, '-', stats, 'dashes');
+    }
+
+    if (opts.normalizeQuotes) {
+      line = replaceTracked(line, /[\u201C\u201D]/g, '"', stats, 'quotes');
+      line = replaceTracked(line, /[\u2018\u2019]/g, "'", stats, 'quotes');
+    }
+
+    if (opts.normalizeEllipsis) {
+      line = replaceTracked(line, /\.\.\./g, '\u2026', stats, 'ellipsis');
     }
 
     if (opts.capitalAfterPunctuation && !LIST_OR_HEADING_RE.test(line)) {
@@ -947,6 +982,10 @@ window.TextLinter = (() => {
     if (result.stats.abbreviations) parts.push(`сокращения: ${result.stats.abbreviations}`);
     if (result.stats.compactAbbreviations) parts.push(`компакт. сокр.: ${result.stats.compactAbbreviations}`);
     if (result.stats.nbsp) parts.push(`неразр. пробелы: ${result.stats.nbsp}`);
+    if (result.stats.invisibleChars) parts.push(`невидимые: ${result.stats.invisibleChars}`);
+    if (result.stats.dashes) parts.push(`тире: ${result.stats.dashes}`);
+    if (result.stats.quotes) parts.push(`кавычки: ${result.stats.quotes}`);
+    if (result.stats.ellipsis) parts.push(`многоточие: ${result.stats.ellipsis}`);
     if (result.stats.blanks) parts.push('пустые строки');
     if (result.stats.caps) parts.push(`заглавные: ${result.stats.caps}`);
     if (result.stats.finalPeriod) parts.push(`точки: ${result.stats.finalPeriod}`);
