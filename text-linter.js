@@ -78,7 +78,7 @@ window.TextLinter = (() => {
     { id: 'comma-no', re: /(?:^|[^\p{L}\p{N}_])но\s+(?:это|если|когда|потом|затем|при|без|надо|нужно|можно|лучше)(?:$|[^\p{L}\p{N}_])/giu, text: 'проверь запятую перед «но»' },
     { id: 'long-sentence', re: /[^.!?…\n]{220,}[.!?…]?/gu, text: 'длинное предложение: возможно, стоит разбить' },
     { id: 'many-commas', re: /(?:[^.!?…\n]*,[^.!?…\n]*){5,}/gu, text: 'много запятых в одном предложении: возможно, лучше разбить' },
-    { id: 'double-word', re: /\b([\p{L}\p{N}_]{3,})\s+\1\b/giu, text: 'похоже на повтор слова' },
+    { id: 'double-word', re: /(?:^|[^\p{L}\p{N}_])([\p{L}\p{N}_]{3,})\s+\1(?:$|[^\p{L}\p{N}_])/giu, text: 'похоже на повтор слова' },
   ];
 
   let settings = loadSettings();
@@ -312,7 +312,7 @@ window.TextLinter = (() => {
       (match, prefix, word, offset) => {
         const wordText = String(word || '');
         if (PLACEHOLDER_FULL_RE.test(wordText)) return match;
-        if (!/^(?:[вксоуаия]|не|ни|на|за|по|из|от|до|со|об|обо|под|над)$/iu.test(wordText)) return match;
+        if (!/^(?:[вксоуаи]|не|ни|на|за|по|из|от|до|со|об|обо|под|над)$/iu.test(wordText)) return match;
         const wordOffset = offset + String(prefix || '').length;
         if (hasPlaceholderNearby(src, wordOffset)) return match;
         return `${prefix}${word}\u00A0`;
@@ -452,11 +452,13 @@ window.TextLinter = (() => {
 
     if (opts.capitalAfterPunctuation && !LIST_OR_HEADING_RE.test(line)) {
       const before = line;
-      line = line.replace(/(^|[.!?…]\s+|\uE001\s+)([a-zа-яё])/giu, (match, prefix, ch, offset) => {
+      const abbrMasked = maskSentenceAbbreviationDots(line);
+      let capLine = abbrMasked.text.replace(/(^|[.!?…]\s+|\uE001\s+)([a-zа-яё])/giu, (match, prefix, ch, offset) => {
         if (/^\uE001\s+$/u.test(prefix)) return match;
-        if (hasPlaceholderNearby(line, offset + String(prefix || '').length)) return match;
+        if (hasPlaceholderNearby(abbrMasked.text, offset + String(prefix || '').length)) return match;
         return prefix + ch.toUpperCase();
       });
+      line = abbrMasked.restore(capLine);
       inc(stats, 'caps', countDiff(before, line));
     }
 
@@ -552,7 +554,7 @@ window.TextLinter = (() => {
   function maskSentenceAbbreviationDots(text) {
     const DOT = '\uE002';
     const masked = String(text ?? '').replace(
-      /(?:\b(?:и\s+)?т\.\s?д\.|\b(?:и\s+)?т\.\s?п\.|\bт\.\s?[екно]\.|\bв\s+т\.\s?ч\.|\b(?:до\s+)?н\.\s?э\.)/giu,
+      /(?:^|[^\p{L}\p{N}_])(?:и\s+)?т\.\s?д\.|(?:^|[^\p{L}\p{N}_])(?:и\s+)?т\.\s?п\.|(?:^|[^\p{L}\p{N}_])т\.\s?[екно]\.|(?:^|[^\p{L}\p{N}_])в\s+т\.\s?ч\.|(?:^|[^\p{L}\p{N}_])(?:до\s+)?н\.\s?э\./giu,
       match => match.replace(/\./g, DOT)
     );
     return {
