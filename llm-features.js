@@ -566,11 +566,7 @@ window.LLMFeatures = (() => {
 
       _variants = result.trim().split('\n')
         .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
-        .filter(l => {
-          if (!l || l.length > 60) return false;
-          const fw = l.split(/\s+/)[0] || '';
-          return fw.length >= 2 && fw.length <= 6;
-        })
+        .filter(l => l.length > 0 && l.length <= 60)
         .slice(0, 4);
 
       if (_variants.length === 0) {
