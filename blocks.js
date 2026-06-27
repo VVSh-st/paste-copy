@@ -786,6 +786,33 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     if (arrows[0]) arrows[0].disabled = newIdx <= 0;
     if (arrows[1]) arrows[1].disabled = newIdx >= State.SUBTABS_COUNT - 1;
 
+    const oldOff = subtabOffsets.get(b.id) || 0;
+    const halfVisible = Math.floor(VISIBLE_SUBTABS / 2);
+    let newOff = newIdx - halfVisible;
+    newOff = Math.max(0, Math.min(newOff, State.SUBTABS_COUNT - VISIBLE_SUBTABS));
+    if (newOff !== oldOff) {
+      subtabOffsets.set(b.id, newOff);
+      const row = blockEl.querySelector('.block-subtabs');
+      if (row) {
+        row.innerHTML = '';
+        const end = Math.min(newOff + VISIBLE_SUBTABS, State.SUBTABS_COUNT);
+        for (let i = newOff; i < end; i++) {
+          const sub = b.subtabs[i];
+          const displayName = sub.name || sub.label;
+          const btn = document.createElement('span');
+          btn.className = 'block-subtab' + (i === newIdx ? ' active' : '');
+          btn.dataset.subtabIdx = i;
+          if ((sub.value || '').trim()) btn.classList.add('filled');
+          const labelSpan = document.createElement('span');
+          labelSpan.className = 'block-subtab-label';
+          labelSpan.textContent = displayName;
+          btn.appendChild(labelSpan);
+          btn.onclick = (ev) => { ev.stopPropagation(); patchSubtab(b, i); };
+          row.appendChild(btn);
+        }
+      }
+    }
+
     State.snapshot();
   }
 
