@@ -358,56 +358,71 @@ window.LLMFeatures = (() => {
   })();
 
   const AutoTitle = (() => {
+    let _variants = [];
+    let _current = 0;
+    let _blockId = null;
+    let _popup = null;
+
     async function autoTitle(blockId) {
       if (!_guard()) return;
 
-      const t     = _State.getActive();
+      const t = _State.getActive();
       const block = _State.findBlock(t?.blocks ?? [], blockId);
       if (!block) return;
 
-      const text = (block.subtabs?.[block.activeSubtab ?? 0]?.value ?? '').slice(0, 300).trim();
+      const text = (block.subtabs?.[block.activeSubtab ?? 0]?.value ?? '').slice(0, 500).trim();
       if (!text) {
         window.Toast?.show('Блок пустой', 'error');
         return;
       }
 
-      _removeExistingPopup();
+      _closePopup();
+
+      if (_variants.length > 0 && _blockId === blockId) {
+        _current = (_current + 1) % _variants.length;
+        _showPopup(blockId);
+        return;
+      }
 
       let result;
       try {
-        _showThinking('◕ Генерирую заголовок...');
+        _showThinking('◕ Генерирую варианты...');
         result = await _LLMCore.request({
           messages: [
             { role: 'system', content: _LLMCore.getPrompt('autotitle') + (_LANG_INSTR ?? '') },
             { role: 'user',   content: text },
           ],
-          maxTokens:  300,
-          stream:     false,
+          maxTokens: 300,
+          stream: false,
           featureTag: 'autotitle',
         });
       } catch (e) {
         if (e.name !== 'AbortError') window.Toast?.show('Ошибка: ' + e.message, 'error');
         return;
-      } finally {
-        _hideThinking();
-      }
+      } finally { _hideThinking(); }
 
       if (result == null || typeof result !== 'string') {
         window.Toast?.show('Пустой ответ модели', 'error');
         return;
       }
 
-      const title = Array.from(result.trim().replace(/["""]/g, '')).slice(0, 60).join('');
-      if (!title) {
-        window.Toast?.show('Модель вернула пустой заголовок', 'error');
+      _variants = result.trim().split('\n')
+        .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
+        .filter(l => l.length > 0 && l.length <= 60)
+        .slice(0, 4);
+
+      if (_variants.length === 0) {
+        window.Toast?.show('Не удалось распарсить варианты', 'error');
         return;
       }
 
-      _showTitleSuggestion(blockId, title);
+      _blockId = blockId;
+      _current = 0;
+      _showPopup(blockId);
     }
 
-    function _showTitleSuggestion(blockId, title) {
-      _removeExistingPopup();
+    function _showPopup(blockId) {
+      _closePopup();
 
       let anchor;
       try {
@@ -417,26 +432,30 @@ window.LLMFeatures = (() => {
       }
       if (!anchor) return;
 
+      const variant = _variants[_current];
+      const counter = `(${_current + 1}/${_variants.length})`;
+
       const popup = document.createElement('div');
       popup.className = 'llm-inline-popup';
       popup.setAttribute('role', 'dialog');
       popup.setAttribute('aria-modal', 'true');
       popup.setAttribute('aria-label', 'Подтверждение заголовка');
       popup.innerHTML =
-        `<span class="llm-inline-popup-text">${_esc(title)}</span>` +
-        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">Принять</button>` +
-        `<button type="button" class="btn-sm" data-action="retry"  title="Повторить запрос">↺</button>` +
-        `<button type="button" class="btn-sm" data-action="cancel">Отмена</button>`;
+        `<span class="llm-inline-popup-text">${_esc(variant)} <small style="opacity:.5">${counter}</small></span>` +
+        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept" title="Применить">✓</button>` +
+        `<button type="button" class="btn-sm" data-action="next" title="Следующий вариант">↺</button>` +
+        `<button type="button" class="btn-sm" data-action="cancel">✕</button>`;
 
       const r = anchor.getBoundingClientRect();
       popup.style.cssText = `position:fixed;top:${r.bottom + 6}px;left:${r.left}px;z-index:700`;
       document.body.appendChild(popup);
 
       const pr = popup.getBoundingClientRect();
-      if (pr.bottom > window.innerHeight) popup.style.top  = Math.max(8, r.top - pr.height - 6) + 'px';
-      if (pr.right  > window.innerWidth)  popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
+      if (pr.bottom > window.innerHeight) popup.style.top = Math.max(8, r.top - pr.height - 6) + 'px';
+      if (pr.right > window.innerWidth) popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
 
       popup.querySelector('[data-action="accept"]').focus();
+      _popup = popup;
 
       popup.addEventListener('click', function onPopupClick(e) {
         const action = e.target.closest('[data-action]')?.dataset.action;
@@ -445,40 +464,54 @@ window.LLMFeatures = (() => {
         if (action === 'accept') {
           _State.update(tab => {
             const b = _State.findBlock(tab.blocks, blockId);
-            if (b) b.title = title;
+            if (b) b.title = _variants[_current];
           });
-          _removePopup(popup);
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
           window.Toast?.show('Заголовок обновлён ✓', 'success');
-        } else if (action === 'retry') {
-          _removePopup(popup);
-          autoTitle(blockId);
+        } else if (action === 'next') {
+          _current = (_current + 1) % _variants.length;
+          _closePopup();
+          _showPopup(blockId);
         } else if (action === 'cancel') {
-          _removePopup(popup);
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
         }
       });
 
       popup._docClick = e => {
-        if (!popup.contains(e.target)) _removePopup(popup);
+        if (!popup.contains(e.target)) {
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
+        }
       };
       setTimeout(() => document.addEventListener('click', popup._docClick), 0);
 
       popup._escKey = e => {
-        if (e.key === 'Escape') _removePopup(popup);
+        if (e.key === 'Escape') {
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
+        }
       };
       document.addEventListener('keydown', popup._escKey);
     }
 
-    function _removeExistingPopup() {
-      const old = document.querySelector('.llm-inline-popup');
-      if (old) _removePopup(old);
-    }
-
-    function _removePopup(popup) {
-      if (popup._docClick) document.removeEventListener('click',   popup._docClick);
-      if (popup._escKey)   document.removeEventListener('keydown', popup._escKey);
-      popup._docClick = null;
-      popup._escKey   = null;
-      popup.remove();
+    function _closePopup() {
+      if (!_popup) return;
+      if (_popup._docClick) document.removeEventListener('click', _popup._docClick);
+      if (_popup._escKey) document.removeEventListener('keydown', _popup._escKey);
+      _popup._docClick = null;
+      _popup._escKey = null;
+      _popup.remove();
+      _popup = null;
     }
 
     return { autoTitle };
@@ -533,7 +566,11 @@ window.LLMFeatures = (() => {
 
       _variants = result.trim().split('\n')
         .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
-        .filter(l => l.length > 0 && l.length <= 60)
+        .filter(l => {
+          if (!l || l.length > 60) return false;
+          const fw = l.split(/\s+/)[0] || '';
+          return fw.length >= 2 && fw.length <= 6;
+        })
         .slice(0, 4);
 
       if (_variants.length === 0) {
