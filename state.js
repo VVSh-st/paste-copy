@@ -253,6 +253,15 @@ const State = (() => {
     } else if (type === 'variable') {
       block.variableName  = 'name';
       block.variableValue = '';
+    } else if (type === 'sticky') {
+      block.color    = 'yellow';
+      block.value    = '';
+      block.fontSize = 13;
+    } else if (type === 'todo') {
+      block.activeSubtab = 0;
+      block.subtabs = Array.from({ length: 10 }, (_, i) => ({
+        label: String(i + 1), name: '', items: [],
+      }));
     }
 
     return block;
@@ -286,6 +295,21 @@ const State = (() => {
       if (b.type === 'variable' && b.variableName === undefined) {
         b.variableName  = 'var';
         b.variableValue = '';
+      }
+
+      if (b.type === 'sticky') {
+        if (b.color === undefined) b.color = 'yellow';
+        if (b.value === undefined) b.value = '';
+      }
+
+      if (b.type === 'todo') {
+        if (!b.subtabs) {
+          b.activeSubtab = 0;
+          b.subtabs = Array.from({ length: 10 }, (_, i) => ({
+            label: String(i + 1), name: '', items: [],
+          }));
+        }
+        if (b.activeSubtab === undefined) b.activeSubtab = 0;
       }
 
       return b;
@@ -354,6 +378,8 @@ const State = (() => {
     else if (type === 'commands') { title = 'Быстрые команды'; icon = '⚡'; }
     else if (type === 'group')    { title = 'Группа';          icon = '📁'; }
     else if (type === 'variable') { title = 'Переменная';      icon = '🔤'; }
+    else if (type === 'sticky')   { title = 'Заметка';         icon = '📌'; }
+    else if (type === 'todo')     { title = 'Чеклист';         icon = '☑️'; }
     else {
       title = prompt('Название нового блока:', 'Новый блок');
       if (!title) return;

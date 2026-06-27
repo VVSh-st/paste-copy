@@ -582,6 +582,7 @@ hist.unshift(entry);
 saveCloudHistory(hist, settings.historyDepth);
 localStorage.setItem(K_LAST_SYNC, Date.now().toString());
 localStorage.setItem(K_DIRTY, 'false');
+try { await LocalBackup.save(state); } catch (e) { console.warn('LocalBackup failed:', e); }
 return entry;
 }
 // ═══ Wordlist Gist sync ═══════════════════════════════════════════════════
@@ -1021,6 +1022,19 @@ _connectingCode = null;
 _manualPushOpen = false;
 _historyMenuOpen = false;
 }
+function _relativeTime(ts, now) {
+const diff = now - ts;
+const sec = Math.floor(diff / 1000);
+if (sec < 60) return 'только что';
+const min = Math.floor(sec / 60);
+if (min < 60) return `${min} мин назад`;
+const hr = Math.floor(min / 60);
+if (hr < 24) return `${hr} ч назад`;
+const day = Math.floor(hr / 24);
+if (day === 1) return 'Вчера';
+if (day < 7) return `${day} дн назад`;
+return new Date(ts).toLocaleDateString('ru');
+}
 function _nextPushStr() {
 if (!isConnected() || !loadSettings().autoSave || !_debounceUntil) return null;
 const left = _debounceUntil - Date.now();
@@ -1052,6 +1066,108 @@ saveCloudHistory(getCloudHistory(), next.historyDepth);
 updateBadge();
 if (!silent) Toast.show('Настройки сохранены ✓', 'success');
 return next;
+}
+function _renderBackupsHTML(backups) {
+  if (!backups.length) {
+    return `<div class="backup-empty">Пока нет локальных копий. Появятся после первой синхронизации.</div>`;
+  }
+  let h = `<div class="backup-list">`;
+  const now = Date.now();
+  for (const entry of backups) {
+    const d = new Date(entry.ts);
+    const timeStr = d.toLocaleString('ru');
+    const relative = _relativeTime(entry.ts, now);
+    const size = fmtBytes(entry.size || 0);
+    const tabs = entry.tabsCount || 0;
+    h += `
+     <div class="backup-item">
+       <span class="backup-meta" title="${esc(timeStr)}">
+         <span style="margin-right:4px;">●</span>${esc(relative)} · ${tabs} вклад${tabs === 1 ? 'ка' : tabs < 5 ? 'ки' : 'ок'} · ${size}
+       </span>
+       <span class="backup-actions">
+         <button type="button" class="gs-btn gs-btn-sm gs-tip" id="gs-btn-restore-backup" data-ts="${entry.ts}"
+                 data-tip="Восстановить копию. Текущее состояние будет сохранено автоматически.">↺</button>
+         <button type="button" class="gs-btn gs-btn-sm gs-tip" id="gs-btn-download-backup" data-ts="${entry.ts}"
+                 data-tip="Скачать JSON-файл.">⬇</button>
+       </span>
+     </div>`;
+  }
+  h += `</div>`;
+  h += `<div class="gs-hint" style="margin-top:8px;font-size:11px;color:var(--text-muted);">
+     ⓘ Копии создаются автоматически при синхронизации. Хранятся только в этом браузере.
+   </div>`;
+  return h;
+}
+
+async function _loadBackups(body) {
+  const section = body.querySelector('#gs-backups-section');
+  if (!section) return;
+  try {
+    const backups = await LocalBackup.list();
+    const head = section.querySelector('.gs-history-head');
+    if (backups.length) {
+      const tools = document.createElement('div');
+      tools.className = 'gs-history-tools';
+      tools.innerHTML = `<button type="button" class="gs-btn gs-btn-sm gs-btn-danger gs-tip" id="gs-btn-clear-backups"
+                       data-tip="Удалить все локальные копии.">Очистить</button>`;
+      head.appendChild(tools);
+    }
+    section.lastElementChild.outerHTML = _renderBackupsHTML(backups);
+    section.querySelectorAll('#gs-btn-restore-backup').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ts = Number(btn.dataset.ts);
+        const tsStr = new Date(ts).toLocaleString('ru');
+        try { await LocalBackup.save(State.serialize()); } catch { /* ok */ }
+        if (!confirm(`Восстановить копию от ${tsStr}?\nТекущее состояние будет сохранено автоматически.`)) return;
+        btn.disabled = true; btn.textContent = '⏳';
+        try {
+          const data = await LocalBackup.restore(ts);
+          if (!data) throw new Error('Копия не найдена');
+          State.load(data);
+          Storage.save(data);
+          Toast.show('Локальная копия восстановлена ✓', 'success');
+          closeDialog();
+        } catch (err) {
+          Toast.show('Ошибка восстановления: ' + err.message, 'error');
+          btn.disabled = false; btn.textContent = '↺';
+        }
+      });
+    });
+    section.querySelectorAll('#gs-btn-download-backup').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ts = Number(btn.dataset.ts);
+        try {
+          const data = await LocalBackup.restore(ts);
+          if (!data) throw new Error('Копия не найдена');
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `paste-copy-backup-${new Date(ts).toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          Toast.show('Ошибка скачивания: ' + err.message, 'error');
+        }
+      });
+    });
+    const clearBtn = section.querySelector('#gs-btn-clear-backups');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', async () => {
+        if (!confirm('Удалить все локальные копии?')) return;
+        try {
+          await LocalBackup.clear();
+          Toast.show('Локальные копии удалены ✓', 'success');
+          if (isModalOpen()) renderModal();
+        } catch (e) {
+          Toast.show('Ошибка удаления: ' + e.message, 'error');
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('LocalBackup.list() failed:', e);
+    section.lastElementChild.outerHTML = `<div class="backup-empty">Локальный бэкап недоступен в этом браузере.</div>`;
+  }
 }
 function renderModal() {
 const body = document.getElementById('gist-modal-body');
@@ -1309,8 +1425,18 @@ if (st.history.length  > 0) {
   html += ` </section>`;
 }
 
+// ── Локальные копии (IndexedDB) — заглушка, заполняется асинхронно ────
+html += `
+ <section class="gs-section gs-backups-section" id="gs-backups-section" aria-label="Локальные копии">
+   <div class="gs-history-head">
+     <h3 class="gs-section-title">Локальные копии</h3>
+   </div>
+   <div class="backup-empty">Загрузка…</div>
+ </section>`;
+
 body.innerHTML = html;
 _bindModalEvents(body);
+_loadBackups(body);
 }
 function _bindSmartTips(body) {
 _tipsAbort?.abort();

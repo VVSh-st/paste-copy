@@ -303,6 +303,7 @@ const Blocks = (() => {
     const el = document.createElement('div');
     el.className = 'block block-type-' + b.type + (b.collapsed ? ' collapsed' : '');
     el.dataset.id = b.id;
+    if (b.type === 'sticky') el.setAttribute('data-color', b.color || 'yellow');
 
     el.appendChild(createHeader(b, orderMap[b.id]));
 
@@ -314,6 +315,8 @@ const Blocks = (() => {
         else if (b.type === 'snippets') renderSnippetsBody(b, body);
         else if (b.type === 'commands') renderCommandsBody(b, body);
         else if (b.type === 'variable') renderVariableBody(b, body);
+        else if (b.type === 'sticky')   renderStickyBody(b, body);
+        else if (b.type === 'todo')     renderTodoBody(b, body);
         el.appendChild(body);
       } else {
         renderGroupBody(b, el, orderMap);
@@ -444,6 +447,18 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else if (b.type === 'variable') {
         badge.textContent = '{{' + (b.variableName || '?') + '}}';
         badge.title = 'Переменная';
+      } else if (b.type === 'sticky') {
+        badge.textContent = '🚫👁';
+        badge.title = 'Не попадёт в превью';
+        badge.style.cursor = 'default';
+      } else if (b.type === 'todo') {
+        const sub = b.subtabs[b.activeSubtab];
+        const items = sub?.items || [];
+        const done = items.filter(i => i.done).length;
+        const total = items.length;
+        badge.className = 'block-order block-order-btn block-todo-count' + (done === total && total ? ' all-done' : '');
+        badge.textContent = `${done}/${total}`;
+        badge.title = 'Выполнено / всего';
       }
     }
     updateBadge();
@@ -505,6 +520,50 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       h.appendChild(autoTitleBtn);
       h.appendChild(createSubtabNav(b));
 
+    } else if (b.type === 'sticky') {
+      const sp = document.createElement('span');
+      sp.style.flex = '1';
+      h.appendChild(sp);
+
+      const palette = document.createElement('span');
+      palette.className = 'color-palette';
+      palette.style.display = 'none';
+      const colors = ['yellow', 'green', 'blue', 'pink', 'gray'];
+      const colorVars = { yellow: '#d4c373', green: '#7fb389', blue: '#7aa7d4', pink: '#cf8fb3', gray: '#9aa0a6' };
+      colors.forEach(c => {
+        const dot = document.createElement('span');
+        dot.className = 'color-dot' + (b.color === c ? ' active' : '');
+        dot.style.background = colorVars[c];
+        dot.onclick = e => {
+          e.stopPropagation();
+          State.update(() => { b.color = c; });
+          palette.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+          dot.classList.add('active');
+          palette.style.display = 'none';
+          el.setAttribute('data-color', c);
+          el.style.setProperty('--note-color', colorVars[c]);
+        };
+        palette.appendChild(dot);
+      });
+
+      const colorBtn = document.createElement('button');
+      colorBtn.type = 'button';
+      colorBtn.className = 'block-btn';
+      colorBtn.title = 'Цвет заметки';
+      colorBtn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:' + (colorVars[b.color] || colorVars.yellow) + ';vertical-align:middle;"></span>';
+      colorBtn.onclick = e => {
+        e.stopPropagation();
+        palette.style.display = palette.style.display === 'none' ? 'flex' : 'none';
+      };
+      h.appendChild(colorBtn);
+      h.appendChild(palette);
+
+    } else if (b.type === 'todo') {
+      const sp = document.createElement('span');
+      sp.style.flex = '1';
+      h.appendChild(sp);
+      h.appendChild(createTodoSubtabNav(b));
+
     } else {
       const sp = document.createElement('span');
       sp.style.flex = '1';
@@ -520,7 +579,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       addBtn.style.color = 'var(--green)';
       addBtn.onclick = e => {
         e.stopPropagation();
-        const type = prompt('Тип (text/snippets/commands/variable):', 'text');
+        const type = prompt('Тип (text/snippets/commands/variable/sticky/todo):', 'text');
         if (type) State.addBlock(type, b.id);
       };
       actions.appendChild(addBtn);
@@ -2062,6 +2121,226 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     wrap.appendChild(row); wrap.appendChild(hint);
     body.appendChild(wrap);
+  }
+
+  function renderStickyBody(b, body) {
+    body.style.display = 'flex';
+    body.style.flexDirection = 'column';
+
+    const ta = document.createElement('textarea');
+    ta.className = 'block-textarea';
+    ta.placeholder = 'Личная заметка, не попадёт в промпт';
+    ta.value = b.value || '';
+    ta.style.minHeight = '60px';
+    ta.style.resize = 'vertical';
+    ta.style.fontSize = (b.fontSize || 13) + 'px';
+    ta.oninput = () => { b.value = ta.value; State.updateLive(() => {}); autoGrow(ta); };
+    ta.onblur = () => State.snapshot();
+    ta.addEventListener('input', () => autoGrow(ta));
+
+    const label = document.createElement('div');
+    label.className = 'note-private';
+    label.textContent = 'private';
+
+    body.appendChild(ta);
+    body.appendChild(label);
+
+    requestAnimationFrame(() => autoGrow(ta));
+  }
+
+  function autoGrow(ta) {
+    ta.style.height = 'auto';
+    const maxH = 400;
+    ta.style.height = Math.min(ta.scrollHeight, maxH) + 'px';
+    ta.style.overflowY = ta.scrollHeight > maxH ? 'auto' : 'hidden';
+  }
+
+  function renderTodoBody(b, body) {
+    body.style.display = 'flex';
+    body.style.flexDirection = 'column';
+
+    const sub = b.subtabs[b.activeSubtab];
+    if (!sub) return;
+
+    // Subtab nav
+    const nav = createTodoSubtabNav(b);
+    body.appendChild(nav);
+
+    // Todo list
+    const list = document.createElement('div');
+    list.className = 'todo-list';
+
+    function renderItems() {
+      list.innerHTML = '';
+      const items = sub.items || [];
+      if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'todo-empty';
+        empty.textContent = 'Нет пунктов. Нажмите «+ Добавить пункт»';
+        list.appendChild(empty);
+      } else {
+        items.forEach((item, idx) => {
+          list.appendChild(createTodoItem(b, sub, item, idx, items));
+        });
+      }
+    }
+
+    renderItems();
+
+    // Add button
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'todo-add-btn';
+    addBtn.textContent = '+ Добавить пункт';
+    addBtn.onclick = () => {
+      const newItem = { id: uid(), text: '', done: false };
+      sub.items.push(newItem);
+      State.update(() => {});
+      renderItems();
+      const inputs = list.querySelectorAll('.todo-text');
+      inputs[inputs.length - 1]?.focus();
+    };
+
+    body.appendChild(list);
+    body.appendChild(addBtn);
+
+    // Store re-render for external use
+    b._renderItems = renderItems;
+  }
+
+  function createTodoSubtabNav(b) {
+    const nav = document.createElement('div');
+    nav.className = 'subtab-nav';
+    b.subtabs.forEach((sub, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'subtab-btn' + (i === b.activeSubtab ? ' active' : '');
+      const done = (sub.items || []).filter(x => x.done).length;
+      const total = (sub.items || []).length;
+      btn.textContent = sub.label;
+      btn.title = sub.name || (total ? `${done}/${total}` : sub.label);
+      btn.onclick = () => {
+        b.activeSubtab = i;
+        State.update(() => {});
+        renderTodoBody(b, nav.parentElement);
+      };
+      nav.appendChild(btn);
+    });
+    return nav;
+  }
+
+  function createTodoItem(b, sub, item, idx, items) {
+    const row = document.createElement('div');
+    row.className = 'todo-item';
+    row.dataset.idx = idx;
+
+    // Drag handle
+    const handle = document.createElement('span');
+    handle.className = 'todo-handle';
+    handle.innerHTML = '⠿';
+    handle.draggable = true;
+    handle.ondragstart = e => {
+      e.dataTransfer.setData('text/todo-idx', String(idx));
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.classList.add('dragging'), 0);
+    };
+    handle.ondragend = () => row.classList.remove('dragging');
+
+    // Checkbox
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'todo-checkbox';
+    cb.checked = item.done;
+    cb.onchange = () => {
+      item.done = cb.checked;
+      text.classList.toggle('done', item.done);
+      State.update(() => {});
+      updateTodoBadge(b);
+    };
+
+    // Text input
+    const text = document.createElement('input');
+    text.type = 'text';
+    text.className = 'todo-text' + (item.done ? ' done' : '');
+    text.value = item.text || '';
+    text.placeholder = 'Новый пункт…';
+    text.oninput = () => { item.text = text.value; State.updateLive(() => {}); };
+    text.onblur = () => State.snapshot();
+    text.onkeydown = e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const newItem = { id: uid(), text: '', done: false };
+        items.splice(idx + 1, 0, newItem);
+        State.update(() => {});
+        b._renderItems?.();
+        const inputs = row.parentElement.querySelectorAll('.todo-text');
+        inputs[idx + 1]?.focus();
+      } else if (e.key === 'Backspace' && !text.value && idx > 0) {
+        e.preventDefault();
+        items.splice(idx, 1);
+        State.update(() => {});
+        b._renderItems?.();
+        const inputs = row.parentElement.querySelectorAll('.todo-text');
+        inputs[idx - 1]?.focus();
+      } else if (e.key === 'Enter' && e.shiftKey) {
+        // Shift+Enter = newline (allow default for contenteditable, but input doesn't support newlines)
+      } else if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        const dir = e.key === 'ArrowUp' ? -1 : 1;
+        const newIdx = idx + dir;
+        if (newIdx < 0 || newIdx >= items.length) return;
+        [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
+        State.update(() => {});
+        b._renderItems?.();
+        const inputs = row.parentElement.querySelectorAll('.todo-text');
+        inputs[newIdx]?.focus();
+      }
+    };
+
+    // Delete button
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'todo-delete';
+    del.textContent = '✕';
+    del.onclick = () => {
+      items.splice(idx, 1);
+      State.update(() => {});
+      b._renderItems?.();
+    };
+
+    row.appendChild(handle);
+    row.appendChild(cb);
+    row.appendChild(text);
+    row.appendChild(del);
+
+    // Drag over for reorder
+    row.ondragover = e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    };
+    row.ondrop = e => {
+      e.preventDefault();
+      const fromIdx = parseInt(e.dataTransfer.getData('text/todo-idx'), 10);
+      if (isNaN(fromIdx) || fromIdx === idx) return;
+      const [moved] = items.splice(fromIdx, 1);
+      items.splice(idx, 0, moved);
+      State.update(() => {});
+      b._renderItems?.();
+    };
+
+    return row;
+  }
+
+  function updateTodoBadge(b) {
+    if (b.type !== 'todo') return;
+    const badge = document.querySelector(`.block[data-id="${b.id}"] .block-order-btn`);
+    if (!badge) return;
+    const sub = b.subtabs[b.activeSubtab];
+    const items = sub?.items || [];
+    const done = items.filter(i => i.done).length;
+    const total = items.length;
+    badge.textContent = `${done}/${total}`;
+    badge.classList.toggle('all-done', done === total && total > 0);
   }
 
   /* ================================================================

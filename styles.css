@@ -5638,4 +5638,101 @@ body.help-open {
   border-radius: 2px;
 }
 
+/* ── Sticky Note ────────────────────────────────────────────────────────── */
+.block-type-sticky { border-left: 3px solid var(--note-color, var(--accent)); }
+.block-type-sticky .block-header {
+  background: color-mix(in srgb, var(--note-color, #d4c373) 18%, var(--bg-block));
+}
+.block-type-sticky .block-textarea {
+  background: color-mix(in srgb, var(--note-color, #d4c373) 6%, var(--bg-block));
+  min-height: 60px;
+  resize: vertical;
+}
+.block-type-sticky .note-private {
+  font-size: 10px; color: var(--text-muted); text-align: right;
+  padding: 2px 8px; opacity: 0.5;
+}
+
+.block-type-sticky[data-color="yellow"] { --note-color: #d4c373; }
+.block-type-sticky[data-color="green"]  { --note-color: #7fb389; }
+.block-type-sticky[data-color="blue"]   { --note-color: #7aa7d4; }
+.block-type-sticky[data-color="pink"]   { --note-color: #cf8fb3; }
+.block-type-sticky[data-color="gray"]   { --note-color: #9aa0a6; }
+
+.color-palette { display: flex; gap: 4px; padding: 4px 8px; align-items: center; }
+.color-dot {
+  width: 14px; height: 14px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; transition: border-color 0.15s;
+}
+.color-dot:hover, .color-dot.active { border-color: var(--text); }
+
+/* ── TODO Checklist ─────────────────────────────────────────────────────── */
+.block-type-todo .todo-list { padding: 4px 0; }
+
+.todo-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: 4px;
+}
+.todo-item:hover { background: var(--hover-bg); }
+.todo-item.dragging { opacity: 0.4; }
+
+.todo-handle {
+  cursor: grab; color: var(--text-muted); opacity: 0;
+  transition: opacity 0.15s; font-size: 12px;
+}
+.todo-item:hover .todo-handle { opacity: 0.6; }
+
+.todo-checkbox {
+  width: 16px; height: 16px; cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.todo-text {
+  flex: 1; border: none; background: transparent;
+  color: var(--text); font-size: inherit; outline: none;
+  min-width: 0;
+}
+.todo-text.done {
+  opacity: 0.55; text-decoration: line-through;
+}
+
+.todo-delete {
+  opacity: 0; background: none; border: none;
+  color: var(--text-muted); cursor: pointer;
+}
+.todo-item:hover .todo-delete { opacity: 0.5; }
+
+.todo-empty {
+  padding: 16px; text-align: center;
+  color: var(--text-muted); font-size: 12px;
+}
+
+.block-todo-count {
+  font-size: 11px; padding: 1px 6px; border-radius: 999px;
+  background: var(--bg-hover); color: var(--text-muted);
+  margin-left: 4px;
+}
+.block-todo-count.all-done {
+  background: #22c55e22; color: #22c55e;
+}
+
+.todo-add-btn {
+  display: block; width: 100%; padding: 4px 8px;
+  background: none; border: none; color: var(--text-muted);
+  font-size: 12px; cursor: pointer; text-align: left;
+}
+.todo-add-btn:hover { color: var(--text); }
+
+/* ── Backup list ────────────────────────────────────────────────────────── */
+.backup-list { max-height: 400px; overflow-y: auto; }
+.backup-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-radius: 6px; gap: 12px;
+}
+.backup-item:hover { background: var(--hover-bg); }
+.backup-meta { font-size: 12px; color: var(--text-muted); }
+.backup-actions { display: flex; gap: 4px; }
+.backup-empty {
+  padding: 32px; text-align: center; color: var(--text-muted);
+}
 

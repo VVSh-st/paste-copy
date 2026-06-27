@@ -343,6 +343,7 @@ const Preview = (() => {
 
     (tab.blocks || []).forEach(b => {
       if (b.type === 'commands' || b.type === 'variable') return;
+      if (b.type === 'sticky') return;
 
       // Блок может быть скрыт из превью флагом previewDisabled
       if (b.previewDisabled === true) return;
@@ -361,6 +362,18 @@ const Preview = (() => {
         const raw = (b.subtabs?.[idx]?.value || '').trim();
         const val = applyVars(raw);
         if (val) parts.push(_closeOpenFences(showHeaders ? `# ${b.title}\n${val}` : val));
+
+      } else if (b.type === 'todo') {
+        const sub = b.subtabs[b.activeSubtab];
+        if (sub && sub.items?.length) {
+          const lines = sub.items
+            .filter(it => (it.text || '').trim())
+            .map(it => `- [${it.done ? 'x' : ' '}] ${it.text}`);
+          if (lines.length) {
+            if (sub.name) parts.push(`## ${sub.name}`);
+            parts.push(_closeOpenFences(showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n')));
+          }
+        }
 
       } else if (b.type === 'group' && b.enabled !== false) {
         (b.children || []).forEach(child => {
@@ -1512,6 +1525,28 @@ const Templates = (() => {
         { id: uid(), label: 'Сократи',   value: 'Сократи текст, оставив главное:' },
         { id: uid(), label: 'Код-ревью', value: 'Сделай детальное код-ревью:' },
       ],
+    };
+  }
+
+  function makeSticky(col) {
+    return {
+      id: uid(), type: 'sticky', title: 'Заметка', icon: '📌', column: col,
+      collapsed: false,
+      color: 'yellow',
+      value: '',
+      fontSize: 13,
+    };
+  }
+
+  function makeTodo(col) {
+    return {
+      id: uid(), type: 'todo', title: 'Чеклист', icon: '☑️', column: col,
+      collapsed: false,
+      activeSubtab: 0,
+      subtabs: Array.from({ length: 10 }, (_, i) => ({
+        label: String(i + 1), name: '',
+        items: [],
+      })),
     };
   }
 
