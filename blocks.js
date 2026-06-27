@@ -476,7 +476,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = '{{' + (b.variableName || '?') + '}}';
         badge.title = 'Переменная';
       } else if (b.type === 'sticky') {
-        badge.style.display = 'none';
+        badge.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke-width="1.5" aria-hidden="true" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="#e05577" opacity=".7" stroke="#e05577"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>';
+        badge.title = 'Не попадёт в превью';
+        badge.style.cursor = 'default';
       } else if (b.type === 'todo') {
         const sub = b.subtabs[b.activeSubtab];
         const items = sub?.items || [];
