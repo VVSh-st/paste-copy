@@ -2816,6 +2816,13 @@ const Ember = (() => {
       clearTimeout(_clickTimer);
       reduceMotion = !reduceMotion;
       reduceMotionFrameSkip = 0;
+      if (reduceMotion) {
+        particles.forEach(p => releaseEl(p.el));
+        particles = [];
+        activeSparks = 0;
+        segmentEffects = [];
+        if (tooltipEl) { tooltipEl.style.opacity = '0'; setTimeout(() => tooltipEl?.remove(), 300); }
+      }
       const label = reduceMotion ? 'Economy ON ⚡' : 'Economy OFF 🔥';
       const existing = root.querySelector('.ember-eco-toast');
       if (existing) existing.remove();
