@@ -262,6 +262,12 @@ const State = (() => {
       block.subtabs = Array.from({ length: 5 }, (_, i) => ({
         label: String(i + 1), name: '', items: [],
       }));
+    } else if (type === 'table') {
+      block.activeSubtab = 0;
+      block.subtabs = Array.from({ length: 5 }, (_, i) => ({
+        label: String(i + 1), name: '', cols: 2,
+        rows: [['Заголовок 1', 'Заголовок 2'], ['', '']],
+      }));
     }
 
     return block;
@@ -311,6 +317,24 @@ const State = (() => {
         }
         while (b.subtabs.length > 5) b.subtabs.pop();
         while (b.subtabs.length < 5) b.subtabs.push({ label: String(b.subtabs.length + 1), name: '', items: [] });
+        if (b.activeSubtab === undefined) b.activeSubtab = 0;
+        if (b.activeSubtab >= 5) b.activeSubtab = 0;
+      }
+
+      if (b.type === 'table') {
+        if (!b.subtabs) {
+          b.activeSubtab = 0;
+          b.subtabs = Array.from({ length: 5 }, (_, i) => ({
+            label: String(i + 1), name: '', cols: 2,
+            rows: [['Заголовок 1', 'Заголовок 2'], ['', '']],
+          }));
+        }
+        while (b.subtabs.length > 5) b.subtabs.pop();
+        while (b.subtabs.length < 5) b.subtabs.push({ label: String(b.subtabs.length + 1), name: '', cols: 2, rows: [['', ''], ['', '']] });
+        for (const sub of b.subtabs) {
+          if (!sub.rows) sub.rows = [['', ''], ['', '']];
+          if (!sub.cols) sub.cols = Math.max(1, Math.min(4, sub.rows[0]?.length || 2));
+        }
         if (b.activeSubtab === undefined) b.activeSubtab = 0;
         if (b.activeSubtab >= 5) b.activeSubtab = 0;
       }
@@ -383,6 +407,7 @@ const State = (() => {
     else if (type === 'variable') { title = 'Переменная';      icon = '🔤'; }
     else if (type === 'sticky')   { title = 'Заметка';         icon = '📌'; }
     else if (type === 'todo')     { title = 'Чеклист';         icon = '☑️'; }
+    else if (type === 'table')    { title = 'Таблица';         icon = '📊'; }
     else {
       title = prompt('Название нового блока:', 'Новый блок');
       if (!title) return;

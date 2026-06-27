@@ -375,6 +375,22 @@ const Preview = (() => {
           }
         }
 
+      } else if (b.type === 'table') {
+        const sub = b.subtabs[b.activeSubtab];
+        if (sub && sub.rows?.length) {
+          const cols = sub.cols || 2;
+          const header = sub.rows[0] || [];
+          const data = sub.rows.slice(1).filter(r => r.some(c => (c || '').trim()));
+          if (header.some(c => (c || '').trim()) || data.length) {
+            const sep = '| ' + Array(cols).fill('---').join(' | ') + ' |';
+            const hdr = '| ' + header.slice(0, cols).map(c => (c || '').trim() || ' ').join(' | ') + ' |';
+            const body = data.map(r => '| ' + r.slice(0, cols).map(c => (c || '').trim() || ' ').join(' | ') + ' |');
+            const md = [hdr, sep, ...body].join('\n');
+            if (sub.name) parts.push(`## ${sub.name}`);
+            parts.push(showHeaders ? `# ${b.title}\n${md}` : md);
+          }
+        }
+
       } else if (b.type === 'group' && b.enabled !== false) {
         (b.children || []).forEach(child => {
           if (child.previewDisabled === true) return;
