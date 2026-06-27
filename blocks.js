@@ -10,6 +10,12 @@ const Blocks = (() => {
   // Transient UI state: subtab scroll offsets keyed by block id.
   const subtabOffsets = new Map();
 
+  function _shortSubtabLabel(name) {
+    if (!name) return '';
+    const first = name.split(/\s+/)[0] || '';
+    return first.length <= 6 ? first : first.slice(0, 6);
+  }
+
   // [FIX] Хранилище ResizeObserver-ов по block.id — для очистки при перерендере
   const observerMap = new Map();
 
@@ -560,6 +566,16 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       });
       h.appendChild(autoTitleBtn);
       h.appendChild(createSubtabNav(b));
+      const subtabAutoBtn = document.createElement('button');
+      subtabAutoBtn.type = 'button';
+      subtabAutoBtn.className = 'subtab-autotitle-btn';
+      subtabAutoBtn.title = 'Авто-заголовок вкладки (LLM)';
+      subtabAutoBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M8 2v4m0 4v4M2 8h4m4 0h4"/><circle cx="8" cy="8" r="2.5"/></svg>';
+      subtabAutoBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        window.LLMFeatures?.SubtabAutoTitle?.autoTitle(b.id);
+      });
+      h.appendChild(subtabAutoBtn);
 
     } else if (b.type === 'sticky') {
       const sp = document.createElement('span');
@@ -806,7 +822,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const end = Math.min(newOff + VISIBLE_SUBTABS, State.SUBTABS_COUNT);
         for (let i = newOff; i < end; i++) {
           const sub = b.subtabs[i];
-          const displayName = sub.name || sub.label;
+          const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
           const btn = document.createElement('span');
           btn.className = 'block-subtab' + (i === newIdx ? ' active' : '');
           btn.dataset.subtabIdx = i;
@@ -862,7 +878,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const end = Math.min(offset + VISIBLE_SUBTABS, State.SUBTABS_COUNT);
       for (let i = offset; i < end; i++) {
         const sub = b.subtabs[i];
-        const displayName = sub.name || sub.label;
+        const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
         const btn = document.createElement('span');
         btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '');
         btn.dataset.subtabIdx = i;

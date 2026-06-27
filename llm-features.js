@@ -484,6 +484,167 @@ window.LLMFeatures = (() => {
     return { autoTitle };
   })();
 
+  const SubtabAutoTitle = (() => {
+    let _variants = [];
+    let _current = 0;
+    let _blockId = null;
+    let _popup = null;
+
+    async function autoTitle(blockId) {
+      if (!_guard()) return;
+      const t = _State.getActive();
+      const block = _State.findBlock(t?.blocks ?? [], blockId);
+      if (!block) return;
+
+      const sub = block.subtabs?.[block.activeSubtab ?? 0];
+      if (!sub) return;
+      const text = (sub.value || '').slice(0, 500).trim();
+      if (!text) { window.Toast?.show('Вкладка пустая', 'error'); return; }
+
+      _closePopup();
+
+      if (_variants.length > 0 && _blockId === blockId) {
+        _current = (_current + 1) % _variants.length;
+        _showPopup(blockId);
+        return;
+      }
+
+      let result;
+      try {
+        _showThinking('◕ Генерирую варианты...');
+        result = await _LLMCore.request({
+          messages: [
+            { role: 'system', content: _LLMCore.getPrompt('subtab_autotitle') + (_LANG_INSTR ?? '') },
+            { role: 'user',   content: text },
+          ],
+          maxTokens: 200,
+          stream: false,
+          featureTag: 'subtab_autotitle',
+        });
+      } catch (e) {
+        if (e.name !== 'AbortError') window.Toast?.show('Ошибка: ' + e.message, 'error');
+        return;
+      } finally { _hideThinking(); }
+
+      if (result == null || typeof result !== 'string') {
+        window.Toast?.show('Пустой ответ модели', 'error');
+        return;
+      }
+
+      _variants = result.trim().split('\n')
+        .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
+        .filter(l => l.length > 0 && l.length <= 60)
+        .slice(0, 4);
+
+      if (_variants.length === 0) {
+        window.Toast?.show('Не удалось распарсить варианты', 'error');
+        return;
+      }
+
+      _blockId = blockId;
+      _current = 0;
+      _showPopup(blockId);
+    }
+
+    function _showPopup(blockId) {
+      _closePopup();
+
+      let anchor;
+      try {
+        anchor = document.querySelector(`[data-id="${CSS.escape(blockId)}"] .block-subtabs-nav`);
+      } catch {
+        anchor = document.querySelector(`[data-id="${blockId}"] .block-subtabs-nav`);
+      }
+      if (!anchor) return;
+
+      const variant = _variants[_current];
+      const counter = `(${_current + 1}/${_variants.length})`;
+
+      const popup = document.createElement('div');
+      popup.className = 'llm-inline-popup';
+      popup.setAttribute('role', 'dialog');
+      popup.setAttribute('aria-modal', 'true');
+      popup.setAttribute('aria-label', 'Авто-заголовок вкладки');
+      popup.innerHTML =
+        `<span class="llm-inline-popup-text">${_esc(variant)} <small style="opacity:.5">${counter}</small></span>` +
+        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept" title="Применить">✓</button>` +
+        `<button type="button" class="btn-sm" data-action="next" title="Следующий вариант">↺</button>` +
+        `<button type="button" class="btn-sm" data-action="cancel">✕</button>`;
+
+      const r = anchor.getBoundingClientRect();
+      popup.style.cssText = `position:fixed;top:${r.bottom + 6}px;left:${r.left}px;z-index:700`;
+      document.body.appendChild(popup);
+
+      const pr = popup.getBoundingClientRect();
+      if (pr.bottom > window.innerHeight) popup.style.top = Math.max(8, r.top - pr.height - 6) + 'px';
+      if (pr.right > window.innerWidth) popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
+
+      popup.querySelector('[data-action="accept"]').focus();
+      _popup = popup;
+
+      popup.addEventListener('click', function onPopupClick(e) {
+        const action = e.target.closest('[data-action]')?.dataset.action;
+        if (!action) return;
+
+        if (action === 'accept') {
+          const t = _State.getActive();
+          const block = _State.findBlock(t?.blocks ?? [], blockId);
+          if (block) {
+            const sub = block.subtabs?.[block.activeSubtab ?? 0];
+            if (sub) sub.name = _variants[_current];
+          }
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
+          _State.update(() => {});
+          window.Toast?.show('Название вкладки обновлено ✓', 'success');
+        } else if (action === 'next') {
+          _current = (_current + 1) % _variants.length;
+          _closePopup();
+          _showPopup(blockId);
+        } else if (action === 'cancel') {
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
+        }
+      });
+
+      popup._docClick = e => {
+        if (!popup.contains(e.target)) {
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
+        }
+      };
+      setTimeout(() => document.addEventListener('click', popup._docClick), 0);
+
+      popup._escKey = e => {
+        if (e.key === 'Escape') {
+          _variants = [];
+          _current = 0;
+          _blockId = null;
+          _closePopup();
+        }
+      };
+      document.addEventListener('keydown', popup._escKey);
+    }
+
+    function _closePopup() {
+      if (!_popup) return;
+      if (_popup._docClick) document.removeEventListener('click', _popup._docClick);
+      if (_popup._escKey) document.removeEventListener('keydown', _popup._escKey);
+      _popup._docClick = null;
+      _popup._escKey = null;
+      _popup.remove();
+      _popup = null;
+    }
+
+    return { autoTitle };
+  })();
+
   const DiffEngine = (() => {
     const ENTITIES = {
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -3341,6 +3502,7 @@ const AutoPoet = (() => {
     setActiveProfile,
     groomBlock,
     AutoTitle,
+    SubtabAutoTitle,
     AutoPoet,
     BroTags,
     DiffEngine,

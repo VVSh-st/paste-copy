@@ -1803,6 +1803,7 @@ const BUILTIN_PROMPTS = {
   variations: 'You are a paraphraser. Give exactly 3 alternative phrasings of the text below. Preserve the same meaning, tone, and level of detail. Make each version clearly different. Return ONLY a numbered list from 1 to 3.',
   negatives: 'You are a prompt tester. Given this prompt, predict 3–5 specific ways an LLM could misunderstand it or produce an unexpected, wrong, incomplete, or harmful output. Make each risk concrete and testable. Return ONLY a numbered list.',
   autotitle: 'You are a title generator. Based on the text below, create one short descriptive block title. Requirements: exactly 3–5 words, no period, no quotes, no markdown, one line only. Return ONLY the title.',
+  subtab_autotitle: 'You are a tab-title generator. Based on the text below, create exactly 4 alternative short tab titles. Rules: each title is 3–6 words; the FIRST word of each title must be ≤6 characters and capture the core essence; no periods, no quotes, no markdown, no numbering. Return exactly 4 lines, one title per line, nothing else.',
   summary: 'You are a prompt summarizer. In exactly 3–5 sentences, explain the task, the expected input, the required output, and any important constraints or format rules. Be clear and concise. Return ONLY the summary.',
   thesaurus: 'You are a contextual thesaurus. Suggest exactly 5 synonyms for "{word}" that fit the surrounding text and preserve its intended meaning. Avoid rare or awkward options. Return ONLY a numbered list from 1 to 5.',
   fill_ph: 'You are an instruction completer. Complete this inline instruction: "{instruction}". Keep the result short, concrete, natural, and in the same style as the original. Do NOT add quotes, explanation, or extra alternatives. Return ONLY the completed instruction.',
@@ -1823,7 +1824,7 @@ const BUILTIN_PROMPTS = {
     { label: 'Промпт-инженерия', keys: ['positive_instr', 'audit', 'compress', 'variations', 'negatives', 'grade_prompt'] },
     { label: 'БРО-теги', keys: ['bro_system', 'fix_system', 'eng_system', 'ru_system', 'sum_system', 'ask_system', 'plan_system'] },
     { label: 'Чат', keys: ['chat_system'] },
-    { label: 'Служебные', keys: ['autotitle', 'summary', 'thesaurus', 'fill_ph'] },
+    { label: 'Служебные', keys: ['autotitle', 'subtab_autotitle', 'summary', 'thesaurus', 'fill_ph'] },
   ];
 
   const PROMPT_META = {
@@ -1853,6 +1854,7 @@ const BUILTIN_PROMPTS = {
     plan_system: { title: 'БРО: план действий', group: 'БРО-теги', short: 'Строит практичный план по тексту.', usedIn: 'БРО-тег !план.', output: '3–7 пунктов, каждый начинается с глагола.', vars: [] },
     chat_system: { title: 'Мини-чат', group: 'Чат', short: 'Задаёт стиль ответов MiniChat.', usedIn: 'LLM-меню → Мини-чат.', output: 'Короткие полезные ответы с примерами при необходимости.', vars: [] },
     autotitle: { title: 'Авто-заголовок', group: 'Служебные', short: 'Создаёт короткое название блока.', usedIn: 'Кнопка авто-заголовка блока.', output: 'Одна строка, 3–5 слов.', vars: [], requiresOnly: true },
+    subtab_autotitle: { title: 'Авто-заголовок вкладки', group: 'Служебные', short: 'Генерирует 4 варианта короткого названия вкладки.', usedIn: 'Кнопка авто-заголовка вкладки <12345>.', output: '4 строки, каждая 3–6 слов, первое слово ≤6 символов.', vars: [], requiresOnly: true },
     summary: { title: 'Резюме вкладки', group: 'Служебные', short: 'Объясняет назначение prompt-а.', usedIn: 'LLM-меню → «Резюме вкладки».', output: '3–5 предложений.', vars: [], requiresOnly: true },
     thesaurus: { title: 'Тезаурус', group: 'Служебные', short: 'Предлагает синонимы выделенного слова.', usedIn: 'Функция подбора слов.', output: 'Нумерованный список из 5 синонимов.', vars: ['word'], requiresOnly: true },
     fill_ph: { title: 'Заполнить {{llm:...}}', group: 'Служебные', short: 'Дозаполняет inline-инструкцию.', usedIn: 'LLM-меню → «Заполнить {{llm:...}}».', output: 'Короткое завершение без кавычек.', vars: ['instruction'], requiresOnly: true },
