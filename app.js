@@ -41,6 +41,7 @@
     if (lay.wcMaxSuggest      !== undefined) WordDict.setConfig({ maxSuggest:     lay.wcMaxSuggest });
     if (lay.wcAcceptEffect    !== undefined) WordDict.setConfig({ acceptEffect:   lay.wcAcceptEffect });
     if (lay.wcAcceptEffectMs  !== undefined) WordDict.setConfig({ acceptEffectMs: lay.wcAcceptEffectMs });
+    if (lay.wcHintYOffset    !== undefined) WordDict.setConfig({ hintYOffset:    lay.wcHintYOffset });
     if (lay.wordlistSave      !== undefined) WordDict.setTempSaveEnabled(lay.wordlistSave);
   }
 
@@ -119,6 +120,9 @@
 
     const optWcEffectMs = $id('opt-wc-effect-ms-misc');
     if (optWcEffectMs) optWcEffectMs.value = wc.acceptEffectMs;
+
+    const optHintY = $id('opt-wc-hint-y-misc');
+    if (optHintY) optHintY.value = wc.hintYOffset || 0;
 
     const smartList = lay.smartList !== false;
     const optSmart = $id('opt-wc-enter-numbering-misc');
@@ -324,6 +328,15 @@
     e.target.value = v;
     WordDict.setConfig({ acceptEffectMs: v });
     State.setLayout({ wcAcceptEffectMs: v });
+    scheduleSave();
+  };
+
+  const optHintY = $id('opt-wc-hint-y-misc');
+  if (optHintY) optHintY.oninput = e => {
+    const v = parseFloat(e.target.value);
+    if (!Number.isFinite(v)) return;
+    WordDict.setConfig({ hintYOffset: v });
+    State.setLayout({ wcHintYOffset: v });
     scheduleSave();
   };
 

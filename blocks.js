@@ -200,6 +200,8 @@ const Blocks = (() => {
     });
   }
 
+  const _pendingTaScrolls = [];
+
   function _doRender() {
     // 1. Сохраняем прокрутку ПРЕДЫДУЩЕЙ отображаемой вкладки
     _saveColScroll();
@@ -225,7 +227,13 @@ const Blocks = (() => {
     applyLayout();
     updateGlobalWordCount();
 
-    // 4. Восстанавливаем прокрутку после того как layout завершён
+    for (const { ta, blockId, subIdx } of _pendingTaScrolls) {
+      const savedTop = _taScrollMap.get(blockId + ':' + subIdx);
+      if (savedTop != null && ta.isConnected) ta.scrollTop = savedTop;
+    }
+    _pendingTaScrolls.length = 0;
+
+    // 4. Восстанавливаем прокрутку колонок после того как layout завершён
     requestAnimationFrame(() => requestAnimationFrame(_restoreColScroll));
   }
 
@@ -652,6 +660,44 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   }
 
   /* ================================================================
+     Inline subtab switch (без полного re-render)
+  ================================================================ */
+  function patchSubtab(b, newIdx) {
+    if (newIdx === b.activeSubtab) return;
+
+    const blockEl = colLeft.querySelector(`.block[data-id="${b.id}"]`)
+                 || colRight.querySelector(`.block[data-id="${b.id}"]`);
+    if (!blockEl) { State.update(() => { b.activeSubtab = newIdx; }); return; }
+
+    const ta = blockEl.querySelector('textarea.block-textarea');
+    if (ta) {
+      _taScrollMap.set(b.id + ':' + b.activeSubtab, ta.scrollTop);
+      b.activeSubtab = newIdx;
+      ta.value = b.subtabs[newIdx].value || '';
+      const savedTop = _taScrollMap.get(b.id + ':' + newIdx);
+      if (savedTop != null) ta.scrollTop = savedTop;
+    } else {
+      b.activeSubtab = newIdx;
+    }
+
+    const tabs = blockEl.querySelectorAll('.block-subtabs .block-subtab');
+    tabs.forEach(btn => {
+      const idx = Number(btn.dataset.subtabIdx);
+      btn.classList.toggle('active', idx === newIdx);
+      const sub = b.subtabs[idx];
+      if (sub) {
+        btn.classList.toggle('filled', !!(sub.value || '').trim());
+      }
+    });
+
+    const arrows = blockEl.querySelectorAll('.subtab-arrow');
+    if (arrows[0]) arrows[0].disabled = newIdx <= 0;
+    if (arrows[1]) arrows[1].disabled = newIdx >= State.SUBTABS_COUNT - 1;
+
+    State.snapshot();
+  }
+
+  /* ================================================================
      Subtab nav
   ================================================================ */
   function createSubtabNav(b) {
@@ -693,6 +739,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const displayName = sub.name || sub.label;
         const btn = document.createElement('span');
         btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '');
+        btn.dataset.subtabIdx = i;
         if ((sub.value || '').trim()) btn.classList.add('filled');
 
         const labelSpan = document.createElement('span');
@@ -776,7 +823,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           clearTimeout(_clickTimer);
           _clickTimer = setTimeout(() => {
             const dir = i > b.activeSubtab ? 1 : -1;
-            State.update(() => { b.activeSubtab = i; });
+            patchSubtab(b, i);
             if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir });
           }, 220);
         };
@@ -807,11 +854,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     prevBtn.onclick = e => {
       e.stopPropagation();
-      if (b.activeSubtab > 0) { State.update(() => { b.activeSubtab--; }); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: -1 }); }
+      if (b.activeSubtab > 0) { patchSubtab(b, b.activeSubtab - 1); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: -1 }); }
     };
     nextBtn.onclick = e => {
       e.stopPropagation();
-      if (b.activeSubtab < State.SUBTABS_COUNT - 1) { State.update(() => { b.activeSubtab++; }); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: 1 }); }
+      if (b.activeSubtab < State.SUBTABS_COUNT - 1) { patchSubtab(b, b.activeSubtab + 1); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: 1 }); }
     };
 
     buildTabs();
@@ -991,15 +1038,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     const transferBtn = makeToolBtn(svgIcon('transfer'), 'Скопировать текст на следующую вкладку', () => {
       if (!ta.value.trim()) return;
-      State.update(() => {
-        let target = (b.activeSubtab + 1) % State.SUBTABS_COUNT;
-        for (let i = 1; i < State.SUBTABS_COUNT; i++) {
-          const idx = (b.activeSubtab + i) % State.SUBTABS_COUNT;
-          if (!b.subtabs[idx].value.trim()) { target = idx; break; }
-        }
-        b.subtabs[target].value += (b.subtabs[target].value ? '\n' : '') + b.subtabs[b.activeSubtab].value;
-        b.activeSubtab = target;
-      });
+      let target = (b.activeSubtab + 1) % State.SUBTABS_COUNT;
+      for (let i = 1; i < State.SUBTABS_COUNT; i++) {
+        const idx = (b.activeSubtab + i) % State.SUBTABS_COUNT;
+        if (!b.subtabs[idx].value.trim()) { target = idx; break; }
+      }
+      b.subtabs[target].value += (b.subtabs[target].value ? '\n' : '') + b.subtabs[b.activeSubtab].value;
+      patchSubtab(b, target);
       Toast.show('Скопировано ✓', 'success');
     });
 
@@ -1021,11 +1066,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       _persistTaScrollMap();
     }, { passive: true });
 
-    // Восстанавливаем прокрутку после рендера
-    requestAnimationFrame(() => {
-      const savedTop = _taScrollMap.get(b.id + ':' + b.activeSubtab);
-      if (savedTop != null) ta.scrollTop = savedTop;
-    });
+    _pendingTaScrolls.push({ ta, blockId: b.id, subIdx: b.activeSubtab });
 
     // [FIX] Сохраняем ResizeObserver в Map для последующей очистки
     let _roSkipFirst = true;

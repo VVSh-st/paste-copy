@@ -1,6 +1,27 @@
 // file_name: word-complete.js
 'use strict';
 
+function dispatchTextareaInput(ta, data, inputType) {
+  let ev;
+  try {
+    ev = new InputEvent('input', {
+      bubbles: true,
+      inputType: inputType || 'insertText',
+      data: data || null,
+    });
+  } catch {
+    ev = new Event('input', { bubbles: true });
+  }
+  ta.dispatchEvent(ev);
+}
+
+function isBadCompletionContext(before) {
+  if (/(?:https?:\/\/|www\.|[\w.-]+@[\w.-]*)[^\s]*$/i.test(before)) return true;
+  if (/`[^`]*$/.test(before)) return true;
+  if (/(?:^|\s)[\/~][^\s]*$/.test(before)) return true;
+  return false;
+}
+
 /* ============================================================
    WordDict — частотный словарь + биграммы
    ============================================================ */
@@ -16,6 +37,7 @@ const WordDict = (() => {
     maxSuggest: 3,
     acceptEffect: true,
     acceptEffectMs: 3500,
+    hintYOffset: 0,
   };
 
   const _staticWords   = new Map();
@@ -67,45 +89,48 @@ const WordDict = (() => {
     bigrams.clear();
     _seedFromStatic();
 
-    // _dynWords отражает накопленный межсессионный словарь — вносим как базу,
-    // но не трогаем сами _dynWords здесь, чтобы не было бесконечного роста.
-    for (const [w, freq] of _dynWords) {
-      if (!_staticWords.has(w))
-        wordFreq.set(w, (wordFreq.get(w) || 0) + freq);
-    }
-
-    const activeId = State.getActive()?.id;
-
-    // Временный счётчик текущего прохода — только для обновления _dynWords
+    const state = (typeof State !== 'undefined' && State?.getAll) ? State : null;
+    const activeId = state?.getActive?.()?.id;
+    const allTabs = state?.getAll?.();
     const sessionCounts = new Map();
 
-    State.getAll().forEach(tab => {
-      const mult  = tab.id === activeId ? 2 : 1;
-      const texts = [];
-      collectTexts(tab.blocks, texts);
+    if (Array.isArray(allTabs)) {
+      allTabs.forEach(tab => {
+        const mult  = tab.id === activeId ? 2 : 1;
+        const texts = [];
+        collectTexts(tab.blocks, texts);
 
-      texts.forEach(text => {
-        const words = tokenize(text);
-        words.forEach((w, i) => {
-          wordFreq.set(w, (wordFreq.get(w) || 0) + mult);
+        texts.forEach(text => {
+          const words = tokenize(text);
+          words.forEach((w, i) => {
+            wordFreq.set(w, (wordFreq.get(w) || 0) + mult);
 
-          if (!_staticWords.has(w) && w.length >= cfg.minLen)
-            sessionCounts.set(w, (sessionCounts.get(w) || 0) + mult);
+            if (!_staticWords.has(w) && w.length >= cfg.minLen)
+              sessionCounts.set(w, (sessionCounts.get(w) || 0) + mult);
 
-          if (i > 0) {
-            const prev = words[i - 1];
-            if (!bigrams.has(prev)) bigrams.set(prev, new Map());
-            const bm = bigrams.get(prev);
-            bm.set(w, (bm.get(w) || 0) + mult);
-          }
+            if (i > 0) {
+              const prev = words[i - 1];
+              if (!bigrams.has(prev)) bigrams.set(prev, new Map());
+              const bm = bigrams.get(prev);
+              bm.set(w, (bm.get(w) || 0) + mult);
+            }
+          });
         });
       });
-    });
+    }
 
-    // Обновляем _dynWords только до максимума между накопленным и текущим проходом,
-    // чтобы частоты отражали реальную встречаемость, а не суммировались бесконечно.
-    for (const [w, cnt] of sessionCounts)
-      _dynWords.set(w, Math.max(_dynWords.get(w) || 0, cnt));
+    for (const [w, freq] of _dynWords) {
+      if (!_staticWords.has(w) && !wordFreq.has(w))
+        wordFreq.set(w, freq);
+    }
+
+    for (const [w, cnt] of sessionCounts) {
+      const prev = _dynWords.get(w) || 0;
+      _dynWords.set(w, Math.max(prev, cnt));
+      if (cnt > prev) _markGistDirty(w);
+    }
+
+    _rebuildPrefixIndex();
   }
 
   function scheduleBuild() {
@@ -118,28 +143,32 @@ const WordDict = (() => {
 
   function suggest(prefix) {
     if (!cfg.enabled || !prefix || prefix.length < cfg.minLen) return [];
-    const p   = prefix.toLowerCase();
+    const p = prefix.toLowerCase();
+    const bucket = prefixIndex.get(p.slice(0, 2)) || [];
     const out = [];
 
-    for (const [w, freq] of wordFreq) {
-      if (w.length > p.length && w.startsWith(p))
-        out.push({ w, effective: freq + (_staticWords.has(w) ? STATIC_BOOST : 0) });
+    for (const w of bucket) {
+      if (w.length > p.length && w.startsWith(p)) {
+        const base = wordFreq.get(w) || 0;
+        out.push({ w, effective: base + (_staticWords.has(w) ? STATIC_BOOST : 0) });
+      }
     }
 
     out.sort((a, b) => b.effective - a.effective);
     return out.slice(0, cfg.maxSuggest).map(x => x.w);
   }
 
-  function suggestNext(prevWord) {
+  function suggestNext(prevWord, minCount) {
     if (!cfg.enabled || !prevWord) return null;
+    const threshold = typeof minCount === 'number' ? minCount : 2;
     const bm = bigrams.get(prevWord.toLowerCase());
     if (!bm?.size) return null;
-    let best = null, max = 0;
+    let best = null, max = threshold - 1;
     for (const [w, c] of bm) if (c > max) { best = w; max = c; }
     return best;
   }
 
-  function getConfig() { return cfg; }
+  function getConfig() { return { ...cfg }; }
   function setConfig(patch) { Object.assign(cfg, patch); }
 
   function getTempSaveEnabled() { return _tempSaveEnabled; }
@@ -153,6 +182,23 @@ const WordDict = (() => {
       _startAutoSave();
       _scheduleFileHandlePrompt(PROMPT_INIT_MS);
     }
+  }
+
+  const prefixIndex = new Map();
+
+  function _rebuildPrefixIndex() {
+    prefixIndex.clear();
+    for (const w of wordFreq.keys()) {
+      const key = w.slice(0, 2);
+      if (!prefixIndex.has(key)) prefixIndex.set(key, []);
+      prefixIndex.get(key).push(w);
+    }
+  }
+
+  function clearTempWordlist() {
+    _dynWords.clear();
+    localStorage.removeItem(KEY_TEMP);
+    build();
   }
 
   /* ---- заполнение wordFreq/bigrams из статических карт ---- */
@@ -174,10 +220,10 @@ const WordDict = (() => {
 
   /* ---- загрузка wordlist.json (статический, высший приоритет) ---- */
   async function loadWordlist(url = 'wordlist.json') {
-    // Браузер блокирует fetch() на file://-origin (CORS null-origin).
     if (location.protocol === 'file:') {
       console.debug('[WordDict] file:// origin — wordlist.json fetch skipped (CORS)');
       _loadTempWordlist();
+      await _pullFromGist();
       build();
       return;
     }
@@ -225,6 +271,7 @@ const WordDict = (() => {
       }
     } finally {
       _loadTempWordlist();
+      await _pullFromGist();
       build();
     }
   }
@@ -247,6 +294,65 @@ const WordDict = (() => {
     } catch (e) {
       console.warn('[WordDict] failed to load temp wordlist from localStorage:', e);
     }
+  }
+
+  /* ---- Gist sync: автоматическая загрузка/сохранение словаря ---- */
+  async function _pullFromGist() {
+    try {
+      const gs = window.GistSync;
+      if (!gs?.pullWordlist) return;
+      const words = await gs.pullWordlist();
+      if (!Array.isArray(words)) return;
+      for (const item of words) {
+        if (!Array.isArray(item) || item.length < 2) continue;
+        const w = String(item[0] || '').trim().toLowerCase();
+        const freq = Number(item[1]);
+        if (!w || _staticWords.has(w)) continue;
+        if (!Number.isFinite(freq) || freq < 2) continue;
+        _dynWords.set(w, Math.max(_dynWords.get(w) || 0, freq));
+      }
+    } catch (_) { /* non-critical */ }
+  }
+
+  /* ---- Gist push: копим изменения, шлём порциями ---- */
+  const GIST_PUSH_MIN_INTERVAL = 5 * 60 * 1000;
+  const GIST_PUSH_MIN_WORDS    = 20;
+  let _gistDirtyWords  = new Set();
+  let _gistLastPushAt  = 0;
+  let _gistPushTimer   = null;
+
+  function _markGistDirty(word) {
+    _gistDirtyWords.add(word);
+    _scheduleGistFlush();
+  }
+
+  function _scheduleGistFlush() {
+    clearTimeout(_gistPushTimer);
+    const elapsed = Date.now() - _gistLastPushAt;
+    const delay = elapsed >= GIST_PUSH_MIN_INTERVAL ? 1000 : GIST_PUSH_MIN_INTERVAL - elapsed;
+    _gistPushTimer = setTimeout(_flushToGist, delay);
+  }
+
+  function _flushToGist() {
+    clearTimeout(_gistPushTimer);
+    const gs = window.GistSync;
+    if (!gs?.pushWordlist || !_gistDirtyWords.size) return;
+
+    if (Date.now() - _gistLastPushAt < GIST_PUSH_MIN_INTERVAL && _gistDirtyWords.size < GIST_PUSH_MIN_WORDS) return;
+
+    const words = [..._dynWords.entries()]
+      .filter(([w, freq]) =>
+        _gistDirtyWords.has(w) &&
+        !_staticWords.has(w) &&
+        w.length >= cfg.minLen &&
+        typeof freq === 'number' && freq >= 2
+      )
+      .sort((a, b) => b[1] - a[1]);
+
+    _gistDirtyWords.clear();
+    _gistLastPushAt = Date.now();
+
+    if (words.length) gs.pushWordlist(words);
   }
 
   function _buildTempPayload() {
@@ -424,7 +530,10 @@ const WordDict = (() => {
   // чтобы document.body существовал на момент исполнения IIFE.
   loadWordlist();
   _startAutoSave();
-  window.addEventListener('beforeunload', () => _saveTempToLocalStorage());
+  window.addEventListener('beforeunload', () => {
+    _saveTempToLocalStorage();
+    _flushToGist();
+  });
   _scheduleFileHandlePrompt(PROMPT_INIT_MS);
 
   return {
@@ -434,6 +543,7 @@ const WordDict = (() => {
     getTempSaveEnabled, setTempSaveEnabled,
     loadWordlist,
     exportTempWordlist,
+    clearTempWordlist,
   };
 })();
 
@@ -450,32 +560,54 @@ const InlineHint = (() => {
     'fontFamily', 'fontSize', 'fontStyle', 'fontWeight', 'fontVariant',
     'letterSpacing', 'wordSpacing', 'lineHeight',
     'textIndent', 'textTransform', 'tabSize', 'MozTabSize',
-    'wordBreak', 'overflowWrap',
+    'wordBreak', 'overflowWrap', 'textAlign', 'direction',
   ];
 
-  const mirrorEl = document.createElement('div');
-  Object.assign(mirrorEl.style, {
-    position:   'absolute',
-    visibility: 'hidden',
-    top:        '-9999px',
-    left:       '-9999px',
-    overflow:   'auto',
-    whiteSpace: 'pre-wrap',
-    wordWrap:   'break-word',
-    border:     'none',
-    margin:     '0',
-  });
-  document.body.appendChild(mirrorEl);
+  let mirrorEl = null;
+  let hintEl = null;
+  let _domReady = false;
 
-  const hintEl = document.createElement('div');
-  hintEl.id = 'inline-hint';
-  hintEl.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(hintEl);
+  function _ensureDom() {
+    if (_domReady) return;
+    if (!document.body) return;
+
+    mirrorEl = document.createElement('div');
+    Object.assign(mirrorEl.style, {
+      position:   'absolute',
+      visibility: 'hidden',
+      top:        '-9999px',
+      left:       '-9999px',
+      overflow:   'auto',
+      whiteSpace: 'pre-wrap',
+      wordWrap:   'break-word',
+      border:     'none',
+      margin:     '0',
+    });
+    document.body.appendChild(mirrorEl);
+
+    hintEl = document.createElement('div');
+    hintEl.id = 'inline-hint';
+    hintEl.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(hintEl);
+
+    _domReady = true;
+  }
+
+  function _onDomReady() {
+    _ensureDom();
+    document.removeEventListener('DOMContentLoaded', _onDomReady);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _onDomReady);
+  } else {
+    _ensureDom();
+  }
 
   // Кэш вычисленных стилей textarea, ключ — комбинация значимых свойств
   const _styleCache = new WeakMap();
 
   function syncMirror(ta) {
+    _ensureDom();
     const cs       = window.getComputedStyle(ta);
     const cacheKey = `${cs.fontSize}|${cs.paddingTop}|${cs.lineHeight}|${ta.clientWidth}`;
     let cached     = _styleCache.get(ta);
@@ -493,77 +625,125 @@ const InlineHint = (() => {
 
   function getCaretXY(ta, pos) {
     syncMirror(ta);
-
     const before = document.createTextNode(ta.value.slice(0, pos));
     const marker = document.createElement('span');
     marker.style.cssText =
       'display:inline-block;width:0;height:0;overflow:hidden;vertical-align:top;';
-
     mirrorEl.replaceChildren(before, marker);
     mirrorEl.scrollTop  = ta.scrollTop;
     mirrorEl.scrollLeft = ta.scrollLeft;
 
     const dRect = mirrorEl.getBoundingClientRect();
     const mRect = marker.getBoundingClientRect();
-
     return { x: mRect.left - dRect.left, y: mRect.top - dRect.top };
   }
 
-  // Без горизонтального зазора: ghost и overlay совпадают с реальной точкой вставки.
   const HINT_OFFSET_X = 0;
+
+  let _insertLeft = 0;
+  let _lastTop = 0;
+  let _lastLeft = 0;
+  let _taScrollRaf = 0;
 
   let suffix   = '';
   let activeTa = null;
   let composing = false;
   let _visible  = false;
-  let _insertLeft = 0;
 
-  function show(ta, suf) {
-    if (!suf || !ta) { hide(); return; }
-    suffix   = suf;
-    activeTa = ta;
+  function _onTaScroll() {
+    if (!_visible || !activeTa) return;
+    cancelAnimationFrame(_taScrollRaf);
+    _taScrollRaf = requestAnimationFrame(() => {
+      if (_visible && activeTa) _reposition();
+      else hide();
+    });
+  }
 
-    const cs    = window.getComputedStyle(ta);
-    const rect  = ta.getBoundingClientRect();
-    const bordL = parseFloat(cs.borderLeftWidth)   || 0;
-    const bordT = parseFloat(cs.borderTopWidth)    || 0;
-    const bordB = parseFloat(cs.borderBottomWidth) || 0;
-    const paddT = parseFloat(cs.paddingTop)        || 0;
-    const paddB = parseFloat(cs.paddingBottom)     || 0;
-
-    const fontSize = parseFloat(cs.fontSize) || 12;
-    const lineH    = parseFloat(cs.lineHeight) || fontSize * 1.4;
+  function _computeHintPos(ta) {
+    const cs   = window.getComputedStyle(ta);
+    const rect = ta.getBoundingClientRect();
+    const f = p => parseFloat(cs[p]) || 0;
+    const bordL = f('borderLeftWidth'), bordT = f('borderTopWidth');
+    const bordB = f('borderBottomWidth');
+    const paddT = f('paddingTop'),      paddB = f('paddingBottom');
+    const lineH = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.4;
 
     const caret = getCaretXY(ta, ta.selectionStart);
+
     const insertX = Math.round(rect.left + bordL + caret.x);
-    const rawX  = insertX + HINT_OFFSET_X;
-    const rawY  = Math.round(rect.top  + bordT + caret.y);
+    const rawX    = insertX + HINT_OFFSET_X;
+    const rawY    = Math.round(rect.top  + bordT + caret.y);
+
+    const adjustedY = rawY + ((WordDict.getConfig?.().hintYOffset) || 0);
 
     const visTop = rect.top    + bordT + paddT;
     const visBot = rect.bottom - bordB - paddB;
-    if (rawY < visTop - 2 || rawY + lineH > visBot + 2) { hide(); return; }
+    if (adjustedY < visTop - 2 || adjustedY + lineH > visBot + 2) return null;
+
+    return {
+      insertX, rawX, rawY: adjustedY,
+      maxWidth: Math.max(0, rect.right - rawX - 4),
+      cs,
+    };
+  }
+
+  function _reposition() {
+    if (!activeTa || !suffix) { hide(); return; }
+    const pos = _computeHintPos(activeTa);
+    if (!pos) { hide(); return; }
+    Object.assign(hintEl.style, {
+      left:     pos.rawX + 'px',
+      top:      pos.rawY + 'px',
+      maxWidth: pos.maxWidth + 'px',
+    });
+    _insertLeft = pos.insertX;
+    _lastTop = pos.rawY;
+    _lastLeft = pos.rawX;
+  }
+
+  function show(ta, suf) {
+    _ensureDom();
+    if (!suf || !ta) { hide(); return; }
+    suffix = suf;
+
+    if (activeTa && activeTa !== ta) {
+      activeTa.removeEventListener('scroll', _onTaScroll);
+    }
+    activeTa = ta;
+    ta.addEventListener('scroll', _onTaScroll, { passive: true });
+
+    const pos = _computeHintPos(ta);
+    if (!pos) { hide(); return; }
 
     Object.assign(hintEl.style, {
-      fontFamily:    cs.fontFamily,
-      fontSize:      cs.fontSize,
-      fontWeight:    cs.fontWeight,
-      lineHeight:    cs.lineHeight,
-      letterSpacing: cs.letterSpacing,
-      left:          rawX + 'px',
-      top:           rawY + 'px',
-      maxWidth:      Math.max(0, rect.right - rawX - 4) + 'px',
+      fontFamily:    pos.cs.fontFamily,
+      fontSize:      pos.cs.fontSize,
+      fontWeight:    pos.cs.fontWeight,
+      lineHeight:    pos.cs.lineHeight,
+      letterSpacing: pos.cs.letterSpacing,
+      left:          pos.rawX + 'px',
+      top:           pos.rawY + 'px',
+      maxWidth:      pos.maxWidth + 'px',
       display:       'block',
     });
     hintEl.textContent = suf;
-    _insertLeft = insertX;
+    _insertLeft = pos.insertX;
+    _lastTop = pos.rawY;
+    _lastLeft = pos.rawX;
     _visible = true;
   }
 
   function hide() {
+    _ensureDom();
     hintEl.style.display = 'none';
+    if (activeTa) {
+      activeTa.removeEventListener('scroll', _onTaScroll);
+    }
     suffix   = '';
     activeTa = null;
     _insertLeft = 0;
+    _lastTop = 0;
+    _lastLeft = 0;
     _visible = false;
   }
 
@@ -572,15 +752,15 @@ const InlineHint = (() => {
   function getActiveTa() { return activeTa; }
 
   function getSnapshot() {
+    _ensureDom();
     if (!_visible || !activeTa || !suffix) return null;
-    const rect = hintEl.getBoundingClientRect();
     const cs = window.getComputedStyle(hintEl);
     return {
       ta: activeTa,
       suffix,
-      left: rect.left,
+      left: _lastLeft,
       insertLeft: _insertLeft,
-      top: rect.top,
+      top: _lastTop,
       hintOffsetX: HINT_OFFSET_X,
       maxWidth: hintEl.style.maxWidth,
       fontFamily: cs.fontFamily,
@@ -597,7 +777,7 @@ const InlineHint = (() => {
     if (e.target === activeTa) hide();
   }, true);
   window.addEventListener('resize', hide, { passive: true });
-  window.addEventListener('scroll', hide, { passive: true, capture: true });
+  window.addEventListener('scroll', () => { if (_visible) _reposition(); }, { passive: true, capture: true });
 
   return { show, hide, isVisible, getSuffix, getActiveTa, getSnapshot, isComposing: () => composing };
 })();
@@ -737,14 +917,19 @@ const WordAcceptEffect = (() => {
     // Overlay стартует там же, где стояла подсказка: без скачка и двойного слова.
     const left = Number.isFinite(snapshot.left) ? snapshot.left : snapshot.insertLeft;
 
+    const parsedLineHeight = parseFloat(snapshot.lineHeight);
+    const safeLineHeight = Number.isFinite(parsedLineHeight)
+      ? Math.max(1, parsedLineHeight - 1) + 'px'
+      : (snapshot.lineHeight || 'normal');
+
     Object.assign(el.style, {
       left: Math.round(left) + 'px',
-      top: (snapshot.top + 0) + 'px', // - 1 поднимет Matrix-эффект на 1px, + 1 опустит
+      top: (snapshot.top + 0) + 'px',
       maxWidth: snapshot.maxWidth || 'none',
       fontFamily: snapshot.fontFamily,
       fontSize: snapshot.fontSize,
       fontWeight: snapshot.fontWeight,
-      lineHeight: (parseFloat(snapshot.lineHeight) - 1) + 'px',  // - 1 поднимет высоту букв/маски на 1px, + 1 опустит
+      lineHeight: safeLineHeight,
       letterSpacing: snapshot.letterSpacing,
     });
     el.style.setProperty('--wc-mask-bg', textareaBackground(ta));
@@ -844,15 +1029,23 @@ const WordComplete = (() => {
     return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
   }
 
+  function _needsCapitalization(before) {
+    if (!before) return true;
+    const trimmed = before.trimEnd();
+    if (!trimmed) return true;
+    return /[.!?…]\s*$/.test(trimmed);
+  }
+
   function handleInput(ta) {
     const cfg = WordDict.getConfig();
     if (!cfg.enabled || !ta || ta.disabled || ta.readOnly) { InlineHint.hide(); return; }
     if (ta.selectionStart !== ta.selectionEnd) { InlineHint.hide(); return; }
 
-    // Не показываем подсказку при открытом выпадающем списке сниппетов
     if (isSnippetPopupVisible()) { InlineHint.hide(); return; }
-
     if (InlineHint.isComposing()) return;
+
+    const before = ta.value.slice(0, ta.selectionStart);
+    if (isBadCompletionContext(before)) { InlineHint.hide(); return; }
 
     const { currentWord, prevWord } = getContext(ta);
 
@@ -869,7 +1062,14 @@ const WordComplete = (() => {
     // Нет текущего слова — предлагаем следующее по биграмме
     if (!currentWord && prevWord.length >= 2) {
       const next = WordDict.suggestNext(prevWord);
-      if (next) { InlineHint.show(ta, next); return; }
+      if (next) {
+        let suffix = next;
+        if (_needsCapitalization(before)) {
+          suffix = next.charAt(0).toUpperCase() + next.slice(1);
+        }
+        InlineHint.show(ta, suffix);
+        return;
+      }
     }
 
     InlineHint.hide();
@@ -913,8 +1113,8 @@ const WordComplete = (() => {
     InlineHint.hide();
     ta.setRangeText(insert, pos, pos, 'end');
     WordAcceptEffect.play(hintSnapshot, insert, cfg);
-    ta.dispatchEvent(new Event('input'));
-    State.snapshot();
+    dispatchTextareaInput(ta, insert, 'insertText');
+    window.State?.snapshot?.();
     WordDict.scheduleBuild();
 
     // Не зовём новый ghost сразу: иначе он наслаивается на Matrix-принятие.
@@ -932,7 +1132,7 @@ const WordComplete = (() => {
    SmartList — авто-нумерация при Enter в списке
    ============================================================ */
 const SmartList = (() => {
-  const LIST_RE = /^(\d+(?:\.\d+)*)\.\s/;
+  const LIST_RE = /^(\s*)(\d+(?:\.\d+)*)\.\s/;
 
   function getLineInfo(ta) {
     const val       = ta.value;
@@ -952,28 +1152,26 @@ const SmartList = (() => {
     const m = line.match(LIST_RE);
     if (!m) return;
 
+    const indent = m[1];
+    const numStr = m[2];
     const prefix  = m[0];
-    const numStr  = m[1];
     const trueEnd = lineEnd < 0 ? ta.value.length : lineEnd;
 
-    // Курсор должен быть строго в конце строки
     if (ta.selectionStart !== trueEnd || ta.selectionEnd !== trueEnd) return;
 
-    // Пустой элемент списка — выходим из режима списка
     if (line.trimEnd() === prefix.trimEnd()) {
       e.preventDefault();
       ta.setRangeText('', lineStart, trueEnd, 'end');
       ta.selectionStart = ta.selectionEnd = lineStart;
-      ta.dispatchEvent(new Event('input'));
-      State.snapshot();
+      dispatchTextareaInput(ta, null, 'deleteContentBackward');
+      window.State?.snapshot?.();
       return;
     }
 
     const parts = numStr.split('.');
     parts[parts.length - 1] = String(parseInt(parts[parts.length - 1], 10) + 1);
-    let nextPrefix = parts.join('.') + '. ';
+    let nextPrefix = indent + parts.join('.') + '. ';
 
-    // Если следующая строка уже занята тем же номером — делаем подпункт
     if (lineEnd >= 0) {
       const nextLineEnd = ta.value.indexOf('\n', lineEnd + 1);
       const nextLine    = ta.value.slice(
@@ -981,15 +1179,15 @@ const SmartList = (() => {
         nextLineEnd < 0 ? undefined : nextLineEnd
       );
       const nextM = nextLine.match(LIST_RE);
-      if (nextM && nextM[1] === parts.join('.')) {
-        nextPrefix = numStr + '.1. ';
+      if (nextM && nextM[2] === parts.join('.')) {
+        nextPrefix = indent + numStr + '.1. ';
       }
     }
 
     e.preventDefault();
     ta.setRangeText('\n' + nextPrefix, trueEnd, trueEnd, 'end');
-    ta.dispatchEvent(new Event('input'));
-    State.snapshot();
+    dispatchTextareaInput(ta, '\n' + nextPrefix, 'insertText');
+    window.State?.snapshot?.();
   }
 
   // Заглушка для единообразия интерфейса модулей

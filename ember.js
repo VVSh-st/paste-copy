@@ -119,6 +119,7 @@ const Ember = (() => {
 
   let focusState = 'active';
   let focusTimer = 0;
+  let sparkDone = false;
   let settlingDuration = 0;
 
   // --- курсор ---
@@ -2521,13 +2522,13 @@ const Ember = (() => {
         root.style.setProperty('--brightness', (0.5 + wk * 0.3).toFixed(3));
         return;
       }
-      if (focusTimer < 400 && !focusState._sparkDone) {
-        focusState._sparkDone = true;
+      if (focusTimer < 400 && !sparkDone) {
+        sparkDone = true;
         heatBoost = 0.2;
         spawnSpark();
       }
       focusState = 'active';
-      focusState._sparkDone = false;
+      sparkDone = false;
     }
 
     updateCursorLean(now, dt);
