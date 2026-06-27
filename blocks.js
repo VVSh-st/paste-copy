@@ -814,9 +814,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     nextBtn.title       = 'Следующая вкладка';
 
     function clampOffset() {
-      let off = subtabOffsets.get(b.id) || 0;
-      if (b.activeSubtab < off) off = b.activeSubtab;
-      if (b.activeSubtab >= off + VISIBLE_SUBTABS) off = b.activeSubtab - VISIBLE_SUBTABS + 1;
+      const halfVisible = Math.floor(VISIBLE_SUBTABS / 2);
+      let off = b.activeSubtab - halfVisible;
       off = Math.max(0, Math.min(off, State.SUBTABS_COUNT - VISIBLE_SUBTABS));
       subtabOffsets.set(b.id, off);
       return off;
