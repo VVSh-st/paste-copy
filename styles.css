@@ -5659,6 +5659,12 @@ body.help-open {
 .block-type-sticky[data-color="pink"]   { --note-color: #cf8fb3; }
 .block-type-sticky[data-color="gray"]   { --note-color: #9aa0a6; }
 
+/* Blocks row — compact side-by-side layout for sticky/todo */
+.blocks-row {
+  display: flex; gap: 8px; align-items: flex-start;
+}
+.blocks-row > .block { flex: 1; min-width: 0; }
+
 .color-palette { display: flex; gap: 4px; padding: 4px 8px; align-items: center; }
 .color-dot {
   width: 14px; height: 14px; border-radius: 50%; cursor: pointer;

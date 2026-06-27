@@ -220,9 +220,37 @@ const Blocks = (() => {
     _displayedTabId = tab.id;
 
     const orderMap = buildOrderMap(tab.blocks);
+    const isCompact = (t) => t === 'sticky' || t === 'todo';
+    const compactBuffer = { 0: [], 1: [] };
+    const compactEls = { 0: [], 1: [] };
+
+    function flushCompact(col) {
+      if (!compactBuffer[col].length) return;
+      if (compactBuffer[col].length === 1) {
+        compactEls[col].push(compactBuffer[col][0]);
+      } else {
+        const row = document.createElement('div');
+        row.className = 'blocks-row';
+        compactBuffer[col].forEach(el => row.appendChild(el));
+        compactEls[col].push(row);
+      }
+      compactBuffer[col] = [];
+    }
+
     tab.blocks.forEach(b => {
-      (b.column === 1 ? colRight : colLeft).appendChild(renderBlock(b, orderMap));
+      const col = b.column === 1 ? 1 : 0;
+      if (isCompact(b.type)) {
+        compactBuffer[col].push(renderBlock(b, orderMap));
+      } else {
+        flushCompact(col);
+        compactEls[col].push(renderBlock(b, orderMap));
+      }
     });
+    flushCompact(0);
+    flushCompact(1);
+
+    compactEls[0].forEach(el => colLeft.appendChild(el));
+    compactEls[1].forEach(el => colRight.appendChild(el));
 
     applyLayout();
     updateGlobalWordCount();
@@ -448,9 +476,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = '{{' + (b.variableName || '?') + '}}';
         badge.title = 'Переменная';
       } else if (b.type === 'sticky') {
-        badge.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5.5h4M6 8h3M6 10.5h2"/></svg>';
-        badge.title = 'Личная заметка — не попадёт в превью';
-        badge.style.cursor = 'default';
+        badge.style.display = 'none';
       } else if (b.type === 'todo') {
         const sub = b.subtabs[b.activeSubtab];
         const items = sub?.items || [];
@@ -2138,12 +2164,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.onblur = () => State.snapshot();
     ta.addEventListener('input', () => autoGrow(ta));
 
-    const label = document.createElement('div');
-    label.className = 'note-private';
-    label.textContent = 'private';
-
     body.appendChild(ta);
-    body.appendChild(label);
 
     requestAnimationFrame(() => autoGrow(ta));
   }
@@ -2277,36 +2298,36 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     text.oninput = () => { item.text = text.value; State.updateLive(() => {}); };
     text.onblur = () => State.snapshot();
     text.onkeydown = e => {
+      const blockEl = row.closest('.block');
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         const newItem = { id: State.uid(), text: '', done: false };
         items.splice(idx + 1, 0, newItem);
-        State.update(() => {});
+        State.updateLive(() => {});
         b._renderItems?.();
-        const blockEl = row.closest('.block');
         const inputs = blockEl?.querySelectorAll('.todo-text') || [];
         inputs[idx + 1]?.focus();
+        State.snapshot();
       } else if (e.key === 'Backspace' && !text.value && idx > 0) {
         e.preventDefault();
         items.splice(idx, 1);
-        State.update(() => {});
+        State.updateLive(() => {});
         b._renderItems?.();
-        const blockEl = row.closest('.block');
         const inputs = blockEl?.querySelectorAll('.todo-text') || [];
         inputs[idx - 1]?.focus();
+        State.snapshot();
       } else if (e.key === 'Enter' && e.shiftKey) {
-        // Shift+Enter = newline (allow default for contenteditable, but input doesn't support newlines)
       } else if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         const dir = e.key === 'ArrowUp' ? -1 : 1;
         const newIdx = idx + dir;
         if (newIdx < 0 || newIdx >= items.length) return;
         [items[idx], items[newIdx]] = [items[newIdx], items[idx]];
-        State.update(() => {});
+        State.updateLive(() => {});
         b._renderItems?.();
-        const blockEl = row.closest('.block');
         const inputs = blockEl?.querySelectorAll('.todo-text') || [];
         inputs[newIdx]?.focus();
+        State.snapshot();
       }
     };
 
@@ -2401,14 +2422,21 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       el.classList.remove('drag-over');
       const srcId = e.dataTransfer.getData('text/block');
       if (srcId === b.id) return;
+      const isCompact = (t) => t === 'sticky' || t === 'todo';
       State.update(tab => {
         const src = State.findBlock(tab.blocks, srcId);
         if (!src) return;
         State.removeBlock(tab.blocks, srcId);
         const dest = findParentList(tab.blocks, b.id);
         if (!dest) { tab.blocks.push(src); return; }
-        src.column = b.column;
-        dest.list.splice(dest.idx, 0, src);
+        if (isCompact(src.type) && isCompact(b.type)) {
+          src.column = b.column;
+          const targetIdx = dest.list.indexOf(b);
+          dest.list.splice(targetIdx + 1, 0, src);
+        } else {
+          src.column = b.column;
+          dest.list.splice(dest.idx, 0, src);
+        }
       });
     });
   }
