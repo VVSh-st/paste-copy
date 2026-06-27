@@ -259,7 +259,7 @@ const State = (() => {
       block.fontSize = 13;
     } else if (type === 'todo') {
       block.activeSubtab = 0;
-      block.subtabs = Array.from({ length: 10 }, (_, i) => ({
+      block.subtabs = Array.from({ length: 5 }, (_, i) => ({
         label: String(i + 1), name: '', items: [],
       }));
     }
@@ -305,7 +305,7 @@ const State = (() => {
       if (b.type === 'todo') {
         if (!b.subtabs) {
           b.activeSubtab = 0;
-          b.subtabs = Array.from({ length: 10 }, (_, i) => ({
+          b.subtabs = Array.from({ length: 5 }, (_, i) => ({
             label: String(i + 1), name: '', items: [],
           }));
         }

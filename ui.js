@@ -1543,7 +1543,7 @@ const Templates = (() => {
       id: uid(), type: 'todo', title: 'Чеклист', icon: '☑️', column: col,
       collapsed: false,
       activeSubtab: 0,
-      subtabs: Array.from({ length: 10 }, (_, i) => ({
+      subtabs: Array.from({ length: 5 }, (_, i) => ({
         label: String(i + 1), name: '',
         items: [],
       })),

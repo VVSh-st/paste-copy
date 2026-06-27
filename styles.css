@@ -5667,6 +5667,7 @@ body.help-open {
 .color-dot:hover, .color-dot.active { border-color: var(--text); }
 
 /* ── TODO Checklist ─────────────────────────────────────────────────────── */
+.block-type-todo .block-subtabs-nav { max-width: 140px; }
 .block-type-todo .todo-list { padding: 4px 0; }
 
 .todo-item {

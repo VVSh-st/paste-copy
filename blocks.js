@@ -448,8 +448,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = '{{' + (b.variableName || '?') + '}}';
         badge.title = 'Переменная';
       } else if (b.type === 'sticky') {
-        badge.textContent = '🚫👁';
-        badge.title = 'Не попадёт в превью';
+        badge.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" width="14" height="14"><path d="M8 2v12M5 5h6M5 8h4M5 11h3"/><circle cx="12" cy="3" r="2.5" fill="var(--text-muted)" stroke="none" opacity=".4"/></svg>';
+        badge.title = 'Личная заметка — не попадёт в превью';
         badge.style.cursor = 'default';
       } else if (b.type === 'todo') {
         const sub = b.subtabs[b.activeSubtab];
@@ -2162,9 +2162,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const sub = b.subtabs[b.activeSubtab];
     if (!sub) return;
 
-    // Subtab nav
-    const nav = createTodoSubtabNav(b);
-    body.appendChild(nav);
+    // Subtab nav is in createHeader, skip here
 
     // Todo list
     const list = document.createElement('div');
@@ -2193,7 +2191,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     addBtn.className = 'todo-add-btn';
     addBtn.textContent = '+ Добавить пункт';
     addBtn.onclick = () => {
-      const newItem = { id: uid(), text: '', done: false };
+      const newItem = { id: State.uid(), text: '', done: false };
       sub.items.push(newItem);
       State.update(() => {});
       renderItems();
@@ -2210,22 +2208,34 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
   function createTodoSubtabNav(b) {
     const nav = document.createElement('div');
-    nav.className = 'subtab-nav';
+    nav.className = 'block-subtabs-nav';
+    const wrap = document.createElement('div');
+    wrap.className = 'block-subtabs-wrap';
+    const row = document.createElement('div');
+    row.className = 'block-subtabs';
     b.subtabs.forEach((sub, i) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'subtab-btn' + (i === b.activeSubtab ? ' active' : '');
+      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '');
       const done = (sub.items || []).filter(x => x.done).length;
       const total = (sub.items || []).length;
-      btn.textContent = sub.label;
+      const lbl = document.createElement('span');
+      lbl.className = 'block-subtab-label';
+      lbl.textContent = sub.label;
       btn.title = sub.name || (total ? `${done}/${total}` : sub.label);
-      btn.onclick = () => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
         b.activeSubtab = i;
         State.update(() => {});
-        renderTodoBody(b, nav.parentElement);
+        const blockEl = nav.closest('.block');
+        const body = blockEl?.querySelector('.block-body');
+        if (body) renderTodoBody(b, body);
       };
-      nav.appendChild(btn);
+      btn.appendChild(lbl);
+      row.appendChild(btn);
     });
+    wrap.appendChild(row);
+    nav.appendChild(wrap);
     return nav;
   }
 
@@ -2269,7 +2279,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     text.onkeydown = e => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        const newItem = { id: uid(), text: '', done: false };
+        const newItem = { id: State.uid(), text: '', done: false };
         items.splice(idx + 1, 0, newItem);
         State.update(() => {});
         b._renderItems?.();
