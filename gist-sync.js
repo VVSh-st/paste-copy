@@ -1073,18 +1073,22 @@ function _renderBackupsHTML(backups) {
   }
   let h = `<div class="backup-list">`;
   const now = Date.now();
-  for (const entry of backups) {
+  for (let i = 0; i < backups.length; i++) {
+    const entry = backups[i];
     const d = new Date(entry.ts);
     const timeStr = d.toLocaleString('ru');
     const relative = _relativeTime(entry.ts, now);
     const size = fmtBytes(entry.size || 0);
     const tabs = entry.tabsCount || 0;
+    const immortal = !!entry.immortal;
     h += `
-     <div class="backup-item">
+     <div class="backup-item${immortal ? ' backup-immortal' : ''}">
        <span class="backup-meta" title="${esc(timeStr)}">
-         <span style="margin-right:4px;">●</span>${esc(relative)} · ${tabs} вклад${tabs === 1 ? 'ка' : tabs < 5 ? 'ки' : 'ок'} · ${size}
+         <span class="backup-dot${immortal ? ' dot-immortal' : ''}">●</span>${esc(relative)} · ${tabs} вклад${tabs === 1 ? 'ка' : tabs < 5 ? 'ки' : 'ок'} · ${size}
        </span>
        <span class="backup-actions">
+         <button type="button" class="gs-btn gs-btn-sm gs-btn-immortal${immortal ? ' active' : ''}" data-ts="${entry.ts}"
+                 data-tip="${immortal ? 'Снять защиту от вытеснения' : 'Защитить от вытеснения'}">☠</button>
          <button type="button" class="gs-btn gs-btn-sm gs-tip" id="gs-btn-restore-backup" data-ts="${entry.ts}"
                  data-tip="Восстановить копию. Текущее состояние будет сохранено автоматически.">↺</button>
          <button type="button" class="gs-btn gs-btn-sm gs-tip" id="gs-btn-download-backup" data-ts="${entry.ts}"
@@ -1164,6 +1168,18 @@ async function _loadBackups(body) {
         }
       });
     }
+    section.querySelectorAll('.gs-btn-immortal[data-ts]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ts = Number(btn.dataset.ts);
+        try {
+          const isImmortal = await LocalBackup.toggleImmortal(ts);
+          Toast.show(isImmortal ? '☠ Копия защищена от вытеснения' : '☠ Защита снята', isImmortal ? 'success' : '');
+          if (isModalOpen()) renderModal();
+        } catch (e) {
+          Toast.show('Ошибка: ' + e.message, 'error');
+        }
+      });
+    });
   } catch (e) {
     console.warn('LocalBackup.list() failed:', e);
     section.lastElementChild.outerHTML = `<div class="backup-empty">Локальный бэкап недоступен в этом браузере.</div>`;

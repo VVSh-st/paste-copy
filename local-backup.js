@@ -67,10 +67,26 @@ const LocalBackup = (() => {
   async function prune() {
     const items = await list();
     if (items.length <= MAX_BACKUPS) return;
-    const toDelete = items.slice(MAX_BACKUPS);
+    const toDelete = items.filter(it => !it.immortal).slice(MAX_BACKUPS - items.filter(it => it.immortal).length);
     const tx = db.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
     toDelete.forEach(item => store.delete(item.ts));
+  }
+
+  async function toggleImmortal(ts) {
+    if (!db) await init();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      const req = tx.objectStore(STORE).get(ts);
+      req.onsuccess = () => {
+        const entry = req.result;
+        if (!entry) { resolve(false); return; }
+        entry.immortal = !entry.immortal;
+        tx.objectStore(STORE).put(entry);
+        resolve(entry.immortal);
+      };
+      req.onerror = () => reject(req.error);
+    });
   }
 
   async function clear() {
@@ -83,5 +99,5 @@ const LocalBackup = (() => {
     });
   }
 
-  return { init, save, list, restore, prune, clear };
+  return { init, save, list, restore, prune, clear, toggleImmortal };
 })();

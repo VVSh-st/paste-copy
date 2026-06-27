@@ -5737,13 +5737,16 @@ body.help-open {
 .todo-add-btn:hover { color: var(--text); }
 
 /* ── Backup list ────────────────────────────────────────────────────────── */
-.backup-list { max-height: 400px; overflow-y: auto; }
+.backup-list { max-height: 138px; overflow-y: auto; }
 .backup-item {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 12px; border-radius: 6px; gap: 12px;
 }
 .backup-item:hover { background: var(--hover-bg); }
-.backup-meta { font-size: 12px; color: var(--text-muted); }
+.backup-item.backup-immortal { background: rgba(245,158,11,0.06); }
+.backup-meta { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+.backup-dot { margin-right: 2px; }
+.backup-dot.dot-immortal { color: #f59e0b; }
 .backup-actions { display: flex; gap: 4px; }
 .backup-empty {
   padding: 32px; text-align: center; color: var(--text-muted);
