@@ -420,7 +420,7 @@ const Anchors = (() => {
         const gTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + (lineHeight - 12) + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + (lineHeight - 9) + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });

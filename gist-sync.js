@@ -358,6 +358,7 @@ const dirty    = localStorage.getItem(K_DIRTY) === 'true';
 const gistId   = localStorage.getItem(K_GIST_ID) || '';
 const rawSize  = JSON.stringify(state).length;
 const storageInfo = Storage.getStorageInfo?.() || null;
+const anchorCount = state.tabs?.reduce((s, t) => s + (t.anchors?.length ?? 0), 0) ?? 0;
 return {
 isConnected:  isConnected(),
 lastSync,
@@ -368,6 +369,7 @@ gistUrl:      gistId ? `https://gist.github.com/${gistId}` : null,
 tabsCount:    state.tabs?.length ?? 0,
 blocksTotal:  state.tabs?.reduce((s, t) => s + (t.blocks?.length ?? 0), 0) ?? 0,
 charTotal:    calcTotalChars(state),
+anchorCount,
 rawSize,
 nearLimit:    rawSize > 9_000_000,
 saveCount:    history.length,
@@ -530,6 +532,7 @@ const stats = {
   tabsCount:     state.tabs?.length ?? 0,
   blocksTotal:   state.tabs?.reduce((s, t) => s + (t.blocks?.length ?? 0), 0) ?? 0,
   charTotal:     calcTotalChars(state),
+  anchorCount:   state.tabs?.reduce((s, t) => s + (t.anchors?.length ?? 0), 0) ?? 0,
   rawSize:       raw.length,
   clientVersion: '1.0',
   pushedAt:      new Date().toISOString(),
@@ -726,7 +729,8 @@ function _formatStateStats(state) {
 const tabs = state?.tabs?.length ?? 0;
 const blocks = state?.tabs?.reduce((s, t) => s + (t.blocks?.length ?? 0), 0) ?? 0;
 const chars = calcTotalChars(state || {});
-return `${tabs} вкл. / ${blocks} бл. / ${fmtNum(chars)} симв.`;
+const anchors = state?.tabs?.reduce((s, t) => s + (t.anchors?.length ?? 0), 0) ?? 0;
+return `${tabs} вкл. / ${blocks} бл. / ${fmtNum(chars)} симв. / ${anchors} ⚓`;
 }
 async function createEmergencySnapshot(reason) {
 if (!Storage.saveEmergencySnapshot) return null;
@@ -1209,6 +1213,7 @@ html += `
        <span class="gs-tip" data-tip="Вкладки в текущем проекте." aria-label="Вкладки: ${st.tabsCount}"><em>▣</em><strong>${st.tabsCount}</strong></span>
        <span class="gs-tip" data-tip="Общее количество блоков во всех вкладках." aria-label="Блоки: ${st.blocksTotal}"><em>▦</em><strong>${st.blocksTotal}</strong></span>
        <span class="gs-tip" data-tip="Суммарный объём текста в проекте." aria-label="Символы: ${fmtNum(st.charTotal)}"><em>Σ</em><strong>${fmtNum(st.charTotal)}</strong></span>
+       <span class="gs-tip" data-tip="Общее количество якорей во всех вкладках." aria-label="Якоря: ${st.anchorCount}"><em>⚓</em><strong>${st.anchorCount}</strong></span>
        <span class="gs-tip" data-tip="Записей облачной истории, включая ☠." aria-label="Сохранения: ${st.saveCount}"><em>☁</em><strong>${st.saveCount}</strong></span>
        <span class="gs-tip" data-tip="Бессмертные записи не вытесняются лимитом истории." aria-label="Бессмертные сохранения: ${st.immortalCount}"><em>☠</em><strong>${st.immortalCount}</strong></span>
        <span class="gs-tip gs-stat-storage" data-tip="Хранилище основного документа: ${esc(storageMode)}. Размер JSON: ${rawSizeStr} (~${rawLimitPct}% от лимита одного Gist-файла)." aria-label="Хранилище: ${esc(storageMode)}, размер: ${rawSizeStr}"><em>◫</em><strong>${esc(storageShort)}</strong></span>
@@ -1219,6 +1224,7 @@ if (_compareView) {
   const dTabs = _compareView.tabs - st.tabsCount;
   const dBlocks = _compareView.blocks - st.blocksTotal;
   const dChars = _compareView.chars - st.charTotal;
+  const dAnchors = (_compareView.anchors || 0) - st.anchorCount;
   const sign = n => n > 0 ? `+${n}` : String(n);
   html += `
    <section class="gs-section gs-compare-panel" aria-live="polite">
@@ -1228,9 +1234,9 @@ if (_compareView) {
      </div>
      <div class="gs-compare-title">${esc(_compareView.time)} — ${esc(_compareView.label)}</div>
      <div class="gs-compare-grid">
-       <span><em>Сейчас</em><strong>${st.tabsCount} вкл. / ${st.blocksTotal} бл. / ${fmtNum(st.charTotal)} симв.</strong></span>
-       <span><em>Выбрано</em><strong>${_compareView.tabs} вкл. / ${_compareView.blocks} бл. / ${fmtNum(_compareView.chars)} симв.</strong></span>
-       <span><em>Разница</em><strong>${sign(dTabs)} вкл. / ${sign(dBlocks)} бл. / ${sign(dChars)} симв.</strong></span>
+       <span><em>Сейчас</em><strong>${st.tabsCount} вкл. / ${st.blocksTotal} бл. / ${fmtNum(st.charTotal)} симв. / ${st.anchorCount} ⚓</strong></span>
+       <span><em>Выбрано</em><strong>${_compareView.tabs} вкл. / ${_compareView.blocks} бл. / ${fmtNum(_compareView.chars)} симв. / ${_compareView.anchors || 0} ⚓</strong></span>
+       <span><em>Разница</em><strong>${sign(dTabs)} вкл. / ${sign(dBlocks)} бл. / ${sign(dChars)} симв. / ${sign(dAnchors)} ⚓</strong></span>
      </div>
    </section>`;
 }
@@ -1272,8 +1278,8 @@ if (st.history.length  > 0) {
     for (const entry of visibleHistory) {
       const timeStr = esc(new Date(entry.ts).toLocaleString('ru'));
       const immortal = !!entry.immortal;
-      const targetStats = `${entry.tabsCount || 0} вкл. / ${entry.blocksTotal || 0} бл. / ${fmtNum(entry.charTotal || 0)} симв.`;
-      const compactStats = `${entry.tabsCount || 0}/${entry.blocksTotal || 0}/${fmtNum(entry.charTotal || 0)}`;
+      const targetStats = `${entry.tabsCount || 0} вкл. / ${entry.blocksTotal || 0} бл. / ${fmtNum(entry.charTotal || 0)} симв. / ${entry.anchorCount || 0} ⚓`;
+      const compactStats = `${entry.tabsCount || 0}/${entry.blocksTotal || 0}/${fmtNum(entry.charTotal || 0)}/${entry.anchorCount || 0}⚓`;
       const sizeStats = entry.rawSize ? `JSON ${fmtBytes(entry.rawSize)}${entry.gistSize ? ` · Gist ${fmtBytes(entry.gistSize)}` : ''}` : 'Размер старых записей не сохранён';
       html += `
        <li class="gist-history-row${immortal ? ' gs-history-immortal' : ''}">
@@ -1286,11 +1292,12 @@ if (st.history.length  > 0) {
            <span class="gs-hist-stats gs-tip" data-tip="${esc(targetStats)} · ${esc(sizeStats)}">${compactStats}</span>
          </span>
          <span class="gs-hist-actions">
-           <button type="button" class="gs-btn gs-btn-sm gs-btn-compare gs-tip"
-                   data-ts="${entry.ts}" data-tabs="${entry.tabsCount || 0}"
-                   data-blocks="${entry.blocksTotal || 0}" data-chars="${entry.charTotal || 0}"
-                   data-label="${esc(entry.label || 'Сохранение')}" data-time="${timeStr}"
-                   data-tip="Показать разницу по вкладкам, блокам и символам."><span class="gs-btn-ico" aria-hidden="true">≋</span><span></span></button>
+            <button type="button" class="gs-btn gs-btn-sm gs-btn-compare gs-tip"
+                    data-ts="${entry.ts}" data-tabs="${entry.tabsCount || 0}"
+                    data-blocks="${entry.blocksTotal || 0}" data-chars="${entry.charTotal || 0}"
+                    data-anchors="${entry.anchorCount || 0}"
+                    data-label="${esc(entry.label || 'Сохранение')}" data-time="${timeStr}"
+                    data-tip="Показать разницу по вкладкам, блокам, символам и якорям."><span class="gs-btn-ico" aria-hidden="true">≋</span><span></span></button>
           ${entry.gistVersion
             ? ` <button type="button" class="gs-btn gs-btn-sm gs-btn-restore gs-tip" data-sha="${esc(entry.gistVersion)}" data-ts="${entry.ts}" data-stats="${esc(targetStats)}" data-tip="Восстановить эту версию. Перед опасным откатом будет предложена защита."><span class="gs-btn-ico" aria-hidden="true">↩</span><span></span></button>`
             : ' <span class="gs-hist-nosha">—</span>'}
@@ -1606,6 +1613,7 @@ body.querySelectorAll('.gs-btn-compare').forEach(btn => {
       tabs: Number(btn.dataset.tabs) || 0,
       blocks: Number(btn.dataset.blocks) || 0,
       chars: Number(btn.dataset.chars) || 0,
+      anchors: Number(btn.dataset.anchors) || 0,
     };
     if (isModalOpen()) renderModal();
   });

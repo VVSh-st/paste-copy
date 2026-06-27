@@ -1,0 +1,1918 @@
+
+Улучшаем функцию "word-complete"
+Ниже 2 анализа `word-complete.js` + доп анализ анализа и итог.
+Анализаторы не видели весь проект и в некоторых местах могут ошибаться, проведи расследование, что хорошо и полезно для нашего проекта.
+
+
+# Анализ `word-complete.js`
+
+Я изучил весь файл. Это хорошо структурированный модуль автодополнения с приятным «matrix»-эффектом. Код в целом качественный, но есть ряд проблем — от потенциальных багов до архитектурных улучшений. Разберу по модулям.
+
+---
+
+## 🔴 Критические проблемы
+
+### 1. `WordDict.build()` — несогласованность частот `_dynWords`
+
+```javascript
+for (const [w, freq] of _dynWords) {
+  if (!_staticWords.has(w))
+    wordFreq.set(w, (wordFreq.get(w) || 0) + freq);
+}
+// ... позже ...
+words.forEach((w, i) => {
+  wordFreq.set(w, (wordFreq.get(w) || 0) + mult);   // ← двойной учёт!
+```
+
+**Проблема:** слово из `_dynWords` сначала вносится в `wordFreq`, а затем при проходе по текстам **прибавляется ещё раз**. Динамические слова получают завышенный вес (по сути дублируются: накопленная частота + текущий проход).
+
+**Как исправить** — динамические слова нужны только как «память» о словах, которых уже нет в текущих текстах. Внесите их **после** прохода по текстам, только если слова там нет:
+
+```javascript
+function build() {
+  wordFreq.clear();
+  bigrams.clear();
+  _seedFromStatic();
+
+  const activeId = State.getActive()?.id;
+  const sessionCounts = new Map();
+
+  State.getAll().forEach(tab => {
+    const mult  = tab.id === activeId ? 2 : 1;
+    const texts = [];
+    collectTexts(tab.blocks, texts);
+    texts.forEach(text => {
+      const words = tokenize(text);
+      words.forEach((w, i) => {
+        wordFreq.set(w, (wordFreq.get(w) || 0) + mult);
+        if (!_staticWords.has(w) && w.length >= cfg.minLen)
+          sessionCounts.set(w, (sessionCounts.get(w) || 0) + mult);
+        if (i > 0) {
+          const prev = words[i - 1];
+          if (!bigrams.has(prev)) bigrams.set(prev, new Map());
+          const bm = bigrams.get(prev);
+          bm.set(w, (bm.get(w) || 0) + mult);
+        }
+      });
+    });
+  });
+
+  // Динамические слова добавляем ТОЛЬКО если их нет в текущих текстах
+  for (const [w, freq] of _dynWords) {
+    if (!_staticWords.has(w) && !wordFreq.has(w))
+      wordFreq.set(w, freq);
+  }
+
+  for (const [w, cnt] of sessionCounts)
+    _dynWords.set(w, Math.max(_dynWords.get(w) || 0, cnt));
+}
+```
+
+---
+
+### 2. `InlineHint` / `WordAcceptEffect` — обращение к `document.body` на этапе IIFE
+
+```javascript
+document.body.appendChild(mirrorEl);   // упадёт, если body ещё нет
+```
+
+В коде есть комментарий-требование «загружать с defer». Но если требование нарушат — будет «тихая» поломка `Cannot read properties of null`. 
+
+**Рекомендация:** добавьте защитную инициализацию или явную ошибку:
+
+```javascript
+if (!document.body) {
+  throw new Error('[InlineHint] требуется defer или подключение в конце <body>');
+}
+```
+
+Лучше — ленивая инициализация DOM-узлов при первом `show()`.
+
+---
+
+### 3. `WordDict` — глобальные зависимости `State` без проверки
+
+`build()` напрямую вызывает `State.getActive()`, `State.getAll()`. Если `State` ещё не загружен (порядок скриптов), `loadWordlist()` → `build()` упадёт.
+
+**Рекомендация:** защита:
+
+```javascript
+function build() {
+  if (typeof State === 'undefined' || !State?.getAll) return;
+  // ...
+}
+```
+
+---
+
+## 🟡 Логические и UX-улучшения
+
+### 4. `suggest()` — линейный перебор всего словаря O(n)
+
+```javascript
+for (const [w, freq] of wordFreq) {
+  if (w.length > p.length && w.startsWith(p)) ...
+}
+```
+
+На каждый ввод символа перебирается **весь** словарь. При больших словарях (10k+ слов) это заметная задержка на каждое нажатие.
+
+**Рекомендация:** для серьёзного словаря постройте префиксный индекс (trie) или хотя бы индекс по первым 2-3 буквам:
+
+```javascript
+// Индекс: первые 2 символа → массив слов
+const prefixIndex = new Map();
+
+function rebuildIndex() {
+  prefixIndex.clear();
+  for (const w of wordFreq.keys()) {
+    const key = w.slice(0, 2);
+    if (!prefixIndex.has(key)) prefixIndex.set(key, []);
+    prefixIndex.get(key).push(w);
+  }
+}
+
+function suggest(prefix) {
+  if (!cfg.enabled || prefix.length < cfg.minLen) return [];
+  const p = prefix.toLowerCase();
+  const bucket = prefixIndex.get(p.slice(0, 2)) || [];
+  const out = [];
+  for (const w of bucket) {
+    if (w.length > p.length && w.startsWith(p))
+      out.push({ w, effective: wordFreq.get(w) + (_staticWords.has(w) ? STATIC_BOOST : 0) });
+  }
+  out.sort((a, b) => b.effective - a.effective);
+  return out.slice(0, cfg.maxSuggest).map(x => x.w);
+}
+```
+(Индекс перестраивать в конце `build()`.)
+
+---
+
+### 5. `suggestNext()` — нет учёта префикса и минимальной частоты
+
+Биграмма всегда возвращает самое частое следующее слово, даже если оно встретилось всего 1 раз. Это даёт «шумные» подсказки.
+
+**Рекомендация:** добавьте порог:
+
+```javascript
+function suggestNext(prevWord, minCount = 2) {
+  if (!cfg.enabled || !prevWord) return null;
+  const bm = bigrams.get(prevWord.toLowerCase());
+  if (!bm?.size) return null;
+  let best = null, max = minCount - 1;
+  for (const [w, c] of bm) if (c > max) { best = w; max = c; }
+  return best;
+}
+```
+
+---
+
+### 6. `WordComplete.handleKeydown` — `State.snapshot()` без проверки
+
+```javascript
+State.snapshot();
+WordDict.scheduleBuild();
+```
+
+Те же глобальные зависимости. Если модуль переиспользуется в другом контексте — упадёт. Стоит обернуть в проверки или внедрять зависимости через init().
+
+---
+
+### 7. Слушатели `scroll`/`resize` скрывают подсказку всегда
+
+```javascript
+window.addEventListener('scroll', hide, { passive: true, capture: true });
+```
+
+Любой скролл (даже в другом элементе) убивает подсказку. Часто это раздражает. Можно вместо `hide()` **перепозиционировать** подсказку, если активная textarea ещё в фокусе:
+
+```javascript
+function reposition() {
+  if (_visible && activeTa) show(activeTa, suffix);
+  else hide();
+}
+window.addEventListener('scroll', reposition, { passive: true, capture: true });
+```
+
+(С throttle через `requestAnimationFrame`.)
+
+---
+
+## 🟢 Мелкие замечания / чистота кода
+
+### 8. `tokenize()` — апострофы в середине слов
+Регэксп `[^\p{L}\p{N}']+` оставляет апострофы. Слово `don't` → `don't`, но `''abc''` чистится только по краям. Для русского это редко важно, но `'` внутри может зашумлять словарь. Проверьте, нужен ли апостроф вообще.
+
+### 9. `_buildTempPayload()` дублирует фильтр с `_loadTempWordlist()`
+Условие `freq >= 2` и `!_staticWords.has(w)` повторяется в нескольких местах. Вынесите в функцию:
+
+```javascript
+const _isPersistable = (w, freq) =>
+  !_staticWords.has(w) && w.length >= cfg.minLen &&
+  typeof freq === 'number' && freq >= 2;
+```
+
+### 10. `WordAcceptEffect` — `measureCanvas` создаётся, но `getContext` может вернуть null
+Есть проверка `if (!measureCtx ...)` — хорошо. Но `measureCanvas` не нужен в DOM, всё ок.
+
+### 11. Magic numbers
+`STATIC_BOOST = 10000`, `34` (мс кадра), `0.62`, `0.58` в `revealGlyph` — стоит вынести в именованные константы с комментариями для будущей настройки.
+
+### 12. `getConfig()` возвращает мутабельную ссылку
+```javascript
+function getConfig() { return cfg; }
+```
+Внешний код может напрямую мутировать `cfg`, минуя `setConfig`. Верните копию:
+```javascript
+function getConfig() { return { ...cfg }; }
+```
+
+---
+
+## 📋 Приоритетный план действий
+
+| # | Что | Приоритет | Сложность |
+|---|-----|-----------|-----------|
+| 1 | Исправить двойной учёт `_dynWords` в `build()` | 🔴 Высокий | Низкая |
+| 2 | Защита от отсутствия `document.body` / `State` | 🔴 Высокий | Низкая |
+| 4 | Префиксный индекс для `suggest()` | 🟡 Средний | Средняя |
+| 5 | Порог частоты в `suggestNext()` | 🟡 Средний | Низкая |
+| 7 | Перепозиционирование вместо `hide` при скролле | 🟡 Средний | Средняя |
+| 12 | Иммутабельный `getConfig()` | 🟢 Низкий | Тривиальная |
+| 9/11 | Рефакторинг дублей и констант | 🟢 Низкий | Низкая |
+
+---
+
+Ниже — ревью файла `word-complete.js`: архитектура, потенциальные ошибки, производительность, UX, устойчивость и конкретные инструкции по улучшению.
+
+---
+
+# 1. Общая оценка
+
+Файл реализует несколько независимых модулей:
+
+1. `WordDict`  
+   Частотный словарь, биграммы, загрузка `wordlist.json`, временный пользовательский словарь, автосохранение.
+
+2. `InlineHint`  
+   Отрисовка ghost-подсказки рядом с кареткой в `textarea`.
+
+3. `WordAcceptEffect`  
+   Визуальный эффект принятия подсказки.
+
+4. `WordComplete`  
+   Логика показа подсказки и принятия по `Tab`.
+
+5. `SmartList`  
+   Автонумерация списков при `Enter`.
+
+Код в целом аккуратно разделён на модули, использует IIFE, не засоряет глобальную область сверх необходимых `window.WordComplete`, `window.WordDict` и т.д. Видно, что учтены IME-композиция, CORS для `file://`, fallback для File System Access API, `prefers-reduced-motion`.
+
+Но есть несколько важных проблем:
+
+- возможные ошибки при загрузке до готовности `document.body`;
+- зависимость от глобального `State`;
+- не до конца корректная логика динамического словаря;
+- потенциальные проблемы с производительностью на больших текстах;
+- неполная синхронизация mirror-элемента для `textarea`;
+- риск неправильного позиционирования подсказки;
+- слабая обработка удаления/изменения пользовательских слов;
+- устаревание подсказки между `keydown` и `Tab`;
+- сохранение временного словаря только раз в 2 часа и при `beforeunload`, что не всегда надёжно.
+
+---
+
+# 2. `WordDict`
+
+## 2.1. Сильные стороны
+
+Хорошо:
+
+```js
+const wordFreq = new Map();
+const bigrams  = new Map();
+```
+
+Использование `Map` удобно для частот.
+
+Хорошо, что статические слова и динамические разделены:
+
+```js
+const _staticWords   = new Map();
+const _staticBigrams = new Map();
+const _dynWords = new Map();
+```
+
+Также правильно, что статическим словам даётся boost:
+
+```js
+const STATIC_BOOST = 10000;
+```
+
+Это позволяет словам из `wordlist.json` иметь приоритет.
+
+---
+
+## 2.2. Проблема: `State` используется без проверки
+
+В `build()`:
+
+```js
+const activeId = State.getActive()?.id;
+
+State.getAll().forEach(tab => {
+```
+
+Если `State` ещё не загружен или не существует, скрипт упадёт.
+
+### Что улучшить
+
+Добавить защиту:
+
+```js
+function _getStateSafe() {
+  if (!window.State || typeof State.getAll !== 'function') {
+    return null;
+  }
+  return State;
+}
+```
+
+И в `build()`:
+
+```js
+function build() {
+  wordFreq.clear();
+  bigrams.clear();
+  _seedFromStatic();
+
+  for (const [w, freq] of _dynWords) {
+    if (!_staticWords.has(w)) {
+      wordFreq.set(w, (wordFreq.get(w) || 0) + freq);
+    }
+  }
+
+  const state = _getStateSafe();
+  if (!state) return;
+
+  const activeId = state.getActive?.()?.id;
+
+  state.getAll().forEach(tab => {
+    // ...
+  });
+}
+```
+
+Это особенно важно, если файл подключается раньше других модулей.
+
+---
+
+## 2.3. Проблема: динамические слова не уменьшаются после удаления текста
+
+В `build()` текущая логика:
+
+```js
+_dynWords.set(w, Math.max(_dynWords.get(w) || 0, cnt));
+```
+
+То есть если слово когда-то встретилось 10 раз, а потом пользователь удалил весь текст, слово останется в `_dynWords` с частотой 10.
+
+Комментарий говорит:
+
+```js
+// чтобы частоты отражали реальную встречаемость, а не суммировались бесконечно.
+```
+
+Но по факту это отражает максимальную историческую встречаемость, а не текущую.
+
+Это может быть намеренно, если `_dynWords` — обученный пользовательский словарь. Но тогда нужно понимать последствия:
+
+- случайно введённые слова останутся;
+- опечатки будут сохраняться;
+- удалённые или устаревшие термины будут продолжать предлагаться.
+
+### Вариант 1. Оставить как есть, но добавить затухание
+
+Можно хранить не только частоту, но и дату обновления:
+
+```json
+{
+  "words": [
+    ["example", 5, "2026-06-27T12:00:00.000Z"]
+  ]
+}
+```
+
+И периодически снижать вес старых слов.
+
+Например:
+
+```js
+const DYN_DECAY_DAYS = 30;
+```
+
+### Вариант 2. Разделить текущий словарь и пользовательскую память
+
+Например:
+
+```js
+const _sessionWords = new Map();
+const _userMemoryWords = new Map();
+```
+
+`wordFreq` строить как:
+
+```js
+static + currentState + userMemory * 0.5
+```
+
+Тогда опечатки из прошлого будут иметь меньший вес.
+
+---
+
+## 2.4. Проблема: биграммы не сохраняются во временный словарь
+
+Сейчас `_buildTempPayload()` сохраняет только:
+
+```js
+words
+```
+
+Но не сохраняет `bigrams`.
+
+При следующей сессии будут восстановлены только слова, но не связи между словами.
+
+### Что улучшить
+
+Если подсказки следующего слова важны, сохраняйте динамические биграммы.
+
+Например:
+
+```js
+const _dynBigrams = new Map();
+```
+
+В `build()` собирать `sessionBigrams`, затем обновлять `_dynBigrams`.
+
+Формат:
+
+```json
+{
+  "meta": {},
+  "words": [
+    ["hello", 5]
+  ],
+  "bigrams": {
+    "hello": {
+      "world": 3
+    }
+  }
+}
+```
+
+Загрузка:
+
+```js
+if (data.bigrams && typeof data.bigrams === 'object') {
+  for (const [prev, followers] of Object.entries(data.bigrams)) {
+    // ...
+  }
+}
+```
+
+---
+
+## 2.5. Проблема: `suggest()` линейно перебирает весь словарь
+
+```js
+for (const [w, freq] of wordFreq) {
+  if (w.length > p.length && w.startsWith(p))
+    out.push(...)
+}
+```
+
+Для маленького словаря нормально. Для 10–50 тысяч слов уже может быть заметно, особенно при каждом вводе символа.
+
+### Что улучшить
+
+#### Вариант простой: кэшировать результаты
+
+```js
+const suggestCache = new Map();
+
+function suggest(prefix) {
+  if (!cfg.enabled || !prefix || prefix.length < cfg.minLen) return [];
+
+  const p = prefix.toLowerCase();
+
+  const cacheKey = `${p}|${cfg.maxSuggest}`;
+  if (suggestCache.has(cacheKey)) return suggestCache.get(cacheKey);
+
+  const out = [];
+
+  for (const [w, freq] of wordFreq) {
+    if (w.length > p.length && w.startsWith(p)) {
+      out.push({
+        w,
+        effective: freq + (_staticWords.has(w) ? STATIC_BOOST : 0)
+      });
+    }
+  }
+
+  out.sort((a, b) => b.effective - a.effective);
+
+  const result = out.slice(0, cfg.maxSuggest).map(x => x.w);
+  suggestCache.set(cacheKey, result);
+  return result;
+}
+```
+
+И очищать кэш в `build()`:
+
+```js
+suggestCache.clear();
+```
+
+#### Вариант лучше: индекс по первым буквам
+
+Например:
+
+```js
+const prefixIndex = new Map();
+```
+
+Строить индекс для первых 2–3 символов. Тогда `suggest('com')` перебирает только слова, начинающиеся на `co`, а не весь словарь.
+
+---
+
+## 2.6. Проблема: `loadWordlist()` при неудачном HTTP не вызывает `build()`
+
+Сейчас:
+
+```js
+if (!r.ok) {
+  console.debug(`[WordDict] wordlist.json not found (HTTP ${r.status})`);
+  return;
+}
+```
+
+Но поскольку есть `finally`, `_loadTempWordlist(); build();` всё равно выполнится.
+
+Это нормально.
+
+Однако если `fetch` успешен, но JSON невалидный, ошибка будет обработана в `catch`, затем `finally` также выполнится.
+
+Тоже нормально.
+
+---
+
+## 2.7. Проблема: при `file://` `loadWordlist()` вызывает `_loadTempWordlist()` и `build()`, затем выходит
+
+```js
+if (location.protocol === 'file:') {
+  _loadTempWordlist();
+  build();
+  return;
+}
+```
+
+Это хорошо. Но в этом режиме статический `wordlist.json` никогда не загрузится.
+
+Если проект часто запускается локально как файл, стоит добавить ручной импорт словаря или предупреждение в UI.
+
+---
+
+## 2.8. Проблема: `beforeunload` с async/синхронностью
+
+```js
+window.addEventListener('beforeunload', () => _saveTempToLocalStorage());
+```
+
+Сохранение в `localStorage` синхронное, это нормально.
+
+Но запись в файл через `_fsHandle` при закрытии не выполняется. Если пользователь рассчитывает на файл, он может потерять свежие данные между автосохранениями.
+
+### Что улучшить
+
+Добавить сохранение чаще, например debounce после изменений.
+
+```js
+let _dirty = false;
+let _saveDebounce = null;
+
+function markDirty() {
+  _dirty = true;
+  clearTimeout(_saveDebounce);
+  _saveDebounce = setTimeout(() => {
+    const payload = _buildTempPayload();
+    if (!payload) return;
+    _saveTempToLocalStorage(payload);
+    _tryWriteToHandle(payload);
+    _dirty = false;
+  }, 10000);
+}
+```
+
+И вызывать `markDirty()` после `build()` или после принятия подсказки.
+
+---
+
+# 3. Токенизация
+
+Текущая функция:
+
+```js
+function tokenize(text) {
+  if (!text) return [];
+  return text.split(/[^\p{L}\p{N}']+/u)
+    .map(w => w.toLowerCase().replace(/^'+|'+$/g, ''))
+    .filter(w => w.length >= 2);
+}
+```
+
+## 3.1. Потенциальная проблема с апострофом
+
+Слова вроде:
+
+- `don't`
+- `it's`
+- `l'homme`
+
+будут сохранены нормально.
+
+Но одиночные комбинации или странные формы тоже попадут.
+
+## 3.2. Потенциальная проблема с дефисными словами
+
+Слова типа:
+
+- `по-русски`
+- `что-то`
+- `state-of-the-art`
+
+разобьются на части.
+
+Если это нежелательно, можно включить дефис внутрь токена:
+
+```js
+return text
+  .split(/[^\p{L}\p{N}'-]+/u)
+  .map(w => w.toLowerCase().replace(/^['-]+|['-]+$/g, ''))
+  .filter(w => w.length >= 2);
+```
+
+Но тогда нужно осторожно с тире и пунктуацией.
+
+---
+
+# 4. `InlineHint`
+
+## 4.1. Сильные стороны
+
+Хороший подход: mirror-элемент для вычисления координат каретки.
+
+```js
+const mirrorEl = document.createElement('div');
+```
+
+Это стандартный способ позиционирования подсказки в `textarea`.
+
+---
+
+## 4.2. Важная проблема: mirror не копирует border и height
+
+Вы вычисляете координаты так:
+
+```js
+const caret = getCaretXY(ta, ta.selectionStart);
+const insertX = Math.round(rect.left + bordL + caret.x);
+const rawY  = Math.round(rect.top  + bordT + caret.y);
+```
+
+Но mirror имеет:
+
+```js
+border: 'none',
+margin: '0',
+```
+
+И копирует только часть стилей. Для точного совпадения нужно особенно учитывать:
+
+- width;
+- padding;
+- font;
+- line-height;
+- white-space;
+- word-wrap;
+- box-sizing;
+- border;
+- scroll;
+- textarea wrapping.
+
+Сейчас `border` не копируется, но добавляется `bordL`, `bordT` отдельно. Это может быть нормально.
+
+Однако mirror width:
+
+```js
+mirrorEl.style.width = ta.clientWidth + 'px';
+```
+
+Если `boxSizing: border-box`, а padding скопирован, может получиться несовпадение. `clientWidth` включает padding, но не border. Для `box-sizing: border-box` это может исказить переносы.
+
+### Что улучшить
+
+Обычно для mirror используют:
+
+```js
+mirrorEl.style.width = ta.clientWidth + 'px';
+mirrorEl.style.height = ta.clientHeight + 'px';
+```
+
+И дополнительно:
+
+```js
+mirrorEl.style.overflow = 'hidden';
+```
+
+Но если копируется `boxSizing`, нужно тестировать.
+
+Можно добавить в `MIRROR_PROPS`:
+
+```js
+'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+'borderStyle',
+'textAlign',
+'direction',
+'writingMode',
+```
+
+Особенно важны:
+
+```js
+'textAlign',
+'direction'
+```
+
+Для RTL-текста без этого подсказка может позиционироваться неверно.
+
+---
+
+## 4.3. Проблема: marker имеет нулевую высоту
+
+```js
+marker.style.cssText =
+  'display:inline-block;width:0;height:0;overflow:hidden;vertical-align:top;';
+```
+
+Иногда marker с нулевой высотой может давать странный `top`.
+
+Часто используют символ-заглушку:
+
+```js
+marker.textContent = '\u200b';
+```
+
+Или:
+
+```js
+marker.style.cssText = 'display:inline-block;width:1px;height:1em;';
+```
+
+Рекомендованный вариант:
+
+```js
+marker.textContent = '\u200b';
+marker.style.cssText = 'display:inline-block;width:0;overflow:hidden;';
+```
+
+---
+
+## 4.4. Проблема: подсказка не обновляется при прокрутке внутри textarea
+
+`show()` вычисляет положение на момент вызова. Если пользователь скроллит textarea, подсказка может остаться на месте.
+
+Есть общий обработчик:
+
+```js
+window.addEventListener('scroll', hide, { passive: true, capture: true });
+```
+
+Но прокрутка внутри `textarea` не всегда всплывает как window scroll.
+
+### Что улучшить
+
+Добавить обработчик на активную textarea:
+
+```js
+function show(ta, suf) {
+  // ...
+  if (activeTa && activeTa !== ta) {
+    activeTa.removeEventListener('scroll', hide);
+  }
+
+  activeTa = ta;
+  ta.addEventListener('scroll', hide, { passive: true });
+}
+```
+
+В `hide()`:
+
+```js
+if (activeTa) {
+  activeTa.removeEventListener('scroll', hide);
+}
+```
+
+Но аккуратно, чтобы не удалять не тот listener.
+
+---
+
+# 5. `WordAcceptEffect`
+
+## 5.1. Сильные стороны
+
+Хорошо:
+
+- есть `prefersReducedMotion()`;
+- есть `cleanup()`;
+- используется `WeakMap` для таймеров;
+- эффект не запускается при пустом тексте;
+- есть ограничение длительности через `clampMs`.
+
+---
+
+## 5.2. Возможная ошибка: `snapshot.lineHeight` может быть `"normal"`
+
+В `play()`:
+
+```js
+lineHeight: (parseFloat(snapshot.lineHeight) - 1) + 'px',
+```
+
+Если `lineHeight === 'normal'`, то:
+
+```js
+parseFloat('normal') // NaN
+```
+
+В результате:
+
+```js
+lineHeight: 'NaNpx'
+```
+
+### Исправление
+
+```js
+const parsedLineHeight = parseFloat(snapshot.lineHeight);
+const safeLineHeight = Number.isFinite(parsedLineHeight)
+  ? Math.max(1, parsedLineHeight - 1) + 'px'
+  : snapshot.lineHeight || 'normal';
+```
+
+И использовать:
+
+```js
+lineHeight: safeLineHeight,
+```
+
+---
+
+## 5.3. Возможная ошибка: `measureCtx` может быть `null`
+
+Вы это частично проверяете:
+
+```js
+if (!measureCtx || /\s/.test(ch)) return null;
+```
+
+Хорошо.
+
+---
+
+## 5.4. Проблема: blur удаляет элементы, но не чистит WeakMap
+
+```js
+window.addEventListener('blur', () => {
+  document.querySelectorAll('.wc-accept-effect').forEach(el => el.remove());
+});
+```
+
+Элементы удалены, но записи в `timers` могут остаться до следующего cleanup. Поскольку `WeakMap` ключуется textarea, утечка небольшая, но состояние `isPlaying(ta)` может временно вернуть `true`.
+
+### Что улучшить
+
+Так как `WeakMap` нельзя перебрать, можно дополнительно хранить `Set` активных textarea:
+
+```js
+const activeTextareas = new Set();
+```
+
+В `play()`:
+
+```js
+activeTextareas.add(ta);
+```
+
+В `cleanup()`:
+
+```js
+activeTextareas.delete(ta);
+```
+
+На blur:
+
+```js
+window.addEventListener('blur', () => {
+  for (const ta of activeTextareas) cleanup(ta);
+});
+```
+
+---
+
+# 6. `WordComplete`
+
+## 6.1. Сильные стороны
+
+Хорошо:
+
+```js
+if (ta.selectionStart !== ta.selectionEnd) { InlineHint.hide(); return; }
+```
+
+Хорошо, что не мешает сниппетам:
+
+```js
+if (isSnippetPopupVisible()) { InlineHint.hide(); return; }
+```
+
+Хорошо учитывается IME:
+
+```js
+if (InlineHint.isComposing()) return;
+```
+
+---
+
+## 6.2. Потенциальная проблема: `Tab` принимает устаревшую подсказку
+
+Сценарий:
+
+1. Подсказка показана.
+2. Пользователь изменил текст способом, который не вызвал `handleInput`.
+3. Нажал `Tab`.
+4. Старый suffix вставился в новый контекст.
+
+Перед вставкой лучше перепроверять, что подсказка всё ещё соответствует текущему слову.
+
+### Улучшение
+
+В `handleKeydown()` перед принятием:
+
+```js
+const { currentWord } = getContext(ta);
+const cfg = WordDict.getConfig();
+
+if (currentWord.length >= cfg.minLen) {
+  const candidates = WordDict.suggest(currentWord);
+  if (!candidates.length || !candidates[0].startsWith(currentWord)) {
+    InlineHint.hide();
+    return;
+  }
+
+  const expectedSuffix = candidates[0].slice(currentWord.length);
+  if (expectedSuffix !== suf) {
+    InlineHint.hide();
+    InlineHint.show(ta, expectedSuffix);
+    return;
+  }
+}
+```
+
+Для биграммы тоже можно проверить:
+
+```js
+if (!currentWord) {
+  const { prevWord } = getContext(ta);
+  const next = WordDict.suggestNext(prevWord);
+  if (next !== suf) {
+    InlineHint.hide();
+    return;
+  }
+}
+```
+
+---
+
+## 6.3. Проблема: после `setRangeText()` событие `input` создаётся без `bubbles`
+
+Сейчас:
+
+```js
+ta.dispatchEvent(new Event('input'));
+```
+
+Во многих приложениях обработчики слушают `input` на родителе через bubbling.
+
+Лучше:
+
+```js
+ta.dispatchEvent(new InputEvent('input', {
+  bubbles: true,
+  inputType: 'insertText',
+  data: insert,
+}));
+```
+
+Но `InputEvent` может быть не везде доступен. Безопасный helper:
+
+```js
+function dispatchTextInput(ta, text) {
+  let ev;
+  try {
+    ev = new InputEvent('input', {
+      bubbles: true,
+      inputType: 'insertText',
+      data: text,
+    });
+  } catch {
+    ev = new Event('input', { bubbles: true });
+  }
+  ta.dispatchEvent(ev);
+}
+```
+
+И использовать:
+
+```js
+dispatchTextInput(ta, insert);
+```
+
+То же самое стоит сделать в `SmartList`.
+
+---
+
+## 6.4. Проблема: прямой вызов `State.snapshot()`
+
+```js
+State.snapshot();
+```
+
+Если `State` отсутствует или метод называется иначе, будет ошибка.
+
+### Исправление
+
+```js
+window.State?.snapshot?.();
+```
+
+Везде:
+
+```js
+State.snapshot();
+```
+
+заменить на:
+
+```js
+window.State?.snapshot?.();
+```
+
+---
+
+# 7. `SmartList`
+
+## 7.1. Сильные стороны
+
+Логика простая и понятная:
+
+```js
+const LIST_RE = /^(\d+(?:\.\d+)*)\.\s/;
+```
+
+Поддерживает:
+
+```text
+1.
+1.1.
+1.2.3.
+```
+
+---
+
+## 7.2. Ограничение: не поддерживаются отступы
+
+Сейчас regex требует номер с начала строки:
+
+```js
+/^(\d+(?:\.\d+)*)\.\s/
+```
+
+Но часто списки пишутся так:
+
+```text
+  1. item
+    1.1. subitem
+```
+
+### Улучшение
+
+```js
+const LIST_RE = /^(\s*)(\d+(?:\.\d+)*)\.\s/;
+```
+
+Тогда код:
+
+```js
+const indent = m[1];
+const numStr = m[2];
+const prefix = m[0];
+```
+
+И следующий префикс:
+
+```js
+let nextPrefix = indent + parts.join('.') + '. ';
+```
+
+---
+
+## 7.3. Проблема: событие input без bubbles
+
+Как и выше:
+
+```js
+ta.dispatchEvent(new Event('input'));
+```
+
+Лучше использовать helper с `bubbles: true`.
+
+---
+
+# 8. Инициализация и зависимость от DOM
+
+В нескольких местах код сразу делает:
+
+```js
+document.body.appendChild(...)
+```
+
+Например:
+
+```js
+document.body.appendChild(mirrorEl);
+document.body.appendChild(hintEl);
+```
+
+В комментариях написано:
+
+```js
+// Требование: скрипт должен загружаться с defer или в конце <body>
+```
+
+Это рабочее требование, но хрупкое.
+
+### Что улучшить
+
+Сделать безопасный DOM-ready helper.
+
+```js
+function onDomReady(fn) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fn, { once: true });
+  } else {
+    fn();
+  }
+}
+```
+
+Но здесь модули сразу создают DOM-элементы при IIFE. Чтобы сделать правильно, нужно либо:
+
+1. создать `init()` у каждого DOM-зависимого модуля;
+2. вызывать `init()` после DOM ready.
+
+Например для `InlineHint`:
+
+```js
+const InlineHint = (() => {
+  let mirrorEl = null;
+  let hintEl = null;
+
+  function init() {
+    if (mirrorEl) return;
+
+    mirrorEl = document.createElement('div');
+    // ...
+    document.body.appendChild(mirrorEl);
+
+    hintEl = document.createElement('div');
+    // ...
+    document.body.appendChild(hintEl);
+  }
+
+  function show(ta, suf) {
+    init();
+    // ...
+  }
+
+  onDomReady(init);
+
+  return { init, show, hide, ... };
+})();
+```
+
+Это позволит подключать файл где угодно.
+
+---
+
+# 9. CSS-зависимости
+
+Код использует классы и CSS-переменные:
+
+```js
+var(--bg3)
+var(--border2)
+var(--text1)
+var(--shadow-lg)
+var(--accent)
+```
+
+И элементы:
+
+```js
+.wc-accept-effect
+.wc-accept-letter
+.wc-accept-space
+#inline-hint
+```
+
+Нужно убедиться, что CSS действительно определён.
+
+Если нет, ghost и effect могут выглядеть некорректно.
+
+### Рекомендуемый минимальный CSS
+
+```css
+#inline-hint {
+  position: fixed;
+  z-index: 1500;
+  display: none;
+  color: var(--text3, rgba(128, 128, 128, 0.75));
+  pointer-events: none;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.wc-accept-effect {
+  position: fixed;
+  z-index: 1600;
+  pointer-events: none;
+  white-space: pre;
+  overflow: hidden;
+  color: var(--text1, currentColor);
+}
+
+.wc-accept-letter {
+  display: inline-block;
+  position: relative;
+}
+
+.wc-accept-letter::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--wc-mask-bg, transparent);
+  z-index: -1;
+}
+
+.wc-accept-letter.locked {
+  opacity: 1;
+}
+
+.wc-accept-effect.done {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.wc-accept-space {
+  white-space: pre;
+}
+```
+
+---
+
+# 10. Безопасность и приватность
+
+Временный словарь сохраняется в:
+
+```js
+localStorage
+```
+
+А также может экспортироваться в файл.
+
+Это потенциально чувствительные данные: пользовательские слова могут содержать имена, термины, фрагменты приватной информации.
+
+### Что улучшить
+
+1. В настройках явно показать переключатель:
+
+```text
+Сохранять пользовательский словарь локально
+```
+
+2. Добавить кнопку очистки:
+
+```js
+function clearTempWordlist() {
+  _dynWords.clear();
+  localStorage.removeItem(KEY_TEMP);
+  build();
+}
+```
+
+И экспортировать:
+
+```js
+clearTempWordlist,
+```
+
+3. В UI объяснить:
+
+```text
+Сохраняются только отдельные слова, не полные тексты.
+```
+
+---
+
+# 11. Рекомендуемые правки по приоритету
+
+## Высокий приоритет
+
+### 1. Защитить вызовы `State`
+
+Заменить:
+
+```js
+State.snapshot();
+```
+
+на:
+
+```js
+window.State?.snapshot?.();
+```
+
+В `build()` добавить проверку существования `State`.
+
+---
+
+### 2. Исправить `InputEvent`
+
+Добавить helper:
+
+```js
+function dispatchInput(ta, data = null, inputType = 'insertText') {
+  let ev;
+  try {
+    ev = new InputEvent('input', {
+      bubbles: true,
+      inputType,
+      data,
+    });
+  } catch {
+    ev = new Event('input', { bubbles: true });
+  }
+  ta.dispatchEvent(ev);
+}
+```
+
+Использовать в `WordComplete`:
+
+```js
+dispatchInput(ta, insert, 'insertText');
+```
+
+И в `SmartList`.
+
+---
+
+### 3. Исправить `lineHeight: NaNpx`
+
+В `WordAcceptEffect.play()` заменить:
+
+```js
+lineHeight: (parseFloat(snapshot.lineHeight) - 1) + 'px',
+```
+
+на безопасный вариант.
+
+---
+
+### 4. Добавить кэш подсказок
+
+В `WordDict`:
+
+```js
+const suggestCache = new Map();
+```
+
+В `build()`:
+
+```js
+suggestCache.clear();
+```
+
+В `suggest()` использовать кэш.
+
+---
+
+## Средний приоритет
+
+### 5. Добавить очистку временного словаря
+
+В `WordDict`:
+
+```js
+function clearTempWordlist() {
+  _dynWords.clear();
+  localStorage.removeItem(KEY_TEMP);
+  build();
+}
+```
+
+В return:
+
+```js
+clearTempWordlist,
+```
+
+---
+
+### 6. Сохранять чаще, чем раз в 2 часа
+
+Добавить debounce-сохранение после изменения `_dynWords`.
+
+---
+
+### 7. Улучшить `SmartList` с отступами
+
+Заменить regex на:
+
+```js
+const LIST_RE = /^(\s*)(\d+(?:\.\d+)*)\.\s/;
+```
+
+---
+
+### 8. Улучшить mirror-стили
+
+Добавить в `MIRROR_PROPS`:
+
+```js
+'textAlign',
+'direction',
+'writingMode',
+'borderTopWidth',
+'borderRightWidth',
+'borderBottomWidth',
+'borderLeftWidth',
+'borderStyle',
+```
+
+---
+
+## Низкий приоритет
+
+### 9. Сохранять динамические биграммы
+
+Если важны подсказки следующего слова между сессиями.
+
+---
+
+### 10. Добавить импорт пользовательского словаря
+
+Например:
+
+```js
+async function importTempWordlist(file) {
+  const text = await file.text();
+  const data = JSON.parse(text);
+  // загрузить words и bigrams
+}
+```
+
+---
+
+# 12. Пример конкретного патча
+
+Ниже — несколько безопасных изменений, которые можно внести почти без переработки архитектуры.
+
+## 12.1. Helper для input-событий
+
+Добавить ближе к началу файла:
+
+```js
+function dispatchTextareaInput(ta, data = null, inputType = 'insertText') {
+  let ev;
+
+  try {
+    ev = new InputEvent('input', {
+      bubbles: true,
+      inputType,
+      data,
+    });
+  } catch {
+    ev = new Event('input', { bubbles: true });
+  }
+
+  ta.dispatchEvent(ev);
+}
+```
+
+Заменить:
+
+```js
+ta.dispatchEvent(new Event('input'));
+```
+
+на:
+
+```js
+dispatchTextareaInput(ta, insert, 'insertText');
+```
+
+В `SmartList`, где удаляется строка:
+
+```js
+dispatchTextareaInput(ta, null, 'deleteContentBackward');
+```
+
+Где вставляется новая строка:
+
+```js
+dispatchTextareaInput(ta, '\n' + nextPrefix, 'insertText');
+```
+
+---
+
+## 12.2. Безопасный `State.snapshot()`
+
+Заменить все:
+
+```js
+State.snapshot();
+```
+
+на:
+
+```js
+window.State?.snapshot?.();
+```
+
+---
+
+## 12.3. Безопасный `build()`
+
+Изменить начало `build()`:
+
+```js
+function build() {
+  wordFreq.clear();
+  bigrams.clear();
+  _seedFromStatic();
+
+  for (const [w, freq] of _dynWords) {
+    if (!_staticWords.has(w))
+      wordFreq.set(w, (wordFreq.get(w) || 0) + freq);
+  }
+
+  if (!window.State || typeof State.getAll !== 'function') {
+    return;
+  }
+
+  const activeId = State.getActive?.()?.id;
+  const allTabs = State.getAll?.();
+
+  if (!Array.isArray(allTabs)) return;
+
+  const sessionCounts = new Map();
+
+  allTabs.forEach(tab => {
+    // остальной код
+  });
+
+  for (const [w, cnt] of sessionCounts)
+    _dynWords.set(w, Math.max(_dynWords.get(w) || 0, cnt));
+}
+```
+
+---
+
+## 12.4. Кэш для `suggest()`
+
+В `WordDict` добавить:
+
+```js
+const suggestCache = new Map();
+```
+
+В `build()` в начале или конце:
+
+```js
+suggestCache.clear();
+```
+
+Изменить `suggest()`:
+
+```js
+function suggest(prefix) {
+  if (!cfg.enabled || !prefix || prefix.length < cfg.minLen) return [];
+
+  const p = prefix.toLowerCase();
+  const cacheKey = `${p}|${cfg.maxSuggest}`;
+
+  if (suggestCache.has(cacheKey)) {
+    return suggestCache.get(cacheKey);
+  }
+
+  const out = [];
+
+  for (const [w, freq] of wordFreq) {
+    if (w.length > p.length && w.startsWith(p)) {
+      out.push({
+        w,
+        effective: freq + (_staticWords.has(w) ? STATIC_BOOST : 0)
+      });
+    }
+  }
+
+  out.sort((a, b) => b.effective - a.effective);
+
+  const result = out.slice(0, cfg.maxSuggest).map(x => x.w);
+  suggestCache.set(cacheKey, result);
+
+  return result;
+}
+```
+
+---
+
+## 12.5. Исправление `lineHeight`
+
+В `WordAcceptEffect.play()` перед `Object.assign(el.style, ...)`:
+
+```js
+const parsedLineHeight = parseFloat(snapshot.lineHeight);
+const safeLineHeight = Number.isFinite(parsedLineHeight)
+  ? Math.max(1, parsedLineHeight - 1) + 'px'
+  : (snapshot.lineHeight || 'normal');
+```
+
+И заменить:
+
+```js
+lineHeight: (parseFloat(snapshot.lineHeight) - 1) + 'px',
+```
+
+на:
+
+```js
+lineHeight: safeLineHeight,
+```
+
+---
+
+# 13. Возможные улучшения UX
+
+## 13.1. Принятие не только по Tab
+
+Можно добавить настройку:
+
+- `Tab`;
+- `ArrowRight`;
+- `Enter`;
+- `Ctrl+Space`.
+
+Например:
+
+```js
+acceptKeys: ['Tab']
+```
+
+И проверять:
+
+```js
+if (!cfg.acceptKeys?.includes(e.key)) return;
+```
+
+Но нужно быть осторожным с `Enter`, потому что он уже используется для списков.
+
+---
+
+## 13.2. Переключение между несколькими подсказками
+
+Сейчас используется только первая:
+
+```js
+candidates[0]
+```
+
+Можно показывать одну ghost-подсказку, а `ArrowDown`/`ArrowUp` переключать кандидатов.
+
+Для этого `InlineHint` должен хранить:
+
+```js
+candidates
+selectedIndex
+```
+
+---
+
+## 13.3. Не предлагать слово сразу после цифр или внутри URL
+
+Сейчас токенизация и regex могут предлагать подсказки внутри URL, путей, email.
+
+Например:
+
+```text
+https://exa|
+```
+
+Может появиться подсказка.
+
+Можно добавить фильтр контекста:
+
+```js
+function isBadCompletionContext(before) {
+  return /(?:https?:\/\/|www\.|[\w.-]+@[\w.-]*)[^\s]*$/i.test(before);
+}
+```
+
+В `handleInput()`:
+
+```js
+const before = ta.value.slice(0, ta.selectionStart);
+if (isBadCompletionContext(before)) {
+  InlineHint.hide();
+  return;
+}
+```
+
+---
+
+# 14. Минимальный чек-лист тестирования
+
+После изменений стоит проверить:
+
+1. Подсказки появляются при вводе 3+ символов.
+2. `Tab` принимает подсказку.
+3. `Escape` скрывает подсказку.
+4. Подсказка не появляется при выделенном тексте.
+5. Подсказка не появляется при открытом `snippet-dropdown`.
+6. IME-ввод, например китайский/японский/корейский, не ломается.
+7. Автонумерация:
+   - `1. test` + Enter → `2. `;
+   - пустой `2. ` + Enter → выход из списка.
+8. Подсказка правильно позиционируется после прокрутки `textarea`.
+9. Подсказка правильно работает на длинных строках с переносами.
+10. `wordlist.json` загружается через HTTP.
+11. При запуске через `file://` нет падения.
+12. `localStorage` сохраняет временные слова.
+13. При отсутствии `State` файл не падает.
+14. При `line-height: normal` эффект принятия не ломается.
+15. При `prefers-reduced-motion: reduce` эффект не запускается.
+
+---
+
+# 15. Итог
+
+Код уже достаточно зрелый и хорошо структурирован. Главные улучшения, которые я бы сделал первыми:
+
+1. Защитить зависимости от `State`.
+2. Исправить генерацию `input`-событий с `bubbles: true`.
+3. Исправить риск `lineHeight: NaNpx`.
+4. Добавить кэширование `suggest()`.
+5. Добавить очистку временного пользовательского словаря.
+6. Улучшить DOM-ready и mirror-позиционирование.
+7. Подумать о стратегии старения или удаления динамических слов, чтобы не сохранять опечатки навсегда.
+
+
+
+
+# Оценка чужого ревью
+
+Ревью качественное и подробное. Многое пересекается с моим анализом (защита `State`, кэш/индекс для `suggest`, DOM-ready, биграммы). Но есть **важные нюансы**, где другая нейросеть права сильнее меня, а есть пара мест, где она ошибается или упускает главное. Разберу по пунктам.
+
+---
+
+## ✅ Где ревью точно право (и это сильнее моих замечаний)
+
+### 1. `lineHeight: NaNpx` (п. 5.2) — **отличная находка**
+Это реальный баг, который я пропустил.
+```javascript
+lineHeight: (parseFloat(snapshot.lineHeight) - 1) + 'px',
+```
+Если `getComputedStyle` вернёт `lineHeight: 'normal'` (что бывает, если в CSS явно не задан line-height), то `parseFloat('normal')` → `NaN` → `'NaNpx'`. Эффект сломается визуально. Патч корректный, его стоит внести **обязательно**.
+
+⚠️ Уточнение: на практике `getComputedStyle().lineHeight` для большинства textarea возвращает пиксельное значение, а не `normal`. Но «normal» возможен — защита оправдана.
+
+### 2. `InputEvent` с `bubbles: true` (п. 6.3) — **верное и важное**
+```javascript
+ta.dispatchEvent(new Event('input'));
+```
+`new Event('input')` **не всплывает** (`bubbles: false` по умолчанию). Если в проекте есть делегирование `input` на родителе — оно не сработает. Это реальный потенциальный баг. Helper с fallback на `InputEvent` — правильное решение.
+
+⚠️ Но: нужно проверить, **как именно** в проекте слушается `input`. Если везде слушатель вешается прямо на textarea — проблема не проявляется. Перед внесением проверьте остальной код проекта.
+
+### 3. Контекст URL/email (п. 13.3) — **хорошая UX-идея**, которую я не упомянул
+Подсказки внутри `https://exa...` действительно раздражают. Дешёвая и полезная правка.
+
+### 4. Прокрутка **внутри** textarea (п. 4.4) — точное уточнение
+Я предлагал перепозиционирование на window-scroll, но ревью верно замечает: scroll внутри textarea **не всплывает** до window. Нужен отдельный listener на самой textarea.
+
+---
+
+## ⚠️ Где ревью ошибается или вводит в заблуждение
+
+### 1. Кэш `suggest()` (п. 2.5 / 12.4) — **сомнительно, лучше мой вариант с индексом**
+Предложенный кэш `Map` по ключу `prefix|maxSuggest`:
+```javascript
+const suggestCache = new Map();
+suggestCache.set(cacheKey, result);
+```
+**Проблемы:**
+- Кэш **не ограничен по размеру** — при активном вводе он растёт неограниченно (по сути memory leak до следующего `build()`).
+- Кэш **не ускоряет первый ввод** каждого префикса — а именно первый ввод обычно и тормозит, т.к. пользователь печатает новые буквы.
+- Промахи кэша при печати по букве почти 100% (каждый новый символ = новый ключ).
+
+**Мой вариант (префиксный индекс по первым 2 буквам)** решает корень проблемы — он сокращает O(n) до O(размер бакета) для **любого** ввода, включая первый. Это объективно лучше для данной задачи.
+
+Если уж делать кэш — то с лимитом (LRU) **поверх** индекса, не вместо.
+
+### 2. Динамический словарь / `Math.max` (п. 2.3) — **ревью НЕ заметило главный баг**
+Ревью корректно обсуждает «затухание» и «опечатки навсегда», но **полностью пропустило двойной учёт частот**, который я нашёл:
+```javascript
+for (const [w, freq] of _dynWords) {        // +freq
+  if (!_staticWords.has(w))
+    wordFreq.set(w, (wordFreq.get(w) || 0) + freq);
+}
+// ...
+words.forEach((w, i) => {
+  wordFreq.set(w, (wordFreq.get(w) || 0) + mult);  // ← ещё раз!
+```
+Это конкретный **баг в текущем коде** (слово учитывается дважды за один build), а не философия о старении. Мой п. 1 важнее их п. 2.3 — он чинит реальное искажение весов прямо сейчас.
+
+### 3. `beforeunload` + debounce-сохранение (п. 2.8) — спорно
+Идея `markDirty` с debounce 10 сек разумна, но ревью предлагает вызывать `_tryWriteToHandle` из debounce — а это **async запись в файл**, которая в `beforeunload` не успеет завершиться. Сам по себе debounce полезен, но не решает проблему потери данных при закрытии (запись в файл всё равно асинхронна). Для localStorage достаточно текущего `beforeunload`. Это улучшение «средней» полезности, не критичное.
+
+### 4. mirror: добавить `writingMode`, `direction` и border-стили (п. 4.2 / 12.x)
+Само по себе верно для RTL/вертикального текста. Но:
+- Для **русско-английского** интерфейса (что видно по коду) RTL почти не нужен — приоритет низкий.
+- Добавление `borderTopWidth` и т.п. в `MIRROR_PROPS` при том, что код **уже** компенсирует border отдельно через `bordL`/`bordT`, может привести к **двойному** учёту border и сдвигу подсказки. Здесь ревью невнимательно — нужно либо border в mirror, либо ручная компенсация, **не оба сразу**.
+
+---
+
+## ❌ Что оба ревью (и я, и они) могли бы отметить сильнее
+
+- **`getConfig()` возвращает мутабельную ссылку** — я отметил, ревью пропустило. Реальный риск нарушения инкапсуляции.
+- **Throttle перепозиционирования** через `requestAnimationFrame` — оба упомянули перепозиционирование, но без throttle частые scroll-события будут дёргать layout.
+
+---
+
+## 📊 Итоговая сравнительная таблица
+
+| Замечание | Чужое ревью | Моё ревью | Вердикт |
+|-----------|:-----------:|:---------:|---------|
+| Двойной учёт `_dynWords` (реальный баг) | ❌ пропущено | ✅ | **Моё важнее** |
+| `lineHeight: NaNpx` | ✅ | ❌ пропущено | **Их находка, внести** |
+| `input` без `bubbles` | ✅ | ❌ | **Их находка, проверить и внести** |
+| Защита `State` / `document.body` | ✅ | ✅ | Совпало |
+| Ускорение `suggest` | кэш (слабее) | индекс (лучше) | **Мой подход лучше** |
+| URL/email контекст | ✅ | ❌ | **Их идея, полезно** |
+| Scroll внутри textarea | ✅ точнее | ✅ грубее | **Их уточнение точнее** |
+| mirror border двойной учёт | ⚠️ ошибка | — | Осторожно |
+| `getConfig()` мутабельность | ❌ | ✅ | Моё |
+
+---
+
+## 🎯 Рекомендация: что взять из обоих ревью
+
+**Внести в первую очередь (объединённый список):**
+
+1. 🔴 **Двойной учёт `_dynWords`** в `build()` — *моё*, реальный баг частот.
+2. 🔴 **`lineHeight: NaNpx`** — *их*, реальный визуальный баг.
+3. 🔴 **`input`-события с `bubbles: true`** — *их*, но **сначала проверьте**, как слушается `input` в остальном проекте.
+4. 🔴 **Защита `State` / `window.State?.snapshot?.()`** — *оба*.
+5. 🟡 **Префиксный индекс** для `suggest` (*мой*), а **не** их безлимитный кэш.
+6. 🟡 **URL/email-контекст** (*их*) + **порог частоты в `suggestNext`** (*мой*).
+7. 🟡 **Scroll-listener на textarea** (*их* уточнение) с throttle через rAF (*моё* дополнение).
+
+**НЕ внедрять вслепую:**
+- Их кэш `suggest` — замените индексом.
+- Их добавление border в `MIRROR_PROPS` — проверьте на двойной учёт с существующей компенсацией.
+
+---
+
+**Вывод:** ревью другой нейросети сильное и взаимодополняющее с моим. Оно нашло 2 реальных бага, которые я пропустил (`NaNpx`, `bubbles`), но само пропустило главный баг с двойным учётом частот и предложило менее удачное решение для производительности. Лучший результат — **объединить** оба анализа по списку выше.

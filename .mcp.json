@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "E:\\CODE\\Paste_copy"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"]
+    },
+    "browser": {
+      "command": "npx",
+      "args": ["-y", "@agent-infra/mcp-server-browser"]
+    },
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git"]
+    }
+  }
+}
