@@ -259,13 +259,11 @@ const State = (() => {
       block.fontSize = 13;
     } else if (type === 'todo') {
       block.activeSubtab = 0;
-      block.previewDisabled = true;
       block.subtabs = Array.from({ length: 5 }, (_, i) => ({
         label: String(i + 1), name: '', items: [],
       }));
     } else if (type === 'table') {
       block.activeSubtab = 0;
-      block.previewDisabled = true;
       block.subtabs = Array.from({ length: 5 }, (_, i) => ({
         label: String(i + 1), name: '', cols: 2,
         rows: [['', ''], ['', '']],
@@ -311,7 +309,6 @@ const State = (() => {
       }
 
       if (b.type === 'todo') {
-        if (b.previewDisabled === undefined) b.previewDisabled = true;
         if (!b.subtabs) {
           b.activeSubtab = 0;
           b.subtabs = Array.from({ length: 5 }, (_, i) => ({
@@ -325,7 +322,6 @@ const State = (() => {
       }
 
       if (b.type === 'table') {
-        if (b.previewDisabled === undefined) b.previewDisabled = true;
         if (!b.subtabs) {
           b.activeSubtab = 0;
           b.subtabs = Array.from({ length: 5 }, (_, i) => ({

@@ -485,23 +485,18 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.title = 'Переменная';
       } else if (b.type === 'sticky') {
         badge.style.display = 'none';
-      } else if (b.type === 'todo') {
-        const sub = b.subtabs[b.activeSubtab];
-        const items = sub?.items || [];
-        const done = items.filter(i => i.done).length;
-        const total = items.length;
-        badge.className = 'block-order block-order-btn block-todo-count' + (done === total && total ? ' all-done' : '');
-        badge.textContent = `${done}/${total}`;
-        badge.title = `${done}/${total} выполнено`;
-      } else if (b.type === 'table') {
-        const sub = b.subtabs[b.activeSubtab];
-        badge.textContent = `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
-        badge.title = `${sub?.cols || 2} столбцов × ${sub?.rows?.length || 0} строк`;
+      } else if (b.type === 'todo' || b.type === 'table') {
+        const disabled = b.previewDisabled === true;
+        badge.classList.toggle('block-order-disabled', disabled);
+        badge.textContent = disabled ? '✕' : (orderNum != null ? '#' + orderNum : '—');
+        badge.title = disabled
+          ? 'Блок скрыт из превью (нажми чтобы включить)'
+          : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть)' : 'Пустой — в превью не войдёт';
       }
     }
     updateBadge();
 
-    if (b.type === 'text') {
+    if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
       badge.onclick = e => {
         e.stopPropagation();
         State.update(() => { b.previewDisabled = !b.previewDisabled; });
@@ -601,22 +596,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       sp.style.flex = '1';
       h.appendChild(sp);
       h.appendChild(createTodoSubtabNav(b));
-      const previewBtn = document.createElement('button');
-      previewBtn.type = 'button';
-      previewBtn.className = 'block-btn';
-      previewBtn.title = b.previewDisabled === true ? 'Показать в превью' : 'Скрыть из превью';
-      previewBtn.innerHTML = b.previewDisabled === true
-        ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3" stroke-width="1.2"/></svg>'
-        : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>';
-      previewBtn.onclick = (e) => {
-        e.stopPropagation();
-        State.update(() => { b.previewDisabled = !b.previewDisabled; });
-        previewBtn.title = b.previewDisabled === true ? 'Показать в превью' : 'Скрыть из превью';
-        previewBtn.innerHTML = b.previewDisabled === true
-          ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3" stroke-width="1.2"/></svg>'
-          : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>';
-      };
-      h.appendChild(previewBtn);
 
     } else {
       const sp = document.createElement('span');
@@ -2337,7 +2316,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         getRows().push(Array(getCols()).fill(''));
         State.updateLive(() => {});
         renderGrid();
-        updateTableBadge(b);
+
         State.snapshot();
       };
 
@@ -2352,7 +2331,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           r.pop();
           State.updateLive(() => {});
           renderGrid();
-          updateTableBadge(b);
+  
           State.snapshot();
         }
       };
@@ -2401,7 +2380,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         sub.cols = c - 1;
         State.updateLive(() => {});
         renderGrid();
-        updateTableBadge(b);
+
         State.snapshot();
       };
 
@@ -2421,7 +2400,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         sub.cols = c + 1;
         State.updateLive(() => {});
         renderGrid();
-        updateTableBadge(b);
+
         State.snapshot();
       };
 
@@ -2439,14 +2418,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     renderGrid();
     b._renderGrid = renderGrid;
-  }
-
-  function updateTableBadge(b) {
-    if (b.type !== 'table') return;
-    const badge = document.querySelector(`.block[data-id="${b.id}"] .block-order-btn`);
-    if (!badge) return;
-    const sub = b.subtabs[b.activeSubtab];
-    badge.textContent = `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
   }
 
   function createTodoSubtabNav(b) {
