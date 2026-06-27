@@ -486,22 +486,28 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else if (b.type === 'sticky') {
         badge.style.display = 'none';
       } else if (b.type === 'todo') {
+        const disabled = b.previewDisabled === true;
         const sub = b.subtabs[b.activeSubtab];
         const items = sub?.items || [];
         const done = items.filter(i => i.done).length;
         const total = items.length;
         badge.className = 'block-order block-order-btn block-todo-count' + (done === total && total ? ' all-done' : '');
-        badge.textContent = `${done}/${total}`;
-        badge.title = 'Выполнено / всего';
+        badge.textContent = disabled ? '✕' : `${done}/${total}`;
+        badge.title = disabled
+          ? 'Чеклист скрыт из превью (нажми чтобы включить)'
+          : `${done}/${total} — нажми чтобы скрыть из превью`;
       } else if (b.type === 'table') {
+        const disabled = b.previewDisabled === true;
         const sub = b.subtabs[b.activeSubtab];
-        badge.textContent = `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
-        badge.title = 'Столбцы × Строки';
+        badge.textContent = disabled ? '✕' : `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
+        badge.title = disabled
+          ? 'Таблица скрыта из превью (нажми чтобы включить)'
+          : `${sub?.cols || 2}×${sub?.rows?.length || 0} — нажми чтобы скрыть из превью`;
       }
     }
     updateBadge();
 
-    if (b.type === 'text') {
+    if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
       badge.onclick = e => {
         e.stopPropagation();
         State.update(() => { b.previewDisabled = !b.previewDisabled; });
@@ -2350,6 +2356,27 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const sep = document.createElement('span');
       sep.className = 'table-footer-sep';
 
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'table-ctrl-btn';
+      copyBtn.innerHTML = svgIcon('transfer');
+      copyBtn.title = 'Скопировать таблицу на следующую вкладку';
+      copyBtn.onclick = () => {
+        const cur = b.subtabs[b.activeSubtab];
+        if (!cur || !cur.rows?.some(r => r.some(c => (c || '').trim()))) return;
+        let target = (b.activeSubtab + 1) % 5;
+        for (let i = 1; i < 5; i++) {
+          const idx = (b.activeSubtab + i) % 5;
+          const t = b.subtabs[idx];
+          if (!t.rows?.some(r => r.some(c => (c || '').trim()))) { target = idx; break; }
+        }
+        const dest = b.subtabs[target];
+        dest.cols = cur.cols;
+        dest.rows = cur.rows.map(r => [...r]);
+        State.update(() => {});
+        Toast.show('Скопировано ✓', 'success');
+      };
+
       const colLabel = document.createElement('span');
       colLabel.className = 'table-col-label';
 
@@ -2395,6 +2422,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       footer.appendChild(addBtn);
       footer.appendChild(delBtn);
+      footer.appendChild(copyBtn);
       footer.appendChild(sep);
       footer.appendChild(colLabel);
       body.appendChild(footer);

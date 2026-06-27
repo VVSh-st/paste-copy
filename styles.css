@@ -5779,6 +5779,9 @@ body.help-open {
 .table-col-num {
   font-size: 11px; color: var(--text-muted); min-width: 16px; text-align: center;
 }
+.table-footer-info {
+  font-size: 10px; color: var(--text-muted); opacity: 0.6; margin-left: 4px;
+}
 
 /* ── Backup list ────────────────────────────────────────────────────────── */
 .backup-list { max-height: 138px; overflow-y: auto; }
