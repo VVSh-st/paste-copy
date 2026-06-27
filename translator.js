@@ -24,6 +24,9 @@ const Translator = (() => {
   let msTokenTs = 0;
   let gFail = 0, gBlockUntil = 0;
   let mFail = 0, mBlockUntil = 0;
+  const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+  let _activeController = null;
+  let _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 };
 
   // ── Languages ──────────────────────────────────────────────
   const LANGUAGES = [
@@ -63,7 +66,7 @@ const Translator = (() => {
 
   // ── Template protection ────────────────────────────────────
   // {{...}}, $VAR, !теги — не переводим
-  const TMPL_RE = /(\{\{[^}]+\}\}|\$[A-Z_][A-Z0-9_]*|![а-яёА-ЯЁ]+)\b/g;
+  const TMPL_RE = /(\{\{[^}]+\}\}|\$[A-Z_][A-Z0-9_]*|\$\{[^}]+\}|\[\[[^\]]+\]\]|%[^%]+%|\{\d+\}|![а-яёА-ЯЁ]+)\b/g;
 
   function protectTemplates(text) {
     const tokens = [];
@@ -158,10 +161,13 @@ const Translator = (() => {
     const key = JSON.stringify([lang, text]);
     const v = cache.get(key);
     if (v !== undefined) {
+      if (v.ts && Date.now() - v.ts > CACHE_TTL) { cache.delete(key); _stats.cacheMisses++; return undefined; }
       cache.delete(key);
       cache.set(key, v);
-      return v;
+      _stats.cacheHits++;
+      return v.text ?? v;
     }
+    _stats.cacheMisses++;
     return undefined;
   }
 
@@ -169,7 +175,7 @@ const Translator = (() => {
     if (!text || !translated) return;
     const key = JSON.stringify([lang, text]);
     cache.delete(key);
-    cache.set(key, translated);
+    cache.set(key, { text: translated, ts: Date.now() });
     if (cache.size > MAX_CACHE) {
       const first = cache.keys().next().value;
       cache.delete(first);
@@ -241,9 +247,11 @@ const Translator = (() => {
     return null;
   }
 
-  async function translateGoogle(texts, to) {
+  async function translateGoogle(texts, to, signal) {
     const key = await fetchGoogleKey();
     if (!key) throw new Error('Google auth failed');
+    _stats.googleRequests++;
+    _stats.totalChars += texts.reduce((s, t) => s + t.length, 0);
     const results = [];
     for (let i = 0; i < texts.length; i += 50) {
       const chunk = texts.slice(i, i + 50);
@@ -251,7 +259,8 @@ const Translator = (() => {
         fetch('https://translate-pa.googleapis.com/v1/translateHtml', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json+protobuf', 'X-Goog-Api-Key': key },
-          body: JSON.stringify([[chunk, 'auto', to], 'te'])
+          body: JSON.stringify([[chunk, 'auto', to], 'te']),
+          signal,
         }),
         GOOGLE_TIMEOUT
       );
@@ -283,9 +292,11 @@ const Translator = (() => {
     return null;
   }
 
-  async function translateMs(texts, to) {
+  async function translateMs(texts, to, signal) {
     const token = await fetchMsToken();
     if (!token) throw new Error('MS auth failed');
+    _stats.msRequests++;
+    _stats.totalChars += texts.reduce((s, t) => s + t.length, 0);
     const tg = to === 'zh' ? 'zh-Hans' : to;
     const results = [];
     for (let i = 0; i < texts.length; i += 100) {
@@ -294,7 +305,8 @@ const Translator = (() => {
         fetch(`https://api-edge.cognitive.microsofttranslator.com/translate?to=${tg}&api-version=3.0`, {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-          body: JSON.stringify(chunk.map(Text => ({ Text })))
+          body: JSON.stringify(chunk.map(Text => ({ Text }))),
+          signal,
         }),
         MS_TIMEOUT
       );
@@ -314,9 +326,9 @@ const Translator = (() => {
   }
 
   // ── Legacy fallback ────────────────────────────────────────
-  async function translateLegacyOne(text, to) {
+  async function translateLegacyOne(text, to, signal) {
     const r = await withTimeout(
-      fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${to}&dt=t&q=${encodeURIComponent(text)}`),
+      fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${to}&dt=t&q=${encodeURIComponent(text)}`, { signal }),
       LEGACY_TIMEOUT
     );
     if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
@@ -326,14 +338,17 @@ const Translator = (() => {
     return decodeHtmlEntities(out) || null;
   }
 
-  async function translateLegacy(texts, to) {
+  async function translateLegacy(texts, to, signal) {
+    _stats.legacyRequests++;
+    _stats.totalChars += texts.reduce((s, t) => s + t.length, 0);
     const CONCURRENCY = 5;
     const out = new Array(texts.length).fill(null);
     let next = 0;
     const worker = async () => {
       while (next < texts.length) {
+        if (signal?.aborted) break;
         const i = next++;
-        try { out[i] = await retry(() => translateLegacyOne(texts[i], to), e => e?.status !== 429, 2, 500); }
+        try { out[i] = await retry(() => translateLegacyOne(texts[i], to, signal), e => e?.status !== 429 && e?.name !== 'AbortError', 2, 500); }
         catch { out[i] = null; }
       }
     };
@@ -344,6 +359,9 @@ const Translator = (() => {
   // ── Main translate pipeline ────────────────────────────────
   async function translate(texts, toLang) {
     if (!texts.length) return [];
+    if (_activeController) _activeController.abort();
+    _activeController = new AbortController();
+    const signal = _activeController.signal;
     toLang = toLang || settings.targetLang;
     const out = new Array(texts.length).fill(null);
     const todo = [], idx = [];
@@ -389,7 +407,7 @@ const Translator = (() => {
     if (engine === 'google' || engine === 'auto') {
       if (Date.now() >= gBlockUntil) {
         try {
-          const g = await translateGoogle(rem.map(x => x.t), toLang);
+          const g = await translateGoogle(rem.map(x => x.t), toLang, signal);
           gFail = 0;
           if (!g.every(v => !v)) { apply(g, rem); rem = filterRem(g, rem); }
         } catch (e) {
@@ -404,7 +422,7 @@ const Translator = (() => {
     // Microsoft
     if ((engine === 'microsoft' || engine === 'auto') && rem.length && Date.now() >= mBlockUntil) {
       try {
-        const m = await translateMs(rem.map(x => x.t), toLang);
+        const m = await translateMs(rem.map(x => x.t), toLang, signal);
         mFail = 0;
         if (!m.every(v => !v)) { apply(m, rem); rem = filterRem(m, rem); }
       } catch (e) {
@@ -418,7 +436,7 @@ const Translator = (() => {
     // Legacy fallback
     if (rem.length) {
       try {
-        const l = await translateLegacy(rem.map(x => x.t), toLang);
+        const l = await translateLegacy(rem.map(x => x.t), toLang, signal);
         apply(l, rem);
       } catch {}
     }
@@ -429,7 +447,12 @@ const Translator = (() => {
   // ── Single text translate ──────────────────────────────────
   async function translateOne(text, toLang) {
     const res = await translate([text], toLang);
-    return res[0] || null;
+    const translated = res[0] || null;
+    if (translated) {
+      const from = detectLangHint(text)?.code || 'auto';
+      addHistory(text, translated, from, toLang || settings.targetLang);
+    }
+    return translated;
   }
 
   // ── Translate with template protection ─────────────────────
@@ -458,7 +481,7 @@ const Translator = (() => {
       loadCache();
       loadHistory();
       loadSettings();
-      window.addEventListener('beforeunload', flushCache);
+      window.addEventListener('beforeunload', () => { if (_activeController) _activeController.abort(); flushCache(); });
     },
 
     detectLang: detectLangHint,
@@ -475,5 +498,7 @@ const Translator = (() => {
 
     getCacheSize() { return cache.size; },
     getHistorySize() { return history.length; },
+    stats() { return { ..._stats, cacheSize: cache.size, historySize: history.length }; },
+    resetStats() { _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 }; },
   };
 })();
