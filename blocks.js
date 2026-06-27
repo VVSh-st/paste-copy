@@ -486,28 +486,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else if (b.type === 'sticky') {
         badge.style.display = 'none';
       } else if (b.type === 'todo') {
-        const disabled = b.previewDisabled === true;
         const sub = b.subtabs[b.activeSubtab];
         const items = sub?.items || [];
         const done = items.filter(i => i.done).length;
         const total = items.length;
         badge.className = 'block-order block-order-btn block-todo-count' + (done === total && total ? ' all-done' : '');
-        badge.textContent = disabled ? '✕' : `${done}/${total}`;
-        badge.title = disabled
-          ? 'Чеклист скрыт из превью (нажми чтобы включить)'
-          : `${done}/${total} — нажми чтобы скрыть из превью`;
+        badge.textContent = `${done}/${total}`;
+        badge.title = `${done}/${total} выполнено`;
       } else if (b.type === 'table') {
-        const disabled = b.previewDisabled === true;
         const sub = b.subtabs[b.activeSubtab];
-        badge.textContent = disabled ? '✕' : `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
-        badge.title = disabled
-          ? 'Таблица скрыта из превью (нажми чтобы включить)'
-          : `${sub?.cols || 2}×${sub?.rows?.length || 0} — нажми чтобы скрыть из превью`;
+        badge.textContent = `${sub?.cols || 2}×${sub?.rows?.length || 0}`;
+        badge.title = `${sub?.cols || 2} столбцов × ${sub?.rows?.length || 0} строк`;
       }
     }
     updateBadge();
 
-    if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
+    if (b.type === 'text') {
       badge.onclick = e => {
         e.stopPropagation();
         State.update(() => { b.previewDisabled = !b.previewDisabled; });
@@ -602,17 +596,27 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       h.appendChild(colorBtn);
       h.appendChild(palette);
 
-    } else if (b.type === 'todo') {
+    } else if (b.type === 'todo' || b.type === 'table') {
       const sp = document.createElement('span');
       sp.style.flex = '1';
       h.appendChild(sp);
       h.appendChild(createTodoSubtabNav(b));
-
-    } else if (b.type === 'table') {
-      const sp = document.createElement('span');
-      sp.style.flex = '1';
-      h.appendChild(sp);
-      h.appendChild(createTodoSubtabNav(b));
+      const previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.className = 'block-btn';
+      previewBtn.title = b.previewDisabled === true ? 'Показать в превью' : 'Скрыть из превью';
+      previewBtn.innerHTML = b.previewDisabled === true
+        ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3" stroke-width="1.2"/></svg>'
+        : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>';
+      previewBtn.onclick = (e) => {
+        e.stopPropagation();
+        State.update(() => { b.previewDisabled = !b.previewDisabled; });
+        previewBtn.title = b.previewDisabled === true ? 'Показать в превью' : 'Скрыть из превью';
+        previewBtn.innerHTML = b.previewDisabled === true
+          ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3" stroke-width="1.2"/></svg>'
+          : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>';
+      };
+      h.appendChild(previewBtn);
 
     } else {
       const sp = document.createElement('span');
@@ -2374,6 +2378,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         dest.cols = cur.cols;
         dest.rows = cur.rows.map(r => [...r]);
         State.update(() => {});
+        b.activeSubtab = target;
+        if (b._renderGrid) b._renderGrid();
+        const blockEl = body.closest('.block');
+        const subtabBtns = blockEl?.querySelectorAll('.block-subtab');
+        subtabBtns?.forEach((btn, i) => btn.classList.toggle('active', i === target));
         Toast.show('Скопировано ✓', 'success');
       };
 

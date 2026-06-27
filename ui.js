@@ -587,17 +587,29 @@ const Preview = (() => {
     text:     '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 5.5h6M5 8h4M5 10.5h5"/></svg>',
     snippets: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 4h10M3 7h7M3 10h8M3 13h5"/></svg>',
     group:    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>',
+    todo:     '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M5.5 7l1.5 1.5 3-3"/><path d="M5.5 11l1.5 1.5 3-3" opacity=".4"/></svg>',
+    table:    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M2 6h12M2 10h12M6 2v12M10 2v12"/></svg>',
   };
 
   function _getBlockType(b) {
     if (b.type === 'group') return 'group';
     if (b.type === 'snippets') return 'snippets';
+    if (b.type === 'todo') return 'todo';
+    if (b.type === 'table') return 'table';
     return 'text';
   }
 
   function _isBlockEmpty(block) {
     if (block.type === 'snippets') {
       return !(block.items || []).some(i => i.enabled && (i.value || '').trim());
+    }
+    if (block.type === 'todo') {
+      const sub = block.subtabs?.[block.activeSubtab ?? 0];
+      return !(sub?.items || []).some(i => (i.text || '').trim());
+    }
+    if (block.type === 'table') {
+      const sub = block.subtabs?.[block.activeSubtab ?? 0];
+      return !(sub?.rows || []).some(r => r.some(c => (c || '').trim()));
     }
     if (block.type === 'group') {
       return !(block.children || []).some(c => {
@@ -628,6 +640,17 @@ const Preview = (() => {
       const idx = block.activeSubtab ?? 0;
       return (block.subtabs?.[idx]?.value || '').trim().slice(0, 120);
     }
+    if (block.type === 'todo') {
+      const idx = block.activeSubtab ?? 0;
+      const items = block.subtabs?.[idx]?.items || [];
+      return items.filter(i => i.text?.trim()).map(i => `${i.done ? '☑' : '☐'} ${i.text}`).join(' ').slice(0, 120);
+    }
+    if (block.type === 'table') {
+      const idx = block.activeSubtab ?? 0;
+      const sub = block.subtabs?.[idx];
+      if (!sub?.rows?.length) return '';
+      return sub.rows.map(r => r.join(' | ')).join(' / ').slice(0, 120);
+    }
     return '';
   }
 
@@ -657,6 +680,11 @@ const Preview = (() => {
 
     (tab.blocks || []).forEach(b => {
       if (b.type === 'commands' || b.type === 'variable') return;
+      if (b.type === 'todo' || b.type === 'table') {
+        if (_isBlockEmpty(b)) return;
+        entries.push({ id: b.id, title: b.title || 'Без названия', type: _getBlockType(b), text: _extractPreviewText(b) });
+        return;
+      }
       if (b.previewDisabled === true) return;
       if (_isBlockEmpty(b)) return;
       if (_isCodeOnlyBlock(b)) return;
