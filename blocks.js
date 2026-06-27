@@ -5,7 +5,7 @@ const Blocks = (() => {
   const colLeft  = document.getElementById('col-left');
   const colRight = document.getElementById('col-right');
 
-  const VISIBLE_SUBTABS = 5;
+  const VISIBLE_SUBTABS = 3;
 
   // Transient UI state: subtab scroll offsets keyed by block id.
   const subtabOffsets = new Map();
