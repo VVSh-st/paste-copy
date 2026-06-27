@@ -859,17 +859,17 @@ const Ember = (() => {
     root.style.setProperty('--tiltX', (pose.tiltX + cursorLean.tiltX).toFixed(2) + 'deg');
     root.style.setProperty('--tiltY', (tiltCurrent * 0.6 + pose.tiltY + cursorLean.tiltY).toFixed(2) + 'deg');
 
-    const glow = clamp(intensity + heatBoost * 0.3 + pose.glow + hoverVal * 0.15 + windGust * 0.2, 0, 1.8);
-    const brightness = clamp(0.7 + intensity * 0.3 + pose.brightness + heatBoost * 0.4 + hoverVal * 0.15 + windGust * 0.3, 0.35, 2.5);
+    const glow = clamp(intensity + heatBoost * 0.4 + pose.glow + hoverVal * 0.2 + windGust * 0.25, 0, 1.8);
+    const brightness = clamp(0.8 + intensity * 0.35 + pose.brightness + heatBoost * 0.45 + hoverVal * 0.18 + windGust * 0.35, 0.4, 2.5);
 
     root.style.setProperty('--heat', heat.toFixed(3));
     root.style.setProperty('--glow', glow.toFixed(3));
     root.style.setProperty('--intensity', intensity.toFixed(3));
     root.style.setProperty('--hover', hoverVal.toFixed(3));
     root.style.setProperty('--brightness', brightness.toFixed(3));
-    root.style.setProperty('--glowOpacity', (1 + hoverVal * 0.15 + windGust * 0.2).toFixed(3));
-    root.style.setProperty('--glowBlur', (5 + hoverVal * 1.5 + windGust * 2).toFixed(2) + 'px');
-    root.style.setProperty('--glowScale', (1 + hoverVal * 0.08 + windGust * 0.06).toFixed(3));
+    root.style.setProperty('--glowOpacity', (1.1 + hoverVal * 0.18 + windGust * 0.25).toFixed(3));
+    root.style.setProperty('--glowBlur', (6 + hoverVal * 1.8 + windGust * 2.5).toFixed(2) + 'px');
+    root.style.setProperty('--glowScale', (1.04 + hoverVal * 0.1 + windGust * 0.08).toFixed(3));
     root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
 
     root.style.setProperty('--glowSkewX', pose.glowSkewX.toFixed(1) + 'deg');
@@ -2489,8 +2489,8 @@ const Ember = (() => {
 
       const idleBreath = 1 + Math.sin(now * 0.0015) * 0.015;
       breathScale += (idleBreath - breathScale) * 0.06;
-      const idleGlow = intensity * 0.5 + heatBoost * 0.2;
-      const idleBright = 0.5 + intensity * 0.2;
+      const idleGlow = intensity * 0.6 + heatBoost * 0.25;
+      const idleBright = 0.55 + intensity * 0.25;
 
       root.style.setProperty('--breathScale', breathScale.toFixed(4));
       root.style.setProperty('--shiftX', '0px');
