@@ -5653,6 +5653,12 @@ body.help-open {
   padding: 2px 8px; opacity: 0.5;
 }
 
+.block-icon { position: relative; }
+.block-icon-badge {
+  position: absolute; top: -3px; right: -4px;
+  pointer-events: none;
+}
+
 .block-type-sticky[data-color="yellow"] { --note-color: #d4c373; }
 .block-type-sticky[data-color="green"]  { --note-color: #7fb389; }
 .block-type-sticky[data-color="blue"]   { --note-color: #7aa7d4; }

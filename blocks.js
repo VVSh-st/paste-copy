@@ -382,6 +382,13 @@ const Blocks = (() => {
     const icon = document.createElement('span');
     icon.className = 'block-icon';
     icon.innerHTML = getBlockSvgIcon(b.type);
+    if (b.type === 'sticky') {
+      const dot = document.createElement('span');
+      dot.className = 'block-icon-badge';
+      dot.innerHTML = '<svg viewBox="0 0 16 16" fill="none" width="10" height="10"><circle cx="8" cy="8" r="7" fill="#e05577" opacity=".85"/><path d="M5 5l6 6M11 5l-6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>';
+      dot.title = 'Не попадёт в превью';
+      icon.appendChild(dot);
+    }
 
     // --- title input ---
     const title = document.createElement('input');
@@ -476,9 +483,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = '{{' + (b.variableName || '?') + '}}';
         badge.title = 'Переменная';
       } else if (b.type === 'sticky') {
-        badge.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke-width="1.5" aria-hidden="true" width="14" height="14"><circle cx="8" cy="8" r="5.5" fill="#e05577" opacity=".7" stroke="#e05577"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>';
-        badge.title = 'Не попадёт в превью';
-        badge.style.cursor = 'default';
+        badge.style.display = 'none';
       } else if (b.type === 'todo') {
         const sub = b.subtabs[b.activeSubtab];
         const items = sub?.items || [];
@@ -2216,10 +2221,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     addBtn.onclick = () => {
       const newItem = { id: State.uid(), text: '', done: false };
       sub.items.push(newItem);
-      State.update(() => {});
+      State.updateLive(() => {});
       renderItems();
       const inputs = list.querySelectorAll('.todo-text');
       inputs[inputs.length - 1]?.focus();
+      State.snapshot();
     };
 
     body.appendChild(list);
@@ -2340,8 +2346,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     del.textContent = '✕';
     del.onclick = () => {
       items.splice(idx, 1);
-      State.update(() => {});
+      State.updateLive(() => {});
       b._renderItems?.();
+      State.snapshot();
     };
 
     row.appendChild(handle);
