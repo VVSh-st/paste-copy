@@ -275,6 +275,14 @@ const Blocks = (() => {
           map[b.id] = (val && b.previewDisabled !== true) ? order++ : null;
         } else if (b.type === 'snippets') {
           map[b.id] = (b.items || []).some(i => i.enabled && (i.value || '').trim()) ? order++ : null;
+        } else if (b.type === 'todo') {
+          const sub = b.subtabs?.[b.activeSubtab];
+          const has = sub?.items?.some(i => (i.text || '').trim());
+          map[b.id] = (has && b.previewDisabled !== true) ? order++ : null;
+        } else if (b.type === 'table') {
+          const sub = b.subtabs?.[b.activeSubtab];
+          const has = sub?.rows?.some(r => r.some(c => (c || '').trim()));
+          map[b.id] = (has && b.previewDisabled !== true) ? order++ : null;
         } else if (b.type === 'group') {
           map[b.id] = null;
           if (b.enabled !== false) walk(b.children || []);

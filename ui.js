@@ -681,6 +681,7 @@ const Preview = (() => {
     (tab.blocks || []).forEach(b => {
       if (b.type === 'commands' || b.type === 'variable') return;
       if (b.type === 'todo' || b.type === 'table') {
+        if (b.previewDisabled === true) return;
         if (_isBlockEmpty(b)) return;
         entries.push({ id: b.id, title: b.title || 'Без названия', type: _getBlockType(b), text: _extractPreviewText(b) });
         return;
