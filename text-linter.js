@@ -815,25 +815,27 @@ window.TextLinter = (() => {
     const gearBtn = panel.querySelector('.text-lint-gear-btn');
     const gearDrop = panel.querySelector('.text-lint-gear-dropdown');
     if (gearBtn && gearDrop) {
+      let gearDirty = false;
       gearBtn.addEventListener('click', e => {
         e.stopPropagation();
         gearDrop.classList.toggle('open');
       });
-      const onGearChange = () => {
-        const checkboxes = gearDrop.querySelectorAll('[data-lint-key]');
-        checkboxes.forEach(cb => setSetting(cb.dataset.lintKey, cb.checked));
-        gearDrop.classList.remove('open');
-        openPreview(blockId);
-      };
       gearDrop.querySelectorAll('[data-lint-key]').forEach(cb => {
-        cb.addEventListener('change', onGearChange);
+        cb.addEventListener('change', () => { gearDirty = true; });
       });
-      document.addEventListener('click', function closeGear(e) {
-        if (!panel.contains(e.target)) {
-          gearDrop.classList.remove('open');
-          document.removeEventListener('click', closeGear);
+      function closeGear(e) {
+        if (gearDrop.contains(e.target)) return;
+        if (!gearDrop.classList.contains('open')) return;
+        gearDrop.classList.remove('open');
+        if (gearDirty) {
+          gearDirty = false;
+          const checkboxes = gearDrop.querySelectorAll('[data-lint-key]');
+          checkboxes.forEach(cb => setSetting(cb.dataset.lintKey, cb.checked));
+          openPreview(blockId);
         }
-      });
+        document.removeEventListener('click', closeGear);
+      }
+      document.addEventListener('click', closeGear);
     }
   }
 
@@ -1157,20 +1159,21 @@ window.TextLinter = (() => {
       .text-lint-diff-size-controls {
         display: inline-flex;
         align-items: center;
-        gap: 3px;
-        margin-inline: 4px;
-        padding: 2px;
+        gap: 2px;
+        margin-inline: 3px;
+        padding: 1px;
         border: 1px solid rgba(92,184,122,0.14);
         border-radius: 999px;
         background: rgba(92,184,122,0.055);
       }
       .text-lint-diff-size-btn {
-        min-width: 26px;
-        height: 24px;
-        padding: 0 6px;
+        min-width: 22px;
+        height: 20px;
+        padding: 0 4px;
         border-radius: 999px;
         color: var(--text1);
         font-weight: 700;
+        font-size: 10px;
       }
       .text-lint-diff-size-btn:hover,
       .text-lint-diff-size-btn:focus-visible {
@@ -1179,10 +1182,10 @@ window.TextLinter = (() => {
         background: rgba(92,184,122,0.12);
       }
       .text-lint-diff-size-value {
-        min-width: 34px;
+        min-width: 28px;
         color: var(--text2);
         font-family: var(--mono);
-        font-size: 10px;
+        font-size: 9px;
         text-align: center;
       }
       .text-lint-result-content {
