@@ -314,6 +314,26 @@ window.LLMFeatures = (() => {
     }
   }
 
+  function _showThesaurusPopupInline() {
+    const popup = document.createElement('div');
+    popup.className = 'thesaurus-popup';
+    popup.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:9500;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;box-shadow:0 4px 20px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text1);';
+    popup.innerHTML =
+      '<span class="thesaurus-dot" style="color:var(--text3);font-size:10px;min-width:30px">0/0</span>' +
+      '<span class="thesaurus-word" style="font-weight:600;color:var(--accent)"></span>' +
+      '<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ · Space ✓ · Esc ✕</span>';
+    document.body.appendChild(popup);
+    _thesaurusPopup = popup;
+    document.addEventListener('keydown', _onThesaurusKey, true);
+    const closeOnClick = (e) => {
+      if (!popup.contains(e.target)) {
+        _closeThesaurus();
+        document.removeEventListener('click', closeOnClick);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeOnClick), 0);
+  }
+
   function _showThesaurusPopup(ta) {
     _closeThesaurus();
     _thesaurusTa = ta;
@@ -407,16 +427,18 @@ window.LLMFeatures = (() => {
     const blockEl = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
     const ta = blockEl?.querySelector('textarea.block-textarea');
     if (!ta) { window.Toast?.show('Textarea не найдена', 'error'); return; }
-    const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
-    const pos = ta.selectionStart;
-    const text = ta.value;
+    const savedStart = ta.selectionStart;
+    const savedEnd = ta.selectionEnd;
+    const savedValue = ta.value;
+    const sel = savedValue.slice(savedStart, savedEnd).trim();
+    const pos = savedStart;
     const wordRe = /[\wА-Яа-яЁёA-Za-z\u00C0-\u024F]/;
-    let start = pos, end = pos;
-    while (start > 0 && wordRe.test(text[start - 1])) start--;
-    while (end < text.length && wordRe.test(text[end])) end++;
-    const word = sel || text.slice(start, end).trim();
+    let ws = pos, we = pos;
+    while (ws > 0 && wordRe.test(savedValue[ws - 1])) ws--;
+    while (we < savedValue.length && wordRe.test(savedValue[we])) we++;
+    const word = sel || savedValue.slice(ws, we).trim();
     if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
-    const ctx = text.slice(Math.max(0, pos - 100), pos + 100);
+    const ctx = savedValue.slice(Math.max(0, pos - 100), pos + 100);
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
       const result = await _LLMCore.request({
@@ -436,7 +458,16 @@ window.LLMFeatures = (() => {
       if (!items.length) { window.Toast?.show('Не удалось распарсить синонимы', 'error'); return; }
       _thesaurusItems = items;
       _thesaurusIdx = 0;
-      _showThesaurusPopup(ta);
+      _thesaurusTa = ta;
+      _thesaurusStart = savedStart;
+      _thesaurusEnd = savedEnd;
+      const raw = savedValue.slice(savedStart, savedEnd);
+      _thesaurusOrig = raw;
+      const leadMatch = raw.match(/^(\s*)/);
+      const trailMatch = raw.match(/(\s*)$/);
+      _thesaurusLeadSpace = leadMatch ? leadMatch[1] : '';
+      _thesaurusTrailSpace = trailMatch ? trailMatch[1] : '';
+      _showThesaurusPopupInline();
       _applyThesaurusItem();
     } catch (e) {
       _hideThinking();
