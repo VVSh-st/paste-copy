@@ -1689,7 +1689,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     thesaurusBtn.type = 'button';
     thesaurusBtn.className = 'font-ctrl-btn';
     thesaurusBtn.title = 'Тезаурус — подбор синонимов (Alt+T)';
-    thesaurusBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2 3c1-.6 2.5-.6 4 0v10c-1.5-.6-3-.6-4 0z"/><path d="M6 3c1-.6 2.5-.6 4 0v10c-1.5-.6-3-.6-4 0z"/><path d="M10 3h1.5c1.5 0 2.5 1 2.5 2.5S13 8 11.5 8H10"/></svg>';
+    thesaurusBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 5h4M3 8h3M3 11h4"/><path d="M10 5l2 3-2 3"/><path d="M12 8h2"/></svg>';
     thesaurusBtn.onclick = e => { e.stopPropagation(); window.LLMFeatures?._thesaurusAtBlock?.(b.id); };
     footer.appendChild(thesaurusBtn);
 
