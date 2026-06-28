@@ -818,6 +818,22 @@ window.TextLinter = (() => {
       });
     });
 
+    panel.querySelectorAll('.text-lint-hint-link').forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        const lineNum = parseInt(link.dataset.line, 10);
+        if (!lineNum || !ta) return;
+        const lines = ta.value.split('\n');
+        let pos = 0;
+        for (let i = 0; i < lineNum - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+        const endPos = pos + (lines[lineNum - 1]?.length ?? 0);
+        ta.focus();
+        ta.setSelectionRange(pos, endPos);
+        const lineHeight = parseInt(getComputedStyle(ta).lineHeight, 10) || 20;
+        ta.scrollTop = Math.max(0, (lineNum - 3) * lineHeight);
+      });
+    });
+
     const gearBtn = panel.querySelector('.text-lint-gear-btn');
     const gearDrop = panel.querySelector('.text-lint-gear-dropdown');
     if (gearBtn && gearDrop) {
@@ -938,7 +954,7 @@ window.TextLinter = (() => {
       `<summary>💡 Подсказки без автоправки: ${hints.length}</summary>` +
       `<ul>` +
         hints.slice(0, 8).map(hint =>
-          `<li><b>стр. ${hint.line}</b>: ${escapeHtml(hint.text)}${hint.snippet ? ` <code>${escapeHtml(hint.snippet)}</code>` : ''}</li>`
+          `<li><a href="#" class="text-lint-hint-link" data-line="${hint.line}">стр. ${hint.line}</a>: ${escapeHtml(hint.text)}${hint.snippet ? ` <code>${escapeHtml(hint.snippet)}</code>` : ''}</li>`
         ).join('') +
         (hints.length > 8 ? `<li class="text-lint-hint-muted">…ещё ${hints.length - 8}. Линтер не лезет с запятыми в драку без спроса.</li>` : '') +
       `</ul>` +
@@ -1252,6 +1268,18 @@ window.TextLinter = (() => {
         white-space: normal;
       }
       .text-lint-hint-muted { color: var(--text2); }
+      .text-lint-hint-link {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 700;
+        cursor: pointer;
+        border-bottom: 1px dashed rgba(79,142,247,0.4);
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .text-lint-hint-link:hover {
+        color: #93b8f7;
+        border-color: rgba(79,142,247,0.7);
+      }
       textarea.block-textarea.text-lint-matrix-accept {
         animation: textLintMatrixAccept 900ms cubic-bezier(.16,1,.3,1) both;
       }

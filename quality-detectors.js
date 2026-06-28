@@ -7,7 +7,7 @@
   'use strict';
 
   const PLACEHOLDER_RE = /\{\{\s*[^}\n]{1,80}\s*\}\}/g;
-  const SECTION_LABEL_RE = /^\s*(#{1,6}\s+)?(роль|role|контекст|context|задача|task|цель|требования|requirements|constraints|ограничения|правила|rules|формат|output|вывод|пример|examples?|данные|input|код|code)\s*[:：\-–—]?\s*$/i;
+  const SECTION_LABEL_RE = /^\s*(#{1,6}\s+)?(роль|role|контекст|context|задача|task|цель|требования|requirements|constraints|ограничения|правила|rules|формат|output|вывод|пример|examples?|данные|input|код|code)\s*[:：\-–—]?/i;
 
   function estimateTokens(text) {
     return Math.ceil(String(text || '').length / 3.5);
@@ -27,7 +27,7 @@
     const walk = blocks => (blocks || []).forEach(block => {
       if (!block || block.previewDisabled === true) return;
       if (block.type === 'text') {
-        const idx = block.activeSubtab ?? 0;
+        const idx = Number.isInteger(block.activeSubtab) ? block.activeSubtab : 0;
         const value = String(block.subtabs?.[idx]?.value || '');
         if (value.trim()) {
           out.push({
@@ -66,7 +66,8 @@
     if (!at.size || !bt.size) return 0;
     let hits = 0;
     at.forEach(t => { if (bt.has(t)) hits += 1; });
-    const jaccard = hits / (at.size + bt.size - hits);
+    const denom = at.size + bt.size - hits;
+    const jaccard = denom ? hits / denom : 0;
     const containment = hits / Math.min(at.size, bt.size);
     return Math.max(jaccard, containment * 0.82);
   }
@@ -154,6 +155,7 @@
 
   function detectLanguage(text) {
     const raw = String(text || '');
+    if (raw.length < 20) return 'mixed';
     const ru = (raw.match(/[а-яё]/gi) || []).length;
     const en = (raw.match(/[a-z]/gi) || []).length;
     if (ru > en * 0.35) return 'ru';
@@ -230,7 +232,15 @@
 
   function splitIntoSections(text) {
     const raw = String(text || '').replace(/\r\n/g, '\n').trim();
-    if (raw.length < 900) return [];
+    if (raw.length < 900) {
+      return [{
+        title: 'Весь текст',
+        value: raw,
+        chars: raw.length,
+        tokens: estimateTokens(raw),
+        kind: classifyFallback(raw)
+      }];
+    }
 
     const lines = raw.split('\n');
     let sections = splitByHeadings(lines)
@@ -253,7 +263,7 @@
     if (!tab || event?.type !== 'block.paste' || Number(event.chars) < 1200 || !event.blockId) return null;
     const block = window.State?.findBlock?.(tab.blocks || [], event.blockId);
     if (!block || block.type !== 'text') return null;
-    const idx = block.activeSubtab ?? 0;
+    const idx = Number.isInteger(block.activeSubtab) ? block.activeSubtab : 0;
     const value = String(block.subtabs?.[idx]?.value || '');
     if (value.length < Math.max(900, Number(event.chars) * 0.75)) return null;
 

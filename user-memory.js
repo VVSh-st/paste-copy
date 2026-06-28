@@ -38,7 +38,12 @@
   // Безопасный глубокий клон с откатом на пустой объект
   function deepClone(value) {
     try { return JSON.parse(JSON.stringify(value)); }
-    catch (_) { return Array.isArray(value) ? [] : {}; }
+    catch (_) {
+      if (typeof structuredClone === 'function') {
+        try { return structuredClone(value); } catch (_) {}
+      }
+      return Array.isArray(value) ? [] : {};
+    }
   }
 
   function createDefaultProfile() {
@@ -193,8 +198,9 @@
     else if (event.kind === 'json') profile.style.format.json += 1;
     else if (event.kind) profile.style.format.plain += 1;
 
-    if (/[а-яё]/i.test(event.title || '')) profile.style.language.ru += 1;
-    if (/[a-z]/i.test(event.title || '')) profile.style.language.en += 1;
+    const langText = (event.title || '') + ' ' + (event.message || '');
+    if (/[а-яё]/i.test(langText)) profile.style.language.ru += 1;
+    if (/[a-z]/i.test(langText)) profile.style.language.en += 1;
 
     if (event.chars > 0 && event.chars < 600) profile.style.verbosity.short += 1;
     else if (event.chars < 2400) profile.style.verbosity.balanced += 1;
@@ -211,7 +217,12 @@
 
   function updateTransitions(event) {
     const prev = getLastEvent();
-    if (!prev || prev.type === event.type) return;
+    if (!prev) return;
+    if (prev.type === event.type) {
+      const key = event.type + ' -> repeat';
+      profile.behavior.actionTransitions[key] = (profile.behavior.actionTransitions[key] || 0) + 1;
+      return;
+    }
     const key = prev.type + ' -> ' + event.type;
     profile.behavior.actionTransitions[key] = (profile.behavior.actionTransitions[key] || 0) + 1;
   }
@@ -225,9 +236,10 @@
 
     profile.personalScores.chaos = clamp01(0.35 + Math.min(0.45, edits / 120) + Math.min(0.2, dismisses / 80));
     profile.personalScores.finishing = clamp01(0.35 + Math.min(0.5, exports / 25));
+    const total = accepts + dismisses + 1;
     profile.personalScores.decisiveness = clamp01(
       0.45 +
-      Math.min(0.35, accepts / Math.max(1, accepts + dismisses + 3)) -
+      Math.min(0.35, accepts / total) -
       Math.min(0.15, dismisses / 60)
     );
 
@@ -361,7 +373,9 @@
   }
 
   function resetSuggestionLearning() {
-    profile.suggestions = createDefaultProfile().suggestions;
+    profile.suggestions.byType = {};
+    profile.suggestions.dismissedUntil = {};
+    profile.suggestions.disabledTypes = {};
     profile.behavior.contextScores = {};
     profile.behavior.featureScores = {};
     profile.counters.acceptedSuggestions = 0;

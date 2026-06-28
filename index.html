@@ -1354,6 +1354,11 @@
                     Matrix-diff (мс)
                     <input id="llm-diff-effect-ms" type="number" min="1000" max="10000" step="50" value="3500">
                   </label>
+
+                  <label class="settings-item" title="Показывать панель diff перед заменой текста (выкл = замена напрямую)">
+                    <input id="llm-visual-diff" type="checkbox">
+                    Показывать визуальный diff
+                  </label>
                 </div>
               </details>
 
@@ -1452,6 +1457,10 @@
 
       <span class="notepad-title-label">💬 LLM Чат</span>
 
+      <span id="llm-chat-session-title" class="llm-chat-session-title"></span>
+
+      <span id="llm-chat-session-label" class="llm-chat-session-label">1/1</span>
+
       <span id="llm-chat-ctx" class="llm-chat-ctx-label"></span>
 
       <button type="button" id="llm-chat-resend" class="notepad-min-btn" title="Повторить последний запрос" aria-label="Повторить последний запрос">
@@ -1460,7 +1469,29 @@
 
       </button>
 
-      <button type="button" id="llm-chat-clear" class="notepad-min-btn" title="Очистить историю" aria-label="Очистить историю чата">
+      <button type="button" id="llm-chat-font-down" class="notepad-min-btn llm-chat-font-btn" title="Уменьшить шрифт (A-)" aria-label="Уменьшить шрифт">A-</button>
+
+      <button type="button" id="llm-chat-font-up" class="notepad-min-btn llm-chat-font-btn" title="Увеличить шрифт (A+)" aria-label="Увеличить шрифт">A+</button>
+
+      <button type="button" id="llm-chat-prev" class="notepad-min-btn" title="Предыдущий чат" aria-label="Предыдущий чат">
+
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 4l-4 4 4 4"/></svg>
+
+      </button>
+
+      <button type="button" id="llm-chat-next" class="notepad-min-btn" title="Следующий чат" aria-label="Следующий чат">
+
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4l4 4-4 4"/></svg>
+
+      </button>
+
+      <button type="button" id="llm-chat-new" class="notepad-min-btn" title="Новый чат" aria-label="Новый чат">
+
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>
+
+      </button>
+
+      <button type="button" id="llm-chat-clear" class="notepad-min-btn" title="Очистить чат (долгое нажатие — все чаты)" aria-label="Очистить историю чата">
 
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M8 3l5 5-5 5"/></svg>
 
@@ -1500,9 +1531,9 @@
 
       <button type="button" id="llm-chat-send" aria-label="Отправить">
 
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
 
-          <path d="M2 8h12M9 3l5 5-5 5"/>
+          <circle cx="8" cy="8" r="3" fill="currentColor" opacity="0.4"/>
 
         </svg>
 

@@ -971,6 +971,7 @@ window.LLMCore = (() => {
       _setCheck('llm-auto-snapshot', llm.autoSnapshot ?? true);
       _setCheck('llm-save-results', llm.saveResults ?? true);
       _setCheck('llm-debug', llm.debugMode ?? false);
+      _setCheck('llm-visual-diff', llm.visualDiff ?? false);
       _set('llm-diff-mode', llm.diffMode ?? 'classic');
       _set('llm-diff-effect-ms', _clampEffectMs(llm.diffEffectMs));
       _setCheck('llm-cache-enabled', llm.cache?.enabled ?? true);
@@ -1045,7 +1046,7 @@ window.LLMCore = (() => {
     }
     function _saveGeneral() {
       const lay = _State.getLayout();
-      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), autoSnapshot: _getCheck('llm-auto-snapshot'), saveResults: _getCheck('llm-save-results'), debugMode: _getCheck('llm-debug'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
+      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), autoSnapshot: _getCheck('llm-auto-snapshot'), saveResults: _getCheck('llm-save-results'), debugMode: _getCheck('llm-debug'), visualDiff: _getCheck('llm-visual-diff'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
     }
     function _renderBroTags() {
       const lay = _State.getLayout();
@@ -1759,7 +1760,7 @@ tags.push({
       document.getElementById('llm-prompt-save')?.addEventListener('click', _savePrompt);
       document.getElementById('llm-prompt-test-run')?.addEventListener('click', _testPrompt);
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
-      ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
+      ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
       document.getElementById('llm-text-lint-settings')?.addEventListener('change', e => {
         const input = e.target.closest('[data-llm-lint-setting]');
         if (!input) return;
@@ -1815,7 +1816,7 @@ const BUILTIN_PROMPTS = {
   sum_system: 'You are a summarizer. Summarize the text below in exactly 2–3 sentences. Keep only the main point, key facts, and conclusion. Do NOT add opinions or information not present in the text. Return ONLY the summary.',
   ask_system: 'You are a Q&A assistant. Answer the question using only the provided text. Do NOT add outside knowledge, guesses, or unsupported details. Format the answer as a Markdown blockquote: every line must start with "> ". Return ONLY the blockquote answer.',
   plan_system: 'Ты — планировщик задач в редакторе промптов. По тексту ниже составь короткий практичный план действий: 3–7 пунктов. Каждый пункт начинается с глагола и описывает одно конкретное действие. Не добавляй вводных фраз, выводов и лишних пояснений.',
-  chat_system: 'You are an intelligent assistant in a prompt engineering editor. Help improve prompts, explain structure, and suggest best practices. Be concise: 2–5 sentences per reply. When suggesting edits, show clear before/after examples and keep advice practical.',
+  chat_system: 'Ты — помощник в приложении Paste/Copy для работы с промптами. Умный, но не занудный. Помогаешь улучшать тексты, объясняешь структуру промптов, предлагаешь практики. Говори по делу, 1–3 предложения. Если уместно — добавь лёгкую шутку или метафору, но без пустой болтовни. Если просят анекдот или off-topic — будь дружелюбным, ответь кратко и вернись к делу. Отвечай на том языке, на котором пишет собеседник.',
 };
 
   const PROMPT_GROUPS = [

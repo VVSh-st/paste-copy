@@ -229,6 +229,7 @@ window.LLMFeatures = (() => {
     const text = _getCurrentPromptText();
     if (!String(text).trim()) { window.Toast?.show('Текущая вкладка пуста', 'error'); return; }
     const isSummary = featureKey === 'summary';
+    MiniChat.newSession();
     MiniChat.open();
     MiniChat.addSystemMessage(isSummary ? '∋ Готовлю резюме вкладки...' : featureKey + '...');
     _showThinking(isSummary ? '∋ Резюме вкладки...' : '◕ Думаю...');
@@ -500,6 +501,7 @@ window.LLMFeatures = (() => {
       if (!_guard()) return;
       const text = window.Preview?.getText?.() ?? '';
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'error'); return; }
+      MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('↬ Перефразирую промпт...');
       _showThinking('↬ Перефразирую...');
@@ -534,6 +536,7 @@ window.LLMFeatures = (() => {
       if (!_guard()) return;
       const text = window.Preview?.getText?.() ?? '';
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'error'); return; }
+      MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('📝 Разворачиваю промпт...');
       _showThinking('📝 Разворачиваю...');
@@ -1233,6 +1236,12 @@ window.LLMFeatures = (() => {
 
     const modeAlias = mode === 'grammar' ? 'edit' : mode;
     if (modeAlias === 'grade') { PromptGrader.grade(); return; }
+
+    const _chatModes     = ['positive_instr', 'negatives', 'summary', 'variations'];
+    const _alwaysDiff    = ['grammar'];
+    const _alwaysDirect  = ['edit', 'format', 'expand', 'formal', 'casual',
+                            'tech', 'friendly', 'shrink_20', 'shrink_40', 'shrink_60'];
+
     let promptKey;
     if (modeAlias === 'positive_instr') promptKey = 'positive_instr';
     else if (modeAlias === 'negatives') promptKey = 'negatives';
@@ -1241,8 +1250,8 @@ window.LLMFeatures = (() => {
     else promptKey = 'groom_' + modeAlias;
 
     const _groomNoLang = ['edit', 'format', 'shrink_20', 'shrink_40', 'shrink_60',
-                          'expand', 'formal', 'casual', 'tech', 'friendly', 'positive_instr',
-                          'negatives', 'variations'];
+                          'expand', 'formal', 'casual', 'tech', 'friendly',
+                          'negatives'];
     const _groomLang   = _groomNoLang.includes(modeAlias) ? '' : _LANG_INSTR;
     const basePrompt   = _LLMCore.getPrompt(promptKey);
     if (!basePrompt) {
@@ -1250,6 +1259,14 @@ window.LLMFeatures = (() => {
       return;
     }
     const systemPrompt = basePrompt + _groomLang;
+
+    if (_chatModes.includes(modeAlias)) {
+      _runGroomInChat(blockId, text, systemPrompt, mode, modeAlias);
+      return;
+    }
+
+    const useDiff = _alwaysDiff.includes(mode) ||
+                    (!_alwaysDirect.includes(modeAlias) && !!_State?.getLayout?.()?.llm?.visualDiff);
 
     _setBlockLoading(blockId, true);
     _showThinking('◕ Обрабатываю текст...');
@@ -1260,35 +1277,41 @@ window.LLMFeatures = (() => {
 
     blockEl.querySelector('.llm-result-panel')?.remove();
 
-    const previewPanel = document.createElement('div');
-    previewPanel.className = 'llm-result-panel llm-result-panel--streaming';
-    previewPanel.innerHTML =
-      `<div class="llm-result-toolbar">` +
-        `<span class="llm-result-stats">◕ Генерирую...</span>` +
-        `<button type="button" class="btn-sm" data-action="cancel-stream">✕ Отмена</button>` +
-      `</div>` +
-      `<div class="llm-result-content" id="_groom-stream-${blockId}"></div>`;
+    let previewPanel = null;
+    let _streamRenderPending = false;
 
-    const currentTa = _getBlockTextarea(blockId);
-    if (currentTa?.parentNode) currentTa.parentNode.insertBefore(previewPanel, currentTa.nextSibling);
-    else blockEl.appendChild(previewPanel);
+    if (useDiff) {
+      previewPanel = document.createElement('div');
+      previewPanel.className = 'llm-result-panel llm-result-panel--streaming';
+      previewPanel.innerHTML =
+        `<div class="llm-result-toolbar">` +
+          `<span class="llm-result-stats">◕ Генерирую...</span>` +
+          `<button type="button" class="btn-sm" data-action="cancel-stream">✕ Отмена</button>` +
+        `</div>` +
+        `<div class="llm-result-content" id="_groom-stream-${blockId}"></div>`;
+
+      const currentTa = _getBlockTextarea(blockId);
+      if (currentTa?.parentNode) currentTa.parentNode.insertBefore(previewPanel, currentTa.nextSibling);
+      else blockEl.appendChild(previewPanel);
+    }
 
     const abortCtrl = new AbortController();
-    previewPanel.querySelector('[data-action="cancel-stream"]')
-      ?.addEventListener('click', () => abortCtrl.abort());
+    if (previewPanel) {
+      previewPanel.querySelector('[data-action="cancel-stream"]')
+        ?.addEventListener('click', () => abortCtrl.abort());
+    }
 
-    let _streamRenderPending = false;
     const _scheduleStreamRender = () => {
-      if (_streamRenderPending) return;
+      if (!useDiff || _streamRenderPending) return;
       _streamRenderPending = true;
       requestAnimationFrame(() => {
         _streamRenderPending = false;
         const el = document.getElementById('_groom-stream-' + blockId);
         if (el) {
-          const mode = _getDiffMode();
-          el.classList.toggle('llm-result-content--matrix', mode === 'matrix');
-          el.classList.toggle('llm-result-content--classic', mode !== 'matrix');
-          el.innerHTML = DiffEngine.renderHtml(DiffEngine.compute(text, accumulated), mode, { durationMs: _getDiffEffectMs() });
+          const dm = _getDiffMode();
+          el.classList.toggle('llm-result-content--matrix', dm === 'matrix');
+          el.classList.toggle('llm-result-content--classic', dm !== 'matrix');
+          el.innerHTML = DiffEngine.renderHtml(DiffEngine.compute(text, accumulated), dm, { durationMs: _getDiffEffectMs() });
         }
       });
     };
@@ -1310,24 +1333,35 @@ window.LLMFeatures = (() => {
         featureTag: 'groom',
       });
 
-      previewPanel.remove();
+      if (previewPanel) previewPanel.remove();
       const _resultTrimmed = (result ?? '').trim();
       if (!_resultTrimmed) {
         window.Toast?.show('Модель вернула пустой ответ. Попробуйте снова.', 'error');
         return;
       }
       window.PromptLoom?.record?.(_resultTrimmed, 'llm', { via: 'groom-result', mode, blockId });
-      _showResultPanel(blockId, text, _resultTrimmed, accepted => {
-        if (!accepted) return;
+
+      if (useDiff) {
+        _showResultPanel(blockId, text, _resultTrimmed, accepted => {
+          if (!accepted) return;
+          const applyTa = _getBlockTextarea(blockId);
+          if (!applyTa) { window.Toast?.show('Не найден целевой блок', 'error'); return; }
+          const applyStart = hasSel ? selStart : 0;
+          const applyEnd   = hasSel ? selEnd   : applyTa.value.length;
+          _applyToScope(applyTa, applyStart, applyEnd, _resultTrimmed);
+          window.Toast?.show('Текст обновлён ✓', 'success');
+        });
+      } else {
         const applyTa = _getBlockTextarea(blockId);
-        if (!applyTa) { window.Toast?.show('Не найден целевой блок', 'error'); return; }
-        const applyStart = hasSel ? selStart : 0;
-        const applyEnd   = hasSel ? selEnd   : applyTa.value.length;
-        _applyToScope(applyTa, applyStart, applyEnd, _resultTrimmed);
-        window.Toast?.show('Текст обновлён ✓', 'success');
-      });
+        if (applyTa) {
+          const applyStart = hasSel ? selStart : 0;
+          const applyEnd   = hasSel ? selEnd   : applyTa.value.length;
+          _applyToScope(applyTa, applyStart, applyEnd, _resultTrimmed);
+          window.Toast?.show('Текст обновлён ✓', 'success');
+        }
+      }
     } catch (e) {
-      previewPanel.remove();
+      if (previewPanel) previewPanel.remove();
       if (e.name !== 'AbortError') {
         window.Toast?.show('Ошибка причёсывания: ' + e.message, 'error');
       }
@@ -1335,6 +1369,47 @@ window.LLMFeatures = (() => {
       _setBlockLoading(blockId, false);
       _hideThinking();
     }
+  }
+
+  function _runGroomInChat(blockId, text, systemPrompt, mode, modeAlias) {
+    const labels = {
+      positive_instr: 'Позитивные инструкции',
+      negatives:      'Что пойдёт не так?',
+      summary:        'Резюме вкладки',
+      variations:     '3 варианта',
+    };
+    MiniChat.newSession();
+    MiniChat.open();
+    MiniChat.addSystemMessage('📊 ' + (labels[modeAlias] || modeAlias) + '...');
+    MiniChat.pushToHistory('system', '📊 ' + (labels[modeAlias] || modeAlias) + '...');
+    _showThinking('◕ Обрабатываю...');
+
+    const isSummary = modeAlias === 'summary';
+
+    _LLMCore.request({
+      messages:   [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
+      stream:     !isSummary,
+      timeoutMs:  isSummary ? 180_000 : undefined,
+      signal:     undefined,
+      onChunk:    isSummary ? undefined : chunk => MiniChat.appendChunk(chunk),
+      featureTag: 'groom',
+    }).then(result => {
+      if (isSummary && String(result ?? '').trim()) MiniChat.appendChunk(result);
+      MiniChat.finalizeLastMessage(result);
+      if (String(result ?? '').trim()) {
+        MiniChat.pushToHistory('assistant', result);
+        window.PromptLoom?.record?.(result, 'llm', { via: 'groom-chat', mode, blockId });
+      }
+      if (!String(result ?? '').trim()) MiniChat.addSystemMessage('LLM вернул пустой ответ');
+    }).catch(e => {
+      if (e.name !== 'AbortError') {
+        MiniChat.addSystemMessage('Ошибка: ' + e.message);
+        MiniChat.pushToHistory('system', 'Ошибка: ' + e.message);
+        window.Toast?.show(e.message, 'error');
+      }
+    }).finally(() => {
+      _hideThinking();
+    });
   }
 
   const PromptGrader = (() => {
@@ -1367,6 +1442,7 @@ window.LLMFeatures = (() => {
         return;
       }
 
+      MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('📊 Оцениваю промпт...');
       _showThinking('📊 Оцениваю промпт...');
@@ -1428,9 +1504,9 @@ window.LLMFeatures = (() => {
       _busyRelease();
     }
 
-    function _renderScorecard(data) {
-      const msgsEl = document.getElementById('llm-chat-messages');
-      if (!msgsEl) return;
+    function _renderScorecard(data, msgsEl) {
+      const el = msgsEl || document.getElementById('llm-chat-messages');
+      if (!el) return;
 
       const scores = CRITERIA.map(c => {
         const rawVal = data[c.key];
@@ -1449,8 +1525,8 @@ window.LLMFeatures = (() => {
         return `
           <div style="display:flex;align-items:center;gap:8px;margin:4px 0" title="${_escLocal(c.desc)}">
             <span style="width:110px;font-size:11px;color:var(--text2);flex-shrink:0">${_escLocal(c.label)}</span>
-            <div style="flex:1;height:6px;background:var(--bg1);border-radius:3px;overflow:hidden">
-              <div style="width:${pct}%;height:100%;background:${color};border-radius:3px;transition:width .4s ease"></div>
+            <div style="width:55%;min-width:60px;height:6px;background:var(--bg1);border-radius:3px;overflow:hidden">
+              <div data-bar="${pct}%" style="width:0;height:100%;background:${color};border-radius:3px"></div>
             </div>
             <span style="width:22px;text-align:right;font-size:12px;font-weight:600;color:${color}">${c.val}</span>
           </div>`;
@@ -1471,8 +1547,17 @@ window.LLMFeatures = (() => {
         ${barsHtml}
         ${summaryHtml}`;
 
-      msgsEl.appendChild(card);
-      msgsEl.scrollTop = msgsEl.scrollHeight;
+      el.appendChild(card);
+      requestAnimationFrame(() => {
+        card.querySelectorAll('[data-bar]').forEach(b => {
+          b.style.width = b.dataset.bar;
+        });
+      });
+      el.scrollTop = el.scrollHeight;
+
+      if (!msgsEl && window.MiniChat?.pushScorecard) {
+        window.MiniChat.pushScorecard(data);
+      }
     }
 
     return { grade };
@@ -1492,6 +1577,7 @@ window.LLMFeatures = (() => {
       }
 
       _busy = true;
+      MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('🔎 Анализирую промпт...');
       _showThinking('🔎 Анализирую...');
@@ -1537,6 +1623,7 @@ window.LLMFeatures = (() => {
       try {
         _withAutoSnap('compress');
         const toksBefore = _LLMCore.estimateTokens(text) || 0;
+        MiniChat.newSession();
         MiniChat.open();
         MiniChat.addSystemMessage('✂️ Сжимаю токены...');
         _showThinking('✂️ Сжимаю...');
@@ -2046,6 +2133,7 @@ window.LLMFeatures = (() => {
         let result = '';
 
         if (action === 'sum') {
+          MiniChat.newSession();
           MiniChat.open();
           MiniChat.addSystemMessage('📝 Суммаризирую...');
           _showThinkingSafe('📝 Суммаризирую...');
@@ -3022,12 +3110,156 @@ const AutoPoet = (() => {
     let _historyIdx   = -1;
     let _draftInput   = '';
 
+    let _fontSize     = 12;
+    let _sessions     = [];
+    let _sessionIdx   = 0;
+    const STORAGE_KEY = 'llmChatSessions';
+
     const _panel  = () => document.getElementById('llm-chat-panel');
     const _msgsEl = () => document.getElementById('llm-chat-messages');
     const _inputEl= () => document.getElementById('llm-chat-input');
 
-    function open()  { const p = _panel(); if (!p) return; p.style.display = 'flex'; p.classList.remove('llm-chat-collapsed'); _updateCtxLabel(); _inputEl()?.focus(); }
+    function _open()  {
+      const p = _panel();
+      if (!p) return;
+      _loadSessions();
+      _history = [...(_sessions[_sessionIdx]?.history ?? [])];
+      _applyFontSize();
+      p.style.display = 'flex';
+      p.classList.remove('llm-chat-collapsed');
+      _updateCtxLabel();
+      const el = _msgsEl();
+      if (el) {
+        el.innerHTML = '';
+        _history.forEach(m => _appendMsg(m.role, m.content));
+      }
+      _updateNavButtons();
+      _inputEl()?.focus();
+    }
     function close() { const p = _panel(); if (p) p.style.display = 'none'; }
+
+    function _saveSessions() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions: _sessions, sessionIdx: _sessionIdx, fontSize: _fontSize }));
+      } catch {}
+    }
+
+    function _loadSessions() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          _sessions = Array.isArray(data.sessions) ? data.sessions : [];
+          _sessionIdx = typeof data.sessionIdx === 'number' ? data.sessionIdx : 0;
+          _fontSize = typeof data.fontSize === 'number' ? data.fontSize : 12;
+        }
+      } catch {}
+      if (_sessions.length === 0) {
+        _sessions.push({ id: Date.now().toString(36), history: [], title: 'Новый чат' });
+        _sessionIdx = 0;
+      }
+      if (_sessionIdx >= _sessions.length) _sessionIdx = _sessions.length - 1;
+    }
+
+    function _applyFontSize() {
+      const p = _panel();
+      if (p) p.style.setProperty('--chat-font', _fontSize + 'px');
+    }
+
+    function _changeFontSize(delta) {
+      _fontSize = Math.round(Math.min(24, Math.max(8, _fontSize + delta)) * 2) / 2;
+      _applyFontSize();
+      _saveSessions();
+      const downBtn = document.getElementById('llm-chat-font-down');
+      const upBtn = document.getElementById('llm-chat-font-up');
+      if (downBtn) downBtn.title = `Уменьшить шрифт (${_fontSize - 0.5})`;
+      if (upBtn) upBtn.title = `Увеличить шрифт (${_fontSize + 0.5})`;
+      window.Toast?.show(`Шрифт: ${_fontSize}`, 'info');
+    }
+
+    function _updateNavButtons() {
+      const prev = document.getElementById('llm-chat-prev');
+      const next = document.getElementById('llm-chat-next');
+      if (prev) {
+        prev.disabled = _sessionIdx <= 0;
+        prev.title = _sessionIdx > 0 ? `Предыдущий: ${_sessions[_sessionIdx - 1]?.title || 'Чат'}` : 'Предыдущий чат';
+      }
+      if (next) {
+        next.disabled = _sessionIdx >= _sessions.length - 1;
+        next.title = _sessionIdx < _sessions.length - 1 ? `Следующий: ${_sessions[_sessionIdx + 1]?.title || 'Чат'}` : 'Следующий чат';
+      }
+      const label = document.getElementById('llm-chat-session-label');
+      if (label) label.textContent = `${_sessionIdx + 1}/${_sessions.length}`;
+      const titleEl = document.getElementById('llm-chat-session-title');
+      if (titleEl) titleEl.textContent = _sessions[_sessionIdx]?.title || '';
+    }
+
+    function _saveCurrentSession() {
+      if (_sessions[_sessionIdx]) {
+        _sessions[_sessionIdx].history = [..._history];
+        if (_history.length > 0) {
+          const firstUser = _history.find(m => m.role === 'user');
+          if (firstUser) _sessions[_sessionIdx].title = firstUser.content.slice(0, 40) || 'Новый чат';
+        }
+      }
+      _saveSessions();
+    }
+
+    function _switchSession(idx) {
+      if (idx < 0 || idx >= _sessions.length) return;
+      _saveCurrentSession();
+      _sessionIdx = idx;
+      _history = [...(_sessions[_sessionIdx]?.history ?? [])];
+      _inputHistory = [];
+      _historyIdx = -1;
+      _draftInput = '';
+      const el = _msgsEl();
+      if (el) el.innerHTML = '';
+      _history.forEach(m => _appendMsg(m.role, m.content));
+      _updateNavButtons();
+      _saveSessions();
+      _inputEl()?.focus();
+      window.Toast?.show(`Чат ${_sessionIdx + 1}/${_sessions.length}`, 'info');
+    }
+
+    function _newSession() {
+      _saveCurrentSession();
+      _sessions.push({ id: Date.now().toString(36), history: [], title: 'Новый чат' });
+      _sessionIdx = _sessions.length - 1;
+      _history = [];
+      _inputHistory = [];
+      _historyIdx = -1;
+      _draftInput = '';
+      const el = _msgsEl();
+      if (el) el.innerHTML = '';
+      const inputEl = _inputEl();
+      if (inputEl) {
+        inputEl.value = '';
+        _resizeInput();
+      }
+      _updateNavButtons();
+      _saveSessions();
+      _inputEl()?.focus();
+      window.Toast?.show('Новый чат создан', 'info');
+    }
+
+    function clearAllSessions() {
+      stop();
+      _sessions = [{ id: Date.now().toString(36), history: [], title: 'Новый чат' }];
+      _sessionIdx = 0;
+      _history = [];
+      _inputHistory = [];
+      _historyIdx = -1;
+      _draftInput = '';
+      const el = _msgsEl();
+      if (el) el.innerHTML = '';
+      const inputEl = _inputEl();
+      if (inputEl) { inputEl.value = ''; _resizeInput(); }
+      _updateNavButtons();
+      _saveSessions();
+      window.Toast?.show('Все чаты очищены', 'success');
+    }
+
     let _collapsed = false;
     function toggleCollapse() {
       const p = _panel();
@@ -3067,6 +3299,7 @@ const AutoPoet = (() => {
       }
       const ctxEl = document.getElementById('llm-chat-ctx');
       if (ctxEl) ctxEl.textContent = '';
+      _saveCurrentSession();
     }
 
     function addSystemMessage(text) { _appendMsg('system', text); }
@@ -3115,6 +3348,10 @@ const AutoPoet = (() => {
     function _appendMsg(role, text) {
       const el = _msgsEl();
       if (!el) return;
+      if (role === 'scorecard') {
+        _appendScorecardToDOM(JSON.parse(text), el);
+        return;
+      }
       const div = document.createElement('div');
       div.className = 'llm-chat-msg ' + role;
       const span = document.createElement('span');
@@ -3124,6 +3361,53 @@ const AutoPoet = (() => {
       el.appendChild(div);
       el.scrollTop = el.scrollHeight;
       _updateScrollDownBtn();
+    }
+
+    function _appendScorecardToDOM(data, el) {
+      const CRITERIA = [
+        { key: 'clarity',      label: 'Ясность',          desc: 'Понятно ли написано' },
+        { key: 'specificity',  label: 'Точность',         desc: 'Конкретность инструкций' },
+        { key: 'completeness', label: 'Полнота',          desc: 'Все ли контексты учтены' },
+        { key: 'consistency',  label: 'Согласованность',  desc: 'Нет ли противоречий' },
+        { key: 'conciseness',  label: 'Краткость',        desc: 'Нет ли лишнего' },
+      ];
+      const escFn = (s) => { const d = document.createElement('div'); d.appendChild(document.createTextNode(s)); return d.innerHTML; };
+      const scores = CRITERIA.map(c => {
+        const rawVal = data[c.key];
+        const num = (rawVal != null && rawVal !== '') ? Number(rawVal) : NaN;
+        const val = Number.isFinite(num) ? Math.min(10, Math.max(0, num)) : 0;
+        return { ...c, val };
+      });
+      const avg = scores.reduce((s, c) => s + c.val, 0) / scores.length;
+      const avgStr = avg.toFixed(1);
+      const avgColor = avg >= 7 ? '#22c55e' : avg >= 5 ? '#f59e0b' : '#ef4444';
+      const barsHtml = scores.map(c => {
+        const color = c.val >= 7 ? '#22c55e' : c.val >= 5 ? '#f59e0b' : '#ef4444';
+        const pct = Math.round(c.val * 10);
+        return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0" title="${escFn(c.desc)}"><span style="width:110px;font-size:11px;color:var(--text2);flex-shrink:0">${escFn(c.label)}</span><div style="width:55%;min-width:60px;height:6px;background:var(--bg1);border-radius:3px;overflow:hidden"><div data-bar="${pct}%" style="width:0;height:100%;background:${color};border-radius:3px"></div></div><span style="width:22px;text-align:right;font-size:12px;font-weight:600;color:${color}">${c.val}</span></div>`;
+      }).join('');
+      const summaryHtml = data.summary ? `<p style="margin:10px 0 0;font-size:12px;color:var(--text2);border-top:1px solid var(--border);padding-top:8px">${escFn(data.summary)}</p>` : '';
+      const card = document.createElement('div');
+      card.className = 'llm-chat-msg assistant';
+      card.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px"><span>📊 Оценка промпта</span><span style="font-size:18px;font-weight:700;color:${avgColor}">${avgStr}</span><span style="font-size:11px;color:var(--text3)">/ 10</span></div>${barsHtml}${summaryHtml}`;
+      el.appendChild(card);
+      requestAnimationFrame(() => {
+        card.querySelectorAll('[data-bar]').forEach(b => {
+          b.style.width = b.dataset.bar;
+        });
+      });
+      el.scrollTop = el.scrollHeight;
+      _updateScrollDownBtn();
+    }
+
+    function pushScorecard(data) {
+      _history.push({ role: 'scorecard', content: JSON.stringify(data) });
+      _saveCurrentSession();
+    }
+
+    function pushToHistory(role, content) {
+      _history.push({ role, content });
+      _saveCurrentSession();
     }
 
     function appendChunk(chunk) {
@@ -3271,6 +3555,11 @@ const AutoPoet = (() => {
 
         _historyIdx = -1;
         _draftInput = '';
+
+        if (_sessions[_sessionIdx]) {
+          _sessions[_sessionIdx].title = userText.slice(0, 40) || 'Новый чат';
+          _updateNavButtons();
+        }
       }
 
       const LLMCore  = _LLMCore;
@@ -3308,6 +3597,8 @@ const AutoPoet = (() => {
           window.PromptLoom?.record?.(result, 'llm', { via: 'mini-chat', prompt: userText.slice(0, 240) });
         }
 
+        _saveCurrentSession();
+
         const depth = stateRef?.getLayout?.()?.llm?.bro?.chatDepth ?? 6;
         if (_history.length > depth * 2) _history.splice(0, _history.length - depth * 2);
       } catch (e) {
@@ -3322,6 +3613,7 @@ const AutoPoet = (() => {
       }
       } finally {
         _currentAbort = null;
+        _saveCurrentSession();
         _inputEl()?.focus();
       }
     }
@@ -3341,6 +3633,9 @@ const AutoPoet = (() => {
       const handle = document.getElementById('llm-chat-resize');
       if (!bar && !handle) return;
 
+      let _resizeStartPos = { x: 0, y: 0 };
+      let _resizeStartRect = { w: 0, h: 0 };
+
       const onStart = (e, mode) => {
         if (mode === 'drag' && e.target.closest('button')) return;
         const panel = _panel();
@@ -3350,7 +3645,13 @@ const AutoPoet = (() => {
           const rect = panel.getBoundingClientRect();
           _dragOffset = { x: _getClientPos(e).x - rect.left, y: _getClientPos(e).y - rect.top };
         }
-        if (mode === 'resize') _resizing = true;
+        if (mode === 'resize') {
+          _resizing = true;
+          const rect = panel.getBoundingClientRect();
+          const pos = _getClientPos(e);
+          _resizeStartPos = { x: pos.x, y: pos.y };
+          _resizeStartRect = { w: rect.width, h: rect.height };
+        }
         e.preventDefault();
       };
 
@@ -3373,9 +3674,10 @@ const AutoPoet = (() => {
           panel.style.bottom = 'auto';
         }
         if (_resizing) {
-          const rect = panel.getBoundingClientRect();
-          panel.style.width  = Math.max(280, pos.x - rect.left) + 'px';
-          panel.style.height = Math.max(220, pos.y - rect.top) + 'px';
+          const dx = pos.x - _resizeStartPos.x;
+          const dy = pos.y - _resizeStartPos.y;
+          panel.style.width  = Math.max(280, _resizeStartRect.w + dx) + 'px';
+          panel.style.height = Math.max(220, _resizeStartRect.h + dy) + 'px';
         }
       };
 
@@ -3446,13 +3748,48 @@ const AutoPoet = (() => {
             _applyHistoryToInput(inputEl);
             return;
           }
+
+          if ((e.ctrlKey || e.metaKey) && e.key === '=') {
+            e.preventDefault();
+            _changeFontSize(0.5);
+            return;
+          }
+          if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+            e.preventDefault();
+            _changeFontSize(-0.5);
+            return;
+          }
         });
       }
 
       document.getElementById('llm-chat-close')?.addEventListener('click', () => close());
-      document.getElementById('llm-chat-clear')?.addEventListener('click', () => clearHistory());
       document.getElementById('llm-chat-stop')?.addEventListener('click',  () => stop());
       document.getElementById('llm-chat-toggle')?.addEventListener('click', () => toggleCollapse());
+
+      const clearBtn = document.getElementById('llm-chat-clear');
+      if (clearBtn) {
+        let _clearTimer = null;
+        let _clearLongFired = false;
+        const startLong = () => {
+          _clearLongFired = false;
+          _clearTimer = setTimeout(() => {
+            _clearTimer = null;
+            _clearLongFired = true;
+            clearAllSessions();
+          }, 800);
+        };
+        const cancelLong = () => { if (_clearTimer) { clearTimeout(_clearTimer); _clearTimer = null; } };
+        clearBtn.addEventListener('mousedown', startLong);
+        clearBtn.addEventListener('mouseup',   cancelLong);
+        clearBtn.addEventListener('mouseleave', cancelLong);
+        clearBtn.addEventListener('touchstart', startLong, { passive: true });
+        clearBtn.addEventListener('touchend',   cancelLong);
+        clearBtn.addEventListener('click', () => {
+          cancelLong();
+          if (_clearLongFired) { _clearLongFired = false; return; }
+          clearHistory();
+        });
+      }
 
       document.getElementById('llm-chat-resend')?.addEventListener('click', () => {
         if (_streaming) return;
@@ -3482,12 +3819,24 @@ const AutoPoet = (() => {
     function _init() {
       if (_initialised) return;
       _initialised = true;
+      _loadSessions();
+      _applyFontSize();
       _initDragResize();
       _bindSendButton();
       _initScrollDown();
+
+      document.getElementById('llm-chat-font-down')?.addEventListener('click', () => _changeFontSize(-0.5));
+      document.getElementById('llm-chat-font-up')?.addEventListener('click', () => _changeFontSize(0.5));
+      document.getElementById('llm-chat-prev')?.addEventListener('click', () => _switchSession(_sessionIdx - 1));
+      document.getElementById('llm-chat-next')?.addEventListener('click', () => _switchSession(_sessionIdx + 1));
+      document.getElementById('llm-chat-new')?.addEventListener('click', () => _newSession());
+
+      window.addEventListener('beforeunload', () => _saveCurrentSession());
+
+      _updateNavButtons();
     }
 
-    return { open, close, stop, clearHistory, send, addSystemMessage, appendChunk, finalizeLastMessage, _init };
+    return { open: _open, close, stop, clearHistory, send, addSystemMessage, appendChunk, finalizeLastMessage, _init, newSession: _newSession, pushScorecard, pushToHistory, clearAllSessions };
   })();
 
   const LLMHistoryPanel = (() => {
@@ -3779,6 +4128,7 @@ const AutoPoet = (() => {
     window._LLMCore = _LLMCore;
 
     MiniChat._init();
+    window.MiniChat = MiniChat;
     AutoPoet.init();
     renderProfileBar();
 

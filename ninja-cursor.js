@@ -42,7 +42,7 @@ const NinjaCursor = (() => {
   function _getMirror(el) {
     const doc = el.ownerDocument;
 
-    if (_mirrorCache.el === el && _mirrorCache.mirror && _mirrorCache.mirror.parentNode) {
+    if (_mirrorCache.el === el && _mirrorCache.mirror && _mirrorCache.mirror.isConnected) {
       return _mirrorCache.mirror;
     }
 
@@ -94,7 +94,8 @@ const NinjaCursor = (() => {
    */
   function _getTextareaCaretRect(el) {
     // Guard: selectionStart can be null for certain input types in some browsers
-    if (el.selectionStart == null) return null;
+    const start = Number(el.selectionStart);
+    if (!Number.isFinite(start)) return null;
 
     const doc      = el.ownerDocument;
     const computed = window.getComputedStyle(el);
@@ -107,17 +108,17 @@ const NinjaCursor = (() => {
     mirror.style.width = (el.clientWidth - pl - pr) + 'px';
 
     // Clear previous content
-    mirror.textContent = '';
+    while (mirror.firstChild) mirror.removeChild(mirror.firstChild);
 
     // Text before caret
     const before = doc.createElement('span');
-    before.textContent = el.value.substring(0, el.selectionStart);
+    before.textContent = el.value.substring(0, start);
 
     // Marker at the caret position. Use the actual next char, or '.' as a
     // height placeholder (never a space — trailing space at a wrap boundary
     // may be collapsed).
     const marker = doc.createElement('span');
-    marker.textContent = el.value.substring(el.selectionStart, el.selectionStart + 1) || '.';
+    marker.textContent = el.value.substring(start, start + 1) || '.';
 
     mirror.appendChild(before);
     mirror.appendChild(marker);
@@ -170,7 +171,7 @@ const NinjaCursor = (() => {
     }
 
     return (rect.width || rect.height)
-      ? { x: rect.x, y: rect.y, height: rect.height }
+      ? { x: rect.left, y: rect.top, height: rect.height }
       : null;
   }
 
@@ -189,7 +190,6 @@ const NinjaCursor = (() => {
       this._needResync = false; // [FIX] deferred resync flag
       this._handlers   = [];
       this._datumEl    = null;
-      this._datumTop   = 0;
       this._scrollBusy = false;
       this._scrollMode = false;
 
@@ -267,6 +267,21 @@ const NinjaCursor = (() => {
       }
     }
 
+    async _resync({ animate = false } = {}) {
+      if (this._busy) {
+        this._needResync = true;
+        return;
+      }
+      this._busy = true;
+      try {
+        await this._tick(null, { animate });
+      } catch (err) {
+        if (typeof console !== 'undefined') console.debug('[NinjaCursor]', err);
+      } finally {
+        this._busy = false;
+      }
+    }
+
     async _tick(e, options = {}) {
       const target = e?.target;
 
@@ -300,8 +315,6 @@ const NinjaCursor = (() => {
         this._wrapper.style.setProperty('--nc-vis', 'hidden');
         return;
       }
-
-      this._datumTop = this._datumEl.getBoundingClientRect().top;
 
       const rect = this._getCaretRect(this._datumEl);
       if (!rect) return;
@@ -343,19 +356,17 @@ const NinjaCursor = (() => {
 
     _syncSilently(rect) {
       this._lastPos = rect;
-      this._datumTop = this._datumEl?.getBoundingClientRect().top ?? 0;
-      this._wrapper.style.cssText = `
-        --nc-drag-h:   0px;
-        --nc-drag-w:   0px;
-        --nc-angle:    0rad;
-        --nc-h:        ${rect.height}px;
-        --nc-x1:       ${rect.x}px;
-        --nc-y1:       ${rect.y}px;
-        --nc-x2:       ${rect.x}px;
-        --nc-y2:       ${rect.y}px;
-        --nc-offset-y: 0px;
-        --nc-vis:      hidden;
-      `;
+      const s = this._wrapper.style;
+      s.setProperty('--nc-drag-h', '0px');
+      s.setProperty('--nc-drag-w', '0px');
+      s.setProperty('--nc-angle', '0rad');
+      s.setProperty('--nc-h', `${rect.height}px`);
+      s.setProperty('--nc-x1', `${rect.x}px`);
+      s.setProperty('--nc-y1', `${rect.y}px`);
+      s.setProperty('--nc-x2', `${rect.x}px`);
+      s.setProperty('--nc-y2', `${rect.y}px`);
+      s.setProperty('--nc-offset-y', '0px');
+      s.setProperty('--nc-vis', 'hidden');
       if (this._cursor) this._cursor.className = 'nc-caret';
     }
 
@@ -370,18 +381,17 @@ const NinjaCursor = (() => {
       const dragH  = Math.abs(Math.sin(angle)) * 8
                    + Math.abs(Math.cos(angle)) * rect.height;
 
-      this._wrapper.style.cssText = `
-        --nc-drag-h:   ${dragH}px;
-        --nc-drag-w:   ${dist}px;
-        --nc-angle:    ${angle}rad;
-        --nc-h:        ${rect.height}px;
-        --nc-x1:       ${prev.x}px;
-        --nc-y1:       ${prev.y}px;
-        --nc-x2:       ${rect.x}px;
-        --nc-y2:       ${rect.y}px;
-        --nc-offset-y: 0px;
-        --nc-vis:      visible;
-      `;
+      const s = this._wrapper.style;
+      s.setProperty('--nc-drag-h', `${dragH}px`);
+      s.setProperty('--nc-drag-w', `${dist}px`);
+      s.setProperty('--nc-angle', `${angle}rad`);
+      s.setProperty('--nc-h', `${rect.height}px`);
+      s.setProperty('--nc-x1', `${prev.x}px`);
+      s.setProperty('--nc-y1', `${prev.y}px`);
+      s.setProperty('--nc-x2', `${rect.x}px`);
+      s.setProperty('--nc-y2', `${rect.y}px`);
+      s.setProperty('--nc-offset-y', '0px');
+      s.setProperty('--nc-vis', 'visible');
 
       // [FIX] Update _lastPos synchronously so the next _tick
       // never reads a stale previous position.
@@ -425,7 +435,7 @@ const NinjaCursor = (() => {
             } else {
               this._scrollBusy = false;
               this._scrollMode = false;
-              this._onInput(null, { animate: false });
+              this._resync({ animate: false });
             }
           } catch (_) {
             this._scrollBusy = false;

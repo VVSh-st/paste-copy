@@ -75,7 +75,7 @@
 
   function findSnippetCandidate() {
     const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
-    const lastSuccess = [...recent].reverse().find(e => /preview\.(copy|download|exportAll)|file\.export/.test(e.type));
+    const lastSuccess = [...recent].reverse().find(e => e?.type && e?.ts && /preview\.(copy|download|exportAll)|file\.export/.test(e.type));
     if (!lastSuccess || now() - lastSuccess.ts > 15 * 60 * 1000) return null;
 
     const items = window.PromptLoom?.getItems?.() || [];
@@ -165,6 +165,7 @@
     }
 
     const session = editSessions.get(key);
+    if (!session) return;
     clearTimeout(session.timer);
     session.timer = setTimeout(() => {
       const latest = editSessions.get(key);
@@ -183,11 +184,11 @@
     const ts = now();
     const lastCopy = [...recent].reverse().find(e => e.type === 'preview.copy');
     const lastExport = [...recent].reverse().find(e => e.type === 'preview.download' || e.type === 'preview.exportAll' || e.type === 'file.export');
-    const editsAfterCopy = lastCopy ? recent.filter(e => e.ts > lastCopy.ts && (e.type === 'block.edit.large-change' || e.type === 'block.paste')).length : 99;
+    const editsAfterCopy = lastCopy ? recent.filter(e => e.ts > lastCopy.ts && (e.type === 'block.edit.large-change' || e.type === 'block.paste')).length : null;
 
-    const copySignal = lastCopy && ts - lastCopy.ts > 25_000 && ts - lastCopy.ts < 12 * 60 * 1000 && editsAfterCopy === 0 ? 1 : 0;
+    const copySignal = lastCopy && editsAfterCopy !== null && editsAfterCopy === 0 && ts - lastCopy.ts > 25_000 && ts - lastCopy.ts < 12 * 60 * 1000 ? 1 : 0;
     const exportSignal = lastExport && ts - lastExport.ts < 12 * 60 * 1000 ? 1 : 0;
-    const stabilitySignal = lastCopy && editsAfterCopy === 0 ? 0.8 : 0.35;
+    const stabilitySignal = lastCopy && editsAfterCopy !== null && editsAfterCopy === 0 ? 0.8 : 0.35;
     const structureSignal = analysis?.structure?.disciplineScore || 0;
     const lowConflictSignal = (analysis?.conflicts?.length || analysis?.duplicates?.length || analysis?.placeholders?.length) ? 0.25 : 1;
     const reuseSignal = Math.min(1, (window.UserMemory?.getProfile?.()?.personalScores?.reuse || 0.5));
@@ -238,7 +239,8 @@
   function makeContextKey(ctx, suggestion) {
     const ev = ctx.lastEvent;
     const size = ev?.chars > 2500 ? 'huge' : ev?.chars > 1200 ? 'large' : ev?.chars > 300 ? 'medium' : 'small';
-    return `${ev?.type || 'none'}:${size}:${ev?.kind || 'any'} -> ${suggestion.type}`;
+    const kind = ev?.kind || 'any';
+    return `${ev?.type || 'none'}:${size}:${kind.split('.')[0]} -> ${suggestion.type}`;
   }
 
   function stableStringify(value) {
@@ -875,7 +877,10 @@
 
     window.State.update(activeTab => {
       const source = window.State.findBlock(activeTab.blocks || [], candidate.blockId);
-      if (!source || source.type !== 'text') return;
+      if (!source || source.type !== 'text') {
+        console.warn('[Intelligence] invalid source block');
+        return;
+      }
       const sourceIdx = source.activeSubtab ?? 0;
       if (source.subtabs?.[sourceIdx]) source.subtabs[sourceIdx].value = '';
 

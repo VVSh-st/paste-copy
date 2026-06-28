@@ -71,7 +71,13 @@
   function now() { return Date.now(); }
 
   function loadGraph() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (_) { return null; }
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      console.warn('[ProjectGraph] load failed', e);
+      return {};
+    }
   }
 
   function createDefaultGraph() {
@@ -203,7 +209,7 @@
     const walk = blocks => (blocks || []).forEach(block => {
       if (!block || block.previewDisabled === true) return;
       if (block.type === 'text') {
-        const idx = block.activeSubtab ?? 0;
+        const idx = Number.isInteger(block.activeSubtab) ? block.activeSubtab : 0;
         const value = String(block.subtabs?.[idx]?.value || '');
         if (value.trim()) {
           out.push({
@@ -250,7 +256,8 @@
   }
 
   function makePairKey(a, b) {
-    return [String(a || ''), String(b || '')].sort().join('::');
+    if (!a || !b) return '';
+    return [a, b].sort().join('::');
   }
 
   function bumpRelation(bucket, key, meta = {}) {
@@ -266,11 +273,11 @@
   function trimObjectByLastSeen(obj, max) {
     const entries = Object.entries(obj || {});
     if (entries.length <= max) return obj;
-    entries
-      .sort((a, b) => Number(b[1]?.lastSeenAt || 0) - Number(a[1]?.lastSeenAt || 0))
-      .slice(max)
-      .forEach(([key]) => delete obj[key]);
-    return obj;
+    return Object.fromEntries(
+      entries
+        .sort((a, b) => Number(b[1]?.lastSeenAt || 0) - Number(a[1]?.lastSeenAt || 0))
+        .slice(0, max)
+    );
   }
 
   function getPinnedSnapshotIds() {
@@ -496,7 +503,8 @@
     if (!as.size || !bs.size) return 0;
     let hits = 0;
     as.forEach(x => { if (bs.has(x)) hits += 1; });
-    const jaccard = hits / (as.size + bs.size - hits);
+    const denom = as.size + bs.size - hits;
+    const jaccard = denom ? hits / denom : 0;
     const containment = hits / Math.min(as.size, bs.size);
     return Math.max(jaccard, containment * 0.86);
   }
@@ -515,7 +523,8 @@
     const blockScore = similarityFromSets(a?.blockHashes || [], b?.blockHashes || []);
     const countA = Math.max(1, Number(a?.blockCount || 0));
     const countB = Math.max(1, Number(b?.blockCount || 0));
-    const countScore = 1 - Math.min(1, Math.abs(countA - countB) / Math.max(countA, countB));
+    const denom = Math.max(countA, countB) || 1;
+    const countScore = 1 - Math.min(1, Math.abs(countA - countB) / denom);
     const semanticScore = Math.max(titleScore, roleScore * 0.94);
     return Number(Math.max(semanticScore * 0.48 + blockScore * 0.34 + countScore * 0.18, blockScore, roleScore * 0.82).toFixed(2));
   }
