@@ -674,30 +674,56 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       groomMenu.setAttribute('aria-label', 'Режим причёсывания');
       const textLint = window.TextLinter;
 
+      const _svgIcon = (path) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="menu-icon" aria-hidden="true">${path}</svg>`;
+
+      const _iconQuick    = _svgIcon('<path d="M3 4h10M3 7h10M3 10h10"/><path d="M5 13c2.2-1.2 4.2-1.2 6 0"/>');
+      const _iconDiff     = _svgIcon('<path d="M2 4h12M2 8h8M2 12h10"/><circle cx="13" cy="12" r="2"/>');
+      const _iconGroom    = _svgIcon('<path d="M2 12l4-4 3 3 5-7"/>');
+      const _iconGrammar  = _svgIcon('<path d="M3 4h10M5 8h6M3 12h8"/><path d="M11 2v4"/>');
+      const _iconFormat   = _svgIcon('<path d="M4 3h8M4 6h8M4 9h6M4 12h8"/><path d="M2 3v9"/>');
+      const _iconPlus     = _svgIcon('<circle cx="8" cy="8" r="6"/><path d="M8 5v6M5 8h6"/>');
+      const _iconWarn     = _svgIcon('<circle cx="8" cy="8" r="6"/><path d="M8 5v4M8 11v.5"/>');
+      const _iconSummary  = _svgIcon('<path d="M3 4h10M3 7h7M3 10h8M3 13h5"/>');
+      const _iconFill     = _svgIcon('<path d="M3 8h10M8 3v10"/>');
+      const _iconExpand   = _svgIcon('<path d="M8 3v10M5 6l3-3 3 3M5 10l3 3 3-3"/>');
+      const _iconFormal   = _svgIcon('<circle cx="8" cy="5" r="3"/><path d="M4 14c0-2.2 1.8-4 4-4s4 1.8 4 4"/>');
+      const _iconCasual   = _svgIcon('<circle cx="8" cy="8" r="6"/><path d="M5.5 6.5h0M10.5 6.5h0"/><path d="M5.5 10.5c1 1.5 3.5 1.5 5 0"/>');
+      const _iconTech     = _svgIcon('<rect x="2" y="4" width="12" height="8" rx="1"/><path d="M5 8l2 2-2 2"/><path d="M9 10h3"/>');
+      const _iconFriendly = _svgIcon('<path d="M8 2c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6"/><path d="M5 6.5c.8-.8 2-.8 2.5 0M8.5 6.5c.8-.8 2-.8 2.5 0"/>');
+      const _iconShrink   = _svgIcon('<path d="M4 4h8M6 8h4M4 12h8"/>');
+      const _iconAutoTitle = _svgIcon('<path d="M8 2l.9 1.8 2 .3-1.45 1.4.34 2L8 6.7l-1.79.8.34-2L5.1 4.1l2-.3z"/><path d="M3 11h10M3 14h6"/>');
+      const _iconAudit    = _svgIcon('<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3 3"/>');
+      const _iconCompress = _svgIcon('<path d="M8 3v10M5 6l3-3 3 3M5 10l3 3 3-3"/>');
+
+      groomMenu.style.maxHeight = '320px';
+      groomMenu.style.overflowY = 'auto';
+
       groomMenu.innerHTML =
         (b.type === 'text'
           ? `<div class="menu-section-label">Локальная причёска</div>` +
-            `<button type="button" class="text-lint-local-action" data-lint-action="quick"${textLint ? '' : ' disabled title="text-linter.js ещё не загружен"'}>🪮 Быстро причесать</button>` +
-            `<button type="button" data-lint-action="preview"${textLint ? '' : ' disabled title="text-linter.js ещё не загружен"'}>👁 Показать diff и подсказки</button>` +
+            `<button type="button" class="text-lint-local-action" data-lint-action="quick"${textLint ? '' : ' disabled title="text-linter.js ещё не загружен"'}>${_iconQuick} Быстро причесать</button>` +
+            `<button type="button" data-lint-action="preview"${textLint ? '' : ' disabled title="text-linter.js ещё не загружен"'}>${_iconDiff} Показать diff и подсказки</button>` +
             `<div class="menu-sep"></div>`
           : '') +
-        `<div class="menu-section-label">LLM-редактура</div>` +
-        `<button type="button" data-groom="edit">✏️ Правка грамматики</button>` +
-        `<button type="button" data-groom="format">📐 Форматирование</button>` +
+        `<button type="button" data-groom="edit">${_iconGroom} Причесать</button>` +
+        `<button type="button" data-groom="grammar">${_iconGrammar} Правка грамматики</button>` +
+        `<button type="button" data-groom="format">${_iconFormat} Форматирование</button>` +
+        `<button type="button" data-groom="positive_instr">${_iconPlus} Позитивные инструкции</button>` +
         `<div class="menu-sep"></div>` +
-        `<div class="menu-section-label">Сокращение</div>` +
-        `<button type="button" data-groom="shrink_20">✂️ −20%</button>` +
-        `<button type="button" data-groom="shrink_40">✂️ −40%</button>` +
-        `<button type="button" data-groom="shrink_60">✂️ −60%</button>` +
+        `<button type="button" data-groom="negatives">${_iconWarn} Что пойдёт не так?</button>` +
+        `<button type="button" data-groom="summary">${_iconSummary} Резюме вкладки</button>` +
+        `<button type="button" data-groom="fill-placeholders">${_iconFill} Заполнить {{Ilm:...}}</button>` +
         `<div class="menu-sep"></div>` +
-        `<div class="menu-section-label">Расширение и тон</div>` +
-        `<button type="button" data-groom="expand">📈 Расширить</button>` +
-        `<button type="button" data-groom="formal">🎩 Формальный</button>` +
-        `<button type="button" data-groom="casual">😊 Неформальный</button>` +
-        `<button type="button" data-groom="tech">💻 Технический</button>` +
-        `<button type="button" data-groom="friendly">🤝 Дружелюбный</button>` +
+        `<div class="menu-section-label">СОКРАЩЕНИЕ И ТОН</div>` +
+        `<button type="button" data-groom="expand">${_iconExpand} Расширить</button>` +
+        `<button type="button" data-groom="formal">${_iconFormal} Формальный</button>` +
+        `<button type="button" data-groom="casual">${_iconCasual} Неформальный</button>` +
+        `<button type="button" data-groom="tech">${_iconTech} Технический</button>` +
+        `<button type="button" data-groom="friendly">${_iconFriendly} Дружелюбный</button>` +
         `<div class="menu-sep"></div>` +
-        `<button type="button" data-groom="positive_instr">➕ Позитивные инструкции</button>`;
+        `<button type="button" data-groom="shrink_20">${_iconShrink} −20%</button>` +
+        `<button type="button" data-groom="shrink_40">${_iconShrink} −40%</button>` +
+        `<button type="button" data-groom="shrink_60">${_iconShrink} −60%</button>`;
 
       const setGroomOpen = open => {
         groomDd.classList.toggle('open', open);

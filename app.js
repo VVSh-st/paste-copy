@@ -774,19 +774,9 @@
 
     State.onChange(() => LLMFeatures.renderProfileBar?.());
 
-    const llmDropdown = $id('llm-dropdown');
-    onEvent('btn-llm', 'click', e => {
+    onEvent('btn-llm-chat', 'click', e => {
       e.stopPropagation();
-      closeAllDropdowns(llmDropdown);
-      llmDropdown?.classList.toggle('open');
-    });
-
-    document.querySelectorAll('[data-llm]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        llmDropdown?.classList.remove('open');
-        LLMFeatures.handleAction(btn.dataset.llm);
-      });
+      window.MiniChat?.open?.();
     });
 
     const profileBar = $id('llm-profile-bar');
@@ -811,7 +801,6 @@
       const m = $id('llm-settings-modal');
       if (m) m.style.display = 'none';
     });
-    // llm-history-close, llm-chat-*, llm-hist-clear-all уже привязаны внутри LLMFeatures.init()
 
     onEvent('llm-settings-modal', 'click', e => {
       if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
@@ -823,7 +812,7 @@
     document.addEventListener('keydown', e => {
       if (!e.altKey) return;
       switch (e.key.toLowerCase()) {
-        case 'l': e.preventDefault(); closeAllDropdowns(llmDropdown); llmDropdown?.classList.toggle('open'); break;
+        case 'l': e.preventDefault(); window.MiniChat?.open?.(); break;
         case 't': e.preventDefault(); LLMFeatures.handleAction('thesaurus'); break;
         case '/': e.preventDefault(); LLMFeatures.AutoPoet?.nextVariant(document.activeElement); break;
       }

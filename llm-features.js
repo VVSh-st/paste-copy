@@ -127,6 +127,15 @@ window.LLMFeatures = (() => {
       const sep = document.createElement('div');
       sep.className = 'menu-sep';
       menuEl.appendChild(sep);
+      const histBtn = document.createElement('button');
+      histBtn.type = 'button';
+      histBtn.textContent = '🕐 История запросов';
+      histBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        document.getElementById('llm-profile-bar')?.classList.remove('open');
+        window.LLMFeatures?.LLMHistoryPanel?.open?.();
+      });
+      menuEl.appendChild(histBtn);
       const settingsBtn = document.createElement('button');
       settingsBtn.type = 'button';
       settingsBtn.textContent = '⚙️ Настройки LLM';
@@ -1012,6 +1021,10 @@ window.LLMFeatures = (() => {
 
   async function groomBlock(blockId, mode) {
     if (!_guard()) return;
+    if (mode === 'fill-placeholders') {
+      window.SmartPlaceholders?.fillAll?.();
+      return;
+    }
     const ta = _getBlockTextarea(blockId);
     if (!ta) { window.Toast?.show('Не найдена textarea блока', 'error'); return; }
 
@@ -1020,10 +1033,17 @@ window.LLMFeatures = (() => {
 
     try { _withAutoSnap('groom ' + mode); } catch {}
 
-    const promptKey    = mode === 'positive_instr' ? 'positive_instr' : 'groom_' + mode;
+    const modeAlias = mode === 'grammar' ? 'edit' : mode;
+    let promptKey;
+    if (modeAlias === 'positive_instr') promptKey = 'positive_instr';
+    else if (modeAlias === 'negatives') promptKey = 'negatives';
+    else if (modeAlias === 'summary') promptKey = 'summary';
+    else promptKey = 'groom_' + modeAlias;
+
     const _groomNoLang = ['edit', 'format', 'shrink_20', 'shrink_40', 'shrink_60',
-                          'expand', 'formal', 'casual', 'tech', 'friendly', 'positive_instr'];
-    const _groomLang   = _groomNoLang.includes(mode) ? '' : _LANG_INSTR;
+                          'expand', 'formal', 'casual', 'tech', 'friendly', 'positive_instr',
+                          'negatives', 'summary'];
+    const _groomLang   = _groomNoLang.includes(modeAlias) ? '' : _LANG_INSTR;
     const basePrompt   = _LLMCore.getPrompt(promptKey);
     if (!basePrompt) {
       window.Toast?.show(`Не найден промпт: ${promptKey}`, 'error');

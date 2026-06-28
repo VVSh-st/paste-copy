@@ -305,7 +305,7 @@
 
 .ember-glow {
   position: absolute;
-  inset: -14px;
+  inset: -12px;
   border-radius: 46% 54% 48% 52% / 50% 48% 52% 50%;
   background: radial-gradient(
     ellipse,

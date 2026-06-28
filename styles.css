@@ -2442,6 +2442,11 @@ textarea.llm-bro-processing {
 .llm-block-btn:hover { background: var(--surface2); color: var(--accent); border-color: rgba(79,142,247,0.3); transform: translateY(-1px); }
 
 .llm-groom-menu { min-width: 180px; right: 0; left: auto; }
+.llm-groom-menu button { padding: 6px 10px; font-size: 12px; gap: 8px; }
+.llm-groom-menu button svg.menu-icon { width: 14px; height: 14px; opacity: 0.75; }
+.llm-groom-menu .menu-section-label { font-size: 10px; padding: 4px 10px 2px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
+.llm-groom-menu::-webkit-scrollbar { width: 4px; }
+.llm-groom-menu::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .llm-groom-diff-row {
   display: flex;
@@ -4710,13 +4715,9 @@ body.help-open {
   align-items: stretch;
   justify-content: center;
   padding: 18px;
-  background:
-    radial-gradient(circle at 16% 8%, rgba(79,142,247,0.24), transparent 34%),
-    radial-gradient(circle at 86% 16%, rgba(92,184,122,0.15), transparent 30%),
-    rgba(4,7,12,0.78);
-  backdrop-filter: blur(16px);
-  animation: helpFadeIn 0.18s ease;
+  background: rgba(4,7,12,0.95);
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  animation: helpFadeIn 0.18s ease;
 }
 
 .help-overlay[hidden] {
@@ -4737,6 +4738,8 @@ body.help-open {
     color-mix(in srgb, var(--bg1) 91%, transparent);
   box-shadow: 0 28px 90px rgba(0,0,0,0.72), inset 0 1px 0 rgba(255,255,255,0.08);
   animation: helpSlideIn 0.24s cubic-bezier(.16,1,.3,1);
+  overscroll-behavior: contain;
+  will-change: scroll-position;
 }
 
 .help-sticky-head {
@@ -4747,7 +4750,7 @@ body.help-open {
   background:
     linear-gradient(145deg, rgba(255,255,255,0.11), rgba(255,255,255,0.045)),
     color-mix(in srgb, var(--bg1) 94%, transparent);
-  backdrop-filter: blur(18px);
+  will-change: transform;
 }
 
 .help-topbar {
@@ -4755,7 +4758,7 @@ body.help-open {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  padding: 20px 22px 16px;
+  padding: 14px 22px 12px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
@@ -4826,7 +4829,7 @@ body.help-open {
 
 .help-chip {
   padding: 7px 12px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -4857,9 +4860,9 @@ body.help-open {
 .help-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
-  gap: 18px;
-  margin: 16px 18px 0;
-  padding: 18px;
+  gap: 16px;
+  margin: 14px 18px 0;
+  padding: 16px;
   border: 1px solid rgba(79,142,247,0.25);
   border-radius: 22px;
   background:
@@ -4889,8 +4892,8 @@ body.help-open {
 .help-hero h2 {
   margin: 0 0 8px;
   color: #fff;
-  font-size: clamp(22px, 3vw, 38px);
-  line-height: 1.03;
+  font-size: clamp(20px, 2.8vw, 34px);
+  line-height: 1.08;
   letter-spacing: -0.045em;
 }
 
@@ -4899,7 +4902,7 @@ body.help-open {
   margin: 0;
   color: rgba(237,242,252,0.78);
   font-size: 14px;
-  line-height: 1.58;
+  line-height: 1.55;
 }
 
 .help-steps {
@@ -4935,6 +4938,7 @@ body.help-open {
 .help-steps span {
   color: var(--text0);
   font-weight: 650;
+  font-size: 13px;
 }
 
 .help-controlbar {
@@ -4970,7 +4974,7 @@ body.help-open {
   background: rgba(0,0,0,0.19);
   color: var(--text0);
   outline: none;
-  font: 13px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font: 14px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   transition: border-color var(--trans), box-shadow var(--trans), background var(--trans);
 }
 
@@ -4994,7 +4998,7 @@ body.help-open {
   background: rgba(255,255,255,0.045);
   color: var(--text2);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
   transition: background var(--trans), color var(--trans), border-color var(--trans), transform var(--trans-fast);
 }
@@ -5010,11 +5014,10 @@ body.help-open {
 }
 
 .help-content {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: visible;
   padding: 18px;
-  scroll-behavior: smooth;
 }
 
 .help-content:focus {
@@ -5028,6 +5031,7 @@ body.help-open {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 12px;
+  grid-auto-rows: 1fr;
 }
 
 .help-grid-priority {
@@ -5059,14 +5063,14 @@ body.help-open {
 .help-section-head h2 {
   margin: 0;
   color: var(--text0);
-  font-size: 17px;
+  font-size: 18px;
   letter-spacing: -0.02em;
 }
 
 .help-section-head p {
   margin: 0;
   color: var(--text2);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .help-card,
@@ -5078,7 +5082,17 @@ body.help-open {
   background: rgba(255,255,255,0.045);
   box-shadow: 0 10px 28px rgba(0,0,0,0.19), inset 0 1px 0 rgba(255,255,255,0.045);
   transition: transform var(--trans), border-color var(--trans), background var(--trans), box-shadow var(--trans);
+  animation: helpCardReveal 0.35s cubic-bezier(.16,1,.3,1) backwards;
 }
+
+.help-card:nth-child(1) { animation-delay: 0.04s; }
+.help-card:nth-child(2) { animation-delay: 0.08s; }
+.help-card:nth-child(3) { animation-delay: 0.12s; }
+.help-card:nth-child(4) { animation-delay: 0.16s; }
+.help-card:nth-child(5) { animation-delay: 0.20s; }
+.help-card:nth-child(6) { animation-delay: 0.24s; }
+.help-card:nth-child(7) { animation-delay: 0.28s; }
+.help-card:nth-child(8) { animation-delay: 0.32s; }
 
 .help-card {
   padding: 14px;
@@ -5087,17 +5101,19 @@ body.help-open {
 .help-card:hover,
 .help-scenario:hover,
 .help-advanced:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1.005);
   border-color: rgba(255,255,255,0.16);
   background: rgba(255,255,255,0.06);
-  box-shadow: 0 16px 38px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06);
+  box-shadow: 0 16px 38px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.06), 0 0 20px rgba(79,142,247,0.08);
 }
 
 .help-card-start { border-color: rgba(79,142,247,0.18); }
 .help-card-hotkeys { border-color: rgba(240,160,80,0.22); }
 .help-card-blocks { border-color: rgba(139,92,246,0.2); }
+.help-card-tools { border-color: rgba(92,184,122,0.22); }
 .help-card-llm { border-color: rgba(92,184,122,0.22); }
 .help-card-bro { border-color: rgba(236,72,153,0.22); }
+.help-card-sync { border-color: rgba(56,189,248,0.22); }
 .help-card-trouble { border-color: rgba(224,92,106,0.22); }
 .help-card-example { border-color: rgba(79,142,247,0.2); }
 
@@ -5124,14 +5140,14 @@ body.help-open {
 .help-scenario h3 {
   margin: 0;
   color: var(--text0);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.25;
 }
 
 .help-card-head p {
   margin: 3px 0 0;
   color: var(--text2);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -5140,7 +5156,7 @@ body.help-open {
 .help-scenario li,
 .help-details-grid p {
   color: var(--text1);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.58;
 }
 
@@ -5160,13 +5176,17 @@ body.help-open {
 }
 
 .help-list li + li {
-  margin-top: 4px;
+  margin-top: 5px;
+}
+
+.help-list li {
+  font-size: 13px;
 }
 
 .help-muted {
   margin: 8px 0 0;
   color: var(--text2) !important;
-  font-size: 11.5px !important;
+  font-size: 12px !important;
 }
 
 .help-kbd-grid {
@@ -5185,7 +5205,7 @@ body.help-open {
   border-radius: 11px;
   background: rgba(0,0,0,0.14);
   color: var(--text1);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .help-kbd-row > span:last-child {
@@ -5212,7 +5232,7 @@ body.help-open {
   border-radius: 7px;
   background: linear-gradient(180deg, rgba(255,255,255,0.105), rgba(255,255,255,0.035));
   color: #fff;
-  font: 10.5px var(--mono);
+  font: 11px var(--mono);
   text-align: center;
   box-shadow: 0 2px 0 rgba(0,0,0,0.28);
 }
@@ -5223,7 +5243,7 @@ body.help-open {
   gap: 8px;
   padding: 5px 0;
   color: var(--text1);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -5258,7 +5278,7 @@ body.help-open {
   border-radius: 0;
   background: transparent;
   color: #dbeafe;
-  font: 11.5px/1.55 var(--mono);
+  font: 12px/1.55 var(--mono);
 }
 
 .help-example button {
@@ -5269,7 +5289,7 @@ body.help-open {
   background: rgba(79,142,247,0.12);
   color: var(--accent);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   transition: background var(--trans), color var(--trans), border-color var(--trans), transform var(--trans-fast);
 }
@@ -5299,6 +5319,7 @@ body.help-open {
 
 .help-scenario li + li {
   margin-top: 5px;
+  font-size: 13px;
 }
 
 .help-advanced {
@@ -5309,7 +5330,7 @@ body.help-open {
   cursor: pointer;
   color: var(--text0);
   font-weight: 800;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .help-details-grid {
@@ -5325,6 +5346,7 @@ body.help-open {
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 13px;
   background: rgba(0,0,0,0.13);
+  font-size: 13px;
 }
 
 .help-empty {
@@ -5349,7 +5371,7 @@ body.help-open {
 
 .help-empty span {
   color: var(--text2);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 @keyframes helpFadeIn {
@@ -5359,6 +5381,11 @@ body.help-open {
 
 @keyframes helpSlideIn {
   from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes helpCardReveal {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to   { opacity: 1; transform: none; }
 }
 
