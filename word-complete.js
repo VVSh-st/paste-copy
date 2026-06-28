@@ -1038,7 +1038,7 @@ const WordComplete = (() => {
 
   function handleInput(ta) {
     const cfg = WordDict.getConfig();
-    if (!cfg.enabled || !ta || ta.disabled || ta.readOnly) { InlineHint.hide(); return; }
+    if (!cfg.enabled || !ta || ta.disabled || ta.readOnly || ta._skipWordComplete) { InlineHint.hide(); return; }
     if (ta.selectionStart !== ta.selectionEnd) { InlineHint.hide(); return; }
 
     if (isSnippetPopupVisible()) { InlineHint.hide(); return; }

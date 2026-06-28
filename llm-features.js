@@ -304,8 +304,10 @@ window.LLMFeatures = (() => {
     const item = _thesaurusItems[_thesaurusIdx];
     if (!item) return;
     const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
+    _thesaurusTa._skipWordComplete = true;
     _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'end');
     _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+    _thesaurusTa._skipWordComplete = false;
     if (_thesaurusPopup) {
       const dot = _thesaurusPopup.querySelector('.thesaurus-dot');
       if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
