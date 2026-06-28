@@ -272,6 +272,7 @@ window.LLMFeatures = (() => {
   let _thesaurusTrailSpace = '';
 
   function _closeThesaurus() {
+    if (_thesaurusTa) _thesaurusTa.classList.remove('thesaurus-active');
     if (_thesaurusPopup) { _thesaurusPopup.remove(); _thesaurusPopup = null; }
     _thesaurusItems = [];
     _thesaurusIdx = -1;
@@ -306,9 +307,9 @@ window.LLMFeatures = (() => {
     const item = _thesaurusItems[_thesaurusIdx];
     if (!item) return;
     const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
-    const prevLen = _thesaurusEnd - _thesaurusStart;
     _thesaurusTa._skipWordComplete = true;
-    _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'end');
+    _thesaurusTa.classList.add('thesaurus-active');
+    _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'select');
     _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
     _thesaurusTa._skipWordComplete = false;
     const newEnd = _thesaurusStart + replacement.length;
