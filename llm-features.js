@@ -334,17 +334,24 @@ window.LLMFeatures = (() => {
     popup.innerHTML =
       '<span class="thesaurus-dot" style="color:var(--text3);font-size:10px;min-width:30px">0/0</span>' +
       '<span class="thesaurus-word" style="font-weight:600;color:#4ade80"></span>' +
-      '<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ · Space ✓ · Esc ✕</span>';
+      '<span style="color:var(--text3);font-size:10px;margin-left:8px">иконка: цикл · клик: ✓ · Esc ✕</span>';
     document.body.appendChild(popup);
     _thesaurusPopup = popup;
     document.addEventListener('keydown', _onThesaurusKey, true);
     const closeOnClick = (e) => {
+      if (e.target.closest('.font-ctrl-btn[title*="Тезаурус"]')) {
+        e.preventDefault();
+        e.stopPropagation();
+        _thesaurusIdx = (_thesaurusIdx + 1) % _thesaurusItems.length;
+        _applyThesaurusItem();
+        return;
+      }
       if (!popup.contains(e.target)) {
         _closeThesaurus();
         document.removeEventListener('click', closeOnClick);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeOnClick), 0);
+    setTimeout(() => document.addEventListener('click', closeOnClick, true), 0);
   }
 
   function _showThesaurusPopup(ta) {
