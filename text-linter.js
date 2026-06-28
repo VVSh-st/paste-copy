@@ -766,6 +766,10 @@ window.TextLinter = (() => {
 
     const mode = getDiffMode();
     const savedSize = window.State?.getLayout?.()?.llm?.diffFontSize;
+    if (savedSize) {
+      panel.style.setProperty('--text-lint-diff-font-size', `${savedSize}px`);
+      panel.style.setProperty('--text-lint-diff-line-height', `${Math.round(savedSize * 1.65 * 100) / 100}px`);
+    }
     const diffScale = savedSize || getDiffFontSize(ta);
     const diffHtml = renderDiff(scope.text, result.text, mode);
     const hintsHtml = renderHints(result.hints);
