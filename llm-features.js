@@ -282,13 +282,16 @@ window.LLMFeatures = (() => {
     if (!_thesaurusPopup || !_thesaurusItems.length) return;
     if (e.key === 'ArrowRight' || e.key === 'Tab') {
       e.preventDefault();
+      e.stopPropagation();
       _thesaurusIdx = (_thesaurusIdx + 1) % _thesaurusItems.length;
       _applyThesaurusItem();
     } else if (e.key === ' ') {
       e.preventDefault();
+      e.stopPropagation();
       _closeThesaurus();
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       if (_thesaurusTa) {
         _thesaurusTa.focus();
         _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'select');
@@ -303,12 +306,12 @@ window.LLMFeatures = (() => {
     const item = _thesaurusItems[_thesaurusIdx];
     if (!item) return;
     const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
-    _thesaurusTa.focus();
     _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'select');
     _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
-    const dot = _thesaurusPopup.querySelector('.thesaurus-dot');
+    _thesaurusTa.focus();
+    const dot = _thesaurusPopup?.querySelector('.thesaurus-dot');
     if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
-    const label = _thesaurusPopup.querySelector('.thesaurus-word');
+    const label = _thesaurusPopup?.querySelector('.thesaurus-word');
     if (label) label.textContent = item.word;
   }
 
@@ -333,7 +336,14 @@ window.LLMFeatures = (() => {
       '<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ · Space ✓ · Esc ✕</span>';
     document.body.appendChild(popup);
     _thesaurusPopup = popup;
-    document.addEventListener('keydown', _onThesaurusKey);
+    document.addEventListener('keydown', _onThesaurusKey, true);
+    const closeOnClick = (e) => {
+      if (!popup.contains(e.target)) {
+        _closeThesaurus();
+        document.removeEventListener('click', closeOnClick);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeOnClick), 0);
   }
 
   async function _thesaurusAtCursor() {
