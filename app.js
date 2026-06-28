@@ -776,7 +776,7 @@
 
     onEvent('btn-llm-chat', 'click', e => {
       e.stopPropagation();
-      window.MiniChat?.open?.();
+      LLMFeatures.MiniChat?.open?.();
     });
 
     const profileBar = $id('llm-profile-bar');
@@ -812,7 +812,7 @@
     document.addEventListener('keydown', e => {
       if (!e.altKey) return;
       switch (e.key.toLowerCase()) {
-        case 'l': e.preventDefault(); window.MiniChat?.open?.(); break;
+        case 'l': e.preventDefault(); LLMFeatures.MiniChat?.open?.(); break;
         case 't': e.preventDefault(); LLMFeatures.handleAction('thesaurus'); break;
         case '/': e.preventDefault(); LLMFeatures.AutoPoet?.nextVariant(document.activeElement); break;
       }
