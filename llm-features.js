@@ -275,11 +275,12 @@ window.LLMFeatures = (() => {
     if (_thesaurusPopup) { _thesaurusPopup.remove(); _thesaurusPopup = null; }
     _thesaurusItems = [];
     _thesaurusIdx = -1;
-    document.removeEventListener('keydown', _onThesaurusKey);
+    _thesaurusTa = null;
+    document.removeEventListener('keydown', _onThesaurusKey, true);
   }
 
   function _onThesaurusKey(e) {
-    if (!_thesaurusPopup || !_thesaurusItems.length) return;
+    if (!_thesaurusPopup || !_thesaurusItems.length || !_thesaurusTa) return;
     if (e.key === 'ArrowRight' || e.key === 'Tab') {
       e.preventDefault();
       e.stopPropagation();
@@ -292,11 +293,8 @@ window.LLMFeatures = (() => {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      if (_thesaurusTa) {
-        _thesaurusTa.focus();
-        _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'select');
-        _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'end');
+      _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
       _closeThesaurus();
     }
   }
@@ -306,13 +304,14 @@ window.LLMFeatures = (() => {
     const item = _thesaurusItems[_thesaurusIdx];
     if (!item) return;
     const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
-    _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'select');
+    _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'end');
     _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
-    _thesaurusTa.focus();
-    const dot = _thesaurusPopup?.querySelector('.thesaurus-dot');
-    if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
-    const label = _thesaurusPopup?.querySelector('.thesaurus-word');
-    if (label) label.textContent = item.word;
+    if (_thesaurusPopup) {
+      const dot = _thesaurusPopup.querySelector('.thesaurus-dot');
+      if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
+      const label = _thesaurusPopup.querySelector('.thesaurus-word');
+      if (label) label.textContent = item.word;
+    }
   }
 
   function _showThesaurusPopup(ta) {
@@ -400,6 +399,51 @@ window.LLMFeatures = (() => {
       if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
     }
   }
+
+  async function _thesaurusAtBlock(blockId) {
+    const tab = _State?.getActive?.();
+    const block = tab?.blocks?.find(b => b.id === blockId);
+    if (!block || block.type !== 'text') return;
+    const blockEl = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+    const ta = blockEl?.querySelector('textarea.block-textarea');
+    if (!ta) { window.Toast?.show('Textarea не найдена', 'error'); return; }
+    const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+    const pos = ta.selectionStart;
+    const text = ta.value;
+    const wordRe = /[\wА-Яа-яЁёA-Za-z\u00C0-\u024F]/;
+    let start = pos, end = pos;
+    while (start > 0 && wordRe.test(text[start - 1])) start--;
+    while (end < text.length && wordRe.test(text[end])) end++;
+    const word = sel || text.slice(start, end).trim();
+    if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
+    const ctx = text.slice(Math.max(0, pos - 100), pos + 100);
+    _showThinking(`◕ Тезаурус: «${word}»`);
+    try {
+      const result = await _LLMCore.request({
+        messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus', { word, ctx }) + _LANG_INSTR }],
+        stream:     false,
+        maxTokens:  600,
+        featureTag: 'thesaurus',
+      });
+      _hideThinking();
+      if (!result?.trim()) { window.Toast?.show('Нет синонимов', 'info'); return; }
+      const lines = result.trim().split('\n');
+      const items = [];
+      for (const line of lines) {
+        const m = line.match(/^\d+\.\s*(.+?)(?:\s*\[(офиц|нейтр|разг)\])?\s*$/i);
+        if (m) items.push({ word: m[1].trim() });
+      }
+      if (!items.length) { window.Toast?.show('Не удалось распарсить синонимы', 'error'); return; }
+      _thesaurusItems = items;
+      _thesaurusIdx = 0;
+      _showThesaurusPopup(ta);
+      _applyThesaurusItem();
+    } catch (e) {
+      _hideThinking();
+      if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
+    }
+  }
+
   const PromptRephrase = (() => {
     async function rephrase() {
       if (!_guard()) return;
@@ -3697,6 +3741,7 @@ const AutoPoet = (() => {
     renderProfileBar,
     setActiveProfile,
     groomBlock,
+    _thesaurusAtBlock,
     AutoTitle,
     SubtabAutoTitle,
     AutoPoet,
