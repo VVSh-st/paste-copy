@@ -713,6 +713,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         `<button type="button" data-groom="negatives">${_iconWarn} Что пойдёт не так?</button>` +
         `<button type="button" data-groom="summary">${_iconSummary} Резюме вкладки</button>` +
         `<button type="button" data-groom="variations">${_svgIcon('<path d="M4 4h8M4 8h8M4 12h8"/><circle cx="13" cy="4" r="1"/><circle cx="13" cy="8" r="1"/><circle cx="13" cy="12" r="1"/>')} 3 варианта</button>` +
+        `<button type="button" data-groom="grade">${_svgIcon('<path d="M4 12V8M7 12V5M10 12V7M13 12V3"/><path d="M2 14h12" stroke-dasharray="2 2"/>')} Оценка промпта</button>` +
         `<button type="button" data-groom="fill-placeholders">${_iconFill} Заполнить {{Ilm:...}}</button>` +
         `<div class="menu-sep"></div>` +
         `<div class="menu-section-label">СОКРАЩЕНИЕ И ТОН</div>` +
@@ -1683,6 +1684,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     footer.appendChild(fIncBtn);
     footer.appendChild(pasteCursorBtn);
     footer.appendChild(spellcheckBtn);
+
+    const thesaurusBtn = document.createElement('button');
+    thesaurusBtn.type = 'button';
+    thesaurusBtn.className = 'font-ctrl-btn';
+    thesaurusBtn.title = 'Тезаурус — подбор синонимов (Alt+T)';
+    thesaurusBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M8 2v3M8 11v3M2 8h3M11 8h3"/><circle cx="8" cy="8" r="2.5"/></svg>';
+    thesaurusBtn.onclick = e => { e.stopPropagation(); window.LLMFeatures?.handleAction?.('thesaurus'); };
+    footer.appendChild(thesaurusBtn);
+
     footer.appendChild(translateBtn);
     footer.appendChild(scrollControls);
     body.appendChild(footer);

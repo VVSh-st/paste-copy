@@ -261,40 +261,117 @@ window.LLMFeatures = (() => {
       _hideThinking();
     }
   }
+  let _thesaurusPopup = null;
+  let _thesaurusItems = [];
+  let _thesaurusIdx = -1;
+  let _thesaurusTa = null;
+  let _thesaurusOrig = '';
+  let _thesaurusStart = 0;
+  let _thesaurusEnd = 0;
+
+  function _closeThesaurus() {
+    if (_thesaurusPopup) { _thesaurusPopup.remove(); _thesaurusPopup = null; }
+    _thesaurusItems = [];
+    _thesaurusIdx = -1;
+    document.removeEventListener('keydown', _onThesaurusKey);
+  }
+
+  function _onThesaurusKey(e) {
+    if (!_thesaurusPopup || !_thesaurusItems.length) return;
+    if (e.key === 'ArrowRight' || e.key === 'Tab') {
+      e.preventDefault();
+      _thesaurusIdx = (_thesaurusIdx + 1) % _thesaurusItems.length;
+      _applyThesaurusItem();
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      _closeThesaurus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (_thesaurusTa && _thesaurusStart !== _thesaurusEnd) {
+        _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'select');
+      }
+      _closeThesaurus();
+    }
+  }
+
+  function _applyThesaurusItem() {
+    if (!_thesaurusTa || _thesaurusIdx < 0) return;
+    const item = _thesaurusItems[_thesaurusIdx];
+    if (!item) return;
+    const word = item.word;
+    _thesaurusTa.focus();
+    _thesaurusTa.setRangeText(word, _thesaurusStart, _thesaurusEnd, 'select');
+    _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+    const dot = _thesaurusPopup.querySelector('.thesaurus-dot');
+    if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
+    const label = _thesaurusPopup.querySelector('.thesaurus-word');
+    if (label) label.textContent = word;
+    const tag = _thesaurusPopup.querySelector('.thesaurus-tag');
+    if (tag) tag.textContent = item.tag || '';
+  }
+
+  function _showThesaurusPopup(word) {
+    _closeThesaurus();
+    const ta = document.activeElement;
+    if (ta?.tagName !== 'TEXTAREA') return;
+    _thesaurusTa = ta;
+    _thesaurusStart = ta.selectionStart;
+    _thesaurusEnd = ta.selectionEnd;
+    _thesaurusOrig = ta.value.slice(_thesaurusStart, _thesaurusEnd) || word;
+
+    const popup = document.createElement('div');
+    popup.className = 'thesaurus-popup';
+    popup.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:9500;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;box-shadow:0 4px 20px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text1);';
+    popup.innerHTML =
+      '<span class="thesaurus-dot" style="color:var(--text3);font-size:10px;min-width:30px">0/0</span>' +
+      '<span class="thesaurus-word" style="font-weight:600;color:var(--accent)"></span>' +
+      '<span class="thesaurus-tag" style="font-size:10px;color:var(--text3)"></span>' +
+      '<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ синоним · Space принять · Esc отмена</span>';
+    document.body.appendChild(popup);
+    _thesaurusPopup = popup;
+    document.addEventListener('keydown', _onThesaurusKey);
+  }
+
   async function _thesaurusAtCursor() {
     const ta = document.activeElement;
     if (ta?.tagName !== 'TEXTAREA') {
       window.Toast?.show('Поставьте курсор в текстовый блок', 'error');
       return;
     }
-    const pos  = ta.selectionStart;
+    const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+    const pos = ta.selectionStart;
     const text = ta.value;
     const wordRe = /[\wА-Яа-яЁёA-Za-z\u00C0-\u024F]/;
     let start = pos, end = pos;
     while (start > 0 && wordRe.test(text[start - 1])) start--;
     while (end < text.length && wordRe.test(text[end])) end++;
-    const word = text.slice(start, end).trim();
-    if (!word) { window.Toast?.show('Выделите слово', 'error'); return; }
+    const word = sel || text.slice(start, end).trim();
+    if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
     const ctx = text.slice(Math.max(0, pos - 100), pos + 100);
-    MiniChat.open();
-    MiniChat.addSystemMessage(`Тезаурус для «${word}»...`);
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
       const result = await _LLMCore.request({
         messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus', { word, ctx }) + _LANG_INSTR }],
-        stream:     true,
-        onChunk:    chunk => MiniChat.appendChunk(chunk),
+        stream:     false,
+        maxTokens:  600,
         featureTag: 'thesaurus',
       });
-      MiniChat.finalizeLastMessage(result);
-      if (String(result ?? '').trim()) window.PromptLoom?.record?.(result, 'llm', { via: 'thesaurus' });
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        MiniChat.addSystemMessage('Ошибка: ' + e.message);
-        window.Toast?.show(e.message, 'error');
-      }
-    } finally {
       _hideThinking();
+      if (!result?.trim()) { window.Toast?.show('Нет синонимов', 'info'); return; }
+      const lines = result.trim().split('\n');
+      const items = [];
+      for (const line of lines) {
+        const m = line.match(/^\d+\.\s*(.+?)(?:\s*\[(офиц|нейтр|разг)\])?\s*$/i);
+        if (m) items.push({ word: m[1].trim(), tag: m[2] || '' });
+      }
+      if (!items.length) { window.Toast?.show('Не удалось распарсить синонимы', 'error'); return; }
+      _thesaurusItems = items;
+      _thesaurusIdx = 0;
+      _showThesaurusPopup(word);
+      _applyThesaurusItem();
+    } catch (e) {
+      _hideThinking();
+      if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
     }
   }
   const PromptRephrase = (() => {
@@ -1034,6 +1111,7 @@ window.LLMFeatures = (() => {
     try { _withAutoSnap('groom ' + mode); } catch {}
 
     const modeAlias = mode === 'grammar' ? 'edit' : mode;
+    if (modeAlias === 'grade') { PromptGrader.grade(); return; }
     let promptKey;
     if (modeAlias === 'positive_instr') promptKey = 'positive_instr';
     else if (modeAlias === 'negatives') promptKey = 'negatives';
