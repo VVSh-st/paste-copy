@@ -712,6 +712,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         `<div class="menu-sep"></div>` +
         `<button type="button" data-groom="negatives">${_iconWarn} Что пойдёт не так?</button>` +
         `<button type="button" data-groom="summary">${_iconSummary} Резюме вкладки</button>` +
+        `<button type="button" data-groom="variations">${_svgIcon('<path d="M4 4h8M4 8h8M4 12h8"/><circle cx="13" cy="4" r="1"/><circle cx="13" cy="8" r="1"/><circle cx="13" cy="12" r="1"/>')} 3 варианта</button>` +
         `<button type="button" data-groom="fill-placeholders">${_iconFill} Заполнить {{Ilm:...}}</button>` +
         `<div class="menu-sep"></div>` +
         `<div class="menu-section-label">СОКРАЩЕНИЕ И ТОН</div>` +
@@ -2808,7 +2809,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   }
 
   function updateGroomBadge(blockId) {
-    const block = State.getBlockById?.(blockId);
+    const tab = State.getActive();
+    const block = tab?.blocks?.find(b => b.id === blockId);
     if (!block || block.type !== 'text') return;
     const blockEl = colLeft.querySelector(`.block[data-id="${blockId}"]`)
                  || colRight.querySelector(`.block[data-id="${blockId}"]`);

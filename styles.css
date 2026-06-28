@@ -2312,6 +2312,16 @@ details.llm-prompts-help[open] summary::before { transform: rotate(90deg); }
   border: 1px solid var(--border2); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg); display: flex; flex-direction: column;
   overflow: hidden; z-index: var(--z-notepad);
+  transition: height 0.2s ease;
+}
+.llm-chat-window.llm-chat-collapsed {
+  height: auto !important;
+  min-height: 0;
+}
+.llm-chat-window.llm-chat-collapsed .llm-chat-messages,
+.llm-chat-window.llm-chat-collapsed .llm-chat-input-row,
+.llm-chat-window.llm-chat-collapsed .notepad-resize-handle {
+  display: none;
 }
 
 .llm-chat-bar { cursor: move; }

@@ -1038,11 +1038,12 @@ window.LLMFeatures = (() => {
     if (modeAlias === 'positive_instr') promptKey = 'positive_instr';
     else if (modeAlias === 'negatives') promptKey = 'negatives';
     else if (modeAlias === 'summary') promptKey = 'summary';
+    else if (modeAlias === 'variations') promptKey = 'variations';
     else promptKey = 'groom_' + modeAlias;
 
     const _groomNoLang = ['edit', 'format', 'shrink_20', 'shrink_40', 'shrink_60',
                           'expand', 'formal', 'casual', 'tech', 'friendly', 'positive_instr',
-                          'negatives'];
+                          'negatives', 'variations'];
     const _groomLang   = _groomNoLang.includes(modeAlias) ? '' : _LANG_INSTR;
     const basePrompt   = _LLMCore.getPrompt(promptKey);
     if (!basePrompt) {
@@ -1304,6 +1305,7 @@ window.LLMFeatures = (() => {
             { role: 'user',   content: text },
           ],
           stream:     true,
+          maxTokens:  1500,
           onChunk:    chunk => MiniChat.appendChunk(chunk),
           featureTag: 'audit',
         });
@@ -2825,8 +2827,22 @@ const AutoPoet = (() => {
     const _msgsEl = () => document.getElementById('llm-chat-messages');
     const _inputEl= () => document.getElementById('llm-chat-input');
 
-    function open()  { const p = _panel(); if (!p) return; p.style.display = 'flex'; _updateCtxLabel(); _inputEl()?.focus(); }
+    function open()  { const p = _panel(); if (!p) return; p.style.display = 'flex'; p.classList.remove('llm-chat-collapsed'); _updateCtxLabel(); _inputEl()?.focus(); }
     function close() { const p = _panel(); if (p) p.style.display = 'none'; }
+    let _collapsed = false;
+    function toggleCollapse() {
+      const p = _panel();
+      if (!p) return;
+      _collapsed = !_collapsed;
+      p.classList.toggle('llm-chat-collapsed', _collapsed);
+      const toggleBtn = document.getElementById('llm-chat-toggle');
+      if (toggleBtn) {
+        toggleBtn.querySelector('svg').innerHTML = _collapsed
+          ? '<path d="M4 6l4 4 4-4"/>'
+          : '<path d="M4 10l4-4 4 4"/>';
+        toggleBtn.setAttribute('aria-label', _collapsed ? 'Развернуть чат' : 'Свернуть чат');
+      }
+    }
 
     function stop() {
       _currentAbort?.abort();
@@ -3237,6 +3253,7 @@ const AutoPoet = (() => {
       document.getElementById('llm-chat-close')?.addEventListener('click', () => close());
       document.getElementById('llm-chat-clear')?.addEventListener('click', () => clearHistory());
       document.getElementById('llm-chat-stop')?.addEventListener('click',  () => stop());
+      document.getElementById('llm-chat-toggle')?.addEventListener('click', () => toggleCollapse());
 
       document.getElementById('llm-chat-resend')?.addEventListener('click', () => {
         if (_streaming) return;
