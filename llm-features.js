@@ -409,7 +409,7 @@ window.LLMFeatures = (() => {
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
       const result = await _LLMCore.request({
-        messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus', { word, ctx }) + _LANG_INSTR }],
+        messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus', { word, ctx }) }],
         stream:     false,
         maxTokens:  600,
         featureTag: 'thesaurus',
@@ -455,7 +455,7 @@ window.LLMFeatures = (() => {
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
       const result = await _LLMCore.request({
-        messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus', { word, ctx }) + _LANG_INSTR }],
+        messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus', { word, ctx }) }],
         stream:     false,
         maxTokens:  600,
         featureTag: 'thesaurus',
