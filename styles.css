@@ -341,8 +341,10 @@ body {
 .subtab-autotitle-btn {
   background: transparent; border: none; color: var(--text3); cursor: pointer;
   padding: 1px 3px; border-radius: 4px; font-size: 11px; line-height: 1;
-  transition: color var(--trans), background var(--trans); flex-shrink: 0;
+  transition: color var(--trans), background var(--trans), opacity var(--trans); flex-shrink: 0;
+  opacity: 0;
 }
+.block:hover .subtab-autotitle-btn { opacity: 1; }
 .subtab-autotitle-btn:hover { color: var(--accent); background: var(--surface2); }
 .subtab-marquee-tip {
   position: fixed; z-index: 9999; pointer-events: none;
