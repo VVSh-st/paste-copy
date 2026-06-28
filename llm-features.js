@@ -308,7 +308,7 @@ window.LLMFeatures = (() => {
     if (!item) return;
     const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
     _thesaurusTa._skipWordComplete = true;
-    _thesaurusTa.classList.add('thesaurus-active');
+    _thesaurusTa.focus();
     _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'select');
     _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
     _thesaurusTa._skipWordComplete = false;
