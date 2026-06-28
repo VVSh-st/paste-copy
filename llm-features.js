@@ -272,7 +272,6 @@ window.LLMFeatures = (() => {
   let _thesaurusTrailSpace = '';
 
   function _closeThesaurus() {
-    if (_thesaurusTa) _thesaurusTa.classList.remove('thesaurus-active');
     if (_thesaurusPopup) { _thesaurusPopup.remove(); _thesaurusPopup = null; }
     _thesaurusItems = [];
     _thesaurusIdx = -1;
@@ -324,10 +323,7 @@ window.LLMFeatures = (() => {
       const dot = _thesaurusPopup.querySelector('.thesaurus-dot');
       if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
       const label = _thesaurusPopup.querySelector('.thesaurus-word');
-      if (label) {
-        label.textContent = item.word;
-        label.style.color = '#4ade80';
-      }
+      if (label) label.textContent = item.word;
     }
   }
 
