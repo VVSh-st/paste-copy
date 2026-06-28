@@ -776,7 +776,12 @@
 
     onEvent('btn-llm-chat', 'click', e => {
       e.stopPropagation();
-      LLMFeatures.MiniChat?.open?.();
+      const panel = document.getElementById('llm-chat-panel');
+      if (panel && panel.style.display === 'flex') {
+        LLMFeatures.MiniChat?.close?.();
+      } else {
+        LLMFeatures.MiniChat?.open?.();
+      }
     });
 
     const profileBar = $id('llm-profile-bar');

@@ -769,16 +769,28 @@ window.TextLinter = (() => {
     const diffHtml = renderDiff(scope.text, result.text, mode);
     const hintsHtml = renderHints(result.hints);
     const risky = getRiskyEnabledCount();
-// кнопка ⧉ специально без текста
+
+    const settings = getSettings();
+    const meta = getSettingMeta();
+    const gearItems = meta.map(item => {
+      const chk = settings[item.key] ? ' checked' : '';
+      const cls = item.risky ? ' risky' : '';
+      return `<label class="text-lint-gear-item${cls}"><input type="checkbox" data-lint-key="${item.key}"${chk}><span>${item.label}</span></label>`;
+    }).join('');
+
     panel.innerHTML =
       `<div class="llm-result-toolbar text-lint-result-toolbar">` +
-        `<span class="llm-result-stats text-lint-result-stats">${formatStats(result)}${scope.hasSelection ? ' · выделение' : ''}${risky ? ' · осторожные опции: ' + risky : ''}</span>` +
+        `<span class="llm-result-stats text-lint-result-stats">${formatStats(result)}${scope.hasSelection ? ' · выделение' : ''}</span>` +
         (result.changed ? renderDiffSizeControls(diffScale) : '') +
+        `<div class="text-lint-gear-wrap">` +
+          `<button type="button" class="btn-sm text-lint-gear-btn" title="Настройки линтера" aria-label="Настройки линтера">⚙</button>` +
+          `<div class="text-lint-gear-dropdown">${gearItems}</div>` +
+        `</div>` +
         (result.changed ? `<button type="button" class="btn-sm" data-action="copy" title="Скопировать исправленный вариант" aria-label="Скопировать исправленный вариант">⧉</button>` : '') +
-        (result.changed ? `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓ </button>` : '') +
-        `<button type="button" class="btn-sm" data-action="reject">✕ ${result.changed ? '' : 'Закрыть'}</button>` +
+        (result.changed ? `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓</button>` : '') +
+        `<button type="button" class="btn-sm" data-action="reject">✕</button>` +
       `</div>` +
-      (result.changed ? `<div class="text-lint-preview-labels" aria-hidden="true"><span>Было</span><span>Стало</span></div><div class="llm-result-content llm-result-content--${mode} text-lint-result-content">${diffHtml}</div>` : `<div class="text-lint-no-changes">Автоправок нет. Только подсказки — руками, аккуратно, без запятой-рулетки.</div>`) +
+      (result.changed ? `<div class="llm-result-content llm-result-content--${mode} text-lint-result-content">${diffHtml}</div>` : `<div class="text-lint-no-changes">Автоправок нет. Только подсказки — руками, аккуратно.</div>`) +
       hintsHtml;
 
     if (ta.parentNode) ta.parentNode.insertBefore(panel, ta.nextSibling);
@@ -799,6 +811,30 @@ window.TextLinter = (() => {
         adjustDiffFontSize(panel, step);
       });
     });
+
+    const gearBtn = panel.querySelector('.text-lint-gear-btn');
+    const gearDrop = panel.querySelector('.text-lint-gear-dropdown');
+    if (gearBtn && gearDrop) {
+      gearBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        gearDrop.classList.toggle('open');
+      });
+      const onGearChange = () => {
+        const checkboxes = gearDrop.querySelectorAll('[data-lint-key]');
+        checkboxes.forEach(cb => setSetting(cb.dataset.lintKey, cb.checked));
+        gearDrop.classList.remove('open');
+        openPreview(blockId);
+      };
+      gearDrop.querySelectorAll('[data-lint-key]').forEach(cb => {
+        cb.addEventListener('change', onGearChange);
+      });
+      document.addEventListener('click', function closeGear(e) {
+        if (!panel.contains(e.target)) {
+          gearDrop.classList.remove('open');
+          document.removeEventListener('click', closeGear);
+        }
+      });
+    }
   }
 
   async function copyFixedText(text) {
@@ -978,24 +1014,24 @@ window.TextLinter = (() => {
 
   function formatStats(result) {
     const parts = [];
-    if (result.stats.trim) parts.push(`края строк: ${result.stats.trim}`);
+    if (result.stats.trim) parts.push(`края: ${result.stats.trim}`);
     if (result.stats.spaces) parts.push(`пробелы: ${result.stats.spaces}`);
     if (result.stats.punctuation) parts.push(`знаки: ${result.stats.punctuation}`);
-    if (result.stats.abbreviations) parts.push(`сокращения: ${result.stats.abbreviations}`);
-    if (result.stats.compactAbbreviations) parts.push(`компакт. сокр.: ${result.stats.compactAbbreviations}`);
-    if (result.stats.nbsp) parts.push(`неразр. пробелы: ${result.stats.nbsp}`);
+    if (result.stats.abbreviations) parts.push(`сокр.: ${result.stats.abbreviations}`);
+    if (result.stats.compactAbbreviations) parts.push(`комп.сокр.: ${result.stats.compactAbbreviations}`);
+    if (result.stats.nbsp) parts.push(`неразр.: ${result.stats.nbsp}`);
     if (result.stats.invisibleChars) parts.push(`невидимые: ${result.stats.invisibleChars}`);
     if (result.stats.dashes) parts.push(`тире: ${result.stats.dashes}`);
     if (result.stats.quotes) parts.push(`кавычки: ${result.stats.quotes}`);
     if (result.stats.ellipsis) parts.push(`многоточие: ${result.stats.ellipsis}`);
-    if (result.stats.blanks) parts.push('пустые строки');
+    if (result.stats.blanks) parts.push('пустые');
     if (result.stats.caps) parts.push(`заглавные: ${result.stats.caps}`);
     if (result.stats.finalPeriod) parts.push(`точки: ${result.stats.finalPeriod}`);
     if (result.stats.paragraphs) parts.push(`абзацы: ${result.stats.paragraphs}`);
-    if (result.stats.redLine) parts.push(`красная строка: ${result.stats.redLine}`);
+    if (result.stats.redLine) parts.push(`красная: ${result.stats.redLine}`);
     if (result.stats.hints) parts.push(`подсказки: ${result.stats.hints}`);
-    if (!parts.length) parts.push('мелкая нормализация');
-    return `🪮 ${parts.join(' · ')}${result.protectedCount ? ` · защищено: ${result.protectedCount}` : ''}`;
+    if (!parts.length) parts.push('нормализация');
+    return `${parts.join(' · ')}${result.protectedCount ? ` · защ:${result.protectedCount}` : ''}`;
   }
 
   function getRiskyEnabledCount() {
@@ -1224,6 +1260,77 @@ window.TextLinter = (() => {
       }
       @media (prefers-reduced-motion: reduce) {
         textarea.block-textarea.text-lint-matrix-accept { animation: none; }
+      }
+      .text-lint-result-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .text-lint-result-stats {
+        font-size: 10px;
+        color: var(--text2);
+        white-space: nowrap;
+      }
+      .text-lint-gear-wrap {
+        position: relative;
+        display: inline-flex;
+      }
+      .text-lint-gear-btn {
+        min-width: 24px;
+        height: 22px;
+        padding: 0 4px;
+        font-size: 12px;
+        color: var(--text2);
+      }
+      .text-lint-gear-btn:hover {
+        color: var(--green);
+      }
+      .text-lint-gear-dropdown {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        z-index: 100;
+        min-width: 220px;
+        max-height: 260px;
+        overflow-y: auto;
+        margin-top: 4px;
+        padding: 4px;
+        background: var(--bg2);
+        border: 1px solid var(--border2);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-lg);
+      }
+      .text-lint-gear-dropdown.open {
+        display: block;
+      }
+      .text-lint-gear-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 6px;
+        font-size: 11px;
+        color: var(--text1);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .text-lint-gear-item:hover {
+        background: var(--surface2);
+      }
+      .text-lint-gear-item.risky {
+        color: var(--orange);
+      }
+      .text-lint-gear-item input[type="checkbox"] {
+        margin: 0;
+        accent-color: var(--green);
+      }
+      .text-lint-result-toolbar .btn-sm {
+        min-width: 22px;
+        height: 22px;
+        padding: 0 5px;
+        font-size: 11px;
       }
     `;
     document.head.appendChild(style);
