@@ -333,8 +333,20 @@ window.LLMFeatures = (() => {
   }
 
   async function _thesaurusAtCursor() {
-    const ta = document.activeElement;
-    if (ta?.tagName !== 'TEXTAREA') {
+    let ta = document.activeElement;
+    if (ta?.tagName !== 'TEXTAREA' || !ta.classList.contains('block-textarea')) {
+      const activeTab = _State?.getActive?.();
+      if (activeTab) {
+        for (const b of activeTab.blocks || []) {
+          if (b.type === 'text') {
+            const blockEl = document.querySelector(`[data-id="${CSS.escape(b.id)}"]`);
+            ta = blockEl?.querySelector('textarea.block-textarea');
+            if (ta) break;
+          }
+        }
+      }
+    }
+    if (!ta || ta.tagName !== 'TEXTAREA') {
       window.Toast?.show('Поставьте курсор в текстовый блок', 'error');
       return;
     }
