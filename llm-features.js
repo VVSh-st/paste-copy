@@ -293,8 +293,10 @@ window.LLMFeatures = (() => {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
+      _thesaurusTa._skipWordComplete = true;
       _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'end');
       _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+      _thesaurusTa._skipWordComplete = false;
       _closeThesaurus();
     }
   }
@@ -304,15 +306,21 @@ window.LLMFeatures = (() => {
     const item = _thesaurusItems[_thesaurusIdx];
     if (!item) return;
     const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
+    const prevLen = _thesaurusEnd - _thesaurusStart;
     _thesaurusTa._skipWordComplete = true;
     _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'end');
     _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
     _thesaurusTa._skipWordComplete = false;
+    const newEnd = _thesaurusStart + replacement.length;
+    _thesaurusEnd = newEnd;
     if (_thesaurusPopup) {
       const dot = _thesaurusPopup.querySelector('.thesaurus-dot');
       if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
       const label = _thesaurusPopup.querySelector('.thesaurus-word');
-      if (label) label.textContent = item.word;
+      if (label) {
+        label.textContent = item.word;
+        label.style.color = '#4ade80';
+      }
     }
   }
 
@@ -322,7 +330,7 @@ window.LLMFeatures = (() => {
     popup.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:9500;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;box-shadow:0 4px 20px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text1);';
     popup.innerHTML =
       '<span class="thesaurus-dot" style="color:var(--text3);font-size:10px;min-width:30px">0/0</span>' +
-      '<span class="thesaurus-word" style="font-weight:600;color:var(--accent)"></span>' +
+      '<span class="thesaurus-word" style="font-weight:600;color:#4ade80"></span>' +
       '<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ · Space ✓ · Esc ✕</span>';
     document.body.appendChild(popup);
     _thesaurusPopup = popup;
