@@ -5845,9 +5845,9 @@ body.help-open {
   padding: 32px; text-align: center; color: var(--text-muted);
 }
 textarea.block-textarea.thesaurus-active::selection {
-  background: rgba(74, 222, 128, 0.45) !important;
+  background: rgba(74, 222, 128, 0.18) !important;
 }
 textarea.block-textarea.thesaurus-active::-moz-selection {
-  background: rgba(74, 222, 128, 0.45) !important;
+  background: rgba(74, 222, 128, 0.18) !important;
 }
 

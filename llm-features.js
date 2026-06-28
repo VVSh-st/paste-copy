@@ -290,7 +290,13 @@ window.LLMFeatures = (() => {
     } else if (e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
+      const ta = _thesaurusTa;
+      const endPos = _thesaurusEnd;
       _closeThesaurus();
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(endPos, endPos);
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
