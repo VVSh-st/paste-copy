@@ -864,6 +864,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     State.snapshot();
+    updateGroomBadge(b.id);
   }
 
   /* ================================================================
@@ -2806,6 +2807,28 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
   }
 
+  function updateGroomBadge(blockId) {
+    const block = State.getBlockById?.(blockId);
+    if (!block || block.type !== 'text') return;
+    const blockEl = colLeft.querySelector(`.block[data-id="${blockId}"]`)
+                 || colRight.querySelector(`.block[data-id="${blockId}"]`);
+    if (!blockEl) return;
+    const trigger = blockEl.querySelector('.text-groom-trigger');
+    if (!trigger) return;
+    trigger.classList.remove('text-groom-trigger-has-fixes');
+    delete trigger.dataset.lintBadge;
+    const origLabel = 'Причесать текст';
+    trigger.title = origLabel;
+    trigger.setAttribute('aria-label', origLabel);
+    const info = getTextLintBadgeInfo(block);
+    if (info) {
+      trigger.dataset.lintBadge = info.label;
+      trigger.classList.add(info.className);
+      trigger.title += ' · ' + info.title;
+      trigger.setAttribute('aria-label', `${origLabel} (${info.title})`);
+    }
+  }
+
   function makeToolBtn(html, title, onclick) {
     const b = document.createElement('button');
     b.type      = 'button'; // [FIX] явный тип — не триггерит submit в форме
@@ -2837,7 +2860,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     textLintBadgeCache.clear();
   }
 
-  return { render, applyLayout, setupColumns, clearTextLintBadgeCache, refreshAllAnchorCounts };
+  return { render, applyLayout, setupColumns, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge };
 })();
 
 window.Blocks = Blocks;

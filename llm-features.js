@@ -1042,7 +1042,7 @@ window.LLMFeatures = (() => {
 
     const _groomNoLang = ['edit', 'format', 'shrink_20', 'shrink_40', 'shrink_60',
                           'expand', 'formal', 'casual', 'tech', 'friendly', 'positive_instr',
-                          'negatives', 'summary'];
+                          'negatives'];
     const _groomLang   = _groomNoLang.includes(modeAlias) ? '' : _LANG_INSTR;
     const basePrompt   = _LLMCore.getPrompt(promptKey);
     if (!basePrompt) {
