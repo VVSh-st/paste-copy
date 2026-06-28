@@ -268,6 +268,8 @@ window.LLMFeatures = (() => {
   let _thesaurusOrig = '';
   let _thesaurusStart = 0;
   let _thesaurusEnd = 0;
+  let _thesaurusLeadSpace = '';
+  let _thesaurusTrailSpace = '';
 
   function _closeThesaurus() {
     if (_thesaurusPopup) { _thesaurusPopup.remove(); _thesaurusPopup = null; }
@@ -287,8 +289,10 @@ window.LLMFeatures = (() => {
       _closeThesaurus();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      if (_thesaurusTa && _thesaurusStart !== _thesaurusEnd) {
+      if (_thesaurusTa) {
+        _thesaurusTa.focus();
         _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'select');
+        _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
       }
       _closeThesaurus();
     }
@@ -298,26 +302,27 @@ window.LLMFeatures = (() => {
     if (!_thesaurusTa || _thesaurusIdx < 0) return;
     const item = _thesaurusItems[_thesaurusIdx];
     if (!item) return;
-    const word = item.word;
+    const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
     _thesaurusTa.focus();
-    _thesaurusTa.setRangeText(word, _thesaurusStart, _thesaurusEnd, 'select');
+    _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'select');
     _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
     const dot = _thesaurusPopup.querySelector('.thesaurus-dot');
     if (dot) dot.textContent = `${_thesaurusIdx + 1}/${_thesaurusItems.length}`;
     const label = _thesaurusPopup.querySelector('.thesaurus-word');
-    if (label) label.textContent = word;
-    const tag = _thesaurusPopup.querySelector('.thesaurus-tag');
-    if (tag) tag.textContent = item.tag || '';
+    if (label) label.textContent = item.word;
   }
 
-  function _showThesaurusPopup(word) {
+  function _showThesaurusPopup(ta) {
     _closeThesaurus();
-    const ta = document.activeElement;
-    if (ta?.tagName !== 'TEXTAREA') return;
     _thesaurusTa = ta;
     _thesaurusStart = ta.selectionStart;
     _thesaurusEnd = ta.selectionEnd;
-    _thesaurusOrig = ta.value.slice(_thesaurusStart, _thesaurusEnd) || word;
+    const raw = ta.value.slice(_thesaurusStart, _thesaurusEnd);
+    _thesaurusOrig = raw;
+    const leadMatch = raw.match(/^(\s*)/);
+    const trailMatch = raw.match(/(\s*)$/);
+    _thesaurusLeadSpace = leadMatch ? leadMatch[1] : '';
+    _thesaurusTrailSpace = trailMatch ? trailMatch[1] : '';
 
     const popup = document.createElement('div');
     popup.className = 'thesaurus-popup';
@@ -325,8 +330,7 @@ window.LLMFeatures = (() => {
     popup.innerHTML =
       '<span class="thesaurus-dot" style="color:var(--text3);font-size:10px;min-width:30px">0/0</span>' +
       '<span class="thesaurus-word" style="font-weight:600;color:var(--accent)"></span>' +
-      '<span class="thesaurus-tag" style="font-size:10px;color:var(--text3)"></span>' +
-      '<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ синоним · Space принять · Esc отмена</span>';
+      '<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ · Space ✓ · Esc ✕</span>';
     document.body.appendChild(popup);
     _thesaurusPopup = popup;
     document.addEventListener('keydown', _onThesaurusKey);
@@ -374,12 +378,12 @@ window.LLMFeatures = (() => {
       const items = [];
       for (const line of lines) {
         const m = line.match(/^\d+\.\s*(.+?)(?:\s*\[(офиц|нейтр|разг)\])?\s*$/i);
-        if (m) items.push({ word: m[1].trim(), tag: m[2] || '' });
+        if (m) items.push({ word: m[1].trim() });
       }
       if (!items.length) { window.Toast?.show('Не удалось распарсить синонимы', 'error'); return; }
       _thesaurusItems = items;
       _thesaurusIdx = 0;
-      _showThesaurusPopup(word);
+      _showThesaurusPopup(ta);
       _applyThesaurusItem();
     } catch (e) {
       _hideThinking();
