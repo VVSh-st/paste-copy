@@ -807,7 +807,7 @@ window.TextLinter = (() => {
     panel.querySelector('[data-action="reject"]')?.addEventListener('click', () => panel.remove());
     panel.querySelectorAll('[data-diff-size]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const step = btn.dataset.diffSize === 'inc' ? 1 : -1;
+        const step = btn.dataset.diffSize === 'inc' ? 0.5 : -0.5;
         adjustDiffFontSize(panel, step);
       });
     });
