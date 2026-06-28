@@ -882,7 +882,7 @@ window.TextLinter = (() => {
   function adjustDiffFontSize(panel, step) {
     if (!panel) return;
     const current = Number.parseFloat(panel.style.getPropertyValue('--text-lint-diff-font-size')) || 12;
-    const next = Math.max(8, Math.min(32, Math.round(current + step)));
+    const next = Math.max(8, Math.min(32, Math.round((current + step) * 2) / 2));
     panel.style.setProperty('--text-lint-diff-font-size', `${next}px`);
     panel.style.setProperty('--text-lint-diff-line-height', `${Math.round(next * 1.65 * 100) / 100}px`);
     const valueEl = panel.querySelector('.text-lint-diff-size-value');
