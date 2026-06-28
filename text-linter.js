@@ -765,7 +765,8 @@ window.TextLinter = (() => {
     applyDiffTypography(panel, ta);
 
     const mode = getDiffMode();
-    const diffScale = getDiffFontSize(ta);
+    const savedSize = window.State?.getLayout?.()?.llm?.diffFontSize;
+    const diffScale = savedSize || getDiffFontSize(ta);
     const diffHtml = renderDiff(scope.text, result.text, mode);
     const hintsHtml = renderHints(result.hints);
     const risky = getRiskyEnabledCount();
@@ -802,6 +803,7 @@ window.TextLinter = (() => {
       if (button) button.disabled = true;
       panel.remove();
       applyResult(blockId, ta, scope, result, { removePanels: false });
+      try { window.Blocks?.updateGroomBadge?.(blockId); } catch {}
     });
     panel.querySelector('[data-action="copy"]')?.addEventListener('click', () => copyFixedText(result.text));
     panel.querySelector('[data-action="reject"]')?.addEventListener('click', () => panel.remove());
@@ -887,6 +889,10 @@ window.TextLinter = (() => {
     panel.style.setProperty('--text-lint-diff-line-height', `${Math.round(next * 1.65 * 100) / 100}px`);
     const valueEl = panel.querySelector('.text-lint-diff-size-value');
     if (valueEl) valueEl.textContent = `${next}px`;
+    try {
+      const lay = window.State?.getLayout?.();
+      if (lay) window.State?.setLayout?.({ llm: { ...(lay.llm ?? {}), diffFontSize: next } });
+    } catch {}
   }
 
   function applyDiffTypography(panel, ta) {
