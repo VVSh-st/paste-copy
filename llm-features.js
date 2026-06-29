@@ -1229,7 +1229,7 @@ window.LLMFeatures = (() => {
   async function groomBlock(blockId, mode) {
     if (!_guard()) return;
     if (mode === 'fill-placeholders') {
-      window.SmartPlaceholders?.fillAll?.();
+      SmartPlaceholders.fillAll();
       return;
     }
     const ta = _getBlockTextarea(blockId);
