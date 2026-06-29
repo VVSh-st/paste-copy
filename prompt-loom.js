@@ -515,6 +515,7 @@
     document.addEventListener('contextmenu', e => {
       if (!document.body.classList.contains('prompt-loom-open')) return;
       if (isInsidePromptLoom(e.target)) return;
+      e.preventDefault();
       closePanel(true);
     });
   }
