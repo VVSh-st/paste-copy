@@ -1342,33 +1342,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       .forEach(el => tools.appendChild(el));
     body.appendChild(tools);
 
-    function _autoScrollToCursor(el) {
-      const marginLines = State.getLayout().textScrollMargin;
-      if (!marginLines) return;
-      if (el.scrollHeight <= el.clientHeight) return;
-      const cs = getComputedStyle(el);
-      const fontSize = parseFloat(cs.fontSize) || 12;
-      const lineHeight = parseFloat(cs.lineHeight) || fontSize * 1.65;
-      const marginPx = marginLines * lineHeight;
-      const sel = el.selectionStart;
-      const textBefore = el.value.substring(0, sel);
-      const lineNum = textBefore.split('\n').length;
-      const cursorY = lineNum * lineHeight;
-      const viewH = el.clientHeight;
-      const distFromBottom = viewH - (cursorY - el.scrollTop);
-      if (distFromBottom < marginPx) {
-        el.scrollTop += marginPx - distFromBottom;
-      }
-    }
-
     ta.className   = 'block-textarea';
     ta.spellcheck  = b.spellcheck !== false;
     ta.value       = b.subtabs[b.activeSubtab].value || '';
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
     ta.rows = 5;
-    ta.style.maxHeight = '350px';
-    if (b.height) ta.style.height = Math.min(b.height, 350) + 'px';
+    if (b.height) ta.style.height = b.height + 'px';
 
     // Сохраняем прокрутку textarea при скроллинге
     ta.addEventListener('scroll', () => {
@@ -1383,7 +1363,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const _ro = new ResizeObserver(() => {
       if (!ta.isConnected) { _ro.disconnect(); observerMap.delete(b.id); return; }
       if (_roSkipFirst) { _roSkipFirst = false; return; }
-      const h = Math.min(ta.offsetHeight, 350);
+      const h = ta.offsetHeight;
       if (h > 0 && h !== b.height) {
         b.height = h;
         clearTimeout(ta._heightSnapTimer);
@@ -1433,8 +1413,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         chars: val.length,
         kind: window.PromptLoom?.classify?.(val) || ''
       });
-
-      requestAnimationFrame(() => _autoScrollToCursor(ta));
 
     });
 
