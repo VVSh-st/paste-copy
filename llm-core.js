@@ -361,6 +361,7 @@ window.LLMCore = (() => {
           try {
             const json = JSON.parse(raw);
             const delta = json.choices?.[0]?.delta?.content
+              ?? json.choices?.[0]?.delta?.reasoning_content
               ?? (json.type === 'content_block_delta' ? json.delta?.text : '')
               ?? (json.type === 'content_block_start' ? json.content_block?.text : '')
               ?? json.delta
@@ -387,7 +388,7 @@ window.LLMCore = (() => {
         if (!line.trim()) continue;
         try {
           const json = JSON.parse(line);
-          const delta = json.message?.content ?? '';
+          const delta = json.message?.content ?? json.message?.reasoning_content ?? '';
           if (delta) { full += delta; onChunk?.(delta); }
           if (json.done) return full;
         } catch {}
@@ -418,11 +419,12 @@ window.LLMCore = (() => {
     }).join('');
   }
   function _extractContent(provider, json) {
-    if (provider === 'ollama') return json.message?.content ?? '';
+    if (provider === 'ollama') return json.message?.content ?? json.message?.reasoning_content ?? '';
     const mode = PROVIDERS[provider]?.requestMode ?? 'chat';
     if (mode === 'responses') return _extractResponsesContent(json);
     if (mode === 'anthropic') return _extractAnthropicContent(json);
-    return json.choices?.[0]?.message?.content ?? '';
+    const msg = json.choices?.[0]?.message;
+    return msg?.content ?? msg?.reasoning_content ?? '';
   }
   function _messagesToResponsesInput(messages) {
     return (messages ?? []).map(m => ({
