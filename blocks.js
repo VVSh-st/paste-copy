@@ -385,11 +385,21 @@ const Blocks = (() => {
       cols[0].el.style.flex = '1';
       return;
     }
-    const flexVal = (1 / n).toFixed(4);
-    cols.forEach(c => {
-      c.el.style.flex = flexVal;
-      c.el.style.width = '';
-    });
+    const lay = State.getLayout();
+    const ratios = lay.colRatios;
+    if (ratios && Array.isArray(ratios) && ratios.length === n) {
+      const sum = ratios.reduce((a, b) => a + b, 0) || n;
+      cols.forEach((c, i) => {
+        c.el.style.flex = (ratios[i] / sum).toFixed(4);
+        c.el.style.width = '';
+      });
+    } else {
+      const flexVal = (1 / n).toFixed(4);
+      cols.forEach(c => {
+        c.el.style.flex = flexVal;
+        c.el.style.width = '';
+      });
+    }
   }
 
   function renderBlock(b, orderMap) {

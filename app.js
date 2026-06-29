@@ -619,7 +619,7 @@
       b.addEventListener('click', e => {
         e.stopPropagation();
         const count = parseInt(b.dataset.count, 10);
-        State.setLayout({ columnCount: count, rightColHidden: false });
+        State.setLayout({ columnCount: count, rightColHidden: false, colRatios: null });
         Blocks.syncColumnElements();
         Blocks.render();
         closeDropdown();
@@ -649,28 +649,30 @@
       e.preventDefault();
       activeResizer = r;
       startX = e.clientX;
-      const cols = ws.querySelectorAll('.column:not([style*="display: none"])');
-      startWidths = Array.from(cols).map(c => c.getBoundingClientRect().width);
+      const cols = Array.from(ws.querySelectorAll('.column')).filter(c => c.style.display !== 'none');
+      startWidths = cols.map(c => c.getBoundingClientRect().width);
       r.classList.add('active');
       document.body.style.cursor = 'col-resize';
     });
 
     document.addEventListener('mousemove', e => {
       if (!activeResizer) return;
-      const cols = ws.querySelectorAll('.column:not([style*="display: none"])');
-      const colArr = Array.from(cols);
-      const resizers = ws.querySelectorAll('.col-resizer');
-      const rIdx = Array.from(resizers).indexOf(activeResizer);
-      if (rIdx < 0 || rIdx >= colArr.length - 1) return;
+      const cols = Array.from(ws.querySelectorAll('.column')).filter(c => c.style.display !== 'none');
+      const resizers = Array.from(ws.querySelectorAll('.col-resizer'));
+      const rIdx = resizers.indexOf(activeResizer);
+      if (rIdx < 0 || rIdx >= cols.length - 1) return;
       const dx = e.clientX - startX;
-      const left = colArr[rIdx];
-      const right = colArr[rIdx + 1];
       const leftW = Math.max(80, startWidths[rIdx] + dx);
       const rightW = Math.max(80, startWidths[rIdx + 1] - dx);
-      left.style.flex = 'none';
-      right.style.flex = 'none';
-      left.style.width = leftW + 'px';
-      right.style.width = rightW + 'px';
+      const newWidths = startWidths.map((w, i) => {
+        if (i === rIdx) return leftW;
+        if (i === rIdx + 1) return rightW;
+        return w;
+      });
+      const total = newWidths.reduce((a, b) => a + b, 0);
+      const ratios = newWidths.map(w => Math.round((w / total) * 1000));
+      State.setLayout({ colRatios: ratios });
+      Blocks.applyLayout();
     });
 
     document.addEventListener('mouseup', () => {

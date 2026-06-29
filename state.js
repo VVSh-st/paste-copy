@@ -11,6 +11,7 @@ const State = (() => {
   const DEFAULT_LAYOUT = {
     colRatio:        0.5,
     columnCount:     2,
+    colRatios:       null,
     previewHeight:   220,
     previewFontSize: 12,
     previewWrap:     true,
