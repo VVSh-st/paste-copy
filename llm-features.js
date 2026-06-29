@@ -2889,10 +2889,8 @@ const AutoPoet = (() => {
       }, { passive: true });
       document.addEventListener('selectionchange', () => {
         if (_ghost?.ta) {
-          const pos = _ghost.ta.selectionStart;
-          const afterChar = _ghost.ta.value.charAt(pos);
-          const beforeChar = _ghost.ta.value.charAt(pos - 1);
-          if ((afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) || beforeChar === ' ') _clearGhost();
+          const afterChar = _ghost.ta.value.charAt(_ghost.ta.selectionStart);
+          if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) _clearGhost();
         }
       });
     }
@@ -2914,8 +2912,7 @@ const AutoPoet = (() => {
 
     const cursorPos = ta.selectionStart;
     const afterChar = ta.value.charAt(cursorPos);
-    const beforeChar = ta.value.charAt(cursorPos - 1);
-    if ((afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) || beforeChar === ' ') return;
+    if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) return;
     const before = ta.value.slice(0, cursorPos);
     const seed = _getSeed(before, cfg);
 
