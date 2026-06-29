@@ -234,7 +234,7 @@ body {
 #col-resizer:hover, #col-resizer.active { background: var(--accent); }
 .tb-btn-wrap { position: relative; display: inline-flex; }
 .col-count-dropdown {
-  display: none; position: absolute; top: 100%; right: 0;
+  display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
   z-index: 100; background: var(--bg2); border: 1px solid var(--border2);
   border-radius: var(--radius-md); padding: 4px;
   box-shadow: var(--shadow-lg); flex-direction: row; gap: 4px;
