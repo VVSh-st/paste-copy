@@ -27,6 +27,7 @@
     maxChars: 30000,
     panelOpen: false,
     panelCompact: false,
+    panelUltraLight: false,
     quickPinned: true,
     ignoreSimilar: []
   };
@@ -501,6 +502,7 @@
           <button type="button" data-pl-toggle="skipLLM" title="Не сохранять LLM" aria-label="Не сохранять LLM">${iconSpark()}</button>
           <button type="button" data-pl-toggle="skipCode" title="Не сохранять код" aria-label="Не сохранять код">${iconCode()}</button>
           <button type="button" data-pl-compact title="Компактный режим" aria-label="Компактный режим">${iconCollapse()}</button>
+          <button type="button" data-pl-ultra title="Ultra Light режим" aria-label="Ultra Light режим">${iconUltraLight()}</button>
           <button type="button" data-pl-quick-pinned title="Закреплённые в быстром меню" aria-label="Закреплённые в быстром меню">${iconPin()}</button>
           <button type="button" data-pl-max title="Лимит длины" aria-label="Лимит длины">${iconRuler()}</button>
           <button type="button" data-pl-clear title="Очистить историю" aria-label="Очистить историю">${iconTrash()}</button>
@@ -519,6 +521,7 @@
     panel.querySelector('[data-pl-clear]').addEventListener('click', handleClearClick);
     panel.querySelector('[data-pl-max]').addEventListener('click', editMaxChars);
     panel.querySelector('[data-pl-compact]').addEventListener('click', toggleCompactPanel);
+    panel.querySelector('[data-pl-ultra]').addEventListener('click', toggleUltraLightPanel);
     panel.querySelector('[data-pl-quick-pinned]').addEventListener('click', toggleQuickPinned);
     panel.querySelectorAll('[data-pl-toggle]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -574,15 +577,25 @@
     panel.querySelector('[data-pl-toggle="skipLLM"]')?.classList.toggle('active', settings.skipLLM);
     panel.querySelector('[data-pl-toggle="skipCode"]')?.classList.toggle('active', settings.skipCode);
     panel.querySelector('[data-pl-compact]')?.classList.toggle('active', settings.panelCompact);
+    panel.querySelector('[data-pl-ultra]')?.classList.toggle('active', settings.panelUltraLight);
     panel.querySelector('[data-pl-quick-pinned]')?.classList.toggle('active', settings.quickPinned);
     const maxBtn = panel.querySelector('[data-pl-max]');
     if (maxBtn) maxBtn.title = 'Лимит длины: ' + settings.maxChars + ' символов';
     panel.classList.toggle('compact', !!settings.panelCompact);
+    panel.classList.toggle('ultra-light', !!settings.panelUltraLight);
   }
 
 
   function toggleCompactPanel() {
     settings.panelCompact = !settings.panelCompact;
+    if (settings.panelCompact) settings.panelUltraLight = false;
+    saveSettings();
+    syncPanelControls();
+  }
+
+  function toggleUltraLightPanel() {
+    settings.panelUltraLight = !settings.panelUltraLight;
+    if (settings.panelUltraLight) settings.panelCompact = false;
     saveSettings();
     syncPanelControls();
   }
@@ -632,6 +645,7 @@
 
   function renderCard(item) {
     const source = TYPE_META[item.source] || TYPE_META.manual;
+    if (settings.panelUltraLight) return renderUltraLightCard(item, source);
     const kind = CLASS_META[item.kind] || CLASS_META.text;
     const card = document.createElement('article');
     card.className = 'pl-card pl-kind-' + item.kind;
@@ -717,6 +731,56 @@
       saveState();
       renderPanelList();
     });
+  }
+
+  function renderUltraLightCard(item, source) {
+    const card = document.createElement('article');
+    card.className = 'pl-card pl-ultra-card pl-kind-' + item.kind;
+    card.style.setProperty('--pl-color', source.color);
+    card.setAttribute('role', 'listitem');
+    card.setAttribute('tabindex', '0');
+
+    const previewValue = previewLines(item.text, item.kind, 3, 60);
+    const textEl = document.createElement('div');
+    textEl.className = 'pl-ultra-text';
+    textEl.textContent = previewValue.text;
+    if (previewValue.clipped) textEl.dataset.plTip = item.text;
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'pl-ultra-copy';
+    copyBtn.innerHTML = iconCopy();
+    copyBtn.title = 'Копировать';
+    copyBtn.setAttribute('aria-label', 'Копировать');
+
+    card.appendChild(textEl);
+    card.appendChild(copyBtn);
+
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      markInternalCopy(item.text);
+      navigator.clipboard?.writeText(item.text).then(() => {
+        markItemUsed(item, 'loom-copy');
+        toast('Скопировано ✓', 'success');
+      }).catch(() => toast('Не удалось скопировать', 'error'));
+    });
+
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.pl-ultra-copy')) return;
+      const target = getInsertTarget({ preferExternal: true });
+      if (!target) {
+        markInternalCopy(item.text);
+        navigator.clipboard?.writeText(item.text).then(() => toast('Нет поля — скопировано', 'success'));
+        return;
+      }
+      const snapshot = makeAcceptSnapshot(target, item.text);
+      markInternalPaste(item.text);
+      insertIntoEditable(target, item.text, null, null, { smartSpacing: false });
+      markItemUsed(item, 'loom-insert');
+      playAcceptEffect(snapshot, item.text);
+    });
+
+    return card;
   }
 
   function toggleVariants(card, item) {
@@ -1973,6 +2037,22 @@
       #prompt-loom-panel.compact .pl-actions button:not(.pl-icon-btn) { width: 28px; height: 26px; padding: 0; }
       #prompt-loom-panel.compact .pl-more { grid-template-columns: repeat(4, 28px); justify-content: end; }
       .prompt-loom-open:has(#prompt-loom-panel.compact) #prompt-loom-toggle { transform: translateX(-330px); }
+
+      #prompt-loom-panel.ultra-light { width: min(200px, calc(100vw - 20px)); gap: 4px; padding: 6px; }
+      .prompt-loom-open:has(#prompt-loom-panel.ultra-light) #prompt-loom-toggle { transform: translateX(-200px); }
+      #prompt-loom-panel.ultra-light .pl-tools button:not([data-pl-ultra]):not([data-pl-close]) { display: none; }
+      #prompt-loom-panel.ultra-light .pl-search-row, #prompt-loom-panel.ultra-light .pl-filters, #prompt-loom-panel.ultra-light .pl-title span:last-child { display: none; }
+      #prompt-loom-panel.ultra-light .pl-head { justify-content: flex-end; }
+      #prompt-loom-panel.ultra-light .pl-list { gap: 4px; scrollbar-width: none; }
+      #prompt-loom-panel.ultra-light .pl-list::-webkit-scrollbar { display: none; }
+      .pl-ultra-card { padding: 4px 5px; border-radius: 6px; cursor: pointer; position: relative; overflow: hidden; min-height: 0; }
+      .pl-ultra-card:hover { transform: none; }
+      .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre-wrap; overflow: hidden; max-height: calc(1.35em * 3 + 2px); word-break: break-word; letter-spacing: -0.01em; }
+      .pl-ultra-copy { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; border: none; background: rgba(0,0,0,0.45); color: rgba(255,255,255,0.6); cursor: pointer; opacity: 0; transition: opacity 0.12s ease; padding: 0; z-index: 2; }
+      .pl-ultra-copy svg { width: 11px; height: 11px; stroke: currentColor; fill: none; }
+      .pl-ultra-card:hover .pl-ultra-copy { opacity: 1; }
+      .pl-ultra-copy:hover { background: rgba(0,0,0,0.7); color: #fff; }
+
       .pl-palette.slash-palette {
         z-index: var(--z-prompt-loom-palette);
         width: min(248px, calc(100vw - 16px));
@@ -2092,6 +2172,7 @@
   function iconPin() { return '<svg viewBox="0 0 16 16"><path d="M6 2h4l-.5 4 2.5 2v1H4V8l2.5-2z"/><path d="M8 9v5"/></svg>'; }
   function iconDots() { return '<svg viewBox="0 0 16 16"><path d="M4 8h.01M8 8h.01M12 8h.01" stroke-width="2.8"/></svg>'; }
   function iconCollapse() { return '<svg viewBox="0 0 16 16"><path d="M6 3H3v3M10 3h3v3M6 13H3v-3M10 13h3v-3"/><path d="M3.5 3.5L7 7M12.5 3.5L9 7M3.5 12.5L7 9M12.5 12.5L9 9"/></svg>'; }
+  function iconUltraLight() { return '<svg viewBox="0 0 16 16"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M5 5h6M5 8h6M5 11h3"/></svg>'; }
   function iconInsert() { return '<svg viewBox="0 0 16 16"><path d="M8 2v8"/><path d="M5 7l3 3 3-3"/><path d="M3 13h10"/></svg>'; }
   function iconWand() { return '<svg viewBox="0 0 16 16"><path d="M3 13l8-8"/><path d="M9 3l4 4"/><path d="M3 3h.01M6 2h.01M13 11h.01M11 14h.01" stroke-width="2.2"/></svg>'; }
   function iconChevronLeft() { return '<svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5"/></svg>'; }
