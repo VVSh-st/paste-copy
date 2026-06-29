@@ -1343,20 +1343,30 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(tools);
 
     function _autoScrollToCursor(el) {
-      const lay = State.getLayout();
-      const marginLines = lay.textScrollMargin;
+      const marginLines = State.getLayout().textScrollMargin;
       if (!marginLines) return;
-      if (el.scrollHeight <= el.clientHeight) return;
       const cs = getComputedStyle(el);
       const fontSize = parseFloat(cs.fontSize) || 12;
       const lineHeight = parseFloat(cs.lineHeight) || fontSize * 1.65;
       const marginPx = marginLines * lineHeight;
-      const textBefore = el.value.substring(0, el.selectionStart);
-      const lineNum = textBefore.split('\n').length;
-      const cursorBottom = lineNum * lineHeight;
-      const viewBottom = el.scrollTop + el.clientHeight;
-      if (cursorBottom > viewBottom - marginPx) {
-        el.scrollTop = cursorBottom - el.clientHeight + marginPx;
+      const rect = el.getBoundingClientRect();
+      const sel = el.selectionStart;
+      const textBefore = el.value.substring(0, sel);
+      const lines = textBefore.split('\n');
+      const lineNum = lines.length;
+      const colNum = lines[lines.length - 1].length;
+      const charW = fontSize * 0.6;
+      const padL = parseFloat(cs.paddingLeft) || 11;
+      const padT = parseFloat(cs.paddingTop) || 9;
+      const cursorY = padT + lineNum * lineHeight;
+      const cursorX = padL + colNum * charW;
+      const taH = el.clientHeight;
+      const taW = el.clientWidth;
+      if (cursorY > taH - marginPx) {
+        el.scrollTop += cursorY - taH + marginPx;
+      }
+      if (cursorX > taW - 20) {
+        el.scrollLeft += cursorX - taW + 20;
       }
     }
 
