@@ -3920,17 +3920,6 @@ const AutoPoet = (() => {
       }
     }
 
-    function _ensureCloseButton(modal) {
-      if (modal.querySelector('.llm-modal-close')) return;
-      const btn = document.createElement('button');
-      btn.className = 'llm-modal-close';
-      btn.type = 'button';
-      btn.textContent = '✕';
-      btn.setAttribute('aria-label', 'Закрыть');
-      btn.addEventListener('click', close);
-      modal.insertBefore(btn, modal.firstChild);
-    }
-
     function open() {
       const modal = document.getElementById('llm-history-modal');
       if (!modal) return;
@@ -3946,8 +3935,6 @@ const AutoPoet = (() => {
       document.addEventListener('keydown', _onKeyDown);
       modal.removeEventListener('click', _onBackdropClick);
       modal.addEventListener('click', _onBackdropClick);
-
-      _ensureCloseButton(modal);
 
       searchQuery = '';
       modelFilter = '';
