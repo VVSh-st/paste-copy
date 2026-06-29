@@ -28,6 +28,9 @@ const Blocks = (() => {
   // [FIX] Хранилище ResizeObserver-ов по block.id — для очистки при перерендере
   const observerMap = new Map();
 
+  // Единый реестр активных hover-эффектов (marquee, тултипы) — очистка при re-render
+  const _pendingHoverEffects = new Set();
+
   // Кеш индикаторов линтера: не гоняем анализ текста на каждом render без нужды.
   const textLintBadgeCache = new Map();
   const TEXT_LINT_BADGE_CACHE_LIMIT = 80;
@@ -41,6 +44,11 @@ const Blocks = (() => {
   function cleanupObservers() {
     observerMap.forEach(ro => ro.disconnect());
     observerMap.clear();
+  }
+
+  function cleanupHoverEffects() {
+    _pendingHoverEffects.forEach(fn => fn());
+    _pendingHoverEffects.clear();
   }
 
   /* ================================================================
@@ -258,6 +266,7 @@ const Blocks = (() => {
 
   function _doRender() {
     _saveColScroll();
+    cleanupHoverEffects();
     cleanupObservers();
 
     syncColumnElements();
@@ -485,7 +494,10 @@ const Blocks = (() => {
 	cancelAnimationFrame(_mqRaf);
 	if (_mqOrigValue !== null) { el.value = _mqOrigValue; _mqOrigValue = null; }
 	el.scrollLeft = 0;
+	_pendingHoverEffects.delete(_cleanupMq);
 }
+
+	const _cleanupMq = () => _stopMarquee(title);
 
 	title.addEventListener('mouseenter', () => {
 	_mqTimer = setTimeout(() => {
@@ -526,6 +538,7 @@ const Blocks = (() => {
       _mqRaf = requestAnimationFrame(tick);
     };
     _mqRaf = requestAnimationFrame(tick);
+    _pendingHoverEffects.add(_cleanupMq);
   }, 300);
 });
 
@@ -838,6 +851,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           const rect = e.target.closest('[data-groom]').getBoundingClientRect();
           _groomTipEl.style.left = (rect.right + 8) + 'px';
           _groomTipEl.style.top = rect.top + 'px';
+          _pendingHoverEffects.add(_cleanupGroomTip);
         }, 1800);
       }
       function _groomHideTip(e) {
@@ -848,6 +862,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           btn.setAttribute('title', btn.dataset.tipText);
           delete btn.dataset.tipText;
         }
+        _pendingHoverEffects.delete(_cleanupGroomTip);
+      }
+
+      function _cleanupGroomTip() {
+        clearTimeout(_groomTipTimer);
+        if (_groomTipEl) { _groomTipEl.style.display = 'none'; }
+        _pendingHoverEffects.delete(_cleanupGroomTip);
       }
       groomMenu.addEventListener('mouseenter', _groomShowTip, true);
       groomMenu.addEventListener('mouseleave', _groomHideTip, true);
@@ -1029,7 +1050,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           _mqTimer = null;
           _mqRaf = null;
           if (_tipEl) { _tipEl.remove(); _tipEl = null; }
+          _pendingHoverEffects.delete(_cleanupTip);
         }
+
+        const _cleanupTip = _removeTooltip;
 
         function _startMarquee(txt) {
           const sep = '   \u00b7   ';
@@ -1067,6 +1091,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
             if (_tipEl.scrollWidth - _tipEl.clientWidth > 2) {
               _startMarquee(txt);
             }
+            _pendingHoverEffects.add(_cleanupTip);
           }, 500);
         });
 
@@ -2779,6 +2804,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         State.removeBlock(tab.blocks, srcId);
         const dest = findParentList(tab.blocks, b.id);
         if (!dest) { tab.blocks.push(src); return; }
+        // Compact-блоки вставляются после таргета (splice +1), non-compact — перед (splice idx).
+        // Причина: compact-блоки группируются в строку через flushCompact, поэтому
+        // drag-and-drop compact→compact работает как "поставить справа от соседа".
         if (isCompact(src.type) && isCompact(b.type)) {
           src.column = b.column;
           const targetIdx = dest.list.indexOf(b);
