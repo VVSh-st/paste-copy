@@ -740,10 +740,6 @@
     const words = raw.split(' ');
     const result = [];
     let curLine = '';
-    function flushLine(line) {
-      if (line.length < maxChars) result.push(line + ' '.repeat(maxChars - line.length));
-      else result.push(line);
-    }
     for (const word of words) {
       if (!word) continue;
       if (!curLine) {
@@ -763,7 +759,7 @@
       if (trial.length <= maxChars) {
         curLine = trial;
       } else {
-        flushLine(curLine);
+        result.push(curLine);
         if (word.length > maxChars) {
           let rem = word;
           while (rem.length > maxChars) {
@@ -776,10 +772,7 @@
         }
       }
     }
-    if (curLine) {
-      if (curLine.length < maxChars) result.push(curLine);
-      else result.push(curLine);
-    }
+    if (curLine) result.push(curLine);
     return result.join('\n');
   }
 
