@@ -766,27 +766,27 @@ title.addEventListener('focus',     () => _stopMarquee(title));
             `<button type="button" data-lint-action="preview"${textLint ? '' : ' disabled title="text-linter.js ещё не загружен"'}>${_iconDiff} Показать diff и подсказки</button>` +
             `<div class="menu-sep"></div>`
           : '') +
-        `<button type="button" data-groom="edit">${_iconGroom} Причесать</button>` +
-        `<button type="button" data-groom="grammar">${_iconGrammar} Правка грамматики</button>` +
-        `<button type="button" data-groom="format">${_iconFormat} Форматирование</button>` +
-        `<button type="button" data-groom="positive_instr">${_iconPlus} Позитивные инструкции</button>` +
+        `<button type="button" data-groom="edit" title="Очищает текст от лишних пробелов, дублей и мусора, сохраняя смысл">` + _iconGroom + ` Причесать</button>` +
+        `<button type="button" data-groom="grammar" title="Исправляет опечатки, пунктуацию и грамматические ошибки без переписывания смысла">` + _iconGrammar + ` Правка грамматики</button>` +
+        `<button type="button" data-groom="format" title="Приводит структуру к единому формату: списки, абзацы, отступы">` + _iconFormat + ` Форматирование</button>` +
+        `<button type="button" data-groom="positive_instr" title="Переписывает негативные ограничения в позитивные инструкции (\"не делай X\" → \"делай Y\")">` + _iconPlus + ` Позитивные инструкции</button>` +
         `<div class="menu-sep"></div>` +
-        `<button type="button" data-groom="negatives">${_iconWarn} Что пойдёт не так?</button>` +
-        `<button type="button" data-groom="summary">${_iconSummary} Резюме вкладки</button>` +
-        `<button type="button" data-groom="variations">${_svgIcon('<path d="M4 4h8M4 8h8M4 12h8"/><circle cx="13" cy="4" r="1"/><circle cx="13" cy="8" r="1"/><circle cx="13" cy="12" r="1"/>')} 3 варианта</button>` +
-        `<button type="button" data-groom="grade">${_svgIcon('<path d="M4 12V8M7 12V5M10 12V7M13 12V3"/><path d="M2 14h12" stroke-dasharray="2 2"/>')} Оценка промпта</button>` +
-        `<button type="button" data-groom="fill-placeholders">${_iconFill} Заполнить {{llm:...}}</button>` +
+        `<button type="button" data-groom="negatives" title="Показывает что может пойти не так и какие ловушки есть в промпте">` + _iconWarn + ` Что пойдёт не так?</button>` +
+        `<button type="button" data-groom="summary" title="Делает краткое резюме текста вкладки в мини-чате">` + _iconSummary + ` Резюме вкладки</button>` +
+        `<button type="button" data-groom="variations" title="Генерирует 3 альтернативных варианта промпта в мини-чате">` + _svgIcon('<path d="M4 4h8M4 8h8M4 12h8"/><circle cx="13" cy="4" r="1"/><circle cx="13" cy="8" r="1"/><circle cx="13" cy="12" r="1"/>') + ` 3 варианта</button>` +
+        `<button type="button" data-groom="grade" title="Оценивает промпт по 5 критериям (ясность, точность, полнота, согласованность, краткость)">` + _svgIcon('<path d="M4 12V8M7 12V5M10 12V7M13 12V3"/><path d="M2 14h12" stroke-dasharray="2 2"/>') + ` Оценка промпта</button>` +
+        `<button type="button" data-groom="fill-placeholders" title="Заполняет плейсхолдеры {{llm:инструкция}} через LLM. Пример: {{llm:профессия из IT}}">` + _iconFill + ` Заполнить {{llm:...}}</button>` +
         `<div class="menu-sep"></div>` +
         `<div class="menu-section-label">ТОН и СОКРАЩЕНИЕ</div>` +
-        `<button type="button" data-groom="expand">${_iconExpand} Расширить</button>` +
-        `<button type="button" data-groom="formal">${_iconFormal} Формальный</button>` +
-        `<button type="button" data-groom="casual">${_iconCasual} Неформальный</button>` +
-        `<button type="button" data-groom="tech">${_iconTech} Технический</button>` +
-        `<button type="button" data-groom="friendly">${_iconFriendly} Дружелюбный</button>` +
+        `<button type="button" data-groom="expand" title="Расширяет краткий промпт: добавляет контекст, роль, формат и ограничения">` + _iconExpand + ` Расширить</button>` +
+        `<button type="button" data-groom="formal" title="Переводит в деловой/официальный тон">` + _iconFormal + ` Формальный</button>` +
+        `<button type="button" data-groom="casual" title="Переводит в разговорный/непринуждённый тон">` + _iconCasual + ` Неформальный</button>` +
+        `<button type="button" data-groom="tech" title="Переводит в технический тон с терминологией">` + _iconTech + ` Технический</button>` +
+        `<button type="button" data-groom="friendly" title="Переводит в тёплый дружелюбный тон">` + _iconFriendly + ` Дружелюбный</button>` +
         `<div class="menu-sep"></div>` +
-        `<button type="button" data-groom="shrink_20">${_iconShrink} −20%</button>` +
-        `<button type="button" data-groom="shrink_40">${_iconShrink} −40%</button>` +
-        `<button type="button" data-groom="shrink_60">${_iconShrink} −60%</button>`;
+        `<button type="button" data-groom="shrink_20" title="Сокращает текст примерно на 20%">` + _iconShrink + ` −20%</button>` +
+        `<button type="button" data-groom="shrink_40" title="Сокращает текст примерно на 40%">` + _iconShrink + ` −40%</button>` +
+        `<button type="button" data-groom="shrink_60" title="Сокращает текст примерно на 60%">` + _iconShrink + ` −60%</button>`;
 
       const setGroomOpen = open => {
         groomDd.classList.toggle('open', open);
