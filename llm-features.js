@@ -1452,8 +1452,10 @@ window.LLMFeatures = (() => {
       MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('📊 Оцениваю промпт...');
-      MiniChat.pushToHistory('user', text);
+      MiniChat.pushToHistory('user', 'Оцениваю промпт...');
       _showThinking('📊 Оцениваю промпт...');
+
+      const targetSessionIdx = MiniChat.getSessionIndex();
 
       let raw;
       try {
@@ -1508,7 +1510,9 @@ window.LLMFeatures = (() => {
         return;
       }
 
+      MiniChat.ensureSession(targetSessionIdx);
       _renderScorecard(data);
+      MiniChat.pushScorecard(data);
       _busyRelease();
     }
 
@@ -1562,10 +1566,6 @@ window.LLMFeatures = (() => {
         });
       });
       el.scrollTop = el.scrollHeight;
-
-      if (!msgsEl && window.MiniChat?.pushScorecard) {
-        window.MiniChat.pushScorecard(data);
-      }
     }
 
     return { grade };
@@ -3860,7 +3860,26 @@ const AutoPoet = (() => {
       _updateNavButtons();
     }
 
-    return { open: _open, close, stop, clearHistory, send, addSystemMessage, appendChunk, finalizeLastMessage, _init, newSession: _newSession, pushScorecard, pushToHistory, clearAllSessions };
+    function getSessionIndex() { return _sessionIdx; }
+
+    function ensureSession(idx) {
+      if (idx < 0 || idx >= _sessions.length) return;
+      if (idx === _sessionIdx) return;
+      _saveCurrentSession();
+      _sessionIdx = idx;
+      _history = [...(_sessions[_sessionIdx]?.history ?? [])];
+      _inputHistory = [];
+      _historyIdx = -1;
+      _draftInput = '';
+      const el = _msgsEl();
+      if (el) { el.innerHTML = ''; }
+      _noAutoScroll = true;
+      _history.forEach(m => _appendMsg(m.role, m.content));
+      _noAutoScroll = false;
+      _updateNavButtons();
+    }
+
+    return { open: _open, close, stop, clearHistory, send, addSystemMessage, appendChunk, finalizeLastMessage, _init, newSession: _newSession, pushScorecard, pushToHistory, clearAllSessions, getSessionIndex, ensureSession };
   })();
 
   const LLMHistoryPanel = (() => {
