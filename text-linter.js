@@ -1330,13 +1330,13 @@ window.TextLinter = (() => {
       .text-lint-gear-dropdown {
         display: none;
         position: absolute;
-        top: 100%;
+        bottom: 100%;
         right: 0;
         z-index: 100;
         min-width: 220px;
         max-height: 260px;
         overflow-y: auto;
-        margin-top: 4px;
+        margin-bottom: 4px;
         padding: 4px;
         background: var(--bg2);
         border: 1px solid var(--border2);
