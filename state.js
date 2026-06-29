@@ -12,6 +12,7 @@ const State = (() => {
     colRatio:        0.5,
     columnCount:     2,
     colRatios:       null,
+    colScrollbar:    false,
     previewHeight:   220,
     previewFontSize: 12,
     previewWrap:     true,

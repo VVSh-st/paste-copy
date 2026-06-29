@@ -149,6 +149,10 @@
 
     const optCurrentLineColor = $id('opt-current-line-color-misc');
     if (optCurrentLineColor) optCurrentLineColor.value = lay.currentLineColor || 'rgba(79,142,247,0.18)';
+
+    const optColScrollbar = $id('opt-col-scrollbar');
+    if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
+    document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
   }
 
   State.onChange(fullRender);
@@ -409,6 +413,14 @@
     optCurrentLineColor.oninput = saveLineColor;
     optCurrentLineColor.onchange = saveLineColor;
   }
+
+  const optColScrollbar = $id('opt-col-scrollbar');
+  if (optColScrollbar) optColScrollbar.onchange = e => {
+    const enabled = e.target.checked;
+    State.setLayout({ colScrollbar: enabled });
+    document.getElementById('workspace')?.classList.toggle('col-scrollbar', enabled);
+    scheduleSave();
+  };
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/
   const anchorSettings = Anchors?.getMarkerSettings?.() || { lineMarkers: true, bgHighlight: true, color: '#4f8ef7' };

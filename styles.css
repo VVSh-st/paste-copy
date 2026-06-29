@@ -220,8 +220,12 @@ body {
 .column {
   display: flex; flex-direction: column; gap: 8px;
   min-width: 80px; overflow-y: auto; overflow-x: hidden; padding: 0 4px;
-  flex: 1;
+  flex: 1; scrollbar-width: none;
 }
+.column::-webkit-scrollbar { display: none; }
+.col-scrollbar .column { scrollbar-width: thin; }
+.col-scrollbar .column::-webkit-scrollbar { display: block; width: 5px; }
+.col-scrollbar .column::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
 .column.drop-target {
   outline: 2px dashed var(--accent); outline-offset: -4px;
   border-radius: var(--radius); background: rgba(79,142,247,0.03);
