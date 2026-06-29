@@ -1349,15 +1349,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const fontSize = parseFloat(cs.fontSize) || 12;
       const lineHeight = parseFloat(cs.lineHeight) || fontSize * 1.65;
       const marginPx = marginLines * lineHeight;
-      if (el.scrollHeight <= el.clientHeight) return;
       const sel = el.selectionStart;
       const textBefore = el.value.substring(0, sel);
       const lineNum = textBefore.split('\n').length;
-      const cursorY = lineNum * lineHeight;
-      const viewH = el.clientHeight;
-      const distFromBottom = viewH - (cursorY - el.scrollTop);
-      if (distFromBottom < marginPx) {
-        el.scrollTop += marginPx - distFromBottom;
+      const cursorBottom = lineNum * lineHeight + (parseFloat(cs.paddingBottom) || 9);
+      const minH = parseFloat(cs.minHeight) || 80;
+      const maxH = parseFloat(cs.maxHeight) || 600;
+      const targetH = Math.min(Math.max(cursorBottom + marginPx, minH), maxH);
+      if (Math.abs(el.clientHeight - targetH) > 2) {
+        el.style.height = targetH + 'px';
+      }
+      if (el.scrollHeight > el.clientHeight) {
+        const viewH = el.clientHeight;
+        const distFromBottom = viewH - (cursorBottom - el.scrollTop);
+        if (distFromBottom < marginPx) {
+          el.scrollTop += marginPx - distFromBottom;
+        }
       }
     }
 
@@ -1381,12 +1388,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const _ro = new ResizeObserver(() => {
       if (!ta.isConnected) { _ro.disconnect(); observerMap.delete(b.id); return; }
       if (_roSkipFirst) { _roSkipFirst = false; return; }
-      const h = Math.min(ta.offsetHeight, 400);
-      if (h > 0 && h !== b.height) {
-        b.height = h;
-        clearTimeout(ta._heightSnapTimer);
-        ta._heightSnapTimer = setTimeout(() => State.snapshot(), 600);
-      }
     });
     _ro.observe(ta);
     observerMap.set(b.id, _ro); // [FIX] регистрируем для cleanupObservers()
