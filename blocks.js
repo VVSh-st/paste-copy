@@ -1342,6 +1342,20 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       .forEach(el => tools.appendChild(el));
     body.appendChild(tools);
 
+    function _autoScrollToCursor(el) {
+      const margin = State.getLayout().textScrollMargin;
+      if (!margin) return;
+      const textBefore = el.value.substring(0, el.selectionStart);
+      const lineNum = (textBefore.match(/\n/g) || []).length;
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 18;
+      const cursorY = (lineNum + 1) * lineHeight;
+      const visibleBottom = el.scrollTop + el.clientHeight;
+      const distFromBottom = visibleBottom - cursorY;
+      if (distFromBottom < margin * lineHeight) {
+        el.scrollTop = cursorY - el.clientHeight + margin * lineHeight;
+      }
+    }
+
     ta.className   = 'block-textarea';
     ta.spellcheck  = b.spellcheck !== false;
     ta.value       = b.subtabs[b.activeSubtab].value || '';
@@ -1413,6 +1427,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         chars: val.length,
         kind: window.PromptLoom?.classify?.(val) || ''
       });
+
+      _autoScrollToCursor(ta);
 
     });
 

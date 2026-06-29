@@ -21,6 +21,7 @@ const State = (() => {
     currentLineHighlight: false,
     currentLineColor:     'rgba(79,142,247,0.18)',
     blockHeights:    {},
+    textScrollMargin: 3,
 
     llm: {
       enabled:         false,

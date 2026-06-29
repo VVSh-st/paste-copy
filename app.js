@@ -153,6 +153,9 @@
     const optColScrollbar = $id('opt-col-scrollbar');
     if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
+
+    const optTextScrollMargin = $id('opt-text-scroll-margin');
+    if (optTextScrollMargin) optTextScrollMargin.value = lay.textScrollMargin ?? 3;
   }
 
   State.onChange(fullRender);
@@ -365,6 +368,15 @@
     document.body.classList.toggle('no-tooltips', !enabled);
     _applyTooltipState(enabled);
     scheduleSave();
+  };
+
+  const optTextScrollMargin = $id('opt-text-scroll-margin');
+  if (optTextScrollMargin) optTextScrollMargin.oninput = e => {
+    const v = parseInt(e.target.value, 10);
+    if (v >= 0 && v <= 10) {
+      State.setLayout({ textScrollMargin: v });
+      scheduleSave();
+    }
   };
 
   const optClipboardApi = $id('opt-clipboard-api');
