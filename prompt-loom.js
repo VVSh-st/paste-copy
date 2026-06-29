@@ -735,6 +735,30 @@
     });
   }
 
+  function ultraWrapText(text, maxChars) {
+    const raw = String(text || '').replace(/\t/g, '  ').trim();
+    const lines = raw.split('\n');
+    const result = [];
+    for (const line of lines) {
+      if (!line) { result.push(''); continue; }
+      if (line.length <= maxChars) { result.push(line); continue; }
+      let rem = line;
+      while (rem.length > maxChars) {
+        let brk = rem.lastIndexOf(' ', maxChars);
+        if (brk <= 0) {
+          brk = maxChars - 1;
+          result.push(rem.slice(0, brk) + '\u00AD');
+          rem = rem.slice(brk);
+        } else {
+          result.push(rem.slice(0, brk));
+          rem = rem.slice(brk + 1);
+        }
+      }
+      if (rem) result.push(rem);
+    }
+    return result.join('\n');
+  }
+
   function renderUltraLightCard(item, source) {
     const card = document.createElement('article');
     card.className = 'pl-card pl-ultra-card pl-kind-' + item.kind;
@@ -742,11 +766,14 @@
     card.setAttribute('role', 'listitem');
     card.setAttribute('tabindex', '0');
 
-    const previewValue = previewLines(item.text, item.kind, 3, 60);
+    const wrappedText = ultraWrapText(item.text, 17);
+    const lines = wrappedText.split('\n');
+    const displayText = lines.length > 3 ? lines.slice(0, 3).join('\n') + '...' : wrappedText;
+    const clipped = lines.length > 3;
     const textEl = document.createElement('div');
     textEl.className = 'pl-ultra-text';
-    textEl.textContent = previewValue.text;
-    if (previewValue.clipped) textEl.dataset.plTip = item.text;
+    textEl.textContent = displayText;
+    if (clipped) textEl.dataset.plTip = item.text;
 
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
@@ -2049,7 +2076,7 @@
       #prompt-loom-panel.ultra-light .pl-list::-webkit-scrollbar { display: none; }
       .pl-ultra-card { padding: 4px 5px; border-radius: 6px; cursor: pointer; position: relative; overflow: hidden; min-height: 0; }
       .pl-ultra-card:hover { transform: none; }
-      .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre-wrap; overflow: hidden; max-height: calc(1.35em * 3 + 2px); word-break: break-word; letter-spacing: -0.01em; padding-right: 20px; }
+      .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre; overflow: hidden; max-height: calc(1.35em * 3 + 2px); word-break: normal; letter-spacing: -0.01em; padding-right: 20px; }
       .pl-ultra-copy { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; border: none; background: rgba(0,0,0,0.45); color: rgba(255,255,255,0.6); cursor: pointer; opacity: 0; transition: opacity 0.12s ease; padding: 0; z-index: 2; }
       .pl-ultra-copy svg { width: 11px; height: 11px; stroke: currentColor; fill: none; }
       .pl-ultra-card:hover .pl-ultra-copy { opacity: 1; }
