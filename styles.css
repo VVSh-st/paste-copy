@@ -1521,7 +1521,8 @@ textarea.block-textarea:focus {
 #inline-hint {
   position: fixed; pointer-events: none; user-select: none;
   z-index: var(--z-hint); display: none; white-space: pre;
-  background: transparent; color: rgba(176,188,207,0.35);
+  background: rgba(30,40,55,0.85); color: rgba(176,188,207,0.7);
+  padding: 1px 3px; border-radius: 3px;
 }
 
 
