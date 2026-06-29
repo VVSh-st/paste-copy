@@ -277,7 +277,11 @@
     };
 
     state.items.unshift(item);
-    state.items = state.items.slice(0, MAX_ITEMS);
+    if (state.items.length > MAX_ITEMS) {
+      const pinned = state.items.filter(x => x.pinned);
+      const rest = state.items.filter(x => !x.pinned).slice(0, Math.max(0, MAX_ITEMS - pinned.length));
+      state.items = [...pinned, ...rest];
+    }
     saveState();
     renderPanelList();
     maybeSuggestSnippet(item);
@@ -614,9 +618,11 @@
     });
 
     const search = panel.querySelector('.pl-search');
+    let searchTimer = null;
     search.addEventListener('input', () => {
       activeQuery = search.value;
-      renderPanelList();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderPanelList, 120);
     });
 
     renderFilters();
