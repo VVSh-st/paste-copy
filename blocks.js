@@ -820,6 +820,38 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         });
       });
 
+      let _groomTipEl = null;
+      let _groomTipTimer = null;
+      function _groomShowTip(e) {
+        const text = e.target.closest('[data-groom]')?.getAttribute('title');
+        if (!text) return;
+        e.target.closest('[data-groom]').removeAttribute('title');
+        e.target.closest('[data-groom]').dataset.tipText = text;
+        _groomTipTimer = setTimeout(() => {
+          if (!_groomTipEl) {
+            _groomTipEl = document.createElement('div');
+            _groomTipEl.className = 'groom-custom-tip';
+            document.body.appendChild(_groomTipEl);
+          }
+          _groomTipEl.textContent = text;
+          _groomTipEl.style.display = 'block';
+          const rect = e.target.closest('[data-groom]').getBoundingClientRect();
+          _groomTipEl.style.left = (rect.right + 8) + 'px';
+          _groomTipEl.style.top = rect.top + 'px';
+        }, 1800);
+      }
+      function _groomHideTip(e) {
+        clearTimeout(_groomTipTimer);
+        if (_groomTipEl) _groomTipEl.style.display = 'none';
+        const btn = e.target.closest('[data-groom]');
+        if (btn?.dataset.tipText) {
+          btn.setAttribute('title', btn.dataset.tipText);
+          delete btn.dataset.tipText;
+        }
+      }
+      groomMenu.addEventListener('mouseenter', _groomShowTip, true);
+      groomMenu.addEventListener('mouseleave', _groomHideTip, true);
+
       groomDd.appendChild(groomTrigger);
       groomDd.appendChild(groomMenu);
       actions.appendChild(groomDd);

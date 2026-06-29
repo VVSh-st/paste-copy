@@ -2494,6 +2494,28 @@ textarea.llm-bro-processing {
 .llm-groom-menu::-webkit-scrollbar { width: 4px; }
 .llm-groom-menu::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+.groom-custom-tip {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg1);
+  color: var(--text1);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  max-width: 280px;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  white-space: normal;
+  animation: tipFadeIn 0.15s ease;
+}
+@keyframes tipFadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: none; }
+}
+
 .llm-groom-diff-row {
   display: flex;
   align-items: center;
