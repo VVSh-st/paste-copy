@@ -80,6 +80,9 @@
   let suppressTriggerUntil = 0;
   let paletteOutsideClickBlockedUntil = 0;
   let installed = false;
+  let mirrorEl = null;
+  let mirrorBefore = null;
+  let mirrorMarker = null;
 
   function loadState() {
     try {
@@ -1411,41 +1414,44 @@
       const pl = parseFloat(cs.paddingLeft) || 0;
       const pr = parseFloat(cs.paddingRight) || 0;
       const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.4;
-      const mirror = document.createElement('div');
-      [
-        'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-        'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
-        'lineHeight', 'textTransform', 'textIndent', 'wordBreak', 'overflowWrap', 'tabSize'
-      ].forEach(prop => { mirror.style[prop] = cs[prop]; });
-      mirror.style.boxSizing = cs.boxSizing || 'content-box';
-      mirror.style.position = 'absolute';
-      mirror.style.visibility = 'hidden';
-      mirror.style.pointerEvents = 'none';
-      mirror.style.whiteSpace = 'pre-wrap';
-      mirror.style.wordWrap = 'break-word';
-      mirror.style.top = '-9999px';
-      mirror.style.left = '-9999px';
+
+      if (!mirrorEl) {
+        mirrorEl = document.createElement('div');
+        mirrorEl.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;white-space:pre-wrap;word-wrap:break-word;top:-9999px;left:-9999px;';
+        mirrorBefore = document.createElement('span');
+        mirrorMarker = document.createElement('span');
+        mirrorEl.append(mirrorBefore, mirrorMarker);
+        document.body.appendChild(mirrorEl);
+      }
+
+      const sameEl = mirrorEl._lastEl === el;
+      if (!sameEl) {
+        const props = [
+          'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+          'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+          'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
+          'lineHeight', 'textTransform', 'textIndent', 'wordBreak', 'overflowWrap', 'tabSize'
+        ];
+        props.forEach(prop => { mirrorEl.style[prop] = cs[prop]; });
+        mirrorEl.style.boxSizing = cs.boxSizing || 'content-box';
+        mirrorEl._lastEl = el;
+      }
+
       const bl = parseFloat(cs.borderLeftWidth) || 0;
       const br = parseFloat(cs.borderRightWidth) || 0;
       const mirrorWidth = cs.boxSizing === 'border-box'
         ? el.clientWidth + bl + br
         : el.clientWidth - pl - pr;
-      mirror.style.width = Math.max(20, mirrorWidth) + 'px';
+      mirrorEl.style.width = Math.max(20, mirrorWidth) + 'px';
 
-      const before = document.createElement('span');
-      before.textContent = String(el.value || '').slice(0, pos);
-      const marker = document.createElement('span');
-      marker.textContent = String(el.value || '').slice(pos, pos + 1) || '.';
-      mirror.append(before, marker);
-      document.body.appendChild(mirror);
+      mirrorBefore.textContent = String(el.value || '').slice(0, pos);
+      mirrorMarker.textContent = String(el.value || '').slice(pos, pos + 1) || '.';
 
       const elRect = el.getBoundingClientRect();
-      const mirrorRect = mirror.getBoundingClientRect();
-      const markerRect = marker.getBoundingClientRect();
+      const mirrorRect = mirrorEl.getBoundingClientRect();
+      const markerRect = mirrorMarker.getBoundingClientRect();
       const left = markerRect.left + (elRect.left - mirrorRect.left) - el.scrollLeft;
       const top = markerRect.top + (elRect.top - mirrorRect.top) - el.scrollTop;
-      mirror.remove();
       return { left, top, lineHeight: lh };
     } catch (_) {
       return null;
