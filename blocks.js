@@ -1428,7 +1428,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         kind: window.PromptLoom?.classify?.(val) || ''
       });
 
-      _autoScrollToCursor(ta);
+      requestAnimationFrame(() => _autoScrollToCursor(ta));
 
     });
 
