@@ -120,6 +120,7 @@ const Tabs = (() => {
 
     bar.innerHTML = '';
     const active = State.getActive();
+    let _dragTabId = null;
 
     State.getAll().forEach(tab => {
       const isActive = !!(active && tab.id === active.id);
@@ -233,7 +234,6 @@ const Tabs = (() => {
       };
 
       // --- Drag & Drop для перетаскивания вкладок ---
-      let _dragTabId = null;
       el.ondragstart = e => {
         _dragTabId = tab.id;
         el.classList.add('tab-dragging');
