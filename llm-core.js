@@ -632,9 +632,11 @@ window.LLMCore = (() => {
           if (useStream) result = profile.provider === 'ollama' ? await _parseNDJSON(res, opts.onChunk) : await _parseSSE(res, profile.provider, opts.onChunk);
           else {
             const json = await res.json();
-            const msg = json?.choices?.[0]?.message;
             result = _extractContent(profile.provider, json);
-            if (!String(result ?? '').trim()) console.warn('[LLM] Non-stream пустой:', { feature: opts.featureTag, provider: profile.provider, model: profile.model, contentLen: String(msg?.content ?? '').length, contentVal: String(msg?.content ?? '').slice(0, 100), hasReasoning: 'reasoning_content' in (msg ?? {}), reasoningLen: String(msg?.reasoning_content ?? '').length, finish: json?.choices?.[0]?.finish_reason, raw: JSON.stringify(json ?? {}).slice(0, 500) });
+            if (!String(result ?? '').trim()) {
+              console.warn('[LLM] Non-stream пустой:', { feature: opts.featureTag, provider: profile.provider, model: profile.model, finish: json?.choices?.[0]?.finish_reason, raw: JSON.stringify(json ?? {}).slice(0, 500) });
+              if (retries-- > 0) { await _sleep(1000); continue; }
+            }
             opts.onChunk?.(result);
           }
           lastError = null;
