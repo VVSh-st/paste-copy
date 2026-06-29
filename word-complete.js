@@ -778,8 +778,10 @@ const InlineHint = (() => {
   }, true);
   document.addEventListener('selectionchange', () => {
     if (!_visible || !activeTa) return;
-    const afterChar = activeTa.value.charAt(activeTa.selectionStart);
-    if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) hide();
+    const pos = activeTa.selectionStart;
+    const afterChar = activeTa.value.charAt(pos);
+    const beforeChar = activeTa.value.charAt(pos - 1);
+    if ((afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) || beforeChar === ' ') hide();
   });
   window.addEventListener('resize', hide, { passive: true });
   window.addEventListener('scroll', () => { if (_visible) _reposition(); }, { passive: true, capture: true });
@@ -1053,7 +1055,9 @@ const WordComplete = (() => {
     if (isBadCompletionContext(before)) { InlineHint.hide(); return; }
 
     const afterChar = ta.value.charAt(ta.selectionStart);
+    const beforeChar = before.charAt(before.length - 1);
     if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) { InlineHint.hide(); return; }
+    if (beforeChar === ' ') { InlineHint.hide(); return; }
 
     const { currentWord, prevWord } = getContext(ta);
 
