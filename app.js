@@ -590,7 +590,7 @@
       }, 500);
     });
     btn.addEventListener('mouseup', () => clearTimeout(longTimer));
-    btn.addEventListener('mouseleave', () => clearTimeout(longTimer));
+    document.addEventListener('mouseup', () => clearTimeout(longTimer));
 
     btn.addEventListener('click', e => {
       if (_colDropJustOpened) { _colDropJustOpened = false; return; }
