@@ -783,9 +783,9 @@
     card.setAttribute('role', 'listitem');
     card.setAttribute('tabindex', '0');
 
-    const wrappedText = ultraWrapText(item.text, 20);
-    const lines = wrappedText.split('\n');
-    const displayText = lines.length > 3 ? lines.slice(0, 3).join('\n') + '...' : wrappedText;
+    const raw = String(item.text || '').replace(/\t/g, '  ').replace(/\s+/g, ' ').trim();
+    const lines = raw.split('\n');
+    const displayText = lines.length > 3 ? lines.slice(0, 3).join('\n') + '...' : lines.join('\n');
     const clipped = lines.length > 3;
     const textEl = document.createElement('div');
     textEl.className = 'pl-ultra-text';
@@ -2093,7 +2093,7 @@
       #prompt-loom-panel.ultra-light .pl-list::-webkit-scrollbar { display: none; }
       .pl-ultra-card { padding: 4px 5px; border-radius: 6px; cursor: pointer; position: relative; overflow: hidden; min-height: 0; }
       .pl-ultra-card:hover { transform: none; }
-      .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre; overflow: clip; max-height: calc(1.35em * 3 + 2px); word-break: normal; letter-spacing: -0.01em; }
+      .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre-wrap; overflow: clip; max-height: calc(1.35em * 3 + 2px); word-break: break-all; overflow-wrap: anywhere; letter-spacing: -0.01em; }
       .pl-ultra-copy { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; border: none; background: rgba(0,0,0,0.45); color: rgba(255,255,255,0.6); cursor: pointer; opacity: 0; transition: opacity 0.12s ease; padding: 0; z-index: 2; }
       .pl-ultra-copy svg { width: 11px; height: 11px; stroke: currentColor; fill: none; }
       .pl-ultra-card:hover .pl-ultra-copy { opacity: 1; }
