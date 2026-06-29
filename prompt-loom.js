@@ -736,25 +736,49 @@
   }
 
   function ultraWrapText(text, maxChars) {
-    const raw = String(text || '').replace(/\t/g, '  ').trim();
-    const lines = raw.split('\n');
+    const raw = String(text || '').replace(/\t/g, '  ').replace(/\s+/g, ' ').trim();
+    const words = raw.split(' ');
     const result = [];
-    for (const line of lines) {
-      if (!line) { result.push(''); continue; }
-      if (line.length <= maxChars) { result.push(line); continue; }
-      let rem = line;
-      while (rem.length > maxChars) {
-        let brk = rem.lastIndexOf(' ', maxChars);
-        if (brk <= 0) {
-          brk = maxChars - 1;
-          result.push(rem.slice(0, brk) + '-');
-          rem = rem.slice(brk);
+    let curLine = '';
+    function flushLine(line) {
+      if (line.length < maxChars) result.push(line + ' '.repeat(maxChars - line.length));
+      else result.push(line);
+    }
+    for (const word of words) {
+      if (!word) continue;
+      if (!curLine) {
+        if (word.length > maxChars) {
+          let rem = word;
+          while (rem.length > maxChars) {
+            result.push(rem.slice(0, maxChars - 1) + '-');
+            rem = rem.slice(maxChars - 1);
+          }
+          curLine = rem;
         } else {
-          result.push(rem.slice(0, brk));
-          rem = rem.slice(brk + 1);
+          curLine = word;
+        }
+        continue;
+      }
+      const trial = curLine + ' ' + word;
+      if (trial.length <= maxChars) {
+        curLine = trial;
+      } else {
+        flushLine(curLine);
+        if (word.length > maxChars) {
+          let rem = word;
+          while (rem.length > maxChars) {
+            result.push(rem.slice(0, maxChars - 1) + '-');
+            rem = rem.slice(maxChars - 1);
+          }
+          curLine = rem;
+        } else {
+          curLine = word;
         }
       }
-      if (rem) result.push(rem);
+    }
+    if (curLine) {
+      if (curLine.length < maxChars) result.push(curLine);
+      else result.push(curLine);
     }
     return result.join('\n');
   }
