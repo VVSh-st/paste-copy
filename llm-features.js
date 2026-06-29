@@ -273,6 +273,7 @@ window.LLMFeatures = (() => {
   let _thesaurusLeadSpace = '';
   let _thesaurusTrailSpace = '';
   let _thesaurusCloseOnClick = null;
+  let _thesaurusCloseOnContext = null;
 
   function _closeThesaurus() {
     if (_thesaurusPopup) { _thesaurusPopup.remove(); _thesaurusPopup = null; }
@@ -283,6 +284,10 @@ window.LLMFeatures = (() => {
     if (_thesaurusCloseOnClick) {
       document.removeEventListener('click', _thesaurusCloseOnClick, true);
       _thesaurusCloseOnClick = null;
+    }
+    if (_thesaurusCloseOnContext) {
+      document.removeEventListener('contextmenu', _thesaurusCloseOnContext, true);
+      _thesaurusCloseOnContext = null;
     }
   }
 
@@ -358,6 +363,14 @@ window.LLMFeatures = (() => {
       }
     };
     setTimeout(() => document.addEventListener('click', _thesaurusCloseOnClick, true), 0);
+
+    _thesaurusCloseOnContext = (e) => {
+      if (!popup.contains(e.target)) {
+        e.preventDefault();
+        _closeThesaurus();
+      }
+    };
+    setTimeout(() => document.addEventListener('contextmenu', _thesaurusCloseOnContext, true), 0);
   }
 
   function _showThesaurusPopup(ta) {
@@ -388,6 +401,14 @@ window.LLMFeatures = (() => {
       }
     };
     setTimeout(() => document.addEventListener('click', _thesaurusCloseOnClick), 0);
+
+    _thesaurusCloseOnContext = (e) => {
+      if (!popup.contains(e.target)) {
+        e.preventDefault();
+        _closeThesaurus();
+      }
+    };
+    setTimeout(() => document.addEventListener('contextmenu', _thesaurusCloseOnContext, true), 0);
   }
 
   async function _thesaurusAtCursor() {
