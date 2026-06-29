@@ -1388,10 +1388,10 @@ window.LLMFeatures = (() => {
     MiniChat.open();
     MiniChat.addSystemMessage('📊 ' + (labels[modeAlias] || modeAlias) + '...');
     MiniChat.pushToHistory('system', '📊 ' + (labels[modeAlias] || modeAlias) + '...');
-    MiniChat.pushToHistory('user', text);
     _showThinking('◕ Обрабатываю...');
 
     const isSummary = modeAlias === 'summary';
+    const targetSessionIdx = MiniChat.getSessionIndex();
 
     _LLMCore.request({
       messages:   [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
@@ -1401,14 +1401,17 @@ window.LLMFeatures = (() => {
       onChunk:    isSummary ? undefined : chunk => MiniChat.appendChunk(chunk),
       featureTag: 'groom',
     }).then(result => {
+      MiniChat.ensureSession(targetSessionIdx);
       if (isSummary && String(result ?? '').trim()) MiniChat.appendChunk(result);
       MiniChat.finalizeLastMessage(result);
       if (String(result ?? '').trim()) {
         MiniChat.pushToHistory('assistant', result);
         window.PromptLoom?.record?.(result, 'llm', { via: 'groom-chat', mode, blockId });
+      } else {
+        MiniChat.pushToHistory('system', 'LLM вернул пустой ответ');
       }
-      if (!String(result ?? '').trim()) MiniChat.addSystemMessage('LLM вернул пустой ответ');
     }).catch(e => {
+      MiniChat.ensureSession(targetSessionIdx);
       if (e.name !== 'AbortError') {
         MiniChat.addSystemMessage('Ошибка: ' + e.message);
         MiniChat.pushToHistory('system', 'Ошибка: ' + e.message);
@@ -1561,8 +1564,10 @@ window.LLMFeatures = (() => {
 
       el.appendChild(card);
       requestAnimationFrame(() => {
-        card.querySelectorAll('[data-bar]').forEach(b => {
-          b.style.width = b.dataset.bar;
+        requestAnimationFrame(() => {
+          card.querySelectorAll('[data-bar]').forEach(b => {
+            b.style.width = b.dataset.bar;
+          });
         });
       });
       el.scrollTop = el.scrollHeight;
@@ -3416,8 +3421,10 @@ const AutoPoet = (() => {
       card.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px"><span>📊 Оценка промпта</span><span style="font-size:18px;font-weight:700;color:${avgColor}">${avgStr}</span><span style="font-size:11px;color:var(--text3)">/ 10</span></div>${barsHtml}${summaryHtml}`;
       el.appendChild(card);
       requestAnimationFrame(() => {
-        card.querySelectorAll('[data-bar]').forEach(b => {
-          b.style.width = b.dataset.bar;
+        requestAnimationFrame(() => {
+          card.querySelectorAll('[data-bar]').forEach(b => {
+            b.style.width = b.dataset.bar;
+          });
         });
       });
       if (!_noAutoScroll) el.scrollTop = el.scrollHeight;
