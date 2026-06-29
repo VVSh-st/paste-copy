@@ -444,12 +444,23 @@ const Preview = (() => {
       ?.classList.toggle('active-btn', State.getLayout().previewWrap === false);
   }
 
+  function _fixUnclosedBackticks(text) {
+    return text.split('\n').map(line => {
+      let count = 0;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '`' && (i === 0 || line[i - 1] !== '\\')) count++;
+      }
+      if (count % 2 !== 0) line += '`';
+      return line;
+    }).join('\n');
+  }
+
   function render() {
     let t = '';
     try { t = build(); } catch (err) {
       console.error('[Preview.render] build() threw:', err);
       if (textEl) textEl.textContent = '[Preview error — см. консоль]';
-      _syncPanelButtons(); // держим кнопки в sync даже при ошибке
+      _syncPanelButtons();
       return;
     }
 
@@ -463,6 +474,8 @@ const Preview = (() => {
     }
 
     const mdMode = getMdMode();
+    const contentEl = document.getElementById('preview-content');
+    const prevScrollPct = contentEl ? contentEl.scrollTop / Math.max(1, contentEl.scrollHeight - contentEl.clientHeight) : 0;
 
     if (mdMode) {
       if (textEl) textEl.style.display = 'none';
@@ -471,7 +484,7 @@ const Preview = (() => {
         try {
           if (typeof marked !== 'undefined') {
             const safe = t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            mdEl.innerHTML = _sanitizeMarkdownHtml(marked.parse(safe));
+            mdEl.innerHTML = _sanitizeMarkdownHtml(marked.parse(_fixUnclosedBackticks(safe)));
           } else {
             mdEl.textContent = t;
           }
@@ -484,6 +497,12 @@ const Preview = (() => {
       if (mdEl)   mdEl.style.display   = 'none';
       if (textEl) textEl.style.display = '';
       if (textEl) textEl.textContent   = t;
+    }
+
+    if (contentEl) {
+      requestAnimationFrame(() => {
+        contentEl.scrollTop = prevScrollPct * Math.max(1, contentEl.scrollHeight - contentEl.clientHeight);
+      });
     }
 
     applyFontSize();
