@@ -2134,7 +2134,7 @@
       .pl-filters { flex-wrap: wrap; }
       .pl-chip { border: 1px solid var(--border); background: var(--surface); color: var(--text2); border-radius: 999px; padding: 4px 9px; font-size: 11px; cursor: pointer; transition: var(--trans); }
       .pl-chip:hover, .pl-chip.active { color: var(--text0); background: rgba(79,142,247,.16); border-color: rgba(79,142,247,.42); }
-      .pl-list { overflow: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; padding-right: 2px; }
+      .pl-list { overflow: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; padding-right: 2px; }
       .pl-empty { color: var(--text3); text-align: center; padding: 28px 8px; }
       .pl-section-title { display: flex; align-items: center; gap: 7px; margin: 2px 2px -2px; color: var(--text3); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
       .pl-section-title::before, .pl-section-title::after { content: ''; height: 1px; flex: 1; background: var(--border); opacity: .7; }
