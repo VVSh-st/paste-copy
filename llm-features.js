@@ -2887,6 +2887,12 @@ const AutoPoet = (() => {
       window.addEventListener('resize', () => {
         if (_ghost?.ta && _ghost?.text) _showGhost(_ghost.ta, _ghost.text, _ghost.ta.selectionStart);
       }, { passive: true });
+      document.addEventListener('selectionchange', () => {
+        if (_ghost?.ta) {
+          const afterChar = _ghost.ta.value.charAt(_ghost.ta.selectionStart);
+          if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) _clearGhost();
+        }
+      });
     }
   }
 

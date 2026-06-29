@@ -776,6 +776,11 @@ const InlineHint = (() => {
   document.addEventListener('focusout', e => {
     if (e.target === activeTa) hide();
   }, true);
+  document.addEventListener('selectionchange', () => {
+    if (!_visible || !activeTa) return;
+    const afterChar = activeTa.value.charAt(activeTa.selectionStart);
+    if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) hide();
+  });
   window.addEventListener('resize', hide, { passive: true });
   window.addEventListener('scroll', () => { if (_visible) _reposition(); }, { passive: true, capture: true });
 
