@@ -775,7 +775,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         `<button type="button" data-groom="summary">${_iconSummary} Резюме вкладки</button>` +
         `<button type="button" data-groom="variations">${_svgIcon('<path d="M4 4h8M4 8h8M4 12h8"/><circle cx="13" cy="4" r="1"/><circle cx="13" cy="8" r="1"/><circle cx="13" cy="12" r="1"/>')} 3 варианта</button>` +
         `<button type="button" data-groom="grade">${_svgIcon('<path d="M4 12V8M7 12V5M10 12V7M13 12V3"/><path d="M2 14h12" stroke-dasharray="2 2"/>')} Оценка промпта</button>` +
-        `<button type="button" data-groom="fill-placeholders">${_iconFill} Заполнить {{Ilm:...}}</button>` +
+        `<button type="button" data-groom="fill-placeholders">${_iconFill} Заполнить {{llm:...}}</button>` +
         `<div class="menu-sep"></div>` +
         `<div class="menu-section-label">ТОН и СОКРАЩЕНИЕ</div>` +
         `<button type="button" data-groom="expand">${_iconExpand} Расширить</button>` +

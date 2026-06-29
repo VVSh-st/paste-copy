@@ -1689,7 +1689,7 @@ window.LLMFeatures = (() => {
       if (!t) return;
       if (!_guard()) return;
 
-      const RE   = /\{\{llm:\s*([^}]+)\}\}/g;
+      const RE   = /\{\{llm:\s*([^}]+)\}\}/gi;
       const jobs = [];
 
       for (const block of t.blocks ?? []) {
