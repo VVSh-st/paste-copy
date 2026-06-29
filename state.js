@@ -360,8 +360,8 @@ const State = (() => {
   function newTab(name) {
     if (!name) {
       let n = 1;
-      while (tabs.some(t => t.name === `Промпт ${n}`)) n++;
-      name = `Промпт ${n}`;
+      while (tabs.some(t => t.name === `Project ${n}`)) n++;
+      name = `Project ${n}`;
     }
     const tab = {
       id: uid(), name, separator: '\n\n',
@@ -393,6 +393,15 @@ const State = (() => {
   function renameTab(id, name) {
     const t = tabs.find(t => t.id === id);
     if (t && name && name.trim()) { t.name = name.trim(); emit(); }
+  }
+
+  function moveTab(fromId, toId) {
+    const fromIdx = tabs.findIndex(t => t.id === fromId);
+    const toIdx   = tabs.findIndex(t => t.id === toId);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+    const [moved] = tabs.splice(fromIdx, 1);
+    tabs.splice(toIdx, 0, moved);
+    emit();
   }
 
   function addBlock(type, targetGroupId) {
@@ -642,7 +651,7 @@ const State = (() => {
     try {
       tabs = data.tabs.map(t => ({
         id:             t.id || uid(),
-        name:           t.name || 'Промпт',
+        name:           t.name || 'Project',
         separator:      t.separator ?? '\n\n',
         blocks:         migrate(t.blocks || []),
         history:        [],
@@ -898,7 +907,7 @@ const State = (() => {
 
   return {
     newTab, addBlock, makeBlock, findBlock, removeBlock,
-    getActive, getAll, setActive, closeTab, renameTab,
+    getActive, getAll, setActive, closeTab, renameTab, moveTab,
     undo, redo, canUndo, canRedo,
     blockSnapshot, blockUndo, blockRedo, canBlockUndo, canBlockRedo,
     saveNamedSnapshot, restoreNamedSnapshot, deleteNamedSnapshot, getNamedSnapshots,

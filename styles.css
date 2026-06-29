@@ -111,6 +111,8 @@ body {
   transition: color var(--trans), transform var(--trans);
 }
 .tab-add:hover { color: var(--accent); transform: scale(1.15); }
+.tab-dragging { opacity: 0.4; }
+.tab-drag-over { border-left: 2px solid var(--accent); padding-left: 11px; }
 
 /* ===== TOOLBAR ===== */
 #toolbar {
@@ -1377,7 +1379,8 @@ textarea.block-textarea:focus {
 .intelligence-diagnostics-row-actions button:hover,
 .intelligence-diagnostics-row-actions button:focus-visible { background: rgba(79,142,247,0.2); outline: none; }
 .intelligence-diagnostics-empty { color: var(--text2); font-size: 12px; padding: 8px 0; }
-#preview-content { flex: 1; padding: 0 12px 12px; overflow: auto; min-height: 0; }
+#preview-content { flex: 1; padding: 0 12px 12px; overflow: auto; min-height: 0; scrollbar-width: none; }
+#preview-content::-webkit-scrollbar { display: none; }
 #preview-text {
   background: var(--bg0); padding: 13px 14px; border-radius: var(--radius-sm);
   white-space: pre-wrap; overflow-wrap: break-word;

@@ -130,6 +130,7 @@ const Tabs = (() => {
       el.setAttribute('role', 'tab');
       el.setAttribute('aria-selected', String(isActive));
       el.tabIndex = isActive ? 0 : -1;
+      el.draggable = true;
 
       // --- Название вкладки ---
       const name = document.createElement('span');
@@ -229,6 +230,35 @@ const Tabs = (() => {
       };
       el.onmousedown = e => {
         if (e.button === 1) { e.preventDefault(); State.closeTab(tab.id); }
+      };
+
+      // --- Drag & Drop для перетаскивания вкладок ---
+      let _dragTabId = null;
+      el.ondragstart = e => {
+        _dragTabId = tab.id;
+        el.classList.add('tab-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', tab.id);
+      };
+      el.ondragend = () => {
+        el.classList.remove('tab-dragging');
+        bar.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-drag-over'));
+        _dragTabId = null;
+      };
+      el.ondragover = e => {
+        if (!_dragTabId || _dragTabId === tab.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        bar.querySelectorAll('.tab').forEach(t => t.classList.remove('tab-drag-over'));
+        el.classList.add('tab-drag-over');
+      };
+      el.ondrop = e => {
+        e.preventDefault();
+        el.classList.remove('tab-drag-over');
+        if (_dragTabId && _dragTabId !== tab.id) {
+          State.moveTab(_dragTabId, tab.id);
+        }
+        _dragTabId = null;
       };
 
       el.appendChild(name);
@@ -722,6 +752,8 @@ const Preview = (() => {
   }
 
   let _lastActiveId = null;
+  let _structIO = null;
+  let _structVisibleSet = new Set();
 
   function _highlightActiveByScroll() {
     if (!structBody) return;
@@ -735,31 +767,61 @@ const Preview = (() => {
     if (!items.length) return;
 
     const scrollMax = container.scrollHeight - container.clientHeight;
-    const atBottom = scrollMax > 0 && container.scrollTop + container.clientHeight >= container.scrollHeight - 2;
     const ratio = scrollMax > 0 ? Math.min(1, Math.max(0, container.scrollTop / scrollMax)) : 0;
 
-    const lastItem = items[items.length - 1];
     const totalH = structBody.scrollHeight;
     const bgH = items[0].offsetHeight;
-    const targetY = atBottom ? lastItem.offsetTop : ratio * (totalH - bgH);
+    const targetY = ratio * (totalH - bgH);
 
     if (_structActiveBg) {
       _structActiveBg.style.top = targetY + 'px';
       _structActiveBg.style.height = bgH + 'px';
     }
 
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    items.forEach((item, i) => {
-      const dist = Math.abs(item.offsetTop - targetY);
-      if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-    });
-
-    const newName = items[bestIdx].querySelector('.structure-item-name')?.textContent?.trim() || '';
-    if (newName !== _lastActiveId) {
-      _lastActiveId = newName;
-      items.forEach((i, idx) => i.classList.toggle('active', idx === bestIdx));
+    if (!isMd || !mdEl) {
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      items.forEach((item, i) => {
+        const dist = Math.abs(item.offsetTop - targetY);
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+      });
+      const newName = items[bestIdx].querySelector('.structure-item-name')?.textContent?.trim() || '';
+      if (newName !== _lastActiveId) {
+        _lastActiveId = newName;
+        items.forEach((i, idx) => i.classList.toggle('active', idx === bestIdx));
+      }
+    } else {
+      items.forEach(item => {
+        const nameEl = item.querySelector('.structure-item-name');
+        const name = nameEl?.textContent?.trim() || '';
+        item.classList.toggle('active', _structVisibleSet.has(name));
+      });
     }
+  }
+
+  function _setupStructIO() {
+    if (_structIO) { _structIO.disconnect(); _structIO = null; }
+    _structVisibleSet.clear();
+    if (!getMdMode() || !mdEl) return;
+    const container = mdEl.closest('#preview-content');
+    if (!container) return;
+
+    const headings = mdEl.querySelectorAll('h1, h2, h3');
+    if (!headings.length) return;
+
+    _structIO = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const hText = e.target.textContent.replace(/^\s*#+\s*/, '').trim();
+        if (e.isIntersecting) _structVisibleSet.add(hText);
+        else _structVisibleSet.delete(hText);
+      }
+      _highlightActiveByScroll();
+    }, { root: container, threshold: 0 });
+
+    headings.forEach(h => {
+      if (h.closest('pre, code')) return;
+      _structIO.observe(h);
+    });
   }
 
   function _onPreviewScroll() {
@@ -775,6 +837,7 @@ const Preview = (() => {
     if (!container) return;
     container.removeEventListener('scroll', _onPreviewScroll);
     container.addEventListener('scroll', _onPreviewScroll, { passive: true });
+    _setupStructIO();
     _highlightActiveByScroll();
   }
 
@@ -874,6 +937,80 @@ const Preview = (() => {
     }
   }
 
+  function _getPreviewClickBlockId(e) {
+    const items = [...structBody.querySelectorAll('.structure-item')];
+    if (!items.length) return null;
+
+    const target = e.target;
+    const isMd = getMdMode();
+
+    if (isMd && mdEl && mdEl.contains(target)) {
+      const allH1 = [...mdEl.querySelectorAll('h1')].filter(h => !h.closest('pre, code'));
+      let node = target;
+      while (node && node !== mdEl) {
+        if (/^H[1-3]$/.test(node.tagName) && !node.closest('pre, code')) {
+          let h = node;
+          while (h && h.tagName !== 'H1' && h !== mdEl) h = h.previousElementSibling || h.parentElement;
+          if (h && h.tagName === 'H1') {
+            const idx = allH1.indexOf(h);
+            if (idx >= 0 && idx < items.length) return items[idx].dataset.blockId;
+          }
+        }
+        let sib = node.previousElementSibling;
+        while (sib) {
+          if (/^H[1-3]$/.test(sib.tagName) && !sib.closest('pre, code')) {
+            let h = sib;
+            while (h && h.tagName !== 'H1' && h !== mdEl) h = h.previousElementSibling || h.parentElement;
+            if (h && h.tagName === 'H1') {
+              const idx = allH1.indexOf(h);
+              if (idx >= 0 && idx < items.length) return items[idx].dataset.blockId;
+            }
+          }
+          sib = sib.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+      return items[0]?.dataset.blockId || null;
+    }
+
+    if (!isMd && textEl && textEl.contains(target)) {
+      const clickY = e.clientY;
+      let bestItem = null;
+      let bestDist = Infinity;
+      for (const item of items) {
+        const rect = item.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        const dist = Math.abs(clickY - mid);
+        if (dist < bestDist) { bestDist = dist; bestItem = item; }
+      }
+      return bestItem?.dataset.blockId || null;
+    }
+
+    return null;
+  }
+
+  function _initPreviewClickToBlock() {
+    const previewContainer = document.getElementById('preview-content');
+    if (!previewContainer) return;
+    previewContainer.addEventListener('click', (e) => {
+      if (e.target.closest('.structure-menu')) return;
+      const blockId = _getPreviewClickBlockId(e);
+      if (!blockId) return;
+      const el = document.querySelector(`.block[data-id="${blockId}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const ta = el.querySelector('textarea.block-textarea, textarea');
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(0, 0);
+        ta.scrollTop = 0;
+      }
+      panel.classList.add('collapsed');
+      const btn = document.getElementById('prev-toggle');
+      if (btn) btn.textContent = '▲';
+    }, false);
+  }
+
   function renderStructureMenu() {
     if (!_structVisible) return;
     _buildMenu();
@@ -881,6 +1018,7 @@ const Preview = (() => {
   }
 
   _initStructMenu();
+  _initPreviewClickToBlock();
 
   return {
     render, copy, applyHeight, fontInc, fontDec,
