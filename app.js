@@ -577,10 +577,12 @@
     if (!btn || !dropdown) return;
 
     let longTimer = null;
+    let _colDropJustOpened = false;
 
     btn.addEventListener('mousedown', () => {
       longTimer = setTimeout(() => {
-        dropdown.classList.toggle('open');
+        dropdown.classList.add('open');
+        _colDropJustOpened = true;
         const count = State.getLayout().columnCount || 2;
         dropdown.querySelectorAll('[data-count]').forEach(b => {
           b.classList.toggle('active', parseInt(b.dataset.count, 10) === count);
@@ -591,7 +593,11 @@
     btn.addEventListener('mouseleave', () => clearTimeout(longTimer));
 
     btn.addEventListener('click', e => {
-      if (dropdown.classList.contains('open')) return;
+      if (_colDropJustOpened) { _colDropJustOpened = false; return; }
+      if (dropdown.classList.contains('open')) {
+        dropdown.classList.remove('open');
+        return;
+      }
       e.stopPropagation();
       const lay = State.getLayout();
       State.setLayout({ rightColHidden: !lay.rightColHidden });
@@ -614,6 +620,7 @@
     });
 
     document.addEventListener('click', e => {
+      if (_colDropJustOpened) { _colDropJustOpened = false; return; }
       if (!dropdown.contains(e.target) && e.target !== btn) {
         dropdown.classList.remove('open');
       }
