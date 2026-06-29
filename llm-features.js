@@ -271,6 +271,7 @@ window.LLMFeatures = (() => {
   let _thesaurusEnd = 0;
   let _thesaurusLeadSpace = '';
   let _thesaurusTrailSpace = '';
+  let _thesaurusCloseOnClick = null;
 
   function _closeThesaurus() {
     if (_thesaurusPopup) { _thesaurusPopup.remove(); _thesaurusPopup = null; }
@@ -278,6 +279,10 @@ window.LLMFeatures = (() => {
     _thesaurusIdx = -1;
     _thesaurusTa = null;
     document.removeEventListener('keydown', _onThesaurusKey, true);
+    if (_thesaurusCloseOnClick) {
+      document.removeEventListener('click', _thesaurusCloseOnClick, true);
+      _thesaurusCloseOnClick = null;
+    }
   }
 
   function _onThesaurusKey(e) {
@@ -339,7 +344,7 @@ window.LLMFeatures = (() => {
     document.body.appendChild(popup);
     _thesaurusPopup = popup;
     document.addEventListener('keydown', _onThesaurusKey, true);
-    const closeOnClick = (e) => {
+    _thesaurusCloseOnClick = (e) => {
       if (e.target.closest('.font-ctrl-btn[title*="Тезаурус"]')) {
         e.preventDefault();
         e.stopPropagation();
@@ -349,10 +354,9 @@ window.LLMFeatures = (() => {
       }
       if (!popup.contains(e.target)) {
         _closeThesaurus();
-        document.removeEventListener('click', closeOnClick);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeOnClick, true), 0);
+    setTimeout(() => document.addEventListener('click', _thesaurusCloseOnClick, true), 0);
   }
 
   function _showThesaurusPopup(ta) {
@@ -377,13 +381,12 @@ window.LLMFeatures = (() => {
     document.body.appendChild(popup);
     _thesaurusPopup = popup;
     document.addEventListener('keydown', _onThesaurusKey, true);
-    const closeOnClick = (e) => {
+    _thesaurusCloseOnClick = (e) => {
       if (!popup.contains(e.target)) {
         _closeThesaurus();
-        document.removeEventListener('click', closeOnClick);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeOnClick), 0);
+    setTimeout(() => document.addEventListener('click', _thesaurusCloseOnClick), 0);
   }
 
   async function _thesaurusAtCursor() {
@@ -1595,6 +1598,7 @@ window.LLMFeatures = (() => {
           featureTag: 'audit',
         });
         MiniChat.finalizeLastMessage(result);
+        if (String(result ?? '').trim()) MiniChat.pushToHistory('assistant', result);
       } catch (e) {
         if (e?.name !== 'AbortError') {
           const message = e?.message ?? 'Неизвестная ошибка';
@@ -1640,6 +1644,7 @@ window.LLMFeatures = (() => {
 
         if (result != null) {
           MiniChat.finalizeLastMessage(result);
+          if (String(result ?? '').trim()) MiniChat.pushToHistory('assistant', result);
           const toksAfter = _LLMCore.estimateTokens(result) || 0;
           const pct = toksBefore > 0 ? Math.round((1 - toksAfter / toksBefore) * 100) : 0;
           MiniChat.addSystemMessage(`Было ~${toksBefore} → стало ~${toksAfter} токенов (−${pct}%)`);
@@ -3113,6 +3118,7 @@ const AutoPoet = (() => {
     let _fontSize     = 12;
     let _sessions     = [];
     let _sessionIdx   = 0;
+    let _noAutoScroll = false;
     const STORAGE_KEY = 'llmChatSessions';
 
     const _panel  = () => document.getElementById('llm-chat-panel');
@@ -3214,8 +3220,12 @@ const AutoPoet = (() => {
       _historyIdx = -1;
       _draftInput = '';
       const el = _msgsEl();
-      if (el) el.innerHTML = '';
+      if (el) { el.innerHTML = ''; }
+      _noAutoScroll = true;
       _history.forEach(m => _appendMsg(m.role, m.content));
+      _noAutoScroll = false;
+      if (el) el.scrollTop = 0;
+      _updateScrollDownBtn();
       _updateNavButtons();
       _saveSessions();
       _inputEl()?.focus();
@@ -3237,6 +3247,7 @@ const AutoPoet = (() => {
         inputEl.value = '';
         _resizeInput();
       }
+      _updateScrollDownBtn();
       _updateNavButtons();
       _saveSessions();
       _inputEl()?.focus();
@@ -3359,7 +3370,11 @@ const AutoPoet = (() => {
       span.textContent = text;
       div.appendChild(span);
       el.appendChild(div);
-      el.scrollTop = el.scrollHeight;
+      if (role === 'assistant' && text) {
+        _addCopyButton(div, text);
+        _addTranslateButton(div, text);
+      }
+      if (!_noAutoScroll) el.scrollTop = el.scrollHeight;
       _updateScrollDownBtn();
     }
 
@@ -3396,7 +3411,7 @@ const AutoPoet = (() => {
           b.style.width = b.dataset.bar;
         });
       });
-      el.scrollTop = el.scrollHeight;
+      if (!_noAutoScroll) el.scrollTop = el.scrollHeight;
       _updateScrollDownBtn();
     }
 
