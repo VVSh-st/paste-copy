@@ -577,28 +577,28 @@
     if (!btn || !dropdown) return;
 
     let longTimer = null;
-    let _colDropJustOpened = false;
 
-    btn.addEventListener('mousedown', () => {
-      longTimer = setTimeout(() => {
-        dropdown.classList.add('open');
-        _colDropJustOpened = true;
-        const count = State.getLayout().columnCount || 2;
-        dropdown.querySelectorAll('[data-count]').forEach(b => {
-          b.classList.toggle('active', parseInt(b.dataset.count, 10) === count);
-        });
-      }, 500);
+    function openDropdown() {
+      dropdown.classList.add('open');
+      const count = State.getLayout().columnCount || 2;
+      dropdown.querySelectorAll('[data-count]').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.count, 10) === count);
+      });
+    }
+    function closeDropdown() { dropdown.classList.remove('open'); }
+    function isDropdownOpen() { return dropdown.classList.contains('open'); }
+
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      longTimer = setTimeout(openDropdown, 500);
     });
-    btn.addEventListener('mouseup', () => clearTimeout(longTimer));
-    document.addEventListener('mouseup', () => clearTimeout(longTimer));
+    btn.addEventListener('mouseup', () => {
+      if (longTimer) { clearTimeout(longTimer); longTimer = null; }
+    });
 
     btn.addEventListener('click', e => {
-      if (_colDropJustOpened) { _colDropJustOpened = false; return; }
-      if (dropdown.classList.contains('open')) {
-        dropdown.classList.remove('open');
-        return;
-      }
       e.stopPropagation();
+      if (isDropdownOpen()) { closeDropdown(); return; }
       const lay = State.getLayout();
       State.setLayout({ rightColHidden: !lay.rightColHidden });
       Blocks.syncColumnElements();
@@ -608,21 +608,21 @@
     });
 
     dropdown.querySelectorAll('[data-count]').forEach(b => {
-      b.addEventListener('click', () => {
+      b.addEventListener('click', e => {
+        e.stopPropagation();
         const count = parseInt(b.dataset.count, 10);
         State.setLayout({ columnCount: count, rightColHidden: false });
         Blocks.syncColumnElements();
         Blocks.render();
-        dropdown.classList.remove('open');
+        closeDropdown();
         btn.classList.remove('active-btn');
         scheduleSave();
       });
     });
 
-    document.addEventListener('click', e => {
-      if (_colDropJustOpened) { _colDropJustOpened = false; return; }
+    document.addEventListener('mousedown', e => {
       if (!dropdown.contains(e.target) && e.target !== btn) {
-        dropdown.classList.remove('open');
+        closeDropdown();
       }
     });
   })();
