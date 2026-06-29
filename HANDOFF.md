@@ -14,6 +14,39 @@
 
 ## Status — В РАБОТЕ
 
+### Prompt Loom Ultra Light режим
+
+**Выполнено:**
+
+1. ✅ **Настройка `panelUltraLight`** — сохраняется в localStorage
+2. ✅ **Кнопка Ultra Light** — в шапке панели, переключает режим
+3. ✅ **Взаимоисключение** — Ultra Light и Compact не включаются вместе
+4. ✅ **Узкая панель 140px** — визуальная полоска справа
+5. ✅ **Минималистичные карточки** — только текст (9.5px, 3 строки), цветной маркер слева, разный фон
+6. ✅ **Word-break: break-all** — текст заполняет ширину карточки, ломается на любом символе
+7. ✅ **Copy icon** — `position: absolute`, плавает поверх текста справа вверху при наведении
+8. ✅ **Клик по карточке** — вставляет текст в активное поле ввода
+9. ✅ **Клик по иконке** — копирует в буфер обмена
+10. ✅ **Шапка в ultra-light** — только `⌁` слева и `×` справа, кнопка выхода видна
+
+### Структура в Превью — доработка
+
+**Выполнено в этой сессии:**
+
+1. ✅ **Маркер прокрутки 0→100%** — живёт своей жизнью, плавно от scrollTop/scrollMax. Убран `atBottom` snap и привязка к позициям заголовков
+2. ✅ **Синяя подсветка видимых заголовков** — `IntersectionObserver` на `h1/h2/h3` в `#preview-content`. Заголовки в viewport → `.active` (синий), вышли → теряют синий
+3. ✅ **Клик в превью → переход к блоку** — сворачивает панель превью (`panel.classList.add('collapsed')`), скроллит к блоку, фокус textarea в начале (`setSelectionRange(0,0)` + `scrollTop=0`)
+4. ✅ **Скрыт системный скроллбар** — `scrollbar-width: none` + `::-webkit-scrollbar { display: none }` на `#preview-content`
+
+**Известные ограничения:**
+
+- При одинаковых заголовках в разных блоках клик определяет блок по позиции заголовка среди h1 — может выбрать не тот блок. В реальности маловероятный кейс.
+
+**Изменённые файлы:**
+
+- `ui.js`: `_highlightActiveByScroll()` (marкер 0-100%), `_setupStructIO()` (IntersectionObserver), `_getPreviewClickBlockId()` (DOM traversal к h1), `_initPreviewClickToBlock()` (сворачивание превью + фокус)
+- `styles.css`: `#preview-content` — `scrollbar-width: none` + webkit скрытие
+
 ### LLM-модуль: улучшения
 
 **Выполнено в этой сессии:**
@@ -37,7 +70,7 @@
    - Всегда замена (`edit`, `format`, `expand`, tone, shrink) → прямая замена
 3. ✅ **`_runGroomInChat`** — открывает MiniChat, стримит, сохраняет в `_history` через `pushToHistory()`
 4. ✅ **`pushToHistory(role, content)`** — новая функция MiniChat для сохранения внешних ответов
-5. ✅ **Grammar diff** — проверка `_alwaysDiff.includes(mode)` (原始ный mode, не alias)
+5. ✅ **Grammar diff** — проверка `_alwaysDiff.includes(mode)` (оригинальный mode, не alias)
 6. ✅ **Язык промптов** — `positive_instr` и `variations` получают `_LANG_INSTR` (отвечают на русском)
 
 ### Подсказки с навигацией
@@ -58,13 +91,18 @@
 1. ✅ **Переносы строк в мини-чате** — убран `white-space: normal` с `.llm-chat-msg.assistant`
 2. ✅ **Правый отступ** — `max-width: 88%` на assistant, `scrollbar-gutter` + кастомный скроллбар
 3. ✅ **Resize плавный** — кэширование `_resizeStartPos`/`_resizeStartRect` при mousedown, delta-расчёт
+4. ✅ **Аудит промпта + Сжать токены** — добавлен `pushToHistory('assistant', result)` в `PromptAudit.audit()` и `TokenOptimizer.compress()` (ответы теперь сохраняются в историю мини-чата)
+5. ✅ **Переключение чатов — прокрутка в начало** — `_noAutoScroll` флаг блокирует `scrollTop = scrollHeight` в `_appendMsg`/`_appendScorecardToDOM` при восстановлении сессии, затем `scrollTop = 0`
+6. ✅ **Кнопки копирования и перевода** — `_addCopyButton` и `_addTranslateButton` вызываются в `_appendMsg` для `assistant` сообщений (восстанавливаются при переключении сессий)
+7. ✅ **Кнопка "вниз" на пустом чате** — `_updateScrollDownBtn()` вызывается в `_switchSession` и `_newSession` после очистки DOM
 
 **Активные файлы:**
 
-- `llm-features.js` (~4150 строк): MiniChat (сессии, шрифт, навигация), groomBlock (роутинг), _runGroomInChat, pushToHistory
+- `ui.js` (~1970 строк): Preview (marкер 0-100%, IntersectionObserver, клик→блок), structure menu
+- `llm-features.js` (~4170 строк): MiniChat (сессии, шрифт, навигация, _noAutoScroll), groomBlock (роутинг), _runGroomInChat, pushToHistory
 - `llm-core.js` (~1880 строк): chat_system промпт (русский), visualDiff настройка, _saveGeneral/_syncGeneral
 - `text-linter.js` (~1395 строк): renderHints (кликабельные ссылки), навигация по строкам
-- `styles.css` (~5905 строк): мини-чат (кнопки, скроллбар, scorecard), font-size variable
+- `styles.css` (~5905 строк): мини-чат, structure-active-bg, scrollbar скрытие, font-size variable
 - `index.html` (~1775 строк): кнопки мини-чат, настройка visualDiff
 - `start-server.bat` — встроенный Python + fallback на системный
 - `python/` — Python 3.11.9 Embedded
@@ -88,6 +126,12 @@
 - `data-bar` атрибут + rAF — бары рендерятся после DOM-вставки для корректного paint
 - Groom роутинг: `_chatModes` / `_alwaysDiff` / `_alwaysDirect` — три категории поведения
 - Python Embedded в `python/` — .gitignore, start.bat с fallback
+- Маркер структуры: `ratio * (totalH - bgH)` — плавно 0→100%, без привязки к заголовкам
+- Подсветка заголовков: IntersectionObserver с `root: #preview-content`, `_structVisibleSet` Set
+- Клик в превью: DOM traversal от `e.target` вверх к ближайшему `h1`, сворачивание `panel.collapsed`
+- `_noAutoScroll` флаг: блокирует автоскролл в `_appendMsg`/`_appendScorecardToDOM` при восстановлении сессии
+- Кнопки перевода/копирования: добавляются в `_appendMsg` для `assistant` (а не только в `finalizeLastMessage`)
+- Ultra Light: CSS `word-break: break-all` + `overflow: clip` + `max-height: calc(1.35em * 3 + 2px)` — текст заполняет ширину, 3 строки, без JS-переноса
 
 ## Commits (последняя сессия)
 
