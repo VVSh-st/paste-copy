@@ -1343,16 +1343,18 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(tools);
 
     function _autoScrollToCursor(el) {
-      const margin = State.getLayout().textScrollMargin;
-      if (!margin) return;
+      const marginPx = (State.getLayout().textScrollMargin || 0) * 20;
+      if (!marginPx) return;
+      if (el.scrollHeight <= el.clientHeight) return;
       const textBefore = el.value.substring(0, el.selectionStart);
-      const lineNum = (textBefore.match(/\n/g) || []).length;
-      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 18;
-      const cursorY = (lineNum + 1) * lineHeight;
-      const visibleBottom = el.scrollTop + el.clientHeight;
-      const distFromBottom = visibleBottom - cursorY;
-      if (distFromBottom < margin * lineHeight) {
-        el.scrollTop = cursorY - el.clientHeight + margin * lineHeight;
+      const lines = textBefore.split('\n');
+      const lineNum = lines.length;
+      const cs = getComputedStyle(el);
+      const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+      const cursorBottom = lineNum * lineHeight;
+      const viewBottom = el.scrollTop + el.clientHeight;
+      if (cursorBottom > viewBottom - marginPx) {
+        el.scrollTop = cursorBottom - el.clientHeight + marginPx;
       }
     }
 
