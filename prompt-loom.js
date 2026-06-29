@@ -2143,6 +2143,7 @@
         border: 1px solid var(--border); border-left: 3px solid var(--pl-color); border-radius: 12px;
         background: color-mix(in srgb, var(--pl-color) 8%, transparent); padding: 8px;
         transition: border-color var(--trans), background var(--trans), transform var(--trans-fast);
+        flex-shrink: 0;
       }
       .pl-card:hover { border-color: var(--border2); transform: translateY(-1px); }
       .pl-card-top { min-width: 0; }
@@ -2188,7 +2189,7 @@
       #prompt-loom-panel.ultra-light .pl-head { justify-content: space-between; }
       #prompt-loom-panel.ultra-light .pl-list { gap: 4px; scrollbar-width: none; }
       #prompt-loom-panel.ultra-light .pl-list::-webkit-scrollbar { display: none; }
-      .pl-ultra-card { padding: 4px 5px; border-radius: 6px; cursor: pointer; position: relative; overflow: hidden; min-height: 0; }
+      .pl-ultra-card { padding: 4px 5px; border-radius: 6px; cursor: pointer; position: relative; overflow: hidden; min-height: 0; flex-shrink: 0; }
       .pl-ultra-card:hover { transform: none; }
       .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre-wrap; overflow: clip; max-height: calc(1.35em * 3 + 2px); word-break: break-all; overflow-wrap: anywhere; letter-spacing: -0.01em; }
       .pl-ultra-copy { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; border: none; background: rgba(0,0,0,0.45); color: rgba(255,255,255,0.6); cursor: pointer; opacity: 0; transition: opacity 0.12s ease; padding: 0; z-index: 2; }
