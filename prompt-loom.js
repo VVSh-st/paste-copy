@@ -602,6 +602,7 @@
     document.body.appendChild(panel);
 
     panel.querySelector('[data-pl-close]').addEventListener('click', () => closePanel(true));
+    panel.addEventListener('contextmenu', e => { e.preventDefault(); closePanel(true); });
     panel.querySelector('[data-pl-clear]').addEventListener('click', handleClearClick);
     panel.querySelector('[data-pl-max]').addEventListener('click', editMaxChars);
     panel.querySelector('[data-pl-compact]').addEventListener('click', toggleCompactPanel);
