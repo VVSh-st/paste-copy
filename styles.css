@@ -226,12 +226,19 @@ body {
   outline: 2px dashed var(--accent); outline-offset: -4px;
   border-radius: var(--radius); background: rgba(79,142,247,0.03);
 }
-#col-resizer {
-  width: 6px; cursor: col-resize; background: var(--border);
-  border-radius: 99px; margin: 0 4px; flex-shrink: 0;
+#col-resizer, .col-resizer {
+  width: 4px; cursor: col-resize; background: transparent;
+  border-radius: 99px; flex-shrink: 0;
+  transition: background var(--trans);
+  position: relative; z-index: 1;
+}
+#col-resizer::after, .col-resizer::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 1px; right: 1px;
+  background: var(--border); border-radius: 99px;
   transition: background var(--trans);
 }
-#col-resizer:hover, #col-resizer.active { background: var(--accent); }
+#col-resizer:hover::after, .col-resizer:hover::after,
+#col-resizer.active::after, .col-resizer.active::after { background: var(--accent); }
 .tb-btn-wrap { position: relative; display: inline-flex; }
 .col-count-dropdown {
   display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);

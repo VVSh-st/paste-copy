@@ -635,33 +635,48 @@
     });
   })();
 
-  /* ── Column resizer ─────────────────────────────────────────────────────*/
+  /* ── Column resizers (dynamic) ──────────────────────────────────────────*/
   (() => {
-    const resizerEl = $id('col-resizer');
     const ws = $id('workspace');
-    if (!resizerEl || !ws) return;
+    if (!ws) return;
+    let activeResizer = null;
+    let startX = 0;
+    let startWidths = [];
 
-    let dragging = false;
-
-    resizerEl.onmousedown = e => {
+    document.addEventListener('mousedown', e => {
+      const r = e.target.closest('.col-resizer');
+      if (!r) return;
       e.preventDefault();
-      dragging = true;
-      resizerEl.classList.add('active');
+      activeResizer = r;
+      startX = e.clientX;
+      const cols = ws.querySelectorAll('.column:not([style*="display: none"])');
+      startWidths = Array.from(cols).map(c => c.getBoundingClientRect().width);
+      r.classList.add('active');
       document.body.style.cursor = 'col-resize';
-    };
+    });
 
     document.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      const rect  = ws.getBoundingClientRect();
-      const ratio = Math.max(0.15, Math.min(0.85, (e.clientX - rect.left) / rect.width));
-      State.setLayout({ colRatio: ratio });
-      Blocks.applyLayout();
+      if (!activeResizer) return;
+      const cols = ws.querySelectorAll('.column:not([style*="display: none"])');
+      const colArr = Array.from(cols);
+      const resizers = ws.querySelectorAll('.col-resizer');
+      const rIdx = Array.from(resizers).indexOf(activeResizer);
+      if (rIdx < 0 || rIdx >= colArr.length - 1) return;
+      const dx = e.clientX - startX;
+      const left = colArr[rIdx];
+      const right = colArr[rIdx + 1];
+      const leftW = Math.max(80, startWidths[rIdx] + dx);
+      const rightW = Math.max(80, startWidths[rIdx + 1] - dx);
+      left.style.flex = 'none';
+      right.style.flex = 'none';
+      left.style.width = leftW + 'px';
+      right.style.width = rightW + 'px';
     });
 
     document.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      dragging = false;
-      resizerEl.classList.remove('active');
+      if (!activeResizer) return;
+      activeResizer.classList.remove('active');
+      activeResizer = null;
       document.body.style.cursor = '';
       scheduleSave();
     });

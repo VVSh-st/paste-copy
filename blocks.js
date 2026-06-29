@@ -215,13 +215,23 @@ const Blocks = (() => {
 
   const _pendingTaScrolls = [];
 
+  function _createResizer() {
+    const r = document.createElement('div');
+    r.className = 'col-resizer';
+    r.setAttribute('role', 'separator');
+    r.setAttribute('aria-orientation', 'vertical');
+    r.setAttribute('aria-label', 'Изменить ширину колонок');
+    r.tabIndex = 0;
+    return r;
+  }
+
   function syncColumnElements() {
     const lay = State.getLayout();
     const count = Math.max(2, Math.min(5, lay.columnCount || 2));
     const hide = lay.rightColHidden === true;
     const visibleCount = hide ? 1 : count;
 
-    const resizer = document.getElementById('col-resizer');
+    workspace.querySelectorAll('.col-resizer').forEach(r => r.remove());
 
     for (let i = 0; i < visibleCount; i++) {
       let col = workspace.querySelector(`.column[data-col="${i}"]`);
@@ -230,18 +240,20 @@ const Blocks = (() => {
         col.className = 'column';
         col.dataset.col = i;
         col.setAttribute('aria-label', 'Колонка ' + (i + 1));
-        workspace.insertBefore(col, resizer);
+        workspace.appendChild(col);
         _setupColumnDnD(col);
       }
       col.style.display = '';
+      workspace.appendChild(col);
+      if (i < visibleCount - 1) {
+        workspace.appendChild(_createResizer());
+      }
     }
 
     workspace.querySelectorAll('.column').forEach(col => {
       const idx = parseInt(col.dataset.col, 10);
       if (idx >= visibleCount) col.style.display = 'none';
     });
-
-    if (resizer) resizer.style.display = (visibleCount <= 1) ? 'none' : '';
   }
 
   function _doRender() {
@@ -374,7 +386,10 @@ const Blocks = (() => {
       return;
     }
     const flexVal = (1 / n).toFixed(4);
-    cols.forEach(c => { c.el.style.flex = flexVal; });
+    cols.forEach(c => {
+      c.el.style.flex = flexVal;
+      c.el.style.width = '';
+    });
   }
 
   function renderBlock(b, orderMap) {
