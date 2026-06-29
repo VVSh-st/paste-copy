@@ -1047,6 +1047,9 @@ const WordComplete = (() => {
     const before = ta.value.slice(0, ta.selectionStart);
     if (isBadCompletionContext(before)) { InlineHint.hide(); return; }
 
+    const afterChar = ta.value.charAt(ta.selectionStart);
+    if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) { InlineHint.hide(); return; }
+
     const { currentWord, prevWord } = getContext(ta);
 
     if (currentWord.length >= cfg.minLen) {

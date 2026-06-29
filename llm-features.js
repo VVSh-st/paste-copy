@@ -2905,6 +2905,8 @@ const AutoPoet = (() => {
     if (!_hasReadyProfile(cfg)) return;
 
     const cursorPos = ta.selectionStart;
+    const afterChar = ta.value.charAt(cursorPos);
+    if (afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) return;
     const before = ta.value.slice(0, cursorPos);
     const seed = _getSeed(before, cfg);
 
