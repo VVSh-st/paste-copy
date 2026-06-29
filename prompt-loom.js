@@ -29,6 +29,8 @@
     panelCompact: false,
     panelUltraLight: false,
     quickPinned: true,
+    hoverOpen: true,
+    toggleTop: null,
     ignoreSimilar: []
   };
 
@@ -477,6 +479,29 @@
       if (palette.contains(e.target) || e.target?.closest?.('[data-prompt-loom-trigger]')) return;
       closePalette();
     });
+
+    let hoverOpenTimer = null;
+    document.addEventListener('mousemove', e => {
+      const btn = document.getElementById('prompt-loom-toggle');
+      if (!btn || document.body.classList.contains('prompt-loom-open')) return;
+      const r = btn.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+      btn.classList.toggle('pl-nearby', dist < 150);
+    }, { passive: true });
+
+    document.addEventListener('mouseover', e => {
+      if (!settings.hoverOpen) return;
+      const btn = e.target?.closest?.('#prompt-loom-toggle');
+      if (!btn || document.body.classList.contains('prompt-loom-open')) return;
+      clearTimeout(hoverOpenTimer);
+      hoverOpenTimer = setTimeout(() => openPanel(true), 300);
+    });
+    document.addEventListener('mouseout', e => {
+      const btn = e.target?.closest?.('#prompt-loom-toggle');
+      if (btn) clearTimeout(hoverOpenTimer);
+    });
   }
 
   function createPanel() {
@@ -488,8 +513,51 @@
     toggle.title = 'Prompt Loom: история copy/paste';
     toggle.setAttribute('aria-label', 'Открыть Prompt Loom');
     toggle.innerHTML = iconLoom();
-    toggle.addEventListener('click', () => settings.panelOpen ? closePanel(true) : openPanel(true));
+
+    if (settings.toggleTop != null) {
+      toggle.style.top = settings.toggleTop + 'px';
+      toggle.style.setProperty('--pl-toggle-top', settings.toggleTop + 'px');
+    }
+
+    let dragOccurred = false;
+    toggle.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      const startY = e.clientY;
+      const startTop = parseFloat(toggle.style.top) || (window.innerHeight / 2 - 18);
+      dragOccurred = false;
+      const onMove = ev => {
+        if (Math.abs(ev.clientY - startY) > 5) dragOccurred = true;
+        if (!dragOccurred) return;
+        const newY = Math.max(10, Math.min(window.innerHeight - 46, startTop + (ev.clientY - startY)));
+        toggle.style.top = newY + 'px';
+        toggle.style.setProperty('--pl-toggle-top', newY + 'px');
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (dragOccurred) {
+          settings.toggleTop = parseFloat(toggle.style.top);
+          saveSettings();
+        }
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    toggle.addEventListener('click', e => {
+      if (dragOccurred) { dragOccurred = false; return; }
+      settings.panelOpen ? closePanel(true) : openPanel(true);
+    });
     document.body.appendChild(toggle);
+
+    const hoverCb = document.getElementById('pl-hover-open');
+    if (hoverCb) {
+      hoverCb.checked = settings.hoverOpen;
+      hoverCb.addEventListener('change', () => {
+        settings.hoverOpen = hoverCb.checked;
+        saveSettings();
+      });
+    }
 
     panel = document.createElement('aside');
     panel.id = 'prompt-loom-panel';
@@ -1996,15 +2064,19 @@
     style.textContent = `
       :root { --z-prompt-loom: 930; --z-prompt-loom-palette: 1200; }
       #prompt-loom-toggle {
-        position: fixed; right: 10px; top: 50%; z-index: var(--z-prompt-loom);
-        width: 34px; height: 42px; border-radius: 12px 0 0 12px;
+        position: fixed; right: 0; top: var(--pl-toggle-top, 50%); z-index: var(--z-prompt-loom);
+        width: 30px; height: 36px; border-radius: 10px 0 0 10px;
         border: 1px solid var(--border2); border-right: 0;
         color: var(--text1); background: rgba(30,42,58,.86); backdrop-filter: blur(14px);
         cursor: pointer; display: grid; place-items: center;
-        box-shadow: var(--shadow-md); transition: transform var(--trans), color var(--trans), background var(--trans);
+        box-shadow: var(--shadow-md);
+        opacity: 0; transform: translateX(100%);
+        transition: opacity .3s ease, transform .3s ease, color var(--trans), background var(--trans);
+        pointer-events: none;
       }
-      #prompt-loom-toggle:hover { color: var(--text0); background: rgba(79,142,247,.18); transform: translateX(-2px); }
-      #prompt-loom-toggle svg { width: 18px; height: 18px; }
+      #prompt-loom-toggle.pl-nearby { opacity: 1; transform: translateX(0); pointer-events: auto; }
+      #prompt-loom-toggle.pl-nearby:hover { color: var(--text0); background: rgba(79,142,247,.18); }
+      #prompt-loom-toggle svg { width: 16px; height: 16px; }
       #prompt-loom-panel {
         position: fixed; top: 84px; right: 10px; bottom: 12px; z-index: var(--z-prompt-loom);
         width: min(390px, calc(100vw - 20px)); display: flex; flex-direction: column; gap: 8px;
@@ -2014,7 +2086,7 @@
         transition: transform .22s cubic-bezier(.16,1,.3,1), opacity .18s ease;
       }
       .prompt-loom-open #prompt-loom-panel { transform: none; opacity: 1; pointer-events: auto; }
-      .prompt-loom-open #prompt-loom-toggle { transform: translateX(-390px); }
+      .prompt-loom-open #prompt-loom-toggle { opacity: 0; pointer-events: none; }
       .pl-head, .pl-card-top, .pl-actions, .pl-tools, .pl-filters, .pl-pal-head, .pl-pal-foot, .pl-suggest-actions { display: flex; align-items: center; gap: 6px; }
       .pl-head { justify-content: space-between; }
       .pl-title { display: flex; align-items: center; gap: 7px; font-weight: 700; letter-spacing: .02em; color: var(--text0); }
@@ -2082,10 +2154,8 @@
       #prompt-loom-panel.compact .pl-preview.pl-preview-one-line { font-size: 12px; }
       #prompt-loom-panel.compact .pl-actions button:not(.pl-icon-btn) { width: 28px; height: 26px; padding: 0; }
       #prompt-loom-panel.compact .pl-more { grid-template-columns: repeat(4, 28px); justify-content: end; }
-      .prompt-loom-open:has(#prompt-loom-panel.compact) #prompt-loom-toggle { transform: translateX(-330px); }
 
       #prompt-loom-panel.ultra-light { width: min(140px, calc(100vw - 20px)); gap: 4px; padding: 6px; }
-      .prompt-loom-open:has(#prompt-loom-panel.ultra-light) #prompt-loom-toggle { transform: translateX(-140px); }
       #prompt-loom-panel.ultra-light .pl-tools button:not([data-pl-ultra]):not([data-pl-close]) { display: none; }
       #prompt-loom-panel.ultra-light .pl-search-row, #prompt-loom-panel.ultra-light .pl-filters, #prompt-loom-panel.ultra-light .pl-title span:last-child { display: none; }
       #prompt-loom-panel.ultra-light .pl-head { justify-content: space-between; }
@@ -2197,7 +2267,6 @@
       }
       @media (max-width: 760px) {
         #prompt-loom-panel { top: 58px; right: 6px; bottom: 6px; width: calc(100vw - 12px); }
-        .prompt-loom-open #prompt-loom-toggle { transform: translateX(-12px); opacity: .25; }
       }
     `;
     document.head.appendChild(style);
