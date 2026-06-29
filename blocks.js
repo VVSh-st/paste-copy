@@ -1367,6 +1367,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
     ta.rows = 5;
+    ta.style.maxHeight = '350px';
     if (b.height) ta.style.height = Math.min(b.height, 350) + 'px';
 
     // Сохраняем прокрутку textarea при скроллинге
