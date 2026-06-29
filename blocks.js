@@ -716,7 +716,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         `<button type="button" data-groom="grade">${_svgIcon('<path d="M4 12V8M7 12V5M10 12V7M13 12V3"/><path d="M2 14h12" stroke-dasharray="2 2"/>')} Оценка промпта</button>` +
         `<button type="button" data-groom="fill-placeholders">${_iconFill} Заполнить {{Ilm:...}}</button>` +
         `<div class="menu-sep"></div>` +
-        `<div class="menu-section-label">СОКРАЩЕНИЕ И ТОН</div>` +
+        `<div class="menu-section-label">ТОН и СОКРАЩЕНИЕ</div>` +
         `<button type="button" data-groom="expand">${_iconExpand} Расширить</button>` +
         `<button type="button" data-groom="formal">${_iconFormal} Формальный</button>` +
         `<button type="button" data-groom="casual">${_iconCasual} Неформальный</button>` +
@@ -820,6 +820,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       ta.value = b.subtabs[newIdx].value || '';
       const savedTop = _taScrollMap.get(b.id + ':' + newIdx);
       if (savedTop != null) ta.scrollTop = savedTop;
+      const body = blockEl.querySelector('.block-body');
+      if (body) updateBlockCounter(ta, b, body);
     } else {
       b.activeSubtab = newIdx;
     }
