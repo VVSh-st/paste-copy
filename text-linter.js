@@ -838,9 +838,31 @@ window.TextLinter = (() => {
     const gearDrop = panel.querySelector('.text-lint-gear-dropdown');
     if (gearBtn && gearDrop) {
       let gearDirty = false;
+
+      gearDrop.remove();
+      gearDrop.style.position = 'fixed';
+      gearDrop.style.zIndex = '9999';
+      document.body.appendChild(gearDrop);
+
+      function positionGearDrop() {
+        const r = gearBtn.getBoundingClientRect();
+        const dh = gearDrop.offsetHeight || 260;
+        const above = r.top > dh + 8;
+        gearDrop.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 230)) + 'px';
+        if (above) {
+          gearDrop.style.top = (r.top - dh - 4) + 'px';
+          gearDrop.style.bottom = 'auto';
+        } else {
+          gearDrop.style.top = (r.bottom + 4) + 'px';
+          gearDrop.style.bottom = 'auto';
+        }
+      }
+
       gearBtn.addEventListener('click', e => {
         e.stopPropagation();
+        const opening = !gearDrop.classList.contains('open');
         gearDrop.classList.toggle('open');
+        if (opening) positionGearDrop();
       });
       gearDrop.querySelectorAll('[data-lint-key]').forEach(cb => {
         cb.addEventListener('change', () => { gearDirty = true; });
@@ -1329,14 +1351,9 @@ window.TextLinter = (() => {
       }
       .text-lint-gear-dropdown {
         display: none;
-        position: absolute;
-        bottom: 100%;
-        right: 0;
-        z-index: 100;
         min-width: 220px;
         max-height: 260px;
         overflow-y: auto;
-        margin-bottom: 4px;
         padding: 4px;
         background: var(--bg2);
         border: 1px solid var(--border2);
