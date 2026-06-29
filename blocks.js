@@ -1349,6 +1349,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const fontSize = parseFloat(cs.fontSize) || 12;
       const lineHeight = parseFloat(cs.lineHeight) || fontSize * 1.65;
       const marginPx = marginLines * lineHeight;
+      if (el.scrollHeight <= el.clientHeight) return;
       const sel = el.selectionStart;
       const textBefore = el.value.substring(0, sel);
       const lineNum = textBefore.split('\n').length;
@@ -1366,7 +1367,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
     ta.rows = 5;
-    if (b.height) ta.style.height = Math.min(b.height, 400) + 'px';
 
     // Сохраняем прокрутку textarea при скроллинге
     ta.addEventListener('scroll', () => {
