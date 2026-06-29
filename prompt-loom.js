@@ -512,6 +512,11 @@
       const btn = e.target?.closest?.('#prompt-loom-toggle');
       if (btn) clearTimeout(hoverOpenTimer);
     });
+    document.addEventListener('contextmenu', e => {
+      if (!document.body.classList.contains('prompt-loom-open')) return;
+      if (isInsidePromptLoom(e.target)) return;
+      closePanel(true);
+    });
   }
 
   function createPanel() {
@@ -602,7 +607,6 @@
     document.body.appendChild(panel);
 
     panel.querySelector('[data-pl-close]').addEventListener('click', () => closePanel(true));
-    panel.addEventListener('contextmenu', e => { e.preventDefault(); closePanel(true); });
     panel.querySelector('[data-pl-clear]').addEventListener('click', handleClearClick);
     panel.querySelector('[data-pl-max]').addEventListener('click', editMaxChars);
     panel.querySelector('[data-pl-compact]').addEventListener('click', toggleCompactPanel);
