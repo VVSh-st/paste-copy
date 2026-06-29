@@ -577,27 +577,33 @@
     if (!btn || !dropdown) return;
 
     let longTimer = null;
+    let longFired = false;
 
     function openDropdown() {
       dropdown.classList.add('open');
+      longFired = true;
       const count = State.getLayout().columnCount || 2;
       dropdown.querySelectorAll('[data-count]').forEach(b => {
         b.classList.toggle('active', parseInt(b.dataset.count, 10) === count);
       });
     }
-    function closeDropdown() { dropdown.classList.remove('open'); }
+    function closeDropdown() { dropdown.classList.remove('open'); longFired = false; }
     function isDropdownOpen() { return dropdown.classList.contains('open'); }
 
     btn.addEventListener('mousedown', e => {
-      e.preventDefault();
+      e.stopPropagation();
+      longFired = false;
       longTimer = setTimeout(openDropdown, 500);
     });
+
     btn.addEventListener('mouseup', () => {
-      if (longTimer) { clearTimeout(longTimer); longTimer = null; }
+      clearTimeout(longTimer);
+      longTimer = null;
     });
 
     btn.addEventListener('click', e => {
       e.stopPropagation();
+      if (longFired) { longFired = false; return; }
       if (isDropdownOpen()) { closeDropdown(); return; }
       const lay = State.getLayout();
       State.setLayout({ rightColHidden: !lay.rightColHidden });
@@ -606,6 +612,8 @@
       btn.classList.toggle('active-btn', State.getLayout().rightColHidden);
       scheduleSave();
     });
+
+    dropdown.addEventListener('mousedown', e => e.stopPropagation());
 
     dropdown.querySelectorAll('[data-count]').forEach(b => {
       b.addEventListener('click', e => {
@@ -621,7 +629,7 @@
     });
 
     document.addEventListener('mousedown', e => {
-      if (!dropdown.contains(e.target) && e.target !== btn) {
+      if (!dropdown.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
         closeDropdown();
       }
     });
