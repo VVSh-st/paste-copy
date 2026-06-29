@@ -1367,6 +1367,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
     ta.rows = 5;
+    if (b.height) ta.style.height = Math.min(b.height, 350) + 'px';
 
     // Сохраняем прокрутку textarea при скроллинге
     ta.addEventListener('scroll', () => {
@@ -1381,6 +1382,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const _ro = new ResizeObserver(() => {
       if (!ta.isConnected) { _ro.disconnect(); observerMap.delete(b.id); return; }
       if (_roSkipFirst) { _roSkipFirst = false; return; }
+      const h = Math.min(ta.offsetHeight, 350);
+      if (h > 0 && h !== b.height) {
+        b.height = h;
+        clearTimeout(ta._heightSnapTimer);
+        ta._heightSnapTimer = setTimeout(() => State.snapshot(), 600);
+      }
     });
     _ro.observe(ta);
     observerMap.set(b.id, _ro); // [FIX] регистрируем для cleanupObservers()
