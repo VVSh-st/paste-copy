@@ -591,6 +591,7 @@
     if (settings.panelCompact) settings.panelUltraLight = false;
     saveSettings();
     syncPanelControls();
+    renderPanelList();
   }
 
   function toggleUltraLightPanel() {
@@ -598,6 +599,7 @@
     if (settings.panelUltraLight) settings.panelCompact = false;
     saveSettings();
     syncPanelControls();
+    renderPanelList();
   }
 
   function toggleQuickPinned() {
