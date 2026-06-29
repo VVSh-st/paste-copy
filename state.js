@@ -752,8 +752,8 @@ const State = (() => {
       let pattern = options.regex
         ? q
         : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (options.wholeWord) pattern = `\\b${pattern}\\b`;
-      return new RegExp(pattern, flags);
+      if (options.wholeWord) pattern = `(?<![\\p{L}\\p{N}_])${pattern}(?![\\p{L}\\p{N}_])`;
+      return new RegExp(pattern, flags + 'u');
     } catch (_) { return null; }
   }
 
@@ -885,17 +885,21 @@ const State = (() => {
     function collect(blocks) {
       for (const b of blocks) {
         if (b.type === 'snippets') {
-          for (const i of (b.items || []))
-            if ((i.value || '').trim() && !seen.has(i.value)) {
-              seen.add(i.value);
-              items.push({ type: 'snippet', label: i.title || i.value.slice(0, 30), value: i.value, icon: '💬' });
+          for (const i of (b.items || [])) {
+            const nv = normalizeSnippetValue(i.value);
+            if (nv && !seen.has(nv)) {
+              seen.add(nv);
+              items.push({ type: 'snippet', label: i.title || nv.slice(0, 30), value: nv, icon: '💬' });
             }
+          }
         } else if (b.type === 'commands') {
-          for (const i of (b.items || []))
-            if ((i.value || '').trim() && !seen.has(i.value)) {
-              seen.add(i.value);
-              items.push({ type: 'command', label: i.label || i.value.slice(0, 30), value: i.value, icon: '⚡' });
+          for (const i of (b.items || [])) {
+            const nv = normalizeSnippetValue(i.value);
+            if (nv && !seen.has(nv)) {
+              seen.add(nv);
+              items.push({ type: 'command', label: i.label || nv.slice(0, 30), value: nv, icon: '⚡' });
             }
+          }
         } else if (b.type === 'group' && b.children) {
           collect(b.children);
         }

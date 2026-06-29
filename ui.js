@@ -1121,8 +1121,8 @@ const Search = (() => {
     const flags = (opts.caseSensitive ? '' : 'i') + (global ? 'g' : '');
     try {
       let pattern = opts.regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (opts.wholeWord) pattern = `\\b${pattern}\\b`;
-      return new RegExp(pattern, flags);
+      if (opts.wholeWord) pattern = `(?<![\\p{L}\\p{N}_])${pattern}(?![\\p{L}\\p{N}_])`;
+      return new RegExp(pattern, flags + 'u');
     } catch (_) { return null; }
   }
 
@@ -1237,8 +1237,10 @@ const Search = (() => {
     let snipRe = null;
     try {
       const escaped = opts.regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const pat     = opts.wholeWord ? `\\b${escaped}\\b` : escaped;
-      snipRe = new RegExp(pat, opts.caseSensitive ? 'g' : 'gi');
+      const pat     = opts.wholeWord
+        ? `(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`
+        : escaped;
+      snipRe = new RegExp(pat, (opts.caseSensitive ? 'g' : 'gi') + 'u');
     } catch (_) { /* невалидный regex — не подсвечиваем */ }
 
     lastResults.slice(0, 20).forEach(r => {
