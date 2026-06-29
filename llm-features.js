@@ -2887,15 +2887,6 @@ const AutoPoet = (() => {
       window.addEventListener('resize', () => {
         if (_ghost?.ta && _ghost?.text) _showGhost(_ghost.ta, _ghost.text, _ghost.ta.selectionStart);
       }, { passive: true });
-      document.addEventListener('selectionchange', () => {
-        if (_ghost?.ta) {
-          const pos = _ghost.ta.selectionStart;
-          const ac = _ghost.ta.value.charAt(pos);
-          const bc = _ghost.ta.value.charAt(pos - 1);
-          if ((ac && /[\p{L}\p{N}_]/u.test(ac)) ||
-              (bc === ' ' && ac && /\p{L}/u.test(ac))) _clearGhost();
-        }
-      });
     }
   }
 
@@ -2914,10 +2905,6 @@ const AutoPoet = (() => {
     if (!_hasReadyProfile(cfg)) return;
 
     const cursorPos = ta.selectionStart;
-    const afterChar = ta.value.charAt(cursorPos);
-    const beforeChar = ta.value.charAt(cursorPos - 1);
-    if ((afterChar && /[\p{L}\p{N}_]/u.test(afterChar)) ||
-        (beforeChar === ' ' && afterChar && /\p{L}/u.test(afterChar))) return;
     const before = ta.value.slice(0, cursorPos);
     const seed = _getSeed(before, cfg);
 
