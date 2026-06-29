@@ -570,34 +570,74 @@
     }
   });
 
-  /* ── Hide right column toggle ───────────────────────────────────────────*/
-  onClick('btn-hide-right', e => {
-    e.stopPropagation();
-    const lay = State.getLayout();
-    State.setLayout({ rightColHidden: !lay.rightColHidden });
-    Blocks.applyLayout();
-    $id('btn-hide-right')?.classList.toggle('active-btn', State.getLayout().rightColHidden);
-    scheduleSave();
-  });
+  /* ── Column count dropdown (long-click) ────────────────────────────────*/
+  (() => {
+    const btn = $id('btn-hide-right');
+    const dropdown = $id('col-count-dropdown');
+    if (!btn || !dropdown) return;
+
+    let longTimer = null;
+
+    btn.addEventListener('mousedown', () => {
+      longTimer = setTimeout(() => {
+        dropdown.classList.toggle('open');
+        const count = State.getLayout().columnCount || 2;
+        dropdown.querySelectorAll('[data-count]').forEach(b => {
+          b.classList.toggle('active', parseInt(b.dataset.count, 10) === count);
+        });
+      }, 500);
+    });
+    btn.addEventListener('mouseup', () => clearTimeout(longTimer));
+    btn.addEventListener('mouseleave', () => clearTimeout(longTimer));
+
+    btn.addEventListener('click', e => {
+      if (dropdown.classList.contains('open')) return;
+      e.stopPropagation();
+      const lay = State.getLayout();
+      State.setLayout({ rightColHidden: !lay.rightColHidden });
+      Blocks.syncColumnElements();
+      Blocks.render();
+      btn.classList.toggle('active-btn', State.getLayout().rightColHidden);
+      scheduleSave();
+    });
+
+    dropdown.querySelectorAll('[data-count]').forEach(b => {
+      b.addEventListener('click', () => {
+        const count = parseInt(b.dataset.count, 10);
+        State.setLayout({ columnCount: count, rightColHidden: false });
+        Blocks.syncColumnElements();
+        Blocks.render();
+        dropdown.classList.remove('open');
+        btn.classList.remove('active-btn');
+        scheduleSave();
+      });
+    });
+
+    document.addEventListener('click', e => {
+      if (!dropdown.contains(e.target) && e.target !== btn) {
+        dropdown.classList.remove('open');
+      }
+    });
+  })();
 
   /* ── Column resizer ─────────────────────────────────────────────────────*/
   (() => {
-    const resizer   = $id('col-resizer');
-    const workspace = $id('workspace');
-    if (!resizer || !workspace) return;
+    const resizerEl = $id('col-resizer');
+    const ws = $id('workspace');
+    if (!resizerEl || !ws) return;
 
     let dragging = false;
 
-    resizer.onmousedown = e => {
+    resizerEl.onmousedown = e => {
       e.preventDefault();
       dragging = true;
-      resizer.classList.add('active');
+      resizerEl.classList.add('active');
       document.body.style.cursor = 'col-resize';
     };
 
     document.addEventListener('mousemove', e => {
       if (!dragging) return;
-      const rect  = workspace.getBoundingClientRect();
+      const rect  = ws.getBoundingClientRect();
       const ratio = Math.max(0.15, Math.min(0.85, (e.clientX - rect.left) / rect.width));
       State.setLayout({ colRatio: ratio });
       Blocks.applyLayout();
@@ -606,7 +646,7 @@
     document.addEventListener('mouseup', () => {
       if (!dragging) return;
       dragging = false;
-      resizer.classList.remove('active');
+      resizerEl.classList.remove('active');
       document.body.style.cursor = '';
       scheduleSave();
     });

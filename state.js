@@ -10,6 +10,7 @@ const State = (() => {
 
   const DEFAULT_LAYOUT = {
     colRatio:        0.5,
+    columnCount:     2,
     previewHeight:   220,
     previewFontSize: 12,
     previewWrap:     true,
@@ -423,8 +424,11 @@ const State = (() => {
       icon = randomIcon();
     }
 
-    const col = t.blocks.filter(b => b.column === 0).length <=
-                t.blocks.filter(b => b.column === 1).length ? 0 : 1;
+    const colCount = Math.max(2, Math.min(5, layout.columnCount || 2));
+    const colCounts = Array.from({ length: colCount }, (_, i) =>
+      t.blocks.filter(b => b.column === i).length
+    );
+    const col = colCounts.indexOf(Math.min(...colCounts));
     const b = makeBlock(title, icon, col, '', type);
 
     update(tab => {

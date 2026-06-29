@@ -220,9 +220,8 @@ body {
 .column {
   display: flex; flex-direction: column; gap: 8px;
   min-width: 80px; overflow-y: auto; overflow-x: hidden; padding: 0 4px;
+  flex: 1;
 }
-#col-left  { flex: 1; }
-#col-right { flex: 1; }
 .column.drop-target {
   outline: 2px dashed var(--accent); outline-offset: -4px;
   border-radius: var(--radius); background: rgba(79,142,247,0.03);
@@ -233,6 +232,23 @@ body {
   transition: background var(--trans);
 }
 #col-resizer:hover, #col-resizer.active { background: var(--accent); }
+.tb-btn-wrap { position: relative; display: inline-flex; }
+.col-count-dropdown {
+  display: none; position: absolute; top: 100%; right: 0;
+  z-index: 100; background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--radius-md); padding: 4px;
+  box-shadow: var(--shadow-lg); flex-direction: row; gap: 4px;
+}
+.col-count-dropdown.open { display: flex; }
+.col-count-dropdown button {
+  width: 32px; height: 28px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface);
+  color: var(--text1); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color var(--trans), color var(--trans);
+}
+.col-count-dropdown button:hover { border-color: var(--accent); color: var(--accent); }
+.col-count-dropdown button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 #preview-resizer {
   height: 5px; cursor: row-resize; background: var(--border);
   border-radius: 99px; flex-shrink: 0; margin: 0 2px;
@@ -1561,8 +1577,7 @@ textarea.block-textarea:focus {
 @media (max-width: 768px) {
   #workspace { flex-direction: column; }
   #col-resizer { display: none; }
-  .column { min-width: unset !important; }
-  #col-left, #col-right { flex: unset !important; }
+  .column { min-width: unset !important; flex: unset !important; }
   .modal-box { width: 95vw; }
   #toolbar { gap: 2px; padding: 5px 8px; }
   .hint { display: none; }

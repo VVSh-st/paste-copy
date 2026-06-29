@@ -2,8 +2,17 @@
 const Blocks = (() => {
   'use strict';
 
-  const colLeft  = document.getElementById('col-left');
-  const colRight = document.getElementById('col-right');
+  const workspace = document.getElementById('workspace');
+
+  function getVisibleColumns() {
+    return Array.from(workspace.querySelectorAll('.column'))
+      .filter(c => c.style.display !== 'none')
+      .map((el, i) => ({ el, idx: parseInt(el.dataset.col, 10) || i }));
+  }
+
+  function getColElement(colIdx) {
+    return workspace.querySelector(`.column[data-col="${colIdx}"]`);
+  }
 
   const VISIBLE_SUBTABS = 3;
 
@@ -37,27 +46,27 @@ const Blocks = (() => {
   /* ================================================================
      Column DnD — attached once by setupColumns()
   ================================================================ */
-  function setupColumns() {
-    [colLeft, colRight].forEach(col => {
-      col.addEventListener('dragover', e => {
-        if (!e.dataTransfer.types.includes('text/block')) return;
-        e.preventDefault(); col.classList.add('drop-target');
-      });
-      col.addEventListener('dragleave', e => {
-        if (col.contains(e.relatedTarget)) return;
-        col.classList.remove('drop-target');
-      });
-      col.addEventListener('drop', e => {
-        if (!e.dataTransfer.types.includes('text/block')) return;
-        e.preventDefault(); col.classList.remove('drop-target');
-        const srcId     = e.dataTransfer.getData('text/block');
-        const targetCol = parseInt(col.dataset.col, 10);
-        State.update(tab => { const src = State.findBlock(tab.blocks, srcId); if (src) src.column = targetCol; });
-      });
-
-      // сохраняем прокрутку при ручном скроллинге колонки
-      col.addEventListener('scroll', _saveColScroll, { passive: true });
+  function _setupColumnDnD(col) {
+    col.addEventListener('dragover', e => {
+      if (!e.dataTransfer.types.includes('text/block')) return;
+      e.preventDefault(); col.classList.add('drop-target');
     });
+    col.addEventListener('dragleave', e => {
+      if (col.contains(e.relatedTarget)) return;
+      col.classList.remove('drop-target');
+    });
+    col.addEventListener('drop', e => {
+      if (!e.dataTransfer.types.includes('text/block')) return;
+      e.preventDefault(); col.classList.remove('drop-target');
+      const srcId     = e.dataTransfer.getData('text/block');
+      const targetCol = parseInt(col.dataset.col, 10);
+      State.update(tab => { const src = State.findBlock(tab.blocks, srcId); if (src) src.column = targetCol; });
+    });
+    col.addEventListener('scroll', _saveColScroll, { passive: true });
+  }
+
+  function setupColumns() {
+    getVisibleColumns().forEach(c => _setupColumnDnD(c.el));
   }
 
   /* ================================================================
@@ -77,7 +86,7 @@ const Blocks = (() => {
       const parsed = JSON.parse(raw);
       if (typeof parsed !== 'object' || !parsed) return;
       for (const [k, v] of Object.entries(parsed)) {
-        if (v && typeof v.l === 'number' && typeof v.r === 'number') {
+        if (v && typeof v === 'object') {
           _colScrollMap.set(k, v);
         }
       }
@@ -107,13 +116,10 @@ const Blocks = (() => {
   /* ---- save / restore ---------------------------------------------- */
 
   function _saveColScroll() {
-    // Сохраняем прокрутку для вкладки, ЧЕЙ контент сейчас отображается
-    // (а не для «активной», которая при переключении уже обновилась)
     if (!_displayedTabId) return;
-    _colScrollMap.set(_displayedTabId, {
-      l: colLeft.scrollTop,
-      r: colRight.scrollTop,
-    });
+    const scroll = {};
+    getVisibleColumns().forEach(c => { scroll[c.idx] = c.el.scrollTop; });
+    _colScrollMap.set(_displayedTabId, scroll);
     _persistColScrollMap();
   }
 
@@ -123,15 +129,16 @@ const Blocks = (() => {
     const saved = _colScrollMap.get(tab.id);
     if (!saved) return;
     let attempts = 0;
+    const cols = getVisibleColumns();
 
     const tryRestore = () => {
-      if (attempts >= maxAttempts) return true; // стоп после лимита
+      if (attempts >= maxAttempts) return true;
       attempts++;
-      const maxL = colLeft.scrollHeight  - colLeft.clientHeight;
-      const maxR = colRight.scrollHeight - colRight.clientHeight;
-      if (saved.l > maxL + 1 || saved.r > maxR + 1) return false;
-      colLeft.scrollTop  = saved.l;
-      colRight.scrollTop = saved.r;
+      for (const c of cols) {
+        const maxS = c.el.scrollHeight - c.el.clientHeight;
+        if ((saved[c.idx] || 0) > maxS + 1) return false;
+      }
+      cols.forEach(c => { c.el.scrollTop = saved[c.idx] || 0; });
       return true;
     };
 
@@ -208,55 +215,83 @@ const Blocks = (() => {
 
   const _pendingTaScrolls = [];
 
+  function syncColumnElements() {
+    const lay = State.getLayout();
+    const count = Math.max(2, Math.min(5, lay.columnCount || 2));
+    const hide = lay.rightColHidden === true;
+    const visibleCount = hide ? 1 : count;
+
+    const resizer = document.getElementById('col-resizer');
+
+    for (let i = 0; i < visibleCount; i++) {
+      let col = workspace.querySelector(`.column[data-col="${i}"]`);
+      if (!col) {
+        col = document.createElement('div');
+        col.className = 'column';
+        col.dataset.col = i;
+        col.setAttribute('aria-label', 'Колонка ' + (i + 1));
+        workspace.insertBefore(col, resizer);
+        _setupColumnDnD(col);
+      }
+      col.style.display = '';
+    }
+
+    workspace.querySelectorAll('.column').forEach(col => {
+      const idx = parseInt(col.dataset.col, 10);
+      if (idx >= visibleCount) col.style.display = 'none';
+    });
+
+    if (resizer) resizer.style.display = (visibleCount <= 1) ? 'none' : '';
+  }
+
   function _doRender() {
-    // 1. Сохраняем прокрутку ПРЕДЫДУЩЕЙ отображаемой вкладки
     _saveColScroll();
-
-    const tab = State.getActive();
-
-    // 2. Отключаем все живые ResizeObserver-ы перед очисткой DOM
     cleanupObservers();
 
-    colLeft.innerHTML  = '';
-    colRight.innerHTML = '';
+    syncColumnElements();
+
+    const tab = State.getActive();
+    const cols = getVisibleColumns();
+
+    cols.forEach(c => { c.el.innerHTML = ''; });
 
     if (!tab) { _displayedTabId = null; return; }
-
-    // 3. Запоминаем, чей контент теперь в колонках
     _displayedTabId = tab.id;
 
     const orderMap = buildOrderMap(tab.blocks);
-      const isCompact = (t) => t === 'sticky' || t === 'todo' || t === 'table';
-    const compactBuffer = { 0: [], 1: [] };
-    const compactEls = { 0: [], 1: [] };
+    const isCompact = (t) => t === 'sticky' || t === 'todo' || t === 'table';
+    const colBuffers = cols.map(() => ({ compact: [], elements: [] }));
+    const colMap = {};
+    cols.forEach((c, i) => { colMap[c.idx] = i; });
 
-    function flushCompact(col) {
-      if (!compactBuffer[col].length) return;
-      if (compactBuffer[col].length === 1) {
-        compactEls[col].push(compactBuffer[col][0]);
+    function flushCompact(bufIdx) {
+      const buf = colBuffers[bufIdx];
+      if (!buf.compact.length) return;
+      if (buf.compact.length === 1) {
+        buf.elements.push(buf.compact[0]);
       } else {
         const row = document.createElement('div');
         row.className = 'blocks-row';
-        compactBuffer[col].forEach(el => row.appendChild(el));
-        compactEls[col].push(row);
+        buf.compact.forEach(el => row.appendChild(el));
+        buf.elements.push(row);
       }
-      compactBuffer[col] = [];
+      buf.compact = [];
     }
 
     tab.blocks.forEach(b => {
-      const col = b.column === 1 ? 1 : 0;
+      const colIdx = Math.min(b.column || 0, cols.length - 1);
+      const bufIdx = colMap[colIdx] ?? 0;
       if (isCompact(b.type)) {
-        compactBuffer[col].push(renderBlock(b, orderMap));
+        colBuffers[bufIdx].compact.push(renderBlock(b, orderMap));
       } else {
-        flushCompact(col);
-        compactEls[col].push(renderBlock(b, orderMap));
+        flushCompact(bufIdx);
+        colBuffers[bufIdx].elements.push(renderBlock(b, orderMap));
       }
     });
-    flushCompact(0);
-    flushCompact(1);
-
-    compactEls[0].forEach(el => colLeft.appendChild(el));
-    compactEls[1].forEach(el => colRight.appendChild(el));
+    cols.forEach((_, i) => flushCompact(i));
+    cols.forEach((c, i) => {
+      colBuffers[i].elements.forEach(el => c.el.appendChild(el));
+    });
 
     applyLayout();
     updateGlobalWordCount();
@@ -267,7 +302,6 @@ const Blocks = (() => {
     }
     _pendingTaScrolls.length = 0;
 
-    // 4. Восстанавливаем прокрутку колонок после того как layout завершён
     requestAnimationFrame(() => requestAnimationFrame(_restoreColScroll));
   }
 
@@ -332,13 +366,15 @@ const Blocks = (() => {
   }
 
   function applyLayout() {
-    const lay  = State.getLayout();
-    const r    = Math.max(0.15, Math.min(0.85, lay.colRatio || 0.5));
-    const hide = lay.rightColHidden === true;
-    colLeft.style.flex   = hide ? '1' : r + '';
-    colRight.style.flex  = hide ? '0' : (1 - r) + '';
-    colRight.style.display = hide ? 'none' : '';
-    document.getElementById('col-resizer').style.display = hide ? 'none' : '';
+    const cols = getVisibleColumns();
+    const n = cols.length;
+    if (n === 0) return;
+    if (n === 1) {
+      cols[0].el.style.flex = '1';
+      return;
+    }
+    const flexVal = (1 / n).toFixed(4);
+    cols.forEach(c => { c.el.style.flex = flexVal; });
   }
 
   function renderBlock(b, orderMap) {
@@ -809,8 +845,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   function patchSubtab(b, newIdx) {
     if (newIdx === b.activeSubtab) return;
 
-    const blockEl = colLeft.querySelector(`.block[data-id="${b.id}"]`)
-                 || colRight.querySelector(`.block[data-id="${b.id}"]`);
+    const blockEl = workspace.querySelector(`.column .block[data-id="${b.id}"]`);
     if (!blockEl) { State.update(() => { b.activeSubtab = newIdx; }); return; }
 
     const ta = blockEl.querySelector('textarea.block-textarea');
@@ -2824,8 +2859,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const tab = State.getActive();
     const block = tab?.blocks?.find(b => b.id === blockId);
     if (!block || block.type !== 'text') return;
-    const blockEl = colLeft.querySelector(`.block[data-id="${blockId}"]`)
-                 || colRight.querySelector(`.block[data-id="${blockId}"]`);
+    const blockEl = workspace.querySelector(`.column .block[data-id="${blockId}"]`);
     if (!blockEl) return;
     const trigger = blockEl.querySelector('.text-groom-trigger');
     if (!trigger) return;
@@ -2874,7 +2908,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     textLintBadgeCache.clear();
   }
 
-  return { render, applyLayout, setupColumns, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge };
+  return { render, applyLayout, setupColumns, syncColumnElements, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge };
 })();
 
 window.Blocks = Blocks;

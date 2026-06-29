@@ -515,7 +515,8 @@
 
 
 
-    <button id="btn-hide-right" type="button" title="Скрыть/показать правую колонку" class="tb-btn tb-btn-icon-only" aria-label="Переключить правую колонку">
+    <div id="col-count-wrap" class="tb-btn-wrap">
+    <button id="btn-hide-right" type="button" title="Колонки (долгий клик — выбор числа)" class="tb-btn tb-btn-icon-only" aria-label="Управление колонками">
 
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
 
@@ -528,6 +529,21 @@
       </svg>
 
     </button>
+    <div id="col-count-dropdown" class="col-count-dropdown">
+      <button data-count="2" title="2 колонки" aria-label="2 колонки">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:14px;height:14px"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M10 3v14"/></svg>
+      </button>
+      <button data-count="3" title="3 колонки" aria-label="3 колонки">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:14px;height:14px"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M7.3 3v14"/><path d="M12.7 3v14"/></svg>
+      </button>
+      <button data-count="4" title="4 колонки" aria-label="4 колонки">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:14px;height:14px"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M6 3v14"/><path d="M10 3v14"/><path d="M14 3v14"/></svg>
+      </button>
+      <button data-count="5" title="5 колонок" aria-label="5 колонок">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:14px;height:14px"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M5.2 3v14"/><path d="M8.4 3v14"/><path d="M11.6 3v14"/><path d="M14.8 3v14"/></svg>
+      </button>
+    </div>
+    </div>
 
     <span class="tb-divider" aria-hidden="true"></span>
 
@@ -1605,13 +1621,7 @@
   <main id="main-area">
 
     <div id="workspace">
-
-      <div class="column" id="col-left"  data-col="0" aria-label="Левая колонка"></div>
-
       <div id="col-resizer" role="separator" aria-orientation="vertical" aria-label="Изменить ширину колонок" tabindex="0"></div>
-
-      <div class="column" id="col-right" data-col="1" aria-label="Правая колонка"></div>
-
     </div>
 
     <div id="preview-resizer" role="separator" aria-orientation="horizontal" aria-label="Изменить высоту превью" tabindex="0"></div>

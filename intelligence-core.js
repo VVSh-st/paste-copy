@@ -1205,7 +1205,7 @@
           placementBox.className = 'intelligence-placement-box';
           const options = targets.slice(0, 30).map(target => {
             const prefix = target.depth ? '↳ '.repeat(Math.min(2, target.depth)) : '';
-            const title = `${prefix}${target.title}${target.column ? ' · правая колонка' : ' · левая колонка'}`;
+            const title = `${prefix}${target.title}${target.column ? ' · колонка ' + (target.column + 1) : ''}`;
             return `
               <option value="after:${escapeHtml(target.id)}">После: ${escapeHtml(title)}</option>
               <option value="before:${escapeHtml(target.id)}">Перед: ${escapeHtml(title)}</option>
