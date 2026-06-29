@@ -2040,8 +2040,8 @@
       #prompt-loom-panel.compact .pl-more { grid-template-columns: repeat(4, 28px); justify-content: end; }
       .prompt-loom-open:has(#prompt-loom-panel.compact) #prompt-loom-toggle { transform: translateX(-330px); }
 
-      #prompt-loom-panel.ultra-light { width: min(200px, calc(100vw - 20px)); gap: 4px; padding: 6px; }
-      .prompt-loom-open:has(#prompt-loom-panel.ultra-light) #prompt-loom-toggle { transform: translateX(-200px); }
+      #prompt-loom-panel.ultra-light { width: min(140px, calc(100vw - 20px)); gap: 4px; padding: 6px; }
+      .prompt-loom-open:has(#prompt-loom-panel.ultra-light) #prompt-loom-toggle { transform: translateX(-140px); }
       #prompt-loom-panel.ultra-light .pl-tools button:not([data-pl-ultra]):not([data-pl-close]) { display: none; }
       #prompt-loom-panel.ultra-light .pl-search-row, #prompt-loom-panel.ultra-light .pl-filters, #prompt-loom-panel.ultra-light .pl-title span:last-child { display: none; }
       #prompt-loom-panel.ultra-light .pl-head { justify-content: flex-end; }
@@ -2049,7 +2049,7 @@
       #prompt-loom-panel.ultra-light .pl-list::-webkit-scrollbar { display: none; }
       .pl-ultra-card { padding: 4px 5px; border-radius: 6px; cursor: pointer; position: relative; overflow: hidden; min-height: 0; }
       .pl-ultra-card:hover { transform: none; }
-      .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre-wrap; overflow: hidden; max-height: calc(1.35em * 3 + 2px); word-break: break-word; letter-spacing: -0.01em; }
+      .pl-ultra-text { font-size: 9.5px; line-height: 1.35; font-family: inherit; color: var(--text1); white-space: pre-wrap; overflow: hidden; max-height: calc(1.35em * 3 + 2px); word-break: break-word; letter-spacing: -0.01em; padding-right: 20px; }
       .pl-ultra-copy { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; border: none; background: rgba(0,0,0,0.45); color: rgba(255,255,255,0.6); cursor: pointer; opacity: 0; transition: opacity 0.12s ease; padding: 0; z-index: 2; }
       .pl-ultra-copy svg { width: 11px; height: 11px; stroke: currentColor; fill: none; }
       .pl-ultra-card:hover .pl-ultra-copy { opacity: 1; }
