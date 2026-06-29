@@ -232,6 +232,7 @@ window.LLMFeatures = (() => {
     MiniChat.newSession();
     MiniChat.open();
     MiniChat.addSystemMessage(isSummary ? '∋ Готовлю резюме вкладки...' : featureKey + '...');
+    MiniChat.pushToHistory('user', text);
     _showThinking(isSummary ? '∋ Резюме вкладки...' : '◕ Думаю...');
     try {
       const result = await _LLMCore.request({
@@ -507,6 +508,7 @@ window.LLMFeatures = (() => {
       MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('↬ Перефразирую промпт...');
+      MiniChat.pushToHistory('user', text);
       _showThinking('↬ Перефразирую...');
       try {
         const sysPrompt =
@@ -542,6 +544,7 @@ window.LLMFeatures = (() => {
       MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('📝 Разворачиваю промпт...');
+      MiniChat.pushToHistory('user', text);
       _showThinking('📝 Разворачиваю...');
       try {
         const sysPrompt =
@@ -1385,6 +1388,7 @@ window.LLMFeatures = (() => {
     MiniChat.open();
     MiniChat.addSystemMessage('📊 ' + (labels[modeAlias] || modeAlias) + '...');
     MiniChat.pushToHistory('system', '📊 ' + (labels[modeAlias] || modeAlias) + '...');
+    MiniChat.pushToHistory('user', text);
     _showThinking('◕ Обрабатываю...');
 
     const isSummary = modeAlias === 'summary';
@@ -1448,6 +1452,7 @@ window.LLMFeatures = (() => {
       MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('📊 Оцениваю промпт...');
+      MiniChat.pushToHistory('user', text);
       _showThinking('📊 Оцениваю промпт...');
 
       let raw;
@@ -1583,6 +1588,7 @@ window.LLMFeatures = (() => {
       MiniChat.newSession();
       MiniChat.open();
       MiniChat.addSystemMessage('🔎 Анализирую промпт...');
+      MiniChat.pushToHistory('user', text);
       _showThinking('🔎 Анализирую...');
 
       try {
@@ -1630,6 +1636,7 @@ window.LLMFeatures = (() => {
         MiniChat.newSession();
         MiniChat.open();
         MiniChat.addSystemMessage('✂️ Сжимаю токены...');
+        MiniChat.pushToHistory('user', text);
         _showThinking('✂️ Сжимаю...');
 
         const result = await _LLMCore.request({
@@ -2141,6 +2148,7 @@ window.LLMFeatures = (() => {
           MiniChat.newSession();
           MiniChat.open();
           MiniChat.addSystemMessage('📝 Суммаризирую...');
+          MiniChat.pushToHistory('user', userContent);
           _showThinkingSafe('📝 Суммаризирую...');
           try {
             result = await _LLMCore.request({
@@ -2151,6 +2159,7 @@ window.LLMFeatures = (() => {
               featureTag: 'bro_sum',
             });
             MiniChat.finalizeLastMessage(result);
+            if (String(result ?? '').trim()) MiniChat.pushToHistory('assistant', result);
           } finally {
             _hideThinkingSafe();
           }
