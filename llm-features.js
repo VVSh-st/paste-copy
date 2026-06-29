@@ -367,6 +367,12 @@ window.LLMFeatures = (() => {
     _thesaurusCloseOnContext = (e) => {
       if (!popup.contains(e.target)) {
         e.preventDefault();
+        if (_thesaurusTa && _thesaurusOrig != null) {
+          _thesaurusTa._skipWordComplete = true;
+          _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'end');
+          _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+          _thesaurusTa._skipWordComplete = false;
+        }
         _closeThesaurus();
       }
     };
@@ -405,6 +411,12 @@ window.LLMFeatures = (() => {
     _thesaurusCloseOnContext = (e) => {
       if (!popup.contains(e.target)) {
         e.preventDefault();
+        if (_thesaurusTa && _thesaurusOrig != null) {
+          _thesaurusTa._skipWordComplete = true;
+          _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'end');
+          _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+          _thesaurusTa._skipWordComplete = false;
+        }
         _closeThesaurus();
       }
     };
