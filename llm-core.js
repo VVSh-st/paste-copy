@@ -633,6 +633,7 @@ window.LLMCore = (() => {
           else {
             const json = await res.json();
             result = _extractContent(profile.provider, json);
+            if (!String(result ?? '').trim()) console.warn('[LLM] Non-stream пустой:', { feature: opts.featureTag, provider: profile.provider, keys: Object.keys(json ?? {}), choicesLen: json?.choices?.length, msg0: json?.choices?.[0]?.message ? Object.keys(json.choices[0].message) : null, rawSnippet: JSON.stringify(json ?? {}).slice(0, 300) });
             opts.onChunk?.(result);
           }
           lastError = null;
@@ -660,6 +661,7 @@ window.LLMCore = (() => {
       const inputText = (opts.messages ?? []).map(m => m.content).join(' ');
       LLMRequestLog.append({ id: _uid(), ts: Date.now(), feature: opts.featureTag ?? 'unknown', profileId, model: profile.model ?? '', inputHash: hashStr(inputText).slice(0, 16), inputLen: inputText.length, outputLen: result.length, promptTokens: estimateTokens(inputText), completionTokens: estimateTokens(result), durationMs: Date.now() - t0, response: result, cached: false });
     }
+    if (!String(result ?? '').trim()) console.warn('[LLM] Пустой ответ:', { feature: opts.featureTag, provider: profile.provider, model: profile.model, stream: useStream, msgs: opts.messages?.map(m => m.role + ':' + String(m.content ?? '').slice(0, 60)) });
     return result;
   }
 
