@@ -67,6 +67,9 @@
   let lastInputEl = null;
   let lastExternalInputEl = null;
 
+  let hoverOpenTimer = null;
+  let toggleDragActive = false;
+
   let lastSuggestionKey = '';
   let lastSuggestionAt = 0;
   let lastCreatedSnippet = null;
@@ -492,7 +495,7 @@
     }, { passive: true });
 
     document.addEventListener('mouseover', e => {
-      if (!settings.hoverOpen) return;
+      if (!settings.hoverOpen || toggleDragActive) return;
       const btn = e.target?.closest?.('#prompt-loom-toggle');
       if (!btn || document.body.classList.contains('prompt-loom-open')) return;
       clearTimeout(hoverOpenTimer);
@@ -525,8 +528,13 @@
       const startY = e.clientY;
       const startTop = parseFloat(toggle.style.top) || (window.innerHeight / 2 - 18);
       dragOccurred = false;
+      toggleDragActive = false;
       const onMove = ev => {
-        if (Math.abs(ev.clientY - startY) > 5) dragOccurred = true;
+        if (Math.abs(ev.clientY - startY) > 5) {
+          dragOccurred = true;
+          toggleDragActive = true;
+          clearTimeout(hoverOpenTimer);
+        }
         if (!dragOccurred) return;
         const newY = Math.max(10, Math.min(window.innerHeight - 46, startTop + (ev.clientY - startY)));
         toggle.style.top = newY + 'px';
@@ -538,6 +546,7 @@
         if (dragOccurred) {
           settings.toggleTop = parseFloat(toggle.style.top);
           saveSettings();
+          setTimeout(() => { toggleDragActive = false; }, 400);
         }
       };
       document.addEventListener('mousemove', onMove);
