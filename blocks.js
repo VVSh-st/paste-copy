@@ -769,7 +769,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         `<button type="button" data-groom="edit" title="Очищает текст от лишних пробелов, дублей и мусора, сохраняя смысл">` + _iconGroom + ` Причесать</button>` +
         `<button type="button" data-groom="grammar" title="Исправляет опечатки, пунктуацию и грамматические ошибки без переписывания смысла">` + _iconGrammar + ` Правка грамматики</button>` +
         `<button type="button" data-groom="format" title="Приводит структуру к единому формату: списки, абзацы, отступы">` + _iconFormat + ` Форматирование</button>` +
-        `<button type="button" data-groom="positive_instr" title="Переписывает негативные ограничения в позитивные инструкции (\"не делай X\" → \"делай Y\")">` + _iconPlus + ` Позитивные инструкции</button>` +
+        `<button type="button" data-groom="positive_instr" title="Переписывает негативные ограничения в позитивные инструкции _ не делай X → делай Y">` + _iconPlus + ` Позитивные инструкции</button>` +
         `<div class="menu-sep"></div>` +
         `<button type="button" data-groom="negatives" title="Показывает что может пойти не так и какие ловушки есть в промпте">` + _iconWarn + ` Что пойдёт не так?</button>` +
         `<button type="button" data-groom="summary" title="Делает краткое резюме текста вкладки в мини-чате">` + _iconSummary + ` Резюме вкладки</button>` +
@@ -1727,10 +1727,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       translateBtn.textContent = '⏳';
       Toast.show('Перевод → ' + langName + '...');
 
-      // Построчно, сохраняя переносы и шаблоны
+      // Последовательно, сохраняя переносы и шаблоны
       const lines = textToTranslate.split('\n');
       const translatePromise = lines.length > 1
-        ? Promise.all(lines.map(l => Translator.translateProtected(l, targetLang))).then(r => r.join('\n'))
+        ? (async () => { const r = []; for (const l of lines) r.push(await Translator.translateProtected(l, targetLang)); return r.join('\n'); })()
         : Translator.translateProtected(textToTranslate, targetLang);
 
       translatePromise.then(result => {
