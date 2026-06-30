@@ -569,6 +569,16 @@
       Toast.show('Вкладка дублирована ✓', 'success');
     }
 
+    // AiTransform: Ctrl+K — AI трансформация выделенного текста
+    else if (ctrl && k === 'KeyK') {
+      e.preventDefault();
+      if (typeof AiTransform !== 'undefined') {
+        const ta = document.activeElement;
+        if (ta && ta.tagName === 'TEXTAREA') AiTransform.openForSelection(ta);
+        else Toast.show('Выделите текст в блоке', 'error');
+      }
+    }
+
     // Полезная UI-функция: Escape закрывает открытые меню/панели/модалки
     else if (e.key === 'Escape') {
       document.querySelectorAll('.dropdown.open, .open').forEach(el => {
@@ -840,6 +850,7 @@
   if (typeof Anchors !== 'undefined') Anchors.init();
   if (typeof Translator !== 'undefined') Translator.init();
   if (typeof Ember !== 'undefined') Ember.init(null, State.getActive()?.id);
+  if (typeof AiTransform !== 'undefined') AiTransform.init(State, LLMCore);
 
   State.onChange(() => {
     if (typeof Ember !== 'undefined') Ember.switchTab(State.getActive()?.id);
