@@ -480,9 +480,9 @@ window.LLMFeatures = (() => {
       _thesaurusItems = items;
       _thesaurusIdx = 0;
       _thesaurusTa = ta;
-      _thesaurusStart = savedStart;
-      _thesaurusEnd = savedEnd;
-      const raw = savedValue.slice(savedStart, savedEnd);
+      _thesaurusStart = start;
+      _thesaurusEnd = end;
+      const raw = savedValue.slice(start, end);
       _thesaurusOrig = raw;
       const leadMatch = raw.match(/^(\s*)/);
       const trailMatch = raw.match(/(\s*)$/);
@@ -542,9 +542,9 @@ window.LLMFeatures = (() => {
       _thesaurusItems = items;
       _thesaurusIdx = 0;
       _thesaurusTa = ta;
-      _thesaurusStart = savedStart;
-      _thesaurusEnd = savedEnd;
-      const raw = savedValue.slice(savedStart, savedEnd);
+      _thesaurusStart = ws;
+      _thesaurusEnd = we;
+      const raw = savedValue.slice(ws, we);
       _thesaurusOrig = raw;
       const leadMatch = raw.match(/^(\s*)/);
       const trailMatch = raw.match(/(\s*)$/);
