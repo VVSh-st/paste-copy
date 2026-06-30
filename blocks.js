@@ -1914,7 +1914,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     });
     document.addEventListener('contextmenu', e => {
-      if (!thesaurusDropdown.contains(e.target) && e.target !== thesaurusBtn) {
+      if (thesaurusDropdown.style.display !== 'none' && !thesaurusDropdown.contains(e.target) && e.target !== thesaurusBtn) {
         thesaurusDropdown.style.display = 'none';
         e.preventDefault();
       }
