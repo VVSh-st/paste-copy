@@ -1384,6 +1384,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.rows = 5;
     if (b.height) ta.style.height = b.height + 'px';
 
+    const scrollPaddingLines = State.getLayout()?.scrollPaddingLines || 0;
+    if (scrollPaddingLines > 0) ta.style.scrollPaddingBottom = (scrollPaddingLines * 20) + 'px';
+
     // Сохраняем прокрутку textarea при скроллинге
     ta.addEventListener('scroll', () => {
       _taScrollMap.set(b.id + ':' + b.activeSubtab, ta.scrollTop);
@@ -2496,6 +2499,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.style.minHeight = '60px';
     ta.style.resize = 'vertical';
     ta.style.fontSize = (b.fontSize || 13) + 'px';
+
+    const scrollPaddingLines = State.getLayout()?.scrollPaddingLines || 0;
+    if (scrollPaddingLines > 0) ta.style.scrollPaddingBottom = (scrollPaddingLines * 20) + 'px';
+
     ta.oninput = () => { b.value = ta.value; State.updateLive(() => {}); autoGrow(ta); };
     ta.onblur = () => State.snapshot();
     ta.addEventListener('input', () => autoGrow(ta));

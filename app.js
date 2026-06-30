@@ -150,6 +150,10 @@
     const optCurrentLineColor = $id('opt-current-line-color-misc');
     if (optCurrentLineColor) optCurrentLineColor.value = lay.currentLineColor || 'rgba(79,142,247,0.18)';
 
+    const optScrollPadding = $id('opt-scroll-padding-lines');
+    if (optScrollPadding) optScrollPadding.value = lay.scrollPaddingLines || 0;
+    _applyScrollPadding(lay.scrollPaddingLines || 0);
+
     const optColScrollbar = $id('opt-col-scrollbar');
     if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
@@ -421,6 +425,21 @@
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', enabled);
     scheduleSave();
   };
+
+  const optScrollPadding = $id('opt-scroll-padding-lines');
+  if (optScrollPadding) optScrollPadding.oninput = e => {
+    const lines = Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0));
+    State.setLayout({ scrollPaddingLines: lines });
+    _applyScrollPadding(lines);
+    scheduleSave();
+  };
+
+  function _applyScrollPadding(lines) {
+    const px = lines * 20;
+    document.querySelectorAll('textarea.block-textarea').forEach(ta => {
+      ta.style.scrollPaddingBottom = px + 'px';
+    });
+  }
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/
   const anchorSettings = Anchors?.getMarkerSettings?.() || { lineMarkers: true, bgHighlight: true, color: '#4f8ef7' };
