@@ -22,14 +22,6 @@
 
 ## Status — ТЕКУЩАЯ СЕССИЯ
 
-### SlashAI — slash-команды с inline diff
-
-1. ✅ **slash-ai.js** — новый модуль slash-команд (по аналогии с InlineAI для Obsidian)
-2. ✅ **12 команд**: /fix, /shorter, /longer, /formal, /casual, /bullets, /summarize, /continue, /translate, /brainstorm, /table, /emoji
-3. ✅ **Автодополнение** — ввод `/` → выпадающий список с фильтрацией
-4. ✅ **Навигация** — ↑↓ выбор, Enter/Tab применить, Esc отмена
-5. ✅ **Inline diff** — зелёный = добавлено, красный = удалено; кнопки ✓/✕
-
 ### MiniChat — контекст и кэш
 
 1. ✅ **pushToHistory для всех фич** — `_runOnPreview`, `rephrase`, `expand`, `groom`, `PromptGrader`, `PromptAuditor`, `TokenOptimizer`, `!сум` — все пушат user-text в `_history`
