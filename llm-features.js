@@ -23,10 +23,11 @@ window.LLMFeatures = (() => {
       c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  // ── Datamuse thesaurus (offline, free) ────────────────────────
+  // ── Datamuse thesaurus (offline, free, English only) ──────────
   const _datamuseCache = new Map();
   async function _datamuseQuery(word, max = 15) {
     if (!word) return [];
+    if (/[\u0400-\u04FF]/.test(word)) return [];
     const key = word.toLowerCase();
     if (_datamuseCache.has(key)) return _datamuseCache.get(key);
     try {
@@ -470,6 +471,10 @@ window.LLMFeatures = (() => {
     const engine = _State?.getLayout()?.llm?.thesaurusEngine ?? 'llm';
 
     if (engine === 'datamuse') {
+      if (/[\u0400-\u04FF]/.test(word)) {
+        window.Toast?.show('Datamuse работает только с English. Переключите на LLM.', 'error');
+        return;
+      }
       _showThinking(`◕ Тезаурус (Datamuse): «${word}»`);
       try {
         const items = await _datamuseQuery(word);
@@ -536,6 +541,10 @@ window.LLMFeatures = (() => {
     const engine = _State?.getLayout()?.llm?.thesaurusEngine ?? 'llm';
 
     if (engine === 'datamuse') {
+      if (/[\u0400-\u04FF]/.test(word)) {
+        window.Toast?.show('Datamuse работает только с English. Переключите на LLM.', 'error');
+        return;
+      }
       _showThinking(`◕ Тезаурус (Datamuse): «${word}»`);
       try {
         const items = await _datamuseQuery(word);
