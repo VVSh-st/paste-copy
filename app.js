@@ -530,14 +530,14 @@
 
   /* ── Hotkeys ────────────────────────────────────────────────────────────*/
   document.addEventListener('keydown', e => {
-    const k       = e.key.toLowerCase();
+    const k       = e.code;
     const ctrl    = e.ctrlKey || e.metaKey;
     const shift   = e.shiftKey;
     const inField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
-    if      (ctrl && !shift && k === 'z') { e.preventDefault(); State.undo(); }
-    else if (ctrl && (k === 'y' || (shift && k === 'z'))) { e.preventDefault(); State.redo(); }
-    else if (ctrl && k === 's') {
+    if      (ctrl && !shift && k === 'KeyZ') { e.preventDefault(); State.undo(); }
+    else if (ctrl && (k === 'KeyY' || (shift && k === 'KeyZ'))) { e.preventDefault(); State.redo(); }
+    else if (ctrl && k === 'KeyS') {
       e.preventDefault();
       Storage.save(State.serialize());
       window.Intelligence?.track?.('state.save');
@@ -547,10 +547,10 @@
         Toast.show('Сохранено ✓', 'success');
       }
     }
-    else if (ctrl && k === 't') { e.preventDefault(); State.newTab(); }
-    else if (ctrl && k === 'w') { e.preventDefault(); const t = State.getActive(); if (t) State.closeTab(t.id); }
-    else if (ctrl && shift && k === 'c') { e.preventDefault(); Preview.copy(); }
-    else if (ctrl && k === 'd' && !inField) {
+    else if (ctrl && k === 'KeyT') { e.preventDefault(); State.newTab(); }
+    else if (ctrl && k === 'KeyW') { e.preventDefault(); const t = State.getActive(); if (t) State.closeTab(t.id); }
+    else if (ctrl && shift && k === 'KeyC') { e.preventDefault(); Preview.copy(); }
+    else if (ctrl && k === 'KeyD' && !inField) {
       e.preventDefault();
 
       const t = State.getActive();
@@ -900,10 +900,10 @@
 
     document.addEventListener('keydown', e => {
       if (!e.altKey) return;
-      switch (e.key.toLowerCase()) {
-        case 'l': e.preventDefault(); LLMFeatures.MiniChat?.open?.(); break;
-        case 't': e.preventDefault(); LLMFeatures.handleAction('thesaurus'); break;
-        case '/': e.preventDefault(); LLMFeatures.AutoPoet?.nextVariant(document.activeElement); break;
+      switch (e.code) {
+        case 'KeyL': e.preventDefault(); LLMFeatures.MiniChat?.open?.(); break;
+        case 'KeyT': e.preventDefault(); LLMFeatures.handleAction('thesaurus'); break;
+        case 'Slash': e.preventDefault(); LLMFeatures.AutoPoet?.nextVariant(document.activeElement); break;
       }
     });
 

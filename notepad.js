@@ -660,10 +660,10 @@ const Notepad = (() => {
         return;
       }
 
-      if (ctrl && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      if (ctrl && !e.shiftKey && e.code === 'KeyZ') {
         e.preventDefault();
         state._doUndo?.();
-      } else if (ctrl && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+      } else if (ctrl && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
         e.preventDefault();
         state._doRedo?.();
       }

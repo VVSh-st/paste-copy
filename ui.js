@@ -1355,7 +1355,7 @@ const Search = (() => {
     const ctrl    = e.ctrlKey || e.metaKey;
     const inField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
-    if (ctrl && e.key.toLowerCase() === 'f') {
+    if (ctrl && e.code === 'KeyF') {
       if (!inField || !isOpen()) { e.preventDefault(); open(); }
     }
     if (e.key === 'F3') {
