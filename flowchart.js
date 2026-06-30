@@ -17,6 +17,7 @@ const Flowchart = (() => {
 
   let _dragNode = null, _dragOffX = 0, _dragOffY = 0;
   let _nodes = [], _edges = [];
+  let _connectMode = false, _connectFrom = null;
 
   const PALETTE = ['#4f8ef7', '#5cb87a', '#f0a050', '#e05c6a', '#a78bfa', '#f472b6', '#22d3ee', '#fbbf24'];
 
@@ -100,6 +101,8 @@ const Flowchart = (() => {
         <div class="flowchart-controls">
           <button class="flowchart-btn" data-mode="flow" title="Блок-схема">F</button>
           <button class="flowchart-btn" data-mode="graph" title="Граф связей">G</button>
+          <button class="flowchart-btn flowchart-add" title="Добавить блок">+</button>
+          <button class="flowchart-btn flowchart-connect" title="Соединить блоки">↗</button>
           <button class="flowchart-btn flowchart-refresh" title="Обновить анализ">↻</button>
           <button class="flowchart-btn flowchart-close" title="Закрыть">✕</button>
         </div>
@@ -140,6 +143,17 @@ const Flowchart = (() => {
       _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
       _overlay.querySelector('.flowchart-refresh').classList.add('spinning');
       _fetch(text);
+    });
+
+    _overlay.querySelector('.flowchart-add').addEventListener('click', () => {
+      _addNode();
+    });
+
+    _overlay.querySelector('.flowchart-connect').addEventListener('click', () => {
+      _connectMode = !_connectMode;
+      _connectFrom = null;
+      _overlay.querySelector('.flowchart-connect').classList.toggle('active', _connectMode);
+      if (_connectMode) window.Toast?.show('Кликните на исходный блок', 'info');
     });
 
     function _setupProximityReveal(el, radius) {
@@ -279,10 +293,26 @@ const Flowchart = (() => {
       if (_loading) return;
       const nodeEl = e.target.closest('[data-node-id]');
       if (nodeEl) {
+        const nodeId = nodeEl.dataset.nodeId;
+        if (_connectMode) {
+          if (!_connectFrom) {
+            _connectFrom = nodeId;
+            nodeEl.querySelector('rect, polygon, circle')?.setAttribute('stroke-width', '3');
+            window.Toast?.show('Теперь кликните на целевой блок', 'info');
+          } else if (_connectFrom !== nodeId) {
+            _edges.push({ from: _connectFrom, to: nodeId, label: '' });
+            _connectFrom = null;
+            _connectMode = false;
+            _overlay.querySelector('.flowchart-connect').classList.remove('active');
+            _renderEdges();
+            _syncData();
+          }
+          return;
+        }
         e.stopPropagation();
         cancelAnimationFrame(_inertiaRaf);
         _dragging = false;
-        _dragNode = nodeEl.dataset.nodeId;
+        _dragNode = nodeId;
         const node = _nodes.find(n => n.id === _dragNode);
         if (node) {
           const rect = _svg.getBoundingClientRect();
@@ -297,6 +327,33 @@ const Flowchart = (() => {
       cancelAnimationFrame(_inertiaRaf);
       _dragging = true; _movedEnough = false;
       _lastX = e.clientX; _lastY = e.clientY;
+    });
+
+    _svg.addEventListener('dblclick', e => {
+      const nodeEl = e.target.closest('[data-node-id]');
+      if (!nodeEl) return;
+      const node = _nodes.find(n => n.id === nodeEl.dataset.nodeId);
+      if (!node) return;
+      const newName = prompt('Текст блока:', node.label || node.id);
+      if (newName !== null && newName.trim()) {
+        node.label = newName.trim();
+        _syncData();
+        _render();
+      }
+    });
+
+    _svg.addEventListener('contextmenu', e => {
+      const nodeEl = e.target.closest('[data-node-id]');
+      if (!nodeEl) return;
+      e.preventDefault();
+      const nodeId = nodeEl.dataset.nodeId;
+      const node = _nodes.find(n => n.id === nodeId);
+      if (!node) return;
+      if (!confirm(`Удалить блок «${node.label}»?`)) return;
+      _nodes = _nodes.filter(n => n.id !== nodeId);
+      _edges = _edges.filter(e => e.from !== nodeId && e.to !== nodeId);
+      _syncData();
+      _render();
     });
 
     window.addEventListener('mousemove', e => {
@@ -655,6 +712,27 @@ const Flowchart = (() => {
   }
 
   function linesCount(g) { return g.querySelectorAll('text').length || 1; }
+
+  function _addNode() {
+    const label = prompt('Текст нового блока:', 'Новый блок');
+    if (!label) return;
+    const shape = prompt('Форма (rect/stadium/diamond/circle/cylinder):', 'rect') || 'rect';
+    const id = 'n' + Date.now();
+    const node = { id, label, shape: ['rect','stadium','diamond','circle','cylinder'].includes(shape) ? shape : 'rect', x: 0, y: 0, w: 160, h: 50 };
+    const { w, h } = _nodeSize(node);
+    node.w = w; node.h = h;
+    node.x = (_svg.getBoundingClientRect().width / 2 - _panX) / _zoom;
+    node.y = (_svg.getBoundingClientRect().height / 2 - _panY) / _zoom;
+    _nodes.push(node);
+    _syncData();
+    _render();
+  }
+
+  function _syncData() {
+    if (!_data) _data = { nodes: [], edges: [] };
+    _data.nodes = _nodes.map(n => ({ id: n.id, label: n.label, shape: n.shape }));
+    _data.edges = _edges.map(e => ({ from: e.from, to: e.to, label: e.label }));
+  }
 
   function _drawStarfield(W, H) {
     const g = document.createElementNS(SVG_NS, 'g');
