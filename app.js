@@ -439,22 +439,35 @@
     document.documentElement.style.setProperty('--scroll-padding-bottom', px + 'px');
   }
 
+  let _spTimer = null;
   window._scrollPaddingTick = function(ta) {
+    if (!ta || ta.tagName !== 'TEXTAREA') return;
     const lines = State.getLayout()?.scrollPaddingLines || 0;
     if (!lines) return;
-    const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-    const pad = lines * lineHeight;
-    const cursorPos = ta.selectionStart;
-    const textBefore = ta.value.substring(0, cursorPos);
-    const linesBefore = textBefore.split('\n').length;
-    const cursorY = linesBefore * lineHeight;
-    const visibleTop = ta.scrollTop;
-    const visibleBottom = visibleTop + ta.clientHeight;
-    const cursorFromBottom = visibleBottom - cursorY;
-    if (cursorFromBottom < pad + lineHeight) {
-      ta.scrollTop += lineHeight;
-    }
+    clearTimeout(_spTimer);
+    _spTimer = setTimeout(() => {
+      if (!ta.isConnected) return;
+      const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+      const pad = lines * lineHeight;
+      const cursorPos = ta.selectionStart;
+      const textBefore = ta.value.substring(0, cursorPos);
+      const linesBefore = textBefore.split('\n').length;
+      const cursorY = linesBefore * lineHeight;
+      const visibleTop = ta.scrollTop;
+      const visibleBottom = visibleTop + ta.clientHeight;
+      const cursorFromBottom = visibleBottom - cursorY;
+      if (cursorFromBottom < pad + lineHeight) {
+        ta.scrollTop = cursorY - ta.clientHeight + pad + lineHeight;
+      }
+    }, 30);
   };
+
+  document.addEventListener('selectionchange', () => {
+    const ta = document.activeElement;
+    if (ta?.tagName === 'TEXTAREA' && ta.classList.contains('block-textarea')) {
+      window._scrollPaddingTick(ta);
+    }
+  });
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/
   const anchorSettings = Anchors?.getMarkerSettings?.() || { lineMarkers: true, bgHighlight: true, color: '#4f8ef7' };
