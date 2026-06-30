@@ -579,31 +579,6 @@
       const llmHistory  = $id('llm-history-modal');
       if (llmSettings && getComputedStyle(llmSettings).display !== 'none') llmSettings.style.display = 'none';
       if (llmHistory && getComputedStyle(llmHistory).display !== 'none') llmHistory.style.display = 'none';
-      if (typeof Dictionaries !== 'undefined') Dictionaries._close();
-    }
-
-    // Dictionaries: Alt+D — тезаурус (Datamuse, offline)
-    if (e.altKey && k === 'd') {
-      e.preventDefault();
-      if (typeof Dictionaries === 'undefined') return;
-      let ta = document.activeElement;
-      if (!ta || ta.tagName !== 'TEXTAREA') {
-        const tab = State.getActive();
-        if (tab) {
-          for (const b of tab.blocks || []) {
-            if (b.type === 'text') {
-              const blockEl = document.querySelector(`[data-id="${CSS.escape(b.id)}"]`);
-              ta = blockEl?.querySelector('textarea.block-textarea');
-              if (ta) break;
-            }
-          }
-        }
-      }
-      if (ta && ta.tagName === 'TEXTAREA') {
-        Dictionaries.openAtCursor(ta);
-      } else {
-        Toast.show('Поставьте курсор в текстовый блок', 'error');
-      }
     }
   });
 
@@ -864,7 +839,6 @@
   if (window.MemorySync?.init) window.MemorySync.init();
   if (typeof Anchors !== 'undefined') Anchors.init();
   if (typeof Translator !== 'undefined') Translator.init();
-  if (typeof Dictionaries !== 'undefined') Dictionaries.init();
   if (typeof Ember !== 'undefined') Ember.init(null, State.getActive()?.id);
 
   State.onChange(() => {
