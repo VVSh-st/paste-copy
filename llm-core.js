@@ -980,7 +980,6 @@ window.LLMCore = (() => {
       _setCheck('llm-visual-diff', llm.visualDiff ?? false);
       _set('llm-diff-mode', llm.diffMode ?? 'classic');
       _set('llm-diff-effect-ms', _clampEffectMs(llm.diffEffectMs));
-      _set('llm-thesaurus-engine', llm.thesaurusEngine ?? 'llm');
       _setCheck('llm-cache-enabled', llm.cache?.enabled ?? true);
       _set('llm-cache-ttl', llm.cache?.ttlH ?? 24);
       _set('llm-cache-max', llm.cache?.maxEntries ?? 200);
@@ -1053,7 +1052,7 @@ window.LLMCore = (() => {
     }
     function _saveGeneral() {
       const lay = _State.getLayout();
-      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), autoSnapshot: _getCheck('llm-auto-snapshot'), saveResults: _getCheck('llm-save-results'), debugMode: _getCheck('llm-debug'), visualDiff: _getCheck('llm-visual-diff'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), thesaurusEngine: _get('llm-thesaurus-engine') || 'llm', cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
+      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), autoSnapshot: _getCheck('llm-auto-snapshot'), saveResults: _getCheck('llm-save-results'), debugMode: _getCheck('llm-debug'), visualDiff: _getCheck('llm-visual-diff'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
     }
     function _renderBroTags() {
       const lay = _State.getLayout();
@@ -1767,7 +1766,7 @@ tags.push({
       document.getElementById('llm-prompt-save')?.addEventListener('click', _savePrompt);
       document.getElementById('llm-prompt-test-run')?.addEventListener('click', _testPrompt);
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
-      ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-thesaurus-engine','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
+      ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
       document.getElementById('llm-text-lint-settings')?.addEventListener('change', e => {
         const input = e.target.closest('[data-llm-lint-setting]');
         if (!input) return;
