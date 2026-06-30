@@ -445,8 +445,9 @@
     if (!lines) return;
     const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
     const pad = lines * lineHeight;
-    const cursorPos = ta.selectionStart;
-    const textBefore = ta.value.substring(0, cursorPos);
+    const realVal = ta.value;
+    const cursorPos = Math.min(ta.selectionStart, realVal.length);
+    const textBefore = realVal.substring(0, cursorPos);
     const linesBefore = textBefore.split('\n').length;
     const cursorY = linesBefore * lineHeight;
     const bottomEdge = ta.scrollTop + ta.clientHeight - pad;

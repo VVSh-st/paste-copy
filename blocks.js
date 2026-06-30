@@ -1378,11 +1378,29 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     ta.className   = 'block-textarea';
     ta.spellcheck  = b.spellcheck !== false;
-    ta.value       = b.subtabs[b.activeSubtab].value || '';
+    const realVal = b.subtabs[b.activeSubtab].value || '';
+    ta.value       = realVal;
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
     ta.rows = 5;
     if (b.height) ta.style.height = b.height + 'px';
+
+    const _spLines = State.getLayout()?.scrollPaddingLines || 0;
+    if (_spLines > 0) {
+      const pad = '\n'.repeat(_spLines + 2);
+      const _nativeDesc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+      Object.defineProperty(ta, 'value', {
+        get() { return _nativeDesc.get.call(this).replace(/\n*$/, ''); },
+        set(v) {
+          const clean = String(v ?? '').replace(/\n*$/, '');
+          const ss = Math.min(this.selectionStart, clean.length);
+          const se = Math.min(this.selectionEnd, clean.length);
+          _nativeDesc.set.call(this, clean + pad);
+          this.setSelectionRange(ss, se);
+        },
+        configurable: true,
+      });
+    }
 
     // Сохраняем прокрутку textarea при скроллинге
     ta.addEventListener('scroll', () => {
