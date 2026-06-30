@@ -428,7 +428,7 @@
 
   const optScrollPadding = $id('opt-scroll-padding-lines');
   if (optScrollPadding) optScrollPadding.oninput = e => {
-    const lines = Math.max(0, Math.min(10, parseInt(e.target.value, 10) || 0));
+    const lines = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0));
     State.setLayout({ scrollPaddingLines: lines });
     _applyScrollPadding(lines);
     scheduleSave();
@@ -437,24 +437,20 @@
   function _applyScrollPadding(lines) {
     const px = lines * 20;
     document.documentElement.style.setProperty('--scroll-padding-bottom', px + 'px');
-    document.querySelectorAll('textarea.block-textarea').forEach(ta => {
-      ta.style.scrollPaddingBottom = px + 'px';
-    });
   }
 
   window._scrollPaddingTick = function(ta) {
     const lines = State.getLayout()?.scrollPaddingLines || 0;
     if (!lines) return;
-    const padPx = lines * 20;
     const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-    const pad = padPx || (lines * lineHeight);
-    const cursorY = ta.selectionStart;
-    const textBefore = ta.value.substring(0, cursorY);
+    const pad = lines * lineHeight;
+    const cursorPos = ta.selectionStart;
+    const textBefore = ta.value.substring(0, cursorPos);
     const linesBefore = textBefore.split('\n').length;
-    const linePos = linesBefore * lineHeight;
+    const cursorY = linesBefore * lineHeight;
     const visibleTop = ta.scrollTop;
     const visibleBottom = visibleTop + ta.clientHeight;
-    const cursorFromBottom = visibleBottom - linePos;
+    const cursorFromBottom = visibleBottom - cursorY;
     if (cursorFromBottom < pad + lineHeight) {
       ta.scrollTop += lineHeight;
     }
