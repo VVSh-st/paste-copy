@@ -6017,12 +6017,11 @@ body.help-open {
   position: absolute; top: 12px; right: 12px;
   display: flex; gap: 6px;
   opacity: 0; transform: translateY(-8px);
-  transition: opacity 0.4s ease, transform 0.4s ease;
+  transition: opacity 0.5s ease, transform 0.5s ease;
   z-index: 10;
+  pointer-events: none;
 }
-.mindmap-panel:hover .mindmap-controls {
-  opacity: 1; transform: translateY(0);
-}
+.mindmap-controls.near { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
 .mindmap-btn {
   width: 32px; height: 32px; border-radius: 8px;

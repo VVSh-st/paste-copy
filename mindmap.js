@@ -54,6 +54,15 @@ const MindMap = (() => {
       });
     });
 
+    const controls = _overlay.querySelector('.mindmap-controls');
+    _overlay.addEventListener('mousemove', e => {
+      const r = controls.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+      controls.classList.toggle('near', dist < 150);
+    });
+
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && _overlay?.classList.contains('visible')) close();
     });
@@ -116,6 +125,14 @@ const MindMap = (() => {
     const H = rect.height || 450;
     _svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    defs.innerHTML = `
+      <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.3"/></filter>
+    `;
+    _svg.appendChild(defs);
+
     switch (_mode) {
       case 'words': _drawWords(W, H); break;
       case 'graph': _drawGraph(W, H); break;
@@ -156,9 +173,10 @@ const MindMap = (() => {
       text.setAttribute('font-family', 'var(--mono)');
       text.setAttribute('font-weight', item.weight > 6 ? '700' : '400');
       text.setAttribute('opacity', 0.4 + (item.weight / maxW) * 0.6);
+      if (item.weight > 7) text.setAttribute('filter', 'url(#glow)');
       text.textContent = item.w;
       text.style.cursor = 'pointer';
-      text.style.transition = 'opacity 0.2s, transform 0.2s';
+      text.style.transition = 'opacity 0.2s, font-size 0.2s';
       text.addEventListener('mouseenter', () => { text.setAttribute('opacity', '1'); text.setAttribute('font-size', fontSize + 4); });
       text.addEventListener('mouseleave', () => { text.setAttribute('opacity', String(0.4 + (item.weight / maxW) * 0.6)); text.setAttribute('font-size', fontSize); });
       _svg.appendChild(text);
@@ -214,8 +232,9 @@ const MindMap = (() => {
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
       line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
       line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
-      line.setAttribute('stroke', 'rgba(255,255,255,0.15)');
-      line.setAttribute('stroke-width', String(l.strength * 3));
+      line.setAttribute('stroke', 'rgba(255,255,255,0.12)');
+      line.setAttribute('stroke-width', String(0.5 + l.strength * 2.5));
+      line.setAttribute('stroke-linecap', 'round');
       _svg.appendChild(line);
     });
 
@@ -226,7 +245,8 @@ const MindMap = (() => {
       circle.setAttribute('cx', n.x); circle.setAttribute('cy', n.y);
       circle.setAttribute('r', r);
       circle.setAttribute('fill', color);
-      circle.setAttribute('opacity', '0.8');
+      circle.setAttribute('opacity', '0.85');
+      if (n.weight > 7) circle.setAttribute('filter', 'url(#glow)');
       circle.style.cursor = 'pointer';
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); });
@@ -274,9 +294,11 @@ const MindMap = (() => {
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       rect.setAttribute('x', pad); rect.setAttribute('y', y);
       rect.setAttribute('width', colW); rect.setAttribute('height', rowH - 8);
-      rect.setAttribute('rx', '10');
-      rect.setAttribute('fill', r.color + '15');
-      rect.setAttribute('stroke', r.color + '40');
+      rect.setAttribute('rx', '12');
+      rect.setAttribute('fill', r.color + '12');
+      rect.setAttribute('stroke', r.color + '35');
+      rect.setAttribute('stroke-width', '1');
+      rect.setAttribute('filter', 'url(#shadow)');
       rect.setAttribute('stroke-width', '1');
       g.appendChild(rect);
 
@@ -342,12 +364,13 @@ const MindMap = (() => {
       const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
       ellipse.setAttribute('cx', ccx); ellipse.setAttribute('cy', ccy);
       ellipse.setAttribute('rx', r); ellipse.setAttribute('ry', r * 0.7);
-      ellipse.setAttribute('fill', color + '18');
-      ellipse.setAttribute('stroke', color + '50');
+      ellipse.setAttribute('fill', color + '15');
+      ellipse.setAttribute('stroke', color + '45');
       ellipse.setAttribute('stroke-width', '1.5');
+      ellipse.setAttribute('filter', 'url(#shadow)');
       ellipse.style.transition = 'fill 0.3s';
-      ellipse.addEventListener('mouseenter', () => ellipse.setAttribute('fill', color + '30'));
-      ellipse.addEventListener('mouseleave', () => ellipse.setAttribute('fill', color + '18'));
+      ellipse.addEventListener('mouseenter', () => ellipse.setAttribute('fill', color + '28'));
+      ellipse.addEventListener('mouseleave', () => ellipse.setAttribute('fill', color + '15'));
       _svg.appendChild(ellipse);
 
       const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
