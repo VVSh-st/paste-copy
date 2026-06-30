@@ -14,10 +14,34 @@ window.AiTransform = (() => {
   let _origEnd = 0;
   let _origText = '';
   let _suggestedText = '';
-  let _autoTimer = null;
   let _onClickOutside = null;
   let _onContextMenu = null;
   let _diffPanel = null;
+
+  // ── История запросов ──────────────────────────────────────
+  const HISTORY_KEY = 'ai-transform-history';
+  let _history = [];
+  let _historyIdx = -1;
+
+  function _loadHistory() {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) _history = JSON.parse(raw);
+      if (!Array.isArray(_history)) _history = [];
+    } catch { _history = []; }
+  }
+
+  function _saveHistory() {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(_history.slice(-50))); } catch {}
+  }
+
+  function _addToHistory(text) {
+    if (!text?.trim()) return;
+    _history = _history.filter(h => h !== text);
+    _history.push(text);
+    if (_history.length > 50) _history = _history.slice(-50);
+    _saveHistory();
+  }
 
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g,
@@ -40,8 +64,9 @@ window.AiTransform = (() => {
     _origEnd = ta.selectionEnd;
     _origText = ta.value.slice(_origStart, _origEnd);
     _suggestedText = '';
-    clearTimeout(_autoTimer);
     _removeDiffPanel();
+    _loadHistory();
+    _historyIdx = _history.length;
 
     popup.innerHTML = `
       <div class="ai-transform-row">
@@ -50,12 +75,6 @@ window.AiTransform = (() => {
                autocomplete="off" spellcheck="false">
         <button type="button" id="ai-transform-send" title="Выполнить (Enter)">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8l12-5-5 12-2-5z"/><path d="M14 3l-5 5"/></svg>
-        </button>
-        <button type="button" id="ai-transform-accept" title="Принять" style="display:none">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 8l4 4 6-7"/></svg>
-        </button>
-        <button type="button" id="ai-transform-cancel" title="Отменить (Esc)" style="display:none">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>
         </button>
       </div>
     `;
@@ -74,18 +93,34 @@ window.AiTransform = (() => {
     const input = popup.querySelector('#ai-transform-input');
     setTimeout(() => input?.focus(), 50);
 
-    popup.querySelector('#ai-transform-send')?.addEventListener('click', e => { e.stopPropagation(); _runTransform(input.value); });
-    popup.querySelector('#ai-transform-accept')?.addEventListener('click', e => { e.stopPropagation(); _acceptChange(); hidePopup(); });
-    popup.querySelector('#ai-transform-cancel')?.addEventListener('click', e => { e.stopPropagation(); hidePopup(true); });
+    popup.querySelector('#ai-transform-send')?.addEventListener('click', e => {
+      e.stopPropagation();
+      _runTransform(input.value);
+    });
 
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); _runTransform(input.value); }
-      if (e.key === 'Escape') { e.preventDefault(); hidePopup(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); hidePopup(true); }
+      else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (_history.length && _historyIdx > 0) {
+          _historyIdx--;
+          input.value = _history[_historyIdx] || '';
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (_historyIdx < _history.length - 1) {
+          _historyIdx++;
+          input.value = _history[_historyIdx] || '';
+        } else {
+          _historyIdx = _history.length;
+          input.value = '';
+        }
+      }
     });
   }
 
   function hidePopup(restore = false) {
-    clearTimeout(_autoTimer);
     if (restore && _ta && _origText != null) {
       _ta._skipWordComplete = true;
       _ta.setRangeText(_origText, _origStart, _origEnd, 'end');
@@ -100,33 +135,19 @@ window.AiTransform = (() => {
     if (_onContextMenu) { document.removeEventListener('contextmenu', _onContextMenu, true); _onContextMenu = null; }
   }
 
-  function _showLoading() {
-    const popup = ensurePopup();
-    const input = popup.querySelector('#ai-transform-input');
-    const sendBtn = popup.querySelector('#ai-transform-send');
-    if (input) { input.disabled = true; input.placeholder = 'Выполняю...'; }
-    if (sendBtn) sendBtn.style.display = 'none';
-  }
-
-  function _showResult() {
-    const popup = ensurePopup();
-    const input = popup.querySelector('#ai-transform-input');
-    const sendBtn = popup.querySelector('#ai-transform-send');
-    const acceptBtn = popup.querySelector('#ai-transform-accept');
-    const cancelBtn = popup.querySelector('#ai-transform-cancel');
-    if (input) { input.disabled = false; input.placeholder = 'Новый запрос...'; }
-    if (sendBtn) sendBtn.style.display = '';
-    if (acceptBtn) acceptBtn.style.display = '';
-    if (cancelBtn) cancelBtn.style.display = '';
-  }
-
   // ── Запрос к LLM ─────────────────────────────────────────
   async function _runTransform(instruction) {
     if (!instruction?.trim() || !_ta || !_LLMCore) return;
     if (!_origText?.trim()) { window.Toast?.show('Нет выделенного текста', 'error'); return; }
 
-    _showLoading();
+    _addToHistory(instruction.trim());
     _removeDiffPanel();
+
+    const popup = ensurePopup();
+    const input = popup.querySelector('#ai-transform-input');
+    const sendBtn = popup.querySelector('#ai-transform-send');
+    if (input) { input.disabled = true; input.placeholder = 'Выполняю...'; }
+    if (sendBtn) sendBtn.style.display = 'none';
 
     try {
       const result = await _LLMCore.request({
@@ -141,14 +162,12 @@ window.AiTransform = (() => {
 
       if (!result?.trim()) {
         window.Toast?.show('LLM не вернул результат', 'error');
-        _showResult();
+        if (input) { input.disabled = false; input.placeholder = 'Новый запрос...'; }
+        if (sendBtn) sendBtn.style.display = '';
         return;
       }
 
       _suggestedText = result.trim();
-
-      // Diff-панель как в text-linter
-      _showDiffPanel(_origText, _suggestedText);
 
       // Применяем текст в textarea
       _ta._skipWordComplete = true;
@@ -156,18 +175,15 @@ window.AiTransform = (() => {
       _ta.dispatchEvent(new Event('input', { bubbles: true }));
       _ta._skipWordComplete = false;
 
-      _showResult();
+      // Скрываем popup, показываем diff
+      if (_popup) _popup.style.display = 'none';
+      _showDiffPanel(_origText, _suggestedText);
 
-      // Клик вне — закрыть
-      _onClickOutside = (e) => {
-        if (_popup && !_popup.contains(e.target) && e.target !== _ta) hidePopup();
-      };
-      setTimeout(() => document.addEventListener('click', _onClickOutside, true), 0);
-
-      // ПКМ — отмена
+      // ПКМ — отмена с возвратом оригинала
       _onContextMenu = (e) => {
-        if (_popup && !_popup.contains(e.target) && e.target !== _ta) {
+        if (_diffPanel && !_diffPanel.contains(e.target)) {
           e.preventDefault();
+          e.stopPropagation();
           hidePopup(true);
         }
       };
@@ -175,11 +191,12 @@ window.AiTransform = (() => {
 
     } catch (e) {
       if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
-      _showResult();
+      if (input) { input.disabled = false; input.placeholder = 'Новый запрос...'; }
+      if (sendBtn) sendBtn.style.display = '';
     }
   }
 
-  // ── Diff-панель (как в text-linter) ───────────────────────
+  // ── Diff-панель ──────────────────────────────────────────
   function _removeDiffPanel() {
     if (_diffPanel) { _diffPanel.remove(); _diffPanel = null; }
   }
@@ -220,9 +237,12 @@ window.AiTransform = (() => {
     const parent = _ta.parentNode;
     if (parent) parent.insertBefore(_diffPanel, _ta.nextSibling);
 
+    //.stopPropagation на всех кнопках чтобы не срабатывал _onClickOutside
+    _diffPanel.addEventListener('click', e => e.stopPropagation());
+
     _diffPanel.querySelector('[data-action="accept"]')?.addEventListener('click', () => {
       _acceptChange();
-      hidePopup();
+      _removeDiffPanel();
     });
     _diffPanel.querySelector('[data-action="reject"]')?.addEventListener('click', () => {
       hidePopup(true);
@@ -246,9 +266,7 @@ window.AiTransform = (() => {
 
   // ── Принятие ──────────────────────────────────────────────
   function _acceptChange() {
-    clearTimeout(_autoTimer);
     if (_ta && _suggestedText) window.Toast?.show('Принято ✓', 'success');
-    _removeDiffPanel();
   }
 
   // ── Публичный API ────────────────────────────────────────
