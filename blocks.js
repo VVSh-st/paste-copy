@@ -3132,7 +3132,9 @@ document.addEventListener('mindmap:jump-word', e => {
   if (!word) return;
   const tab = window.State?.getActive?.();
   if (!tab) return;
-  const re = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(escaped, 'i');
+  let found = false;
   for (const b of (tab.blocks || [])) {
     if (b.type !== 'text' && b.type !== 'todo') continue;
     const el = document.querySelector(`.block[data-id="${b.id}"] textarea.block-textarea`);
@@ -3146,7 +3148,20 @@ document.addEventListener('mindmap:jump-word', e => {
     el.scrollTop = Math.max(0, linesBefore * lineHeight - el.clientHeight / 3);
     el.classList.add('jump-highlight');
     setTimeout(() => el.classList.remove('jump-highlight'), 2000);
+    found = true;
     break;
+  }
+  if (!found) {
+    const blocks = (tab.blocks || []).filter(b => b.type === 'text' || b.type === 'todo');
+    if (blocks.length) {
+      const el = document.querySelector(`.block[data-id="${blocks[0].id}"] textarea.block-textarea`);
+      if (el) {
+        el.focus();
+        el.classList.add('jump-highlight');
+        setTimeout(() => el.classList.remove('jump-highlight'), 2000);
+      }
+    }
+    window.Toast?.show(`«${word}» не найдено в блоках`, 'info');
   }
 });
 
