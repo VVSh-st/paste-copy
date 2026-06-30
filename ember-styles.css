@@ -558,3 +558,40 @@
   z-index: 10;
 }
 .ember-eco-toast.show { opacity: 1; }
+
+/* ── Dictionaries module ────────────────────────────────────────────── */
+.dict-popup {
+  font-family: var(--font, system-ui, sans-serif);
+  line-height: 1.5;
+}
+.dict-popup .dict-word-list {
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 6px 6px;
+}
+.dict-popup .dict-word-btn {
+  background: var(--bg1, #11111b);
+  color: var(--text1, #cdd6f4);
+  border: 1px solid var(--border, #45475a);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dict-popup .dict-word-btn:hover {
+  background: var(--accent, #89b4fa);
+  color: #fff;
+  border-color: var(--accent, #89b4fa);
+}
+.dict-popup .dict-word-btn.dict-word-assoc {
+  opacity: 0.75;
+  font-style: italic;
+}
+.dict-popup .dict-word-btn.dict-word-assoc:hover {
+  opacity: 1;
+}
+.grammar-error-marker {
+  display: inline;
+}
+.dict-lang-indicator {
+  vertical-align: middle;
+}

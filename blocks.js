@@ -384,6 +384,14 @@ const Blocks = (() => {
     el.textContent = total.toLocaleString() + ' симв';
     el.className   = 'char-badge' + (total > 50000 ? ' danger' : total > 20000 ? ' warning' : '');
     el.title       = 'Всего символов в активных вкладках: ' + total.toLocaleString();
+
+    if (typeof Dictionaries !== 'undefined') {
+      let allText = '';
+      tab.blocks.forEach(b => {
+        if (b.type === 'text') allText += (b.subtabs[b.activeSubtab]?.value || '') + ' ';
+      });
+      Dictionaries.updateLangIndicator(allText);
+    }
   }
 
   function applyLayout() {

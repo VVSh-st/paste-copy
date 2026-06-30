@@ -184,6 +184,61 @@
   onClick('btn-search', () => Search.open());
   onClick('btn-notepad', () => Notepad.create());
 
+  /* ── Dictionaries dropdown ───────────────────────────────────────────*/
+  const dictDd = $id('dict-dropdown');
+  onClick('btn-dict', e => {
+    e.stopPropagation();
+    closeAllDropdowns(dictDd);
+    dictDd?.classList.toggle('open');
+  });
+  onClick('dict-thesaurus-btn', () => {
+    dictDd?.classList.remove('open');
+    if (typeof Dictionaries === 'undefined') return;
+    const ta = document.activeElement;
+    if (ta && ta.tagName === 'TEXTAREA') {
+      const info = Dictionaries.Thesaurus.getWordAtCursor(ta);
+      if (info) {
+        const rect = ta.getBoundingClientRect();
+        const linesBefore = ta.value.slice(0, info.start).split('\n');
+        const lineIdx = linesBefore.length - 1;
+        const colIdx = linesBefore[lineIdx]?.length || 0;
+        const charHeight = parseInt(getComputedStyle(ta).lineHeight) || 18;
+        Dictionaries.showThesaurusPopup(info.word, rect.left + colIdx * 7.5, rect.top + lineIdx * charHeight + charHeight);
+      } else {
+        Toast.show('Поставьте курсор на слово', 'error');
+      }
+    } else {
+      const word = Dictionaries.Thesaurus.getSelectedWord();
+      if (word) {
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          Dictionaries.showThesaurusPopup(word, rect.left, rect.bottom);
+        }
+      } else {
+        Toast.show('Выделите слово', 'error');
+      }
+    }
+  });
+  onClick('dict-grammar-btn', () => {
+    dictDd?.classList.remove('open');
+    if (typeof Dictionaries === 'undefined') return;
+    const ta = document.activeElement;
+    if (ta && ta.tagName === 'TEXTAREA') {
+      const text = ta.value;
+      if (!text.trim()) { Toast.show('Нет текста для проверки', 'error'); return; }
+      Toast.show('Проверяю грамматику...', 'success');
+      Dictionaries.Grammar.check(text).then(matches => {
+        if (!matches.length) { Toast.show('Ошибок не найдено ✓', 'success'); return; }
+        Dictionaries.showGrammarResults(ta, matches);
+        Toast.show(`Найдено ошибок: ${matches.length}`, 'success');
+      });
+    } else {
+      Toast.show('Активируйте текстовое поле', 'error');
+    }
+  });
+
   /* ── Close all dropdowns helper ────────────────────────────────────────*/
   function closeAllDropdowns(except) {
     document.querySelectorAll('.dropdown.open').forEach(d => {
@@ -579,6 +634,57 @@
       const llmHistory  = $id('llm-history-modal');
       if (llmSettings && getComputedStyle(llmSettings).display !== 'none') llmSettings.style.display = 'none';
       if (llmHistory && getComputedStyle(llmHistory).display !== 'none') llmHistory.style.display = 'none';
+      if (typeof Dictionaries !== 'undefined') {
+        Dictionaries.hidePopup();
+        Dictionaries.clearGrammarMarkers();
+      }
+    }
+
+    // Dictionaries: Alt+D — тезаурус (Datamuse, без LLM)
+    if (e.altKey && k === 'd') {
+      e.preventDefault();
+      if (typeof Dictionaries === 'undefined') return;
+      const ta = document.activeElement;
+      if (ta && ta.tagName === 'TEXTAREA') {
+        const info = Dictionaries.Thesaurus.getWordAtCursor(ta);
+        if (info) {
+          const rect = ta.getBoundingClientRect();
+          const linesBefore = ta.value.slice(0, info.start).split('\n');
+          const lineIdx = linesBefore.length - 1;
+          const colIdx = linesBefore[lineIdx]?.length || 0;
+          const charHeight = parseInt(getComputedStyle(ta).lineHeight) || 18;
+          const x = rect.left + colIdx * 7.5;
+          const y = rect.top + lineIdx * charHeight;
+          Dictionaries.showThesaurusPopup(info.word, x, y + charHeight);
+        }
+      } else {
+        const word = Dictionaries.Thesaurus.getSelectedWord();
+        if (word) {
+          const sel = window.getSelection();
+          if (sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            Dictionaries.showThesaurusPopup(word, rect.left, rect.bottom);
+          }
+        }
+      }
+    }
+
+    // Dictionaries: Ctrl+Shift+G — проверка грамматики (LanguageTool)
+    if (ctrl && shift && k === 'g') {
+      e.preventDefault();
+      if (typeof Dictionaries === 'undefined') return;
+      const ta = document.activeElement;
+      if (ta && ta.tagName === 'TEXTAREA') {
+        const text = ta.value;
+        if (!text.trim()) { Toast.show('Нет текста для проверки', 'error'); return; }
+        Toast.show('Проверяю грамматику...', 'success');
+        Dictionaries.Grammar.check(text).then(matches => {
+          if (!matches.length) { Toast.show('Ошибок не найдено ✓', 'success'); return; }
+          Dictionaries.showGrammarResults(ta, matches);
+          Toast.show(`Найдено ошибок: ${matches.length}`, 'success');
+        });
+      }
     }
   });
 
@@ -839,6 +945,7 @@
   if (window.MemorySync?.init) window.MemorySync.init();
   if (typeof Anchors !== 'undefined') Anchors.init();
   if (typeof Translator !== 'undefined') Translator.init();
+  if (typeof Dictionaries !== 'undefined') Dictionaries.init();
   if (typeof Ember !== 'undefined') Ember.init(null, State.getActive()?.id);
 
   State.onChange(() => {

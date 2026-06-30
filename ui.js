@@ -473,6 +473,10 @@ const Preview = (() => {
       cnt.textContent = `${chars.toLocaleString()} симв · ${lines} стр · ${kb} KB · ~${tokens.toLocaleString()} токенов`;
     }
 
+    if (typeof Dictionaries !== 'undefined' && t) {
+      Dictionaries.updateLangIndicator(t);
+    }
+
     const mdMode = getMdMode();
     const contentEl = document.getElementById('preview-content');
     const prevScrollPct = contentEl ? contentEl.scrollTop / Math.max(1, contentEl.scrollHeight - contentEl.clientHeight) : 0;
