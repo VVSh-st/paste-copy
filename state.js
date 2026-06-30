@@ -20,7 +20,6 @@ const State = (() => {
     previewHeaders:  true,
     currentLineHighlight: false,
     currentLineColor:     'rgba(79,142,247,0.18)',
-    scrollPaddingLines:   0,
     blockHeights:    {},
 
     llm: {

@@ -150,10 +150,6 @@
     const optCurrentLineColor = $id('opt-current-line-color-misc');
     if (optCurrentLineColor) optCurrentLineColor.value = lay.currentLineColor || 'rgba(79,142,247,0.18)';
 
-    const optScrollPadding = $id('opt-scroll-padding-lines');
-    if (optScrollPadding) optScrollPadding.value = lay.scrollPaddingLines || 0;
-    _applyScrollPadding(lay.scrollPaddingLines || 0);
-
     const optColScrollbar = $id('opt-col-scrollbar');
     if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
@@ -424,36 +420,6 @@
     State.setLayout({ colScrollbar: enabled });
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', enabled);
     scheduleSave();
-  };
-
-  const optScrollPadding = $id('opt-scroll-padding-lines');
-  if (optScrollPadding) optScrollPadding.oninput = e => {
-    const lines = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0));
-    State.setLayout({ scrollPaddingLines: lines });
-    _applyScrollPadding(lines);
-    scheduleSave();
-  };
-
-  function _applyScrollPadding(lines) {
-    const px = lines * 20;
-    document.documentElement.style.setProperty('--scroll-padding-bottom', px + 'px');
-  }
-
-  window._scrollPaddingTick = function(ta) {
-    if (!ta || ta.tagName !== 'TEXTAREA') return;
-    const lines = State.getLayout()?.scrollPaddingLines || 0;
-    if (!lines) return;
-    const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-    const pad = lines * lineHeight;
-    const realVal = ta.value;
-    const cursorPos = Math.min(ta.selectionStart, realVal.length);
-    const textBefore = realVal.substring(0, cursorPos);
-    const linesBefore = textBefore.split('\n').length;
-    const cursorY = linesBefore * lineHeight;
-    const bottomEdge = ta.scrollTop + ta.clientHeight - pad;
-    if (cursorY > bottomEdge) {
-      ta.scrollTop = cursorY - ta.clientHeight + pad;
-    }
   };
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/

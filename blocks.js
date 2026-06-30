@@ -1378,29 +1378,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     ta.className   = 'block-textarea';
     ta.spellcheck  = b.spellcheck !== false;
-    const realVal = b.subtabs[b.activeSubtab].value || '';
-    ta.value       = realVal;
+    ta.value       = b.subtabs[b.activeSubtab].value || '';
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
     ta.rows = 5;
     if (b.height) ta.style.height = b.height + 'px';
-
-    const _spLines = State.getLayout()?.scrollPaddingLines || 0;
-    if (_spLines > 0) {
-      const pad = '\n'.repeat(_spLines + 2);
-      const _nativeDesc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-      Object.defineProperty(ta, 'value', {
-        get() { return _nativeDesc.get.call(this).replace(/\n*$/, ''); },
-        set(v) {
-          const clean = String(v ?? '').replace(/\n*$/, '');
-          const ss = Math.min(this.selectionStart, clean.length);
-          const se = Math.min(this.selectionEnd, clean.length);
-          _nativeDesc.set.call(this, clean + pad);
-          this.setSelectionRange(ss, se);
-        },
-        configurable: true,
-      });
-    }
 
     // Сохраняем прокрутку textarea при скроллинге
     ta.addEventListener('scroll', () => {
@@ -1466,7 +1448,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         kind: window.PromptLoom?.classify?.(val) || ''
       });
 
-      window._scrollPaddingTick?.(ta);
     });
 
     ta.addEventListener('keydown', e => {
@@ -1478,9 +1459,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
       WordComplete.handleKeydown(e, ta);
       SmartList.handleKeydown(e, ta);
-      if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'End', 'Home'].includes(e.key)) {
-        requestAnimationFrame(() => window._scrollPaddingTick?.(ta));
-      }
     });
 
     ta.addEventListener('paste', e => {
@@ -1496,7 +1474,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         _applyPasteCursor();
       });
     });
-    ta.addEventListener('click', () => window._scrollPaddingTick?.(ta));
     ta.addEventListener('blur', e => {
       // Если фокус ушёл на undo/redoBtn — не фиксируем снапшот:
       // кнопка вернёт фокус обратно в ta после отката

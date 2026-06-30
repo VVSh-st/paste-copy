@@ -579,7 +579,6 @@ body {
 }
 
 .block-actions { display: flex; gap: 2px; align-items: center; margin-left: 3px; flex-shrink: 0; }
-.block-btn { background: transparent; border: none; padding: 2px 4px; cursor: pointer; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; }
 .block-toggle {
   cursor: pointer; color: var(--text3); font-size: 11px; padding: 3px 5px;
   border-radius: var(--radius-sm);
@@ -630,7 +629,6 @@ textarea.block-textarea {
   resize: vertical; outline: none;
   min-height: 80px; max-height: 600px; overflow-y: auto; flex-shrink: 0;
   transition: border-color var(--trans), box-shadow var(--trans);
-  scroll-padding-bottom: var(--scroll-padding-bottom, 0px);
 }
 textarea.block-textarea:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow2); background-color: #0a0f15;
@@ -5834,7 +5832,6 @@ body.help-open {
 .color-dot:hover, .color-dot.active { border-color: var(--text); }
 
 /* ── TODO Checklist ─────────────────────────────────────────────────────── */
-.block-type-todo { position: relative; overflow: visible; }
 .block-type-todo .block-subtabs-nav { max-width: 140px; }
 .block-type-todo .todo-list { padding: 4px 0; }
 
@@ -5891,42 +5888,6 @@ body.help-open {
   font-size: 12px; cursor: pointer; text-align: left; opacity: 0.6;
 }
 .todo-add-btn:hover { opacity: 1; color: var(--text); }
-
-/* ── Completion checkbox (todo/text/table) ─────────────────────────────── */
-.block-type-todo, .block-type-text, .block-type-table { position: relative; overflow: visible; }
-
-.todo-complete-cb {
-  position: absolute; right: 16px; z-index: 3;
-  width: 22px; height: 22px; cursor: pointer;
-  background: transparent; border: 1.5px solid var(--text-muted);
-  border-radius: 5px; display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity 0.3s ease, border-color 0.25s ease;
-}
-.block-type-text .todo-complete-cb,
-.block-type-table .todo-complete-cb { top: 76px; }
-.block-type-todo .todo-complete-cb { top: 8px; right: 200px; }
-
-.todo-complete-cb svg {
-  width: 14px; height: 14px; stroke: #d4a520; fill: none;
-  stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
-  opacity: 0; transition: opacity 0.25s ease;
-}
-
-/* near: cursor within 100px, not checked */
-.todo-complete-cb.near { opacity: 0.55; }
-.todo-complete-cb.near:hover { opacity: 1 !important; }
-.todo-complete-cb.near svg { opacity: 0.5; }
-
-/* checked: ALWAYS visible */
-.todo-complete-cb.checked { opacity: 0.5 !important; border-color: #d4a520; }
-.todo-complete-cb.checked svg { opacity: 0.7; }
-
-/* checked + near: brighter */
-.todo-complete-cb.checked.near { opacity: 0.85 !important; }
-.todo-complete-cb.checked.near:hover { opacity: 1 !important; }
-.todo-complete-cb.checked.near svg { opacity: 1; }
-
-.block-subtab.subtab-completed .block-subtab-label { color: #d4a520; }
 
 /* ── Table block ──────────────────────────────────────────────────────── */
 .table-grid {
