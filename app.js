@@ -439,13 +439,11 @@
     document.documentElement.style.setProperty('--scroll-padding-bottom', px + 'px');
   }
 
-  let _spTimer = null;
   window._scrollPaddingTick = function(ta) {
     if (!ta || ta.tagName !== 'TEXTAREA') return;
     const lines = State.getLayout()?.scrollPaddingLines || 0;
     if (!lines) return;
-    clearTimeout(_spTimer);
-    _spTimer = setTimeout(() => {
+    requestAnimationFrame(() => {
       if (!ta.isConnected) return;
       const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
       const pad = lines * lineHeight;
@@ -453,13 +451,12 @@
       const textBefore = ta.value.substring(0, cursorPos);
       const linesBefore = textBefore.split('\n').length;
       const cursorY = linesBefore * lineHeight;
-      const visibleTop = ta.scrollTop;
-      const visibleBottom = visibleTop + ta.clientHeight;
-      const cursorFromBottom = visibleBottom - cursorY;
-      if (cursorFromBottom < pad + lineHeight) {
-        ta.scrollTop = cursorY - ta.clientHeight + pad + lineHeight;
+      const targetBottom = ta.clientHeight - pad;
+      const cursorFromTop = cursorY - ta.scrollTop;
+      if (cursorFromTop > targetBottom) {
+        ta.scrollTop = cursorY - targetBottom;
       }
-    }, 30);
+    });
   };
 
   document.addEventListener('selectionchange', () => {
