@@ -22,6 +22,22 @@ window.LLMFeatures = (() => {
     return String(s ?? '').replace(/[&<>"']/g,
       c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+
+  // ── Datamuse thesaurus (offline, free) ────────────────────────
+  const _datamuseCache = new Map();
+  async function _datamuseQuery(word, max = 15) {
+    if (!word) return [];
+    const key = word.toLowerCase();
+    if (_datamuseCache.has(key)) return _datamuseCache.get(key);
+    try {
+      const r = await fetch(`https://api.datamuse.com?ml=${encodeURIComponent(word)}&max=${max}`);
+      if (!r.ok) return [];
+      const data = await r.json();
+      const items = (data || []).map(item => ({ word: item.word }));
+      _datamuseCache.set(key, items);
+      return items;
+    } catch { return []; }
+  }
   const _LANG_INSTR =
   '\n\nОТВЕЧАЙ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ. ПОКАЗЫВАЙ ТОЛЬКО ИТОГОВЫЙ ОТВЕТ: без пояснений, анализа, вступлений и Markdown-обёрток.';
   let _thinkingTimer = null;
@@ -450,6 +466,26 @@ window.LLMFeatures = (() => {
     while (end < text.length && wordRe.test(text[end])) end++;
     const word = sel || text.slice(start, end).trim();
     if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
+
+    const engine = _State?.getLayout()?.llm?.thesaurusEngine ?? 'llm';
+
+    if (engine === 'datamuse') {
+      _showThinking(`◕ Тезаурус (Datamuse): «${word}»`);
+      try {
+        const items = await _datamuseQuery(word);
+        _hideThinking();
+        if (!items.length) { window.Toast?.show('Нет синонимов', 'info'); return; }
+        _thesaurusItems = items;
+        _thesaurusIdx = 0;
+        _showThesaurusPopup(ta);
+        _applyThesaurusItem();
+      } catch (e) {
+        _hideThinking();
+        window.Toast?.show('Datamuse: ' + e.message, 'error');
+      }
+      return;
+    }
+
     const ctx = text.slice(Math.max(0, pos - 100), pos + 100);
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
@@ -496,6 +532,35 @@ window.LLMFeatures = (() => {
     while (we < savedValue.length && wordRe.test(savedValue[we])) we++;
     const word = sel || savedValue.slice(ws, we).trim();
     if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
+
+    const engine = _State?.getLayout()?.llm?.thesaurusEngine ?? 'llm';
+
+    if (engine === 'datamuse') {
+      _showThinking(`◕ Тезаурус (Datamuse): «${word}»`);
+      try {
+        const items = await _datamuseQuery(word);
+        _hideThinking();
+        if (!items.length) { window.Toast?.show('Нет синонимов', 'info'); return; }
+        _thesaurusItems = items;
+        _thesaurusIdx = 0;
+        _thesaurusTa = ta;
+        _thesaurusStart = savedStart;
+        _thesaurusEnd = savedEnd;
+        const raw = savedValue.slice(savedStart, savedEnd);
+        _thesaurusOrig = raw;
+        const leadMatch = raw.match(/^(\s*)/);
+        const trailMatch = raw.match(/(\s*)$/);
+        _thesaurusLeadSpace = leadMatch ? leadMatch[1] : '';
+        _thesaurusTrailSpace = trailMatch ? trailMatch[1] : '';
+        _showThesaurusPopupInline();
+        _applyThesaurusItem();
+      } catch (e) {
+        _hideThinking();
+        window.Toast?.show('Datamuse: ' + e.message, 'error');
+      }
+      return;
+    }
+
     const ctx = savedValue.slice(Math.max(0, pos - 100), pos + 100);
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
