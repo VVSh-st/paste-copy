@@ -22,6 +22,13 @@
 
 ## Status — ТЕКУЩАЯ СЕССИЯ
 
+### Выбор тезауруса LLM / Datamuse
+
+1. ✅ **Select в Настройки → Разное → Общее** — «Тезаурус: LLM (профиль) / Datamuse (бесплатный)»
+2. ✅ **Настройка сохраняется** в `llm.thesaurusEngine`
+3. ✅ **_thesaurusAtCursor / _thesaurusAtBlock** — проверяют `engine` перед запросом. При `datamuse` — бесплатный API с кэшем, без LLM.
+4. ✅ **Не сломано** — существующий UI тезауруса (Alt+T, попап с циклом) не изменён.
+
 ### MiniChat — контекст и кэш
 
 1. ✅ **pushToHistory для всех фич** — `_runOnPreview`, `rephrase`, `expand`, `groom`, `PromptGrader`, `PromptAuditor`, `TokenOptimizer`, `!сум` — все пушат user-text в `_history`
