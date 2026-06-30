@@ -1,7 +1,6 @@
 // file_name: dictionaries.js
 /* ============================================================
-   dictionaries.js — Тезаурус (Datamuse), Грамматика (LanguageTool),
-                     Определение языка
+   dictionaries.js — Offline-тезаурус (Datamuse API) + Определение языка
    ============================================================ */
 'use strict';
 
@@ -14,16 +13,22 @@ window.Dictionaries = (() => {
   let _cacheDirty = false;
   let _cacheSaveTimer = null;
 
-  // ── Состояние UI ──────────────────────────────────────────
+  // ── Тезаурус state ────────────────────────────────────────
   let _popup = null;
-  let _popupTimer = null;
-  let _grammarUnderlines = [];
-  let _grammarMarkers = new Map();
+  let _items = [];
+  let _idx = -1;
+  let _ta = null;
+  let _origStart = 0;
+  let _origEnd = 0;
+  let _origText = '';
+  let _leadSpace = '';
+  let _trailSpace = '';
+  let _closeOnClick = null;
+  let _closeOnCtx = null;
+  let _onKey = null;
 
   // ── Утилиты ───────────────────────────────────────────────
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
   const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
-
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g,
       c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -33,511 +38,272 @@ window.Dictionaries = (() => {
   function loadCache() {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) cache = new Map(arr.slice(-MAX_CACHE));
-      }
+      if (raw) { const a = JSON.parse(raw); if (Array.isArray(a)) cache = new Map(a.slice(-MAX_CACHE)); }
     } catch {}
   }
-
   function flushCache() {
     if (!_cacheDirty) return;
     _cacheDirty = false;
-    try {
-      const arr = [...cache.entries()].slice(-MAX_CACHE);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(arr));
-    } catch {}
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify([...cache.entries()].slice(-MAX_CACHE))); } catch {}
   }
-
   function scheduleCacheSave() {
     _cacheDirty = true;
     clearTimeout(_cacheSaveTimer);
     _cacheSaveTimer = setTimeout(flushCache, 3000);
   }
-
   function cacheGet(key) {
     const v = cache.get(key);
     if (v !== undefined) {
       if (v.ts && Date.now() - v.ts > CACHE_TTL) { cache.delete(key); return undefined; }
-      cache.delete(key);
-      cache.set(key, v);
+      cache.delete(key); cache.set(key, v);
       return v.data;
     }
     return undefined;
   }
-
   function cacheSet(key, data) {
     if (!data) return;
-    cache.delete(key);
-    cache.set(key, { data, ts: Date.now() });
-    if (cache.size > MAX_CACHE) {
-      const first = cache.keys().next().value;
-      cache.delete(first);
-    }
+    cache.delete(key); cache.set(key, { data, ts: Date.now() });
+    if (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value);
     scheduleCacheSave();
   }
 
   // ============================================================
   //  1. ТЕЗАУРУС (Datamuse API)
   // ============================================================
-  const Thesaurus = (() => {
-    const BASE = 'https://api.datamuse.com';
-    let _activeController = null;
+  const BASE = 'https://api.datamuse.com';
+  let _activeController = null;
 
-    // Типы связей
+  async function query(word, relationKey, max = 15) {
+    if (!word) return [];
     const RELATIONS = {
-      synonyms:   { ml: 'meaning', label: 'Синонимы', icon: '🔄' },
-      antonyms:   { rel_ant: 'antonym', label: 'Антонимы', icon: '↔️' },
-      rhymes:     { rel_rhy: 'rhyme', label: 'Рифмы', icon: '🎵' },
-      triggers:   { rel_trg: 'trigger', label: 'Ассоциации', icon: '💡' },
-      similar:    { sl: 'spelling-like', label: 'Похожие по написанию', icon: '✏️' },
+      synonyms:  'ml',
+      antonyms:  'rel_ant',
+      rhymes:    'rel_rhy',
+      triggers:  'rel_trg',
     };
+    const paramKey = RELATIONS[relationKey];
+    if (!paramKey) return [];
 
-    async function query(word, relationKey, max = 15) {
-      if (!word || !relationKey) return [];
-      const rel = RELATIONS[relationKey];
-      if (!rel) return [];
+    const cacheKey = JSON.stringify(['th', word.toLowerCase(), relationKey]);
+    const cached = cacheGet(cacheKey);
+    if (cached) return cached;
 
-      const paramKey = Object.keys(rel)[0];
-      const cacheKey = JSON.stringify(['thesaurus', word.toLowerCase(), relationKey]);
-      const cached = cacheGet(cacheKey);
-      if (cached) return cached;
+    if (_activeController) _activeController.abort();
+    _activeController = new AbortController();
 
-      if (_activeController) _activeController.abort();
-      _activeController = new AbortController();
+    try {
+      const url = `${BASE}?${paramKey}=${encodeURIComponent(word)}&max=${max}`;
+      const r = await withTimeout(fetch(url, { signal: _activeController.signal }), 5000);
+      if (!r.ok) return [];
+      const data = await r.json();
+      const results = (data || []).map(item => ({ word: item.word, score: item.score || 0 }));
+      cacheSet(cacheKey, results);
+      return results;
+    } catch {
+      return [];
+    }
+  }
 
-      try {
-        const url = `${BASE}?${paramKey}=${encodeURIComponent(word)}&max=${max}`;
-        const r = await withTimeout(fetch(url, { signal: _activeController.signal }), 5000);
-        if (!r.ok) return [];
-        const data = await r.json();
-        const results = (data || []).map(item => ({
-          word: item.word,
-          score: item.score || 0,
-          tags: item.tags || [],
-        }));
-        cacheSet(cacheKey, results);
-        return results;
-      } catch {
-        return [];
+  // ============================================================
+  //  2. Попап (по образцу existing thesaurus)
+  // ============================================================
+  function _close() {
+    if (_closeOnClick) { document.removeEventListener('click', _closeOnClick, true); _closeOnClick = null; }
+    if (_closeOnCtx) { document.removeEventListener('contextmenu', _closeOnCtx, true); _closeOnCtx = null; }
+    if (_onKey) { document.removeEventListener('keydown', _onKey, true); _onKey = null; }
+    if (_popup) { _popup.remove(); _popup = null; }
+    _items = []; _idx = -1; _ta = null;
+  }
+
+  function _applyItem() {
+    if (!_items.length || !_ta || _idx < 0) return;
+    const item = _items[_idx];
+    const replacement = _leadSpace + item.word + _trailSpace;
+    _ta._skipWordComplete = true;
+    _ta.focus();
+    _ta.setRangeText(replacement, _origStart, _origEnd, 'select');
+    _ta.dispatchEvent(new Event('input', { bubbles: true }));
+    _ta._skipWordComplete = false;
+    const newEnd = _origStart + replacement.length;
+    _origEnd = newEnd;
+    if (_popup) {
+      const dot = _popup.querySelector('.thesaurus-dot');
+      if (dot) dot.textContent = `${_idx + 1}/${_items.length}`;
+      const label = _popup.querySelector('.thesaurus-word');
+      if (label) label.textContent = item.word;
+    }
+  }
+
+  function _showPopup(ta) {
+    _close();
+    _ta = ta;
+    _origStart = ta.selectionStart;
+    _origEnd = ta.selectionEnd;
+    _origText = ta.value.slice(_origStart, _origEnd);
+    const leadMatch = _origText.match(/^(\s*)/);
+    const trailMatch = _origText.match(/(\s*)$/);
+    _leadSpace = leadMatch ? leadMatch[1] : '';
+    _trailSpace = trailMatch ? trailMatch[1] : '';
+
+    const popup = document.createElement('div');
+    popup.className = 'thesaurus-popup';
+    popup.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:9500;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;box-shadow:0 4px 20px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text1);';
+    popup.innerHTML =
+      '<span class="thesaurus-dot" style="color:var(--text3);font-size:10px;min-width:30px">0/0</span>' +
+      '<span class="thesaurus-word" style="font-weight:600;color:#4ade80"></span>' +
+      '<span style="color:var(--text3);font-size:10px;margin-left:8px">← →: цикл · Enter: ✓ · Esc: ✕</span>';
+    document.body.appendChild(popup);
+    _popup = popup;
+
+    _onKey = (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation();
+        _idx = (_idx + 1) % _items.length;
+        _applyItem();
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation();
+        _idx = (_idx - 1 + _items.length) % _items.length;
+        _applyItem();
+      } else if (e.key === 'Enter') {
+        e.preventDefault(); e.stopPropagation();
+        _close();
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        _restoreOrig();
+        _close();
       }
-    }
-
-    function getSelectedWord() {
-      const sel = window.getSelection?.();
-      if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-      const text = sel.toString().trim();
-      if (!text || text.length > 50 || /\s/.test(text)) return null;
-      return text;
-    }
-
-    function getWordAtCursor(textarea) {
-      if (!textarea) return null;
-      const pos = textarea.selectionStart;
-      const text = textarea.value;
-      if (pos === undefined || pos === null) return null;
-      let start = pos;
-      let end = pos;
-      while (start > 0 && /[a-zA-Zа-яёА-ЯЁ0-9_-]/.test(text[start - 1])) start--;
-      while (end < text.length && /[a-zA-Zа-яёА-ЯЁ0-9_-]/.test(text[end])) end++;
-      if (start === end) return null;
-      return { word: text.slice(start, end), start, end };
-    }
-
-    return {
-      RELATIONS,
-      query,
-      getSelectedWord,
-      getWordAtCursor,
     };
-  })();
+    setTimeout(() => document.addEventListener('keydown', _onKey, true), 0);
 
-  // ============================================================
-  //  2. ГРАММАТИКА (LanguageTool API)
-  // ============================================================
-  const Grammar = (() => {
-    const PUBLIC_URL = 'https://api.languagetool.org/v2';
-    let _activeController = null;
-    let _debounceTimer = null;
-    const DEBOUNCE_MS = 1500;
-
-    async function check(text, lang = 'auto') {
-      if (!text || text.trim().length < 5) return [];
-
-      const cacheKey = JSON.stringify(['grammar', text.slice(0, 500), lang]);
-      const cached = cacheGet(cacheKey);
-      if (cached) return cached;
-
-      if (_activeController) _activeController.abort();
-      _activeController = new AbortController();
-
-      try {
-        const body = new URLSearchParams({ text, language: lang });
-        const r = await withTimeout(
-          fetch(`${PUBLIC_URL}/check`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString(),
-            signal: _activeController.signal,
-          }),
-          10000
-        );
-        if (!r.ok) return [];
-        const data = await r.json();
-        const matches = (data.matches || []).map(m => ({
-          message: m.message,
-          shortMessage: m.shortMessage || m.message,
-          replacements: (m.replacements || []).slice(0, 5).map(r => r.value),
-          offset: m.offset,
-          length: m.length,
-          context: m.context,
-          rule: m.rule?.id,
-          category: m.rule?.category?.id,
-          severity: m.rule?.issueType || 'misspelling',
-        }));
-        cacheSet(cacheKey, matches);
-        return matches;
-      } catch {
-        return [];
-      }
-    }
-
-    function checkDebounced(text, lang, callback) {
-      clearTimeout(_debounceTimer);
-      _debounceTimer = setTimeout(async () => {
-        const results = await check(text, lang);
-        callback(results);
-      }, DEBOUNCE_MS);
-    }
-
-    function getSeverityColor(severity) {
-      switch (severity) {
-        case 'misspelling': return '#ef4444';
-        case 'grammar': return '#f59e0b';
-        case 'style': return '#3b82f6';
-        case 'typography': return '#8b5cf6';
-        default: return '#6b7280';
-      }
-    }
-
-    return {
-      check,
-      checkDebounced,
-      getSeverityColor,
+    _closeOnClick = (e) => {
+      if (!popup.contains(e.target)) _close();
     };
-  })();
+    setTimeout(() => document.addEventListener('click', _closeOnClick, true), 0);
 
-  // ============================================================
-  //  3. ОПРЕДЕЛЕНИЕ ЯЗЫКА
-  // ============================================================
-  const LangDetect = (() => {
-    const SAMPLES = {
-      ru: 'это текст на русском языке для определения',
-      en: 'this is english text for language detection',
-      de: 'dies ist deutscher text zur Spracherkennung',
-      fr: 'ceci est un texte français pour la détection',
-      es: 'este es un texto español para la detección',
-      it: 'questo è un testo italiano per il rilevamento',
-      zh: '这是用于检测的中文文本',
-      ja: 'これは検出用の日本語テキストです',
-      ko: '이것은 감지를위한 한국어 텍스트입니다',
+    _closeOnCtx = (e) => {
+      if (!popup.contains(e.target)) {
+        e.preventDefault();
+        _restoreOrig();
+        _close();
+      }
     };
+    setTimeout(() => document.addEventListener('contextmenu', _closeOnCtx, true), 0);
+  }
 
-    function detect(text) {
-      if (!text || text.length < 3) return null;
-      const sample = text.toLowerCase();
+  function _restoreOrig() {
+    if (_ta && _origText != null) {
+      _ta._skipWordComplete = true;
+      _ta.setRangeText(_origText, _origStart, _origEnd, 'end');
+      _ta.dispatchEvent(new Event('input', { bubbles: true }));
+      _ta._skipWordComplete = false;
+    }
+  }
 
-      // Простая эвристика на основе Unicode-диапазонов
-      if (/[\u3400-\u9FFF]/.test(text)) return { code: 'zh', confidence: 0.8 };
-      if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return { code: 'ja', confidence: 0.85 };
-      if (/[\uAC00-\uD7A3]/.test(text)) return { code: 'ko', confidence: 0.85 };
-      if (/[\u0600-\u06FF]/.test(text)) return { code: 'ar', confidence: 0.8 };
-      if (/[\u0900-\u097F]/.test(text)) return { code: 'hi', confidence: 0.8 };
+  // ============================================================
+  //  3. Публичный API: тезаурус на слове
+  // ============================================================
+  async function openAtCursor(ta) {
+    if (!ta || ta.tagName !== 'TEXTAREA') return false;
 
-      // Подсчёт буквенных диапазонов
-      const letters = text.replace(/[\s\d\p{P}]/gu, '');
-      if (!letters) return null;
-
-      const cyrCount = (letters.match(/[\u0400-\u04FF]/gu) || []).length;
-      const latCount = (letters.match(/[A-Za-z]/g) || []).length;
-      const total = letters.length;
-
-      if (cyrCount / total > 0.5) return { code: 'ru', confidence: Math.min(0.95, 0.5 + cyrCount / total * 0.5) };
-      if (latCount / total > 0.5) {
-        // Определяем конкретный латинский язык по частотным словам
-        const lower = sample;
-        if (/\b(the|and|is|are|was|were|have|has|been|will|would|could|should|this|that|with|from|for)\b/.test(lower))
-          return { code: 'en', confidence: 0.85 };
-        if (/\b(der|die|das|und|ist|ein|eine|nicht|sie|wir|ich|kann|werden|haben|dass)\b/.test(lower))
-          return { code: 'de', confidence: 0.8 };
-        if (/\b(le|la|les|des|est|sont|une|dans|pour|avec|pas|sur|qui|que|nous|mais)\b/.test(lower))
-          return { code: 'fr', confidence: 0.8 };
-        if (/\b(el|la|los|las|es|son|una|del|por|con|que|está|tiene|puede|como|pero)\b/.test(lower))
-          return { code: 'es', confidence: 0.8 };
-        if (/\b(il|la|le|di|che|è|un|una|per|con|non|sono|come|questo|anche|ma)\b/.test(lower))
-          return { code: 'it', confidence: 0.75 };
-        return { code: 'en', confidence: 0.6 };
-      }
-
-      return null;
+    const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+    const pos = ta.selectionStart;
+    const text = ta.value;
+    const wordRe = /[\wА-Яа-яЁёA-Za-z\u00C0-\u024F]/;
+    let start = pos, end = pos;
+    while (start > 0 && wordRe.test(text[start - 1])) start--;
+    while (end < text.length && wordRe.test(text[end])) end++;
+    const word = sel || text.slice(start, end).trim();
+    if (!word) {
+      window.Toast?.show('Выделите слово или поставьте курсор', 'error');
+      return false;
     }
 
-    return { detect, SAMPLES };
-  })();
-
-  // ============================================================
-  //  UI: Тултип тезауруса
-  // ============================================================
-  function ensurePopup() {
-    if (_popup && _popup.isConnected) return _popup;
-    _popup = document.createElement('div');
-    _popup.className = 'dict-popup';
-    _popup.style.cssText = [
-      'position:fixed;z-index:8000;max-width:360px;max-height:400px;overflow-y:auto',
-      'background:var(--bg2,#1e1e2e);color:var(--text1,#cdd6f4)',
-      'border:1px solid var(--border,#45475a);border-radius:10px',
-      'padding:8px;font-size:12px;box-shadow:0 8px 32px rgba(0,0,0,.45)',
-      'display:none',
-    ].join(';');
-    document.body.appendChild(_popup);
-    return _popup;
-  }
-
-  function showPopup(x, y, html) {
-    const pop = ensurePopup();
-    pop.innerHTML = html;
-    pop.style.display = 'block';
-    // Позиционирование с учётом границ экрана
-    const rect = pop.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let left = x;
-    let top = y + 10;
-    if (left + rect.width > vw - 10) left = vw - rect.width - 10;
-    if (top + rect.height > vh - 10) top = y - rect.height - 10;
-    if (left < 10) left = 10;
-    if (top < 10) top = 10;
-    pop.style.left = left + 'px';
-    pop.style.top = top + 'px';
-  }
-
-  function hidePopup() {
-    clearTimeout(_popupTimer);
-    _popupTimer = setTimeout(() => {
-      if (_popup) _popup.style.display = 'none';
-    }, 300);
-  }
-
-  function showThesaurusPopup(word, x, y) {
-    if (!word) return;
-    const pop = ensurePopup();
-    pop.innerHTML = `<div style="padding:8px;color:var(--text3)">🔍 Загрузка для «${esc(word)}»...</div>`;
-    pop.style.display = 'block';
-    pop.style.left = x + 'px';
-    pop.style.top = (y + 10) + 'px';
-
-    pop.onmouseenter = () => clearTimeout(_popupTimer);
-    pop.onmouseleave = hidePopup;
-
-    // Загружаем синонимы и ассоциации параллельно
-    Promise.all([
-      Thesaurus.query(word, 'synonyms', 12),
-      Thesaurus.query(word, 'triggers', 8),
-    ]).then(([synonyms, triggers]) => {
-      let html = `<div style="padding:4px 6px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border)">📖 ${esc(word)}</div>`;
-
-      if (synonyms.length) {
-        html += `<div style="padding:6px 6px 2px;font-size:11px;color:var(--text3)">Синонимы</div>`;
-        html += `<div class="dict-word-list">`;
-        synonyms.forEach(s => {
-          html += `<button type="button" class="dict-word-btn" data-word="${esc(s.word)}">${esc(s.word)}</button>`;
-        });
-        html += `</div>`;
-      }
-
-      if (triggers.length) {
-        html += `<div style="padding:6px 6px 2px;font-size:11px;color:var(--text3)">Ассоциации</div>`;
-        html += `<div class="dict-word-list">`;
-        triggers.forEach(s => {
-          html += `<button type="button" class="dict-word-btn dict-word-assoc" data-word="${esc(s.word)}">${esc(s.word)}</button>`;
-        });
-        html += `</div>`;
-      }
-
-      if (!synonyms.length && !triggers.length) {
-        html += `<div style="padding:8px 6px;color:var(--text3)">Ничего не найдено</div>`;
-      }
-
-      pop.innerHTML = html;
-      // Обработчики кликов по словам
-      pop.querySelectorAll('.dict-word-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const newWord = btn.dataset.word;
-          if (newWord) {
-            _replaceSelectedWord(newWord);
-            hidePopup();
-          }
-        });
-      });
-    });
-  }
-
-  function _replaceSelectedWord(newWord) {
-    // Пробуем заменить в textarea
-    const active = document.activeElement;
-    if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
-      const ta = active;
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const text = ta.value;
-      // Находим границы слова
-      let wordStart = start;
-      let wordEnd = end;
-      while (wordStart > 0 && /[a-zA-Zа-яёА-ЯЁ0-9_-]/.test(text[wordStart - 1])) wordStart--;
-      while (wordEnd < text.length && /[a-zA-Zа-яёА-ЯЁ0-9_-]/.test(text[wordEnd])) wordEnd++;
-      ta.value = text.slice(0, wordStart) + newWord + text.slice(wordEnd);
-      ta.selectionStart = wordStart;
-      ta.selectionEnd = wordStart + newWord.length;
-      ta.dispatchEvent(new Event('input', { bubbles: true }));
-      return;
+    window.Toast?.show(`Тезаурус: «${word}» (Datamuse)`, 'success');
+    const results = await Promise.all([
+      query(word, 'synonyms', 12),
+      query(word, 'triggers', 8),
+    ]);
+    const synonyms = results[0];
+    const triggers = results[1];
+    _items = [...synonyms, ...triggers];
+    if (!_items.length) {
+      window.Toast?.show('Ничего не найдено', 'info');
+      return false;
     }
-    // Fallback: вставка через clipboard
-    navigator.clipboard?.writeText(newWord).then(() => {
-      window.Toast?.show('Скопировано: ' + newWord, 'success');
-    });
+    _idx = 0;
+    _showPopup(ta);
+    _applyItem();
+    return true;
   }
 
   // ============================================================
-  //  UI: Подсветка грамматических ошибок
+  //  4. ОПРЕДЕЛЕНИЕ ЯЗЫКА
   // ============================================================
-  function showGrammarResults(textarea, matches) {
-    clearGrammarMarkers();
-    if (!textarea || !matches?.length) return;
+  function detectLang(text) {
+    if (!text || text.length < 3) return null;
+    if (/[\u3400-\u9FFF]/.test(text)) return { code: 'zh', name: 'Chinese' };
+    if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return { code: 'ja', name: 'Japanese' };
+    if (/[\uAC00-\uD7A3]/.test(text)) return { code: 'ko', name: 'Korean' };
+    if (/[\u0600-\u06FF]/.test(text)) return { code: 'ar', name: 'Arabic' };
 
-    const container = textarea.closest('.block-body, .subtab-content, .code-block');
-    if (!container) return;
+    const letters = text.replace(/[\s\d\p{P}]/gu, '');
+    if (!letters) return null;
+    const cyrCount = (letters.match(/[\u0400-\u04FF]/gu) || []).length;
+    const latCount = (letters.match(/[A-Za-z]/g) || []).length;
+    const total = letters.length;
 
-    matches.forEach(m => {
-      const marker = document.createElement('span');
-      marker.className = 'grammar-error-marker';
-      marker.dataset.offset = m.offset;
-      marker.dataset.length = m.length;
-      marker.title = `${m.severity}: ${m.message}`;
-      marker.style.cssText = [
-        'border-bottom:2px wavy',
-        `border-color:${Grammar.getSeverityColor(m.severity)}`,
-        'cursor:pointer;position:relative',
-      ].join(';');
-
-      // Тултип с исправлениями
-      marker.addEventListener('mouseenter', (e) => {
-        const tipHtml = `
-          <div style="padding:4px 6px;max-width:300px">
-            <div style="font-weight:600;margin-bottom:4px;color:${Grammar.getSeverityColor(m.severity)}">${esc(m.shortMessage)}</div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${esc(m.message)}</div>
-            ${m.replacements.length ? `
-              <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Замены:</div>
-              <div class="dict-word-list">
-                ${m.replacements.map(r => `<button type="button" class="dict-word-btn grammar-fix" data-replacement="${esc(r)}" data-offset="${m.offset}" data-length="${m.length}">${esc(r)}</button>`).join('')}
-              </div>
-            ` : '<div style="font-size:11px;color:var(--text3)">Нет предложений</div>'}
-          </div>
-        `;
-        showPopup(e.clientX, e.clientY, tipHtml);
-        _popup?.querySelectorAll('.grammar-fix').forEach(btn => {
-          btn.addEventListener('click', () => {
-            _applyGrammarFix(textarea, parseInt(btn.dataset.offset), parseInt(btn.dataset.length), btn.dataset.replacement);
-            hidePopup();
-          });
-        });
-      });
-      marker.addEventListener('mouseleave', hidePopup);
-
-      _grammarMarkers.set(m.offset + ':' + m.length, marker);
-    });
+    if (cyrCount / total > 0.5) return { code: 'ru', name: 'Russian' };
+    if (latCount / total > 0.5) {
+      const lower = text.toLowerCase();
+      if (/\b(the|and|is|are|was|were|have|has|been|will|would|could|should|this|that|with|from|for)\b/.test(lower))
+        return { code: 'en', name: 'English' };
+      if (/\b(der|die|das|und|ist|ein|eine|nicht|sie|wir|ich)\b/.test(lower))
+        return { code: 'de', name: 'Deutsch' };
+      if (/\b(le|la|les|des|est|sont|une|dans|pour|avec|pas|sur|qui|que)\b/.test(lower))
+        return { code: 'fr', name: 'Français' };
+      if (/\b(el|la|los|las|es|son|una|del|por|con|que|está|tiene|puede)\b/.test(lower))
+        return { code: 'es', name: 'Español' };
+      if (/\b(il|la|le|di|che|è|un|una|per|con|non|sono|come|questo|anche)\b/.test(lower))
+        return { code: 'it', name: 'Italiano' };
+      return { code: 'en', name: 'English' };
+    }
+    return null;
   }
 
-  function _applyGrammarFix(textarea, offset, length, replacement) {
-    if (!textarea) return;
-    const text = textarea.value;
-    textarea.value = text.slice(0, offset) + replacement + text.slice(offset + length);
-    textarea.selectionStart = offset;
-    textarea.selectionEnd = offset + replacement.length;
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-
-  function clearGrammarMarkers() {
-    _grammarMarkers.clear();
-  }
-
-  // ============================================================
-  //  UI: Индикатор языка
-  // ============================================================
-  let _langIndicator = null;
-
-  function ensureLangIndicator() {
-    if (_langIndicator && _langIndicator.isConnected) return _langIndicator;
-    _langIndicator = document.createElement('span');
-    _langIndicator.className = 'dict-lang-indicator';
-    _langIndicator.style.cssText = [
-      'font-size:10px;padding:1px 6px;border-radius:999px',
-      'background:var(--bg1,#11111b);color:var(--text3,#a6adc8)',
-      'border:1px solid var(--border,#45475a);margin-left:4px',
-      'cursor:default;display:none',
-    ].join(';');
-    const wordCount = document.getElementById('global-word-count');
-    if (wordCount) wordCount.parentNode.insertBefore(_langIndicator, wordCount.nextSibling);
-    return _langIndicator;
-  }
-
+  let _langEl = null;
   function updateLangIndicator(text) {
-    const el = ensureLangIndicator();
-    if (!text || text.length < 10) {
-      el.style.display = 'none';
-      return;
+    if (!_langEl) {
+      _langEl = document.createElement('span');
+      _langEl.className = 'dict-lang-indicator';
+      _langEl.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:999px;background:var(--bg1);color:var(--text3);border:1px solid var(--border);margin-left:4px;cursor:default;display:none';
+      const wc = document.getElementById('global-word-count');
+      if (wc) wc.parentNode.insertBefore(_langEl, wc.nextSibling);
     }
-    const result = LangDetect.detect(text);
-    if (!result) {
-      el.style.display = 'none';
-      return;
-    }
-    const langNames = {
-      ru: 'RU', en: 'EN', de: 'DE', fr: 'FR', es: 'ES', it: 'IT',
-      zh: 'ZH', ja: 'JA', ko: 'KO', ar: 'AR', hi: 'HI',
-    };
-    el.textContent = langNames[result.code] || result.code;
-    el.title = `Определён: ${result.code} (${Math.round(result.confidence * 100)}%)`;
-    el.style.display = 'inline';
+    if (!text || text.length < 10) { _langEl.style.display = 'none'; return; }
+    const r = detectLang(text);
+    if (!r) { _langEl.style.display = 'none'; return; }
+    _langEl.textContent = r.code.toUpperCase();
+    _langEl.title = r.name;
+    _langEl.style.display = 'inline';
   }
 
   // ============================================================
-  //  Инициализация
+  //  5. Инициализация
   // ============================================================
-  let _initialized = false;
-
+  let _inited = false;
   function init() {
-    if (_initialized) return;
-    _initialized = true;
+    if (_inited) return;
+    _inited = true;
     loadCache();
-    window.addEventListener('beforeunload', () => {
-      if (_activeController) _activeController.abort();
-      flushCache();
-    });
+    window.addEventListener('beforeunload', () => { if (_activeController) _activeController.abort(); flushCache(); });
   }
 
   return {
-    Thesaurus,
-    Grammar,
-    LangDetect,
-
     init,
-    ensurePopup,
-    showPopup,
-    hidePopup,
-    showThesaurusPopup,
-    showGrammarResults,
-    clearGrammarMarkers,
+    query,
+    openAtCursor,
+    detectLang,
     updateLangIndicator,
-    _replaceSelectedWord,
+    _close,
   };
 })();
