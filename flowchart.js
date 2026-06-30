@@ -683,6 +683,7 @@ const Flowchart = (() => {
     _renderCanvasPills();
 
     const isEmpty = !_data.nodes || !_data.nodes.length;
+    console.log('[Flowchart] open: isEmpty=', isEmpty, '_data.nodes=', _data.nodes?.length);
     if (isEmpty) {
       const text = window.Preview?.getText?.() ?? '';
       if (text.trim()) {
@@ -709,9 +710,12 @@ const Flowchart = (() => {
       try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; } }
       if (!json || !Array.isArray(json.nodes) || !json.nodes.length) { window.Toast?.show('LLM вернул пустую схему', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
       _data = json;
+      console.log('[Flowchart] _fetch: _data set, nodes=', _data.nodes?.length, 'edges=', _data.edges?.length);
       _overlay.querySelector('.flowchart-status').textContent = '';
       _syncData();
+      console.log('[Flowchart] _fetch: after _syncData, _data.nodes=', _data.nodes?.length);
       _render();
+      console.log('[Flowchart] _fetch: after _render, _nodes=', _nodes?.length, '_viewport children=', _viewport?.children?.length);
     } catch (e) { if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; }
     finally { _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); }
   }
@@ -734,6 +738,7 @@ const Flowchart = (() => {
   }
 
   function _render() {
+    console.log('[Flowchart] _render called, _data=', _data ? 'yes' : 'no', '_svg=', _svg ? 'yes' : 'no', 'nodes=', _data?.nodes?.length);
     if (!_data || !_svg) return;
     _svg.innerHTML = '';
     _svg.setAttribute('viewBox', `0 0 ${VCW} ${VCH}`);
@@ -761,6 +766,7 @@ const Flowchart = (() => {
     });
     _edges = (_data.edges || []).map(e => ({ ...e }));
 
+    console.log('[Flowchart] _render: _nodes.length=', _nodes.length);
     if (!_nodes.length) { _viewport.appendChild(_emptyMsg('Нет данных для блок-схемы')); _applyTransform(); return; }
 
     if (_mode === 'flow') _autoLayout(); else _forceLayout();
