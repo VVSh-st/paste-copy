@@ -20,17 +20,27 @@
 - **дропдаун** = dropdown
 - **блок** = block (элемент UI)
 
-## Status — ТЕКУЩАЯ СЕССИЯ
+## Status — ТЕКУЩАЯ СЕССИЯ (2026-06-30)
 
-### AiTransform — AI трансформация выделенного текста
+### Hotkeys — раскладка
 
-1. ✅ **ai-transform.js** — модуль (по аналогии с InlineAI для Obsidian)
-2. ✅ **Ctrl+K** — popup с полем ввода и кнопкой отправки
-3. ✅ **Кнопка в футере блока** — иконка часов перед тезаурусом
-4. ✅ **Если текст не выделен** — запрос ко всему тексту блока
-5. ✅ **Diff** — большое изменение: только ответ; небольшое: добавления зелёным
-6. ✅ **Отмена (✕/ПКМ)** — возвращает оригинал
-7. ✅ **История запросов** — ↑↓ навигация, хранение в localStorage
+1. ✅ **e.code вместо e.key** — хоткеи работают на любой раскладке (EN/RU). `e.code='KeyT'` вместо `e.key.toLowerCase()==='t'`. Исправлено в app.js, ui.js, notepad.js
+
+### Тезарус — баг-фикс
+
+2. ✅ **Границы слова** — `_thesaurusStart/_thesaurusEnd = start/end` (границы слова), а не `savedStart/savedEnd` (позиция курсора). Иначе setRangeText вставлял в середину слова
+
+### AiTransform — AI трансформация текста
+
+3. ✅ **ai-transform.js** — модуль (по аналогии с InlineAI для Obsidian)
+4. ✅ **Ctrl+K** — popup с полем ввода и кнопкой отправки
+5. ✅ **Кнопка в футере блока** — иконка часов перед тезаурусом
+6. ✅ **Если текст не выделен** — запрос ко всему тексту блока
+7. ✅ **Текст НЕ заменяется** до нажатия ✓ в diff-панели
+8. ✅ **Diff** — большое изменение (>50%): только ответ; небольшое: добавления зелёным
+9. ✅ **Отмена (✕/ПКМ)** — возвращает оригинал
+10. ✅ **История запросов** — ↑↓ навигация, хранение в localStorage
+11. ✅ **Diff как text-linter** — A−/A+ размер, копирование, компактные кнопки ✓/✕
 
 ### MiniChat — контекст и кэш
 
@@ -77,42 +87,40 @@
 ### Git коммиты (эта сессия)
 
 ```
-95d4d9e fix: ПКМ тезарус — возврат оригинала перед закрытием
-b927b56 feat: ПКМ вне тезаруса — закрывает + подавление контекстного меню
-4ed6a20 fix: preview — sync scroll MD/text + fix unclosed backticks
-371bcc3 fix: переводчик — последовательный перевод строк вместо parallel (AbortController)
-87c1fb9 fix: убран console.warn вне скоупа useStream
-12b7b0b fix: повтор non-stream запроса при пустом ответе модели
-111f2b1 fix: || вместо ?? для reasoning_content fallback — пустая строка != null
-af3de47 fix: fallback reasoning_content для SSE/NDJSON/non-streaming
-e839e37 fix: кэш не сохраняет пустые ответы LLM
-ba8ae91 debug: логирование пустых ответов LLM в console.warn
-6b6aeae fix: scorecard double-RAF + _runGroomInChat ensureSession + history push
-27b4c02 fix: Оценка промпта — ensureSession + короткий user + pushScorecard
-f9adeca feat: кастомный тултип для меню груминга — 1800ms, position:fixed
-eaa7b34 feat: тултипы для пунктов меню груминга
-d7a6cd8 fix: regex {{llm:...}} — case-insensitive + кнопка
-5ab9c32 fix: SmartPlaceholders — грубый вызов вместо window
-f4e4c0c fix: контекст текста в мини-чате — pushToHistory для всех фич
-1de74fc fix: pl-list flex:1 — карточки уходят в прокрутку
-239cf6d fix: pl-card flex-shrink:0 — карточки не сжимаются, список скроллится
+22aa4d2 docs: обновлен HANDOFF.md — AiTransform
+5a4c365 fix: AiTransform — все замечания исправлены
+e430af1 docs: обновлен HANDOFF.md — AiTransform
+5dc57cd fix: AiTransform — текст не заменяется до принятия, diff с подсветкой
+d344244 docs: обновлен HANDOFF.md — AiTransform
+e77ef05 fix: AiTransform — исправлена кнопка + diff как text-linter
+0202678 docs: обновлен HANDOFF.md — AiTransform
+4918751 docs: обновлен HANDOFF.md — AiTransform
+6b8aa69 fix: AiTransform — исправления по замечаниям
+9830d3b revert: откат SlashAI — / уже используется
+faa2297 fix: хоткеи работают на любой раскладке (EN/RU)
+b4db6a8 fix: тезаурус — замена целого слова а не вставки в середину
+b5bc3cb fix: тезаурус по хоткее — сохранение позиции ДО LLM-запроса
 ```
 
 ## Ключевые файлы
 
-- `llm-features.js` (~4217 строк) — MiniChat, PromptGrader, Thesaurus, _runGroomInChat, SmartPlaceholders
+- `ai-transform.js` (~300 строк) — AI трансформация текста, diff-панель, история запросов
+- `llm-features.js` (~4250 строк) — MiniChat, PromptGrader, Thesaurus, _runGroomInChat, SmartPlaceholders
 - `llm-core.js` (~1880 строк) — request(), _extractContent, _parseSSE, _parseNDJSON, LLMCache
-- `blocks.js` (~2971 строк) — переводчик (sequential), меню груминга (тултипы)
-- `ui.js` (~2010 строк) — Preview (scroll sync, backtick fix)
-- `prompt-loom.js` (~2349 строк) — pl-list, pl-card CSS
-- `translator.js` (~504 строк) — translateProtected, translateOne
+- `blocks.js` (~3010 строк) — переводчик (sequential), меню груминга (тултипы), кнопка AiTransform
+- `ui.js` (~2020 строк) — Preview (scroll sync, backtick fix)
+- `app.js` (~920 строк) — хоткеи (e.code), Ctrl+K для AiTransform
+- `notepad.js` (~760 строк) — хоткеи (e.code)
+- `diff-engine.js` (~185 строк) — DiffEngine.compute/renderHtml для diff-панелей
 
 ## Architecture Decisions
 
-- **ensureSession(idx)** — переключает MiniChat на нужную сессию, если юзер_NAVигировал во время async LLM-запроса
+- **e.code для хоткеев** — `e.code='KeyT'` вместо `e.key.toLowerCase()==='t'` потому что `e.key` зависит от раскладки
+- **AiTransform diff** — большой изменение (>50% длины): показывает ответ; небольшое: только добавления зелёным
+- **AiTransform whole text** — если текст не выделен, запрос применяется ко всему тексту блока
+- **ensureSession(idx)** — переключает MiniChat на нужную сессию, если юзер переключился во время async LLM-запроса
 - **reasoning_content fallback** — `||` вместо `??` потому что пустая строка `""` !== `null/undefined`
 - **Sequential translate** — `Promise.all` конфликтует с `_activeController.abort()` в Translator
-- **Scorecard double-RAF** — первый RAF ждёт layout, второй применяет width к барам
 - **_fixUnclosedBackticks** — подсчёт ` на строке; нечётное → закрыть. Работает до marked.parse()
 - **Сленг**: пользователь называет dropdown "тултип" — имей в виду
 
