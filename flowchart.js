@@ -421,11 +421,6 @@ const Flowchart = (() => {
   function _buildDefs() {
     const defs = document.createElementNS(SVG_NS, 'defs');
     defs.innerHTML = `
-      <filter id="fc-bloom" x="-60%" y="-60%" width="220%" height="220%">
-        <feGaussianBlur stdDeviation="6" result="blur1"/>
-        <feGaussianBlur in="blur1" stdDeviation="10" result="blur2"/>
-        <feMerge><feMergeNode in="blur2"/><feMergeNode in="blur1"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
       <filter id="fc-shadow"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.25"/></filter>
       <marker id="fc-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
         <path d="M0,1 L7,4 L0,7 Z" fill="rgba(255,255,255,0.35)"/>
@@ -644,7 +639,6 @@ const Flowchart = (() => {
         shapeEl.setAttribute('fill-opacity', '0.3');
         shapeEl.setAttribute('stroke', color + '50');
         shapeEl.setAttribute('stroke-width', '1.5');
-        if (node.shape === 'stadium') shapeEl.setAttribute('filter', 'url(#fc-bloom)');
         break;
       }
       default: {
