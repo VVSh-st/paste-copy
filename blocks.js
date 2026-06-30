@@ -1448,6 +1448,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         kind: window.PromptLoom?.classify?.(val) || ''
       });
 
+      window._scrollPaddingTick?.(ta);
     });
 
     ta.addEventListener('keydown', e => {
@@ -1459,6 +1460,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
       WordComplete.handleKeydown(e, ta);
       SmartList.handleKeydown(e, ta);
+      if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'End', 'Home'].includes(e.key)) {
+        requestAnimationFrame(() => window._scrollPaddingTick?.(ta));
+      }
     });
 
     ta.addEventListener('paste', e => {

@@ -437,7 +437,28 @@
   function _applyScrollPadding(lines) {
     const px = lines * 20;
     document.documentElement.style.setProperty('--scroll-padding-bottom', px + 'px');
+    document.querySelectorAll('textarea.block-textarea').forEach(ta => {
+      ta.style.scrollPaddingBottom = px + 'px';
+    });
   }
+
+  window._scrollPaddingTick = function(ta) {
+    const lines = State.getLayout()?.scrollPaddingLines || 0;
+    if (!lines) return;
+    const padPx = lines * 20;
+    const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+    const pad = padPx || (lines * lineHeight);
+    const cursorY = ta.selectionStart;
+    const textBefore = ta.value.substring(0, cursorY);
+    const linesBefore = textBefore.split('\n').length;
+    const linePos = linesBefore * lineHeight;
+    const visibleTop = ta.scrollTop;
+    const visibleBottom = visibleTop + ta.clientHeight;
+    const cursorFromBottom = visibleBottom - linePos;
+    if (cursorFromBottom < pad + lineHeight) {
+      ta.scrollTop += lineHeight;
+    }
+  };
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/
   const anchorSettings = Anchors?.getMarkerSettings?.() || { lineMarkers: true, bgHighlight: true, color: '#4f8ef7' };
