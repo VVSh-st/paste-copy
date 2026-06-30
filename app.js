@@ -840,6 +840,7 @@
   if (typeof Anchors !== 'undefined') Anchors.init();
   if (typeof Translator !== 'undefined') Translator.init();
   if (typeof Ember !== 'undefined') Ember.init(null, State.getActive()?.id);
+  if (typeof SlashAI !== 'undefined') SlashAI.init(State, LLMCore);
 
   State.onChange(() => {
     if (typeof Ember !== 'undefined') Ember.switchTab(State.getActive()?.id);
