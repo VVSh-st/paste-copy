@@ -81,7 +81,7 @@ window.AiTransform = (() => {
     popup.innerHTML = `
       <div class="ai-transform-row">
         <input type="text" id="ai-transform-input"
-               placeholder="${_useWholeText ? 'Запрос ко всему тексту...' : 'Что сделать с текстом?'}"
+               placeholder="${_useWholeText ? 'Запрос ко всему тексту...  ↑↓' : 'Что сделать с текстом?'}"
                autocomplete="off" spellcheck="false">
         <button type="button" id="ai-transform-send" title="Выполнить (Enter)">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8l12-5-5 12-2-5z"/><path d="M14 3l-5 5"/></svg>
