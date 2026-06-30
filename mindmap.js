@@ -254,10 +254,12 @@ const MindMap = (() => {
 
   function _applyDepthBlur() {
     if (!_viewport) return;
+    const noBlur = _mode === 'hierarchy' || _mode === 'timeline';
     _viewport.querySelectorAll('[data-depth]').forEach(el => {
+      if (noBlur) { el.style.filter = ''; return; }
       const depth = parseFloat(el.dataset.depth);
-      const blurAmt = (0.3 - depth) * 6;
-      el.style.filter = blurAmt > 0.3 ? `blur(${blurAmt.toFixed(1)}px)` : '';
+      const blurAmt = (0.3 - depth) * 3;
+      el.style.filter = blurAmt > 0.4 ? `blur(${blurAmt.toFixed(1)}px)` : '';
     });
   }
 
