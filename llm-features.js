@@ -441,16 +441,18 @@ window.LLMFeatures = (() => {
       window.Toast?.show('Поставьте курсор в текстовый блок', 'error');
       return;
     }
-    const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
-    const pos = ta.selectionStart;
-    const text = ta.value;
+    const savedStart = ta.selectionStart;
+    const savedEnd = ta.selectionEnd;
+    const savedValue = ta.value;
+    const sel = savedValue.slice(savedStart, savedEnd).trim();
+    const pos = savedStart;
     const wordRe = /[\wА-Яа-яЁёA-Za-z\u00C0-\u024F]/;
     let start = pos, end = pos;
-    while (start > 0 && wordRe.test(text[start - 1])) start--;
-    while (end < text.length && wordRe.test(text[end])) end++;
-    const word = sel || text.slice(start, end).trim();
+    while (start > 0 && wordRe.test(savedValue[start - 1])) start--;
+    while (end < savedValue.length && wordRe.test(savedValue[end])) end++;
+    const word = sel || savedValue.slice(start, end).trim();
     if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
-    const ctx = text.slice(Math.max(0, pos - 100), pos + 100);
+    const ctx = savedValue.slice(Math.max(0, pos - 100), pos + 100);
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
       const result = await _LLMCore.request({
@@ -477,7 +479,16 @@ window.LLMFeatures = (() => {
       if (!items.length) { window.Toast?.show('Не удалось распарсить синонимы', 'error'); return; }
       _thesaurusItems = items;
       _thesaurusIdx = 0;
-      _showThesaurusPopup(ta);
+      _thesaurusTa = ta;
+      _thesaurusStart = savedStart;
+      _thesaurusEnd = savedEnd;
+      const raw = savedValue.slice(savedStart, savedEnd);
+      _thesaurusOrig = raw;
+      const leadMatch = raw.match(/^(\s*)/);
+      const trailMatch = raw.match(/(\s*)$/);
+      _thesaurusLeadSpace = leadMatch ? leadMatch[1] : '';
+      _thesaurusTrailSpace = trailMatch ? trailMatch[1] : '';
+      _showThesaurusPopupInline();
       _applyThesaurusItem();
     } catch (e) {
       _hideThinking();
