@@ -705,15 +705,17 @@ const MindMap = (() => {
       const depthG = document.createElementNS(SVG_NS, 'g');
       depthG.dataset.depth = '0.3';
 
+      const gradId = 'grad-' + color.replace('#', '');
       const ellipse = document.createElementNS(SVG_NS, 'ellipse');
       ellipse.setAttribute('cx', ccx); ellipse.setAttribute('cy', ccy);
       ellipse.setAttribute('rx', r); ellipse.setAttribute('ry', r * 0.7);
-      ellipse.setAttribute('fill', color + '10');
-      ellipse.setAttribute('stroke', color + '30');
+      ellipse.setAttribute('fill', `url(#${gradId})`);
+      ellipse.setAttribute('fill-opacity', '0.35');
+      ellipse.setAttribute('stroke', color + '40');
       ellipse.setAttribute('stroke-width', '1');
-      ellipse.style.transition = 'fill 0.3s, stroke 0.3s';
-      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('fill', color + '1a'); ellipse.setAttribute('stroke', color + '50'); ellipse.classList.add('mm-pulse'); });
-      ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('fill', color + '10'); ellipse.setAttribute('stroke', color + '30'); ellipse.classList.remove('mm-pulse'); });
+      ellipse.style.transition = 'fill-opacity 0.3s, stroke 0.3s';
+      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('fill-opacity', '0.5'); ellipse.setAttribute('stroke', color + '60'); ellipse.classList.add('mm-pulse'); });
+      ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('fill-opacity', '0.35'); ellipse.setAttribute('stroke', color + '40'); ellipse.classList.remove('mm-pulse'); });
       depthG.appendChild(ellipse);
 
       const title = document.createElementNS(SVG_NS, 'text');
