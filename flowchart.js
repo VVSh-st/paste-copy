@@ -704,13 +704,15 @@ const Flowchart = (() => {
         messages: [{ role: 'user', content: window.LLMCore.getPrompt('flowchart') + '\n\n' + text.slice(0, 4000) }],
         stream: false, maxTokens: 2500, featureTag: 'flowchart',
       });
-      if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); close(); return; }
+      if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
       let json;
-      try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); close(); return; } }
+      try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; } }
+      if (!json || !Array.isArray(json.nodes) || !json.nodes.length) { window.Toast?.show('LLM вернул пустую схему', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
       _data = json;
       _overlay.querySelector('.flowchart-status').textContent = '';
-      _syncData(); _render();
-    } catch (e) { if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error'); close(); }
+      _syncData();
+      _render();
+    } catch (e) { if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; }
     finally { _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); }
   }
 
