@@ -558,3 +558,50 @@
   z-index: 10;
 }
 .ember-eco-toast.show { opacity: 1; }
+
+/* ── AiTransform popup ─────────────────────────────────────────────── */
+.ai-transform-popup {
+  position: fixed; z-index: 9500; display: none;
+  background: var(--bg1, #11111b); color: var(--text1, #cdd6f4);
+  border: 1px solid var(--border, #45475a); border-radius: 8px;
+  padding: 6px 8px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  font-size: 13px;
+}
+.ai-transform-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.ai-transform-row input {
+  flex: 1; min-width: 180px; padding: 4px 8px;
+  background: var(--bg0, #181825); color: var(--text1, #cdd6f4);
+  border: 1px solid var(--border, #45475a); border-radius: 6px;
+  font-size: 12px; outline: none;
+}
+.ai-transform-row input:focus { border-color: var(--accent, #89b4fa); }
+.ai-transform-row input:disabled { opacity: .5; }
+.ai-transform-row button {
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 1px solid var(--border, #45475a);
+  background: var(--bg1, #11111b); color: var(--text1, #cdd6f4);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all .15s; padding: 0;
+}
+.ai-transform-row button:hover { background: var(--bg2, #1e1e2e); }
+.ai-transform-row button svg { width: 13px; height: 13px; }
+.ai-transform-row button[title="Выполнить (Enter)"] {
+  border-color: var(--accent, #89b4fa); color: var(--accent, #89b4fa);
+}
+.ai-transform-row button[title="Выполнить (Enter)"]:hover {
+  background: var(--accent, #89b4fa); color: #fff;
+}
+.ai-transform-row button[title="Принять"] {
+  border-color: #a6e3a1; color: #a6e3a1;
+}
+.ai-transform-row button[title="Принять"]:hover {
+  background: #a6e3a1; color: #1e1e2e;
+}
+.ai-transform-row button[title="Отменить (Esc)"] {
+  border-color: #f38ba8; color: #f38ba8;
+}
+.ai-transform-row button[title="Отменить (Esc)"]:hover {
+  background: #f38ba8; color: #1e1e2e;
+}
