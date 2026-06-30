@@ -10,6 +10,7 @@ const MindMap = (() => {
 
   let _zoom = 1, _panX = 0, _panY = 0;
   let _dragging = false, _lastX = 0, _lastY = 0, _movedEnough = false;
+  let _velX = 0, _velY = 0, _inertiaRaf = null;
 
   let _rafPending = false;
   let _parallaxNX = 0, _parallaxNY = 0;
@@ -92,12 +93,16 @@ const MindMap = (() => {
       const dx = e.clientX - _lastX, dy = e.clientY - _lastY;
       if (Math.abs(dx) + Math.abs(dy) > 3) _movedEnough = true;
       if (_movedEnough) {
+        _velX = dx; _velY = dy;
         _panX += dx; _panY += dy;
         _lastX = e.clientX; _lastY = e.clientY;
         _applyTransform();
       }
     });
-    window.addEventListener('mouseup', () => { _dragging = false; });
+    window.addEventListener('mouseup', () => {
+      _dragging = false;
+      if (_movedEnough && (Math.abs(_velX) + Math.abs(_velY) > 0.5)) _startInertia();
+    });
 
     _resizeObs = new ResizeObserver(() => {
       if (_data && _overlay?.classList.contains('visible')) {
@@ -117,6 +122,39 @@ const MindMap = (() => {
     });
     _panel.addEventListener('mouseleave', () => {
       _panel.style.transform = '';
+    });
+  }
+
+  function _smoothZoomTo(targetX, targetY, targetZoom) {
+    cancelAnimationFrame(_inertiaRaf);
+    _viewport.style.transition = 'transform 0.4s cubic-bezier(.2,.8,.2,1)';
+    const rect = _svg.getBoundingClientRect();
+    _zoom = targetZoom;
+    _panX = rect.width / 2 - targetX * targetZoom;
+    _panY = rect.height / 2 - targetY * targetZoom;
+    _applyTransform();
+    setTimeout(() => { _viewport.style.transition = ''; }, 400);
+  }
+
+  function _startInertia() {
+    cancelAnimationFrame(_inertiaRaf);
+    function tick() {
+      _velX *= 0.92; _velY *= 0.92;
+      _panX += _velX; _panY += _velY;
+      _applyTransform();
+      if (Math.abs(_velX) + Math.abs(_velY) > 0.3) {
+        _inertiaRaf = requestAnimationFrame(tick);
+      }
+    }
+    _inertiaRaf = requestAnimationFrame(tick);
+  }
+
+  function _applyDepthBlur() {
+    if (!_viewport) return;
+    _viewport.querySelectorAll('[data-depth]').forEach(el => {
+      const depth = parseFloat(el.dataset.depth);
+      const blurAmt = (0.3 - depth) * 6;
+      el.style.filter = blurAmt > 0.3 ? `blur(${blurAmt.toFixed(1)}px)` : '';
     });
   }
 
@@ -165,6 +203,7 @@ const MindMap = (() => {
 
     _svg.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
+      cancelAnimationFrame(_inertiaRaf);
       _dragging = true; _movedEnough = false;
       _lastX = e.clientX; _lastY = e.clientY;
     });
@@ -266,12 +305,15 @@ const MindMap = (() => {
     _viewport.setAttribute('class', 'mm-viewport');
     _svg.appendChild(_viewport);
 
+    _viewport.appendChild(_drawStarfield(W, H));
+
     switch (_mode) {
       case 'words': _drawWords(W, H); break;
       case 'graph': _drawGraph(W, H); break;
       case 'tree': _drawTree(W, H); break;
       case 'clusters': _drawClusters(W, H); break;
     }
+    _applyDepthBlur();
     _applyTransform();
   }
 
@@ -299,8 +341,12 @@ const MindMap = (() => {
       ));
       placed.push({ cx: x + tw / 2, cy: y - th / 2, hw: tw / 2, hh: th / 2 });
 
-      const g = document.createElementNS(SVG_NS, 'g');
-      g.dataset.depth = item.weight > 7 ? '0.3' : '0.12';
+      const enterG = document.createElementNS(SVG_NS, 'g');
+      enterG.classList.add('mm-enter');
+      enterG.style.animationDelay = `${i * 25}ms`;
+
+      const depthG = document.createElementNS(SVG_NS, 'g');
+      depthG.dataset.depth = item.weight > 7 ? '0.3' : '0.12';
 
       const text = document.createElementNS(SVG_NS, 'text');
       text.setAttribute('x', x);
@@ -316,8 +362,10 @@ const MindMap = (() => {
       text.style.transition = 'opacity 0.2s, font-size 0.2s';
       text.addEventListener('mouseenter', () => { text.setAttribute('opacity', '1'); text.setAttribute('font-size', fontSize + 4); text.classList.add('mm-pulse'); });
       text.addEventListener('mouseleave', () => { text.setAttribute('opacity', String(0.4 + (item.weight / maxW) * 0.6)); text.setAttribute('font-size', fontSize); text.classList.remove('mm-pulse'); });
-      g.appendChild(text);
-      _viewport.appendChild(g);
+      text.addEventListener('dblclick', () => _smoothZoomTo(x + tw / 2, y - th / 2, 2));
+      depthG.appendChild(text);
+      enterG.appendChild(depthG);
+      _viewport.appendChild(enterG);
     });
   }
 
@@ -383,21 +431,28 @@ const MindMap = (() => {
       const ai = nodeMap[l.from], bi = nodeMap[l.to];
       if (ai == null || bi == null) return;
       const a = nodes[ai], b = nodes[bi];
-      const line = document.createElementNS(SVG_NS, 'line');
-      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
-      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
-      line.setAttribute('stroke', 'rgba(255,255,255,0.12)');
-      line.setAttribute('stroke-width', String(0.5 + l.strength * 2.5));
-      line.setAttribute('stroke-linecap', 'round');
-      linksG.appendChild(line);
+      const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.15;
+      const my = (a.y + b.y) / 2 - (b.x - a.x) * 0.15;
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'rgba(255,255,255,0.12)');
+      path.setAttribute('stroke-width', String(0.5 + l.strength * 2.5));
+      path.setAttribute('stroke-linecap', 'round');
+      linksG.appendChild(path);
     });
     _viewport.appendChild(linksG);
 
     nodes.forEach((n, i) => {
       const r = 6 + (n.weight / maxW) * 16;
       const color = ROLE_COLORS[n.role] || PALETTE[i % PALETTE.length];
-      const g = document.createElementNS(SVG_NS, 'g');
-      g.dataset.depth = n.weight > 7 ? '0.3' : '0.18';
+
+      const enterG = document.createElementNS(SVG_NS, 'g');
+      enterG.classList.add('mm-enter');
+      enterG.style.animationDelay = `${i * 25}ms`;
+
+      const depthG = document.createElementNS(SVG_NS, 'g');
+      depthG.dataset.depth = n.weight > 7 ? '0.3' : '0.18';
 
       const gradId = 'grad-' + color.replace('#', '');
       const circle = document.createElementNS(SVG_NS, 'circle');
@@ -410,7 +465,8 @@ const MindMap = (() => {
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
       circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
-      g.appendChild(circle);
+      circle.addEventListener('dblclick', () => _smoothZoomTo(n.x, n.y, 2));
+      depthG.appendChild(circle);
 
       const text = document.createElementNS(SVG_NS, 'text');
       text.setAttribute('x', n.x); text.setAttribute('y', n.y + r + 14);
@@ -419,8 +475,9 @@ const MindMap = (() => {
       text.setAttribute('fill', 'var(--text2)');
       text.setAttribute('font-family', 'var(--mono)');
       text.textContent = n.w;
-      g.appendChild(text);
-      _viewport.appendChild(g);
+      depthG.appendChild(text);
+      enterG.appendChild(depthG);
+      _viewport.appendChild(enterG);
     });
   }
 
@@ -449,8 +506,13 @@ const MindMap = (() => {
 
     rows.forEach((r, i) => {
       const y = startY + i * (rowH + 16);
-      const g = document.createElementNS(SVG_NS, 'g');
-      g.dataset.depth = i === 0 ? '0.3' : '0.18';
+
+      const enterG = document.createElementNS(SVG_NS, 'g');
+      enterG.classList.add('mm-enter');
+      enterG.style.animationDelay = `${i * 50}ms`;
+
+      const depthG = document.createElementNS(SVG_NS, 'g');
+      depthG.dataset.depth = i === 0 ? '0.3' : '0.18';
 
       const rect = document.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('x', pad); rect.setAttribute('y', y);
@@ -460,14 +522,14 @@ const MindMap = (() => {
       rect.setAttribute('stroke', r.color + '35');
       rect.setAttribute('stroke-width', '1');
       rect.setAttribute('filter', 'url(#shadow)');
-      g.appendChild(rect);
+      depthG.appendChild(rect);
 
       const label = document.createElementNS(SVG_NS, 'text');
       label.setAttribute('x', pad + 12); label.setAttribute('y', y + 16);
       label.setAttribute('font-size', '9'); label.setAttribute('fill', r.color);
       label.setAttribute('font-weight', '700'); label.setAttribute('font-family', 'var(--mono)');
       label.textContent = r.label;
-      g.appendChild(label);
+      depthG.appendChild(label);
 
       const words = r.text.split(' ');
       let line = '', lineY = y + 32, lineNum = 0;
@@ -481,7 +543,7 @@ const MindMap = (() => {
           t.setAttribute('font-size', '12'); t.setAttribute('fill', 'var(--text1)');
           t.setAttribute('font-family', 'var(--mono)');
           t.textContent = line.trim();
-          g.appendChild(t);
+          depthG.appendChild(t);
           line = w + ' '; lineNum++;
         } else { line = test; }
       });
@@ -491,7 +553,7 @@ const MindMap = (() => {
         t.setAttribute('font-size', '12'); t.setAttribute('fill', 'var(--text1)');
         t.setAttribute('font-family', 'var(--mono)');
         t.textContent = line.trim();
-        g.appendChild(t);
+        depthG.appendChild(t);
       }
 
       if (i > 0) {
@@ -503,7 +565,8 @@ const MindMap = (() => {
         arrow.setAttribute('stroke-dasharray', '4,3');
         _viewport.appendChild(arrow);
       }
-      _viewport.appendChild(g);
+      enterG.appendChild(depthG);
+      _viewport.appendChild(enterG);
     });
   }
 
@@ -512,7 +575,8 @@ const MindMap = (() => {
     if (!clusters.length) return;
     const cx = W / 2, cy = H / 2;
     const angleStep = (Math.PI * 2) / clusters.length;
-    const dist = Math.min(W, H) * 0.28;
+    const maxR = Math.max(...clusters.map(cl => 50 + cl.words.length * 12));
+    const dist = Math.max(Math.min(W, H) * 0.28, maxR * 1.3);
 
     clusters.forEach((cl, ci) => {
       const angle = angleStep * ci - Math.PI / 2;
@@ -521,8 +585,12 @@ const MindMap = (() => {
       const color = PALETTE[ci % PALETTE.length];
       const r = 50 + cl.words.length * 12;
 
-      const g = document.createElementNS(SVG_NS, 'g');
-      g.dataset.depth = '0.3';
+      const enterG = document.createElementNS(SVG_NS, 'g');
+      enterG.classList.add('mm-enter');
+      enterG.style.animationDelay = `${ci * 60}ms`;
+
+      const depthG = document.createElementNS(SVG_NS, 'g');
+      depthG.dataset.depth = '0.3';
 
       const gradId = 'grad-' + color.replace('#', '');
       const ellipse = document.createElementNS(SVG_NS, 'ellipse');
@@ -531,11 +599,10 @@ const MindMap = (() => {
       ellipse.setAttribute('fill', `url(#${gradId})`);
       ellipse.setAttribute('stroke', color + '45');
       ellipse.setAttribute('stroke-width', '1.5');
-      ellipse.setAttribute('filter', 'url(#shadow)');
       ellipse.style.transition = 'fill 0.3s';
       ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('fill', color + '28'); ellipse.classList.add('mm-pulse'); });
       ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('fill', `url(#${gradId})`); ellipse.classList.remove('mm-pulse'); });
-      g.appendChild(ellipse);
+      depthG.appendChild(ellipse);
 
       const title = document.createElementNS(SVG_NS, 'text');
       title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.35);
@@ -543,7 +610,7 @@ const MindMap = (() => {
       title.setAttribute('font-size', '11'); title.setAttribute('font-weight', '700');
       title.setAttribute('fill', color); title.setAttribute('font-family', 'var(--mono)');
       title.textContent = cl.topic;
-      g.appendChild(title);
+      depthG.appendChild(title);
 
       const wordsG = document.createElementNS(SVG_NS, 'g');
       wordsG.dataset.depth = '0.18';
@@ -560,9 +627,25 @@ const MindMap = (() => {
         t.textContent = w;
         wordsG.appendChild(t);
       });
-      g.appendChild(wordsG);
-      _viewport.appendChild(g);
+      depthG.appendChild(wordsG);
+      enterG.appendChild(depthG);
+      _viewport.appendChild(enterG);
     });
+  }
+
+  function _drawStarfield(W, H) {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.dataset.depth = '0.05';
+    const count = Math.floor((W * H) / 9000);
+    for (let i = 0; i < count; i++) {
+      const dot = document.createElementNS(SVG_NS, 'circle');
+      dot.setAttribute('cx', Math.random() * W);
+      dot.setAttribute('cy', Math.random() * H);
+      dot.setAttribute('r', (Math.random() * 1.2 + 0.3).toFixed(1));
+      dot.setAttribute('fill', 'rgba(255,255,255,0.25)');
+      g.appendChild(dot);
+    }
+    return g;
   }
 
   return { open, close };
