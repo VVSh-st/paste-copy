@@ -158,11 +158,6 @@ window.AiTransform = (() => {
 
       _showResult();
 
-      // Автоприменение через 5 сек
-      _autoTimer = setTimeout(() => {
-        if (_suggestedText) { _acceptChange(); hidePopup(); }
-      }, 5000);
-
       // Клик вне — закрыть
       _onClickOutside = (e) => {
         if (_popup && !_popup.contains(e.target) && e.target !== _ta) hidePopup();
@@ -193,7 +188,9 @@ window.AiTransform = (() => {
     _removeDiffPanel();
     if (!_ta) return;
 
-    // Используем DiffEngine если доступен
+    const lay = window.State?.getLayout?.();
+    const savedSize = lay?.llm?.diffFontSize || 12;
+
     let diffHtml;
     const engine = window.DiffEngine;
     if (engine?.compute && engine?.renderHtml) {
@@ -204,25 +201,46 @@ window.AiTransform = (() => {
 
     _diffPanel = document.createElement('div');
     _diffPanel.className = 'llm-result-panel';
+    _diffPanel.style.setProperty('--text-lint-diff-font-size', savedSize + 'px');
+    _diffPanel.style.setProperty('--text-lint-diff-line-height', Math.round(savedSize * 1.65 * 100) / 100 + 'px');
     _diffPanel.innerHTML =
-      `<div class="llm-result-toolbar">` +
-        `<span class="llm-result-stats">AI-трансформация</span>` +
-        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓ Принять</button>` +
-        `<button type="button" class="btn-sm" data-action="reject">✕ Отменить</button>` +
+      `<div class="llm-result-toolbar text-lint-result-toolbar">` +
+        `<span class="llm-result-stats text-lint-result-stats">AI-трансформация</span>` +
+        `<span class="text-lint-diff-size-controls">` +
+          `<button type="button" class="btn-sm text-lint-diff-size-btn" data-diff-size="dec" title="Уменьшить">A−</button>` +
+          `<span class="text-lint-diff-size-value">${savedSize}px</span>` +
+          `<button type="button" class="btn-sm text-lint-diff-size-btn" data-diff-size="inc" title="Увеличить">A+</button>` +
+        `</span>` +
+        `<button type="button" class="btn-sm" data-action="copy" title="Скопировать">⧉</button>` +
+        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓</button>` +
+        `<button type="button" class="btn-sm" data-action="reject">✕</button>` +
       `</div>` +
-      `<div class="llm-result-content">${diffHtml}</div>`;
+      `<div class="llm-result-content llm-result-content--classic text-lint-result-content">${diffHtml}</div>`;
 
-    // Вставляем после textarea
     const parent = _ta.parentNode;
     if (parent) parent.insertBefore(_diffPanel, _ta.nextSibling);
 
-    // Обработчики кнопок
     _diffPanel.querySelector('[data-action="accept"]')?.addEventListener('click', () => {
       _acceptChange();
       hidePopup();
     });
     _diffPanel.querySelector('[data-action="reject"]')?.addEventListener('click', () => {
       hidePopup(true);
+    });
+    _diffPanel.querySelector('[data-action="copy"]')?.addEventListener('click', () => {
+      navigator.clipboard?.writeText(_suggestedText);
+      window.Toast?.show('Скопировано', 'success');
+    });
+    _diffPanel.querySelectorAll('[data-diff-size]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const step = btn.dataset.diffSize === 'inc' ? 0.5 : -0.5;
+        const current = parseFloat(_diffPanel.style.getPropertyValue('--text-lint-diff-font-size')) || 12;
+        const next = Math.max(8, Math.min(32, Math.round((current + step) * 2) / 2));
+        _diffPanel.style.setProperty('--text-lint-diff-font-size', next + 'px');
+        _diffPanel.style.setProperty('--text-lint-diff-line-height', Math.round(next * 1.65 * 100) / 100 + 'px');
+        const val = _diffPanel.querySelector('.text-lint-diff-size-value');
+        if (val) val.textContent = next + 'px';
+      });
     });
   }
 
