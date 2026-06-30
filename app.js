@@ -899,6 +899,18 @@
     onEvent('prev-mindmap', 'click',  () => MindMap?.open());
     onEvent('prev-flowchart', 'click', () => Flowchart?.open());
 
+    document.addEventListener('flowchart:export-to-tab', e => {
+      const content = e.detail.content;
+      if (!content) return;
+      const tab = window.State?.newTab?.('Блок-схема');
+      if (tab && tab.blocks?.length) {
+        const firstBlock = tab.blocks[0];
+        if (firstBlock) firstBlock.content = content;
+      }
+      window.State?.setActive?.(tab.id);
+      window.Toast?.show('Блок-схема создана в новой вкладке', 'info');
+    });
+
     onEvent('llm-modal-close', 'click', () => {
       const m = $id('llm-settings-modal');
       if (m) m.style.display = 'none';
