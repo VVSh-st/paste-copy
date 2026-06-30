@@ -450,12 +450,10 @@
       const cursorPos = ta.selectionStart;
       const textBefore = ta.value.substring(0, cursorPos);
       const linesBefore = textBefore.split('\n').length;
-      const cursorY = linesBefore * lineHeight;
-      const targetBottom = ta.clientHeight - pad;
-      const cursorFromTop = cursorY - ta.scrollTop;
-      if (cursorFromTop > targetBottom) {
-        ta.scrollTop = cursorY - targetBottom;
-      }
+      const needed = linesBefore * lineHeight + pad + lineHeight;
+      const minCss = parseFloat(getComputedStyle(ta).minHeight) || 80;
+      const h = Math.max(minCss, needed);
+      ta.style.height = h + 'px';
     });
   };
 
