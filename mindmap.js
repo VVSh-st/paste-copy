@@ -40,6 +40,8 @@ const MindMap = (() => {
           <button class="mindmap-btn" data-mode="graph" title="Граф связей">G</button>
           <button class="mindmap-btn" data-mode="tree" title="Дерево аргументов">T</button>
           <button class="mindmap-btn" data-mode="clusters" title="Кластеры тем">C</button>
+          <button class="mindmap-btn" data-mode="hierarchy" title="Иерархия тем">M</button>
+          <button class="mindmap-btn" data-mode="timeline" title="Поток шагов">→</button>
           <button class="mindmap-btn mindmap-refresh" title="Обновить анализ">↻</button>
           <button class="mindmap-btn mindmap-close" title="Закрыть">✕</button>
         </div>
@@ -158,6 +160,67 @@ const MindMap = (() => {
     _panel.addEventListener('mouseleave', () => {
       _panel.style.transform = '';
     });
+  }
+
+  function _gradIdFor(color) {
+    return 'grad-' + color.replace('#', '');
+  }
+
+  function _ensureGradient(color) {
+    if (_svg?.querySelector(`#${_gradIdFor(color)}`)) return;
+    const defs = _svg?.querySelector('defs');
+    if (!defs) return;
+    const grad = document.createElementNS(SVG_NS, 'radialGradient');
+    grad.setAttribute('id', _gradIdFor(color));
+    grad.setAttribute('cx', '35%');
+    grad.setAttribute('cy', '30%');
+    grad.setAttribute('r', '70%');
+    grad.innerHTML = `
+      <stop offset="0%" stop-color="#fff" stop-opacity="0.9"/>
+      <stop offset="35%" stop-color="${color}" stop-opacity="1"/>
+      <stop offset="100%" stop-color="${color}" stop-opacity="0.15"/>
+    `;
+    defs.appendChild(grad);
+  }
+
+  function _attachWordInteractions(el, word, cx, cy) {
+    el.style.cursor = 'pointer';
+    let clickTimer = null;
+    el.addEventListener('click', () => {
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => { clickTimer = null; _jumpToWord(word); }, 220);
+    });
+    el.addEventListener('dblclick', () => {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+      _smoothZoomTo(cx, cy, 2);
+    });
+  }
+
+  function _wrapTextLines(text, maxWidth, maxLines) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    words.forEach(w => {
+      if (lines.length >= maxLines) return;
+      const test = line + w + ' ';
+      if (test.length * 7 > maxWidth && line) {
+        lines.push(line.trim());
+        line = w + ' ';
+      } else { line = test; }
+    });
+    if (line.trim() && lines.length < maxLines) lines.push(line.trim());
+    return lines;
+  }
+
+  function _emptyMsg(msg) {
+    const t = document.createElementNS(SVG_NS, 'text');
+    t.setAttribute('x', '50%'); t.setAttribute('y', '50%');
+    t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
+    t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '14');
+    t.setAttribute('font-family', 'var(--mono)');
+    t.textContent = msg;
+    return t;
   }
 
   function _jumpToWord(word) {
@@ -292,7 +355,7 @@ const MindMap = (() => {
       const result = await window.LLMCore?.request?.({
         messages: [{ role: 'user', content: window.LLMCore.getPrompt('mindmap') + '\n\n' + text.slice(0, 4000) }],
         stream: false,
-        maxTokens: 2000,
+        maxTokens: 3000,
         featureTag: 'mindmap',
       });
       if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); close(); return; }
@@ -329,6 +392,9 @@ const MindMap = (() => {
       <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.3"/></filter>
+      <marker id="arrow-head" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="rgba(255,255,255,0.3)"/>
+      </marker>
     `;
     const seen = new Set();
     PALETTE.forEach(c => {
@@ -371,6 +437,8 @@ const MindMap = (() => {
       case 'graph': _drawGraph(W, H); break;
       case 'tree': _drawTree(W, H); break;
       case 'clusters': _drawClusters(W, H); break;
+      case 'hierarchy': _drawHierarchy(W, H); break;
+      case 'timeline': _drawTimeline(W, H); break;
     }
     _applyDepthBlur();
     _applyTransform();
@@ -417,20 +485,10 @@ const MindMap = (() => {
       text.setAttribute('opacity', 0.4 + (item.weight / maxW) * 0.6);
       if (item.weight > 7) text.setAttribute('filter', 'url(#bloom)');
       text.textContent = item.w;
-      text.style.cursor = 'pointer';
       text.style.transition = 'opacity 0.2s, font-size 0.2s';
       text.addEventListener('mouseenter', () => { text.setAttribute('opacity', '1'); text.setAttribute('font-size', fontSize + 4); text.classList.add('mm-pulse'); });
       text.addEventListener('mouseleave', () => { text.setAttribute('opacity', String(0.4 + (item.weight / maxW) * 0.6)); text.setAttribute('font-size', fontSize); text.classList.remove('mm-pulse'); });
-      let clickTimer = null;
-      text.addEventListener('click', () => {
-        clearTimeout(clickTimer);
-        clickTimer = setTimeout(() => { clickTimer = null; _jumpToWord(item.w); }, 220);
-      });
-      text.addEventListener('dblclick', () => {
-        clearTimeout(clickTimer);
-        clickTimer = null;
-        _smoothZoomTo(x + tw / 2, y - th / 2, 2);
-      });
+      _attachWordInteractions(text, item.w, x + tw / 2, y - th / 2);
       depthG.appendChild(text);
       enterG.appendChild(depthG);
       _viewport.appendChild(enterG);
@@ -599,30 +657,15 @@ const MindMap = (() => {
       label.textContent = r.label;
       depthG.appendChild(label);
 
-      const words = r.text.split(' ');
-      let line = '', lineY = y + 32, lineNum = 0;
-      const maxLineW = colW - 24;
-      words.forEach(w => {
-        if (lineNum > 2) return;
-        const test = line + w + ' ';
-        if (test.length * 7 > maxLineW && line) {
-          const t = document.createElementNS(SVG_NS, 'text');
-          t.setAttribute('x', pad + 12); t.setAttribute('y', lineY + lineNum * 16);
-          t.setAttribute('font-size', '12'); t.setAttribute('fill', 'var(--text1)');
-          t.setAttribute('font-family', 'var(--mono)');
-          t.textContent = line.trim();
-          depthG.appendChild(t);
-          line = w + ' '; lineNum++;
-        } else { line = test; }
-      });
-      if (line.trim() && lineNum <= 2) {
+      const wrappedLines = _wrapTextLines(r.text, colW - 24, 3);
+      wrappedLines.forEach((ln, li) => {
         const t = document.createElementNS(SVG_NS, 'text');
-        t.setAttribute('x', pad + 12); t.setAttribute('y', lineY + lineNum * 16);
+        t.setAttribute('x', pad + 12); t.setAttribute('y', y + 32 + li * 16);
         t.setAttribute('font-size', '12'); t.setAttribute('fill', 'var(--text1)');
         t.setAttribute('font-family', 'var(--mono)');
-        t.textContent = line.trim();
+        t.textContent = ln;
         depthG.appendChild(t);
-      }
+      });
 
       if (i > 0) {
         const arrow = document.createElementNS(SVG_NS, 'line');
@@ -699,6 +742,162 @@ const MindMap = (() => {
       enterG.appendChild(depthG);
       _viewport.appendChild(enterG);
     });
+  }
+
+  function _drawHierarchy(W, H) {
+    if (!_data.hierarchy || !_data.hierarchy.label) {
+      _viewport.appendChild(_emptyMsg('Нет иерархии тем в тексте'));
+      return;
+    }
+    const cx = W / 2, cy = H / 2;
+    const palette = ['#4f8ef7', '#a070f7', '#3ec98f', '#f7a13f', '#f76d6d'];
+
+    function layout(node, depth, angleStart, angleEnd, color) {
+      const angle = (angleStart + angleEnd) / 2;
+      const radius = depth === 0 ? 0 : depth * Math.min(W, H) * 0.16 + 40;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      node._pos = { x, y, depth, color };
+
+      if (node.children && node.children.length) {
+        const span = (angleEnd - angleStart) / node.children.length;
+        node.children.forEach((child, i) => {
+          const childColor = depth === 0 ? palette[i % palette.length] : color;
+          layout(child, depth + 1, angleStart + i * span, angleStart + (i + 1) * span, childColor);
+        });
+      }
+    }
+    layout(_data.hierarchy, 0, 0, Math.PI * 2, palette[0]);
+
+    function drawLink(a, b, opacity) {
+      const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.12;
+      const my = (a.y + b.y) / 2 - (b.x - a.x) * 0.12;
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', `rgba(255,255,255,${opacity})`);
+      path.setAttribute('stroke-width', '1.5');
+      _viewport.appendChild(path);
+    }
+
+    let nodeIdx = 0;
+    function renderNode(node) {
+      if (node.children) node.children.forEach(child => {
+        drawLink(node._pos, child._pos, 1 - node._pos.depth * 0.15);
+        renderNode(child);
+      });
+      const { x, y, depth, color } = node._pos;
+      const r = Math.max(8, 22 - depth * 6);
+      const depthVal = (0.32 - depth * 0.08).toFixed(2);
+
+      _ensureGradient(color);
+
+      const enterG = document.createElementNS(SVG_NS, 'g');
+      enterG.classList.add('mm-enter');
+      enterG.style.animationDelay = `${nodeIdx++ * 30}ms`;
+
+      const depthG = document.createElementNS(SVG_NS, 'g');
+      depthG.dataset.depth = depthVal;
+
+      const circle = document.createElementNS(SVG_NS, 'circle');
+      circle.setAttribute('cx', x); circle.setAttribute('cy', y); circle.setAttribute('r', r);
+      circle.setAttribute('fill', `url(#${_gradIdFor(color)})`);
+      circle.setAttribute('opacity', '0.85');
+      if (depth === 0) circle.setAttribute('filter', 'url(#bloom)');
+      circle.style.cursor = 'pointer';
+      circle.style.transition = 'r 0.2s, opacity 0.2s';
+      circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
+      circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
+      depthG.appendChild(circle);
+
+      const label = document.createElementNS(SVG_NS, 'text');
+      label.setAttribute('x', x); label.setAttribute('y', y + r + 14);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('fill', color); label.setAttribute('font-family', 'var(--mono)');
+      label.setAttribute('font-size', depth === 0 ? '12' : '10');
+      label.textContent = node.label;
+      _attachWordInteractions(label, node.label, x, y);
+      depthG.appendChild(label);
+
+      enterG.appendChild(depthG);
+      _viewport.appendChild(enterG);
+    }
+    renderNode(_data.hierarchy);
+  }
+
+  function _drawTimeline(W, H) {
+    const steps = _data.steps;
+    if (!steps || !steps.length) {
+      _viewport.appendChild(_emptyMsg('Нет последовательности шагов в тексте'));
+      return;
+    }
+    const cardW = 220, cardH = 110, gap = 70;
+    const totalW = steps.length * (cardW + gap) - gap;
+    const startX = (W - totalW) / 2 > 40 ? (W - totalW) / 2 : 40;
+    const y = H / 2 - cardH / 2;
+
+    steps.forEach((step, i) => {
+      const x = startX + i * (cardW + gap);
+      if (i > 0) {
+        _drawFlowArrow(startX + (i - 1) * (cardW + gap) + cardW, y + cardH / 2, x, y + cardH / 2);
+      }
+      _drawStepCard(step, x, y, cardW, cardH, i);
+    });
+  }
+
+  function _drawStepCard(step, x, y, w, h, i) {
+    const enterG = document.createElementNS(SVG_NS, 'g');
+    enterG.classList.add('mm-enter');
+    enterG.style.animationDelay = `${i * 60}ms`;
+
+    const depthG = document.createElementNS(SVG_NS, 'g');
+    depthG.dataset.depth = '0.25';
+
+    const rect = document.createElementNS(SVG_NS, 'rect');
+    rect.setAttribute('x', x); rect.setAttribute('y', y);
+    rect.setAttribute('width', w); rect.setAttribute('height', h);
+    rect.setAttribute('rx', 10);
+    rect.setAttribute('fill', 'rgba(79,142,247,0.06)');
+    rect.setAttribute('stroke', 'rgba(79,142,247,0.3)');
+    rect.setAttribute('stroke-width', '1');
+    rect.setAttribute('filter', 'url(#shadow)');
+    depthG.appendChild(rect);
+
+    const order = document.createElementNS(SVG_NS, 'text');
+    order.setAttribute('x', x + 14); order.setAttribute('y', y + 18);
+    order.setAttribute('fill', '#4f8ef7'); order.setAttribute('font-size', '9');
+    order.setAttribute('font-weight', '700'); order.setAttribute('font-family', 'var(--mono)');
+    order.textContent = `ШАГ ${step.order || i + 1}`;
+    depthG.appendChild(order);
+
+    const title = document.createElementNS(SVG_NS, 'text');
+    title.setAttribute('x', x + 14); title.setAttribute('y', y + 36);
+    title.setAttribute('fill', 'var(--text0)'); title.setAttribute('font-weight', '600');
+    title.setAttribute('font-size', '12'); title.setAttribute('font-family', 'var(--mono)');
+    title.textContent = step.title;
+    depthG.appendChild(title);
+
+    _wrapTextLines(step.desc || '', w - 28, 3).forEach((line, li) => {
+      const t = document.createElementNS(SVG_NS, 'text');
+      t.setAttribute('x', x + 14); t.setAttribute('y', y + 54 + li * 16);
+      t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '11');
+      t.setAttribute('font-family', 'var(--mono)');
+      t.textContent = line;
+      depthG.appendChild(t);
+    });
+
+    enterG.appendChild(depthG);
+    _viewport.appendChild(enterG);
+  }
+
+  function _drawFlowArrow(x1, y1, x2, y2) {
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2 - 6); line.setAttribute('y2', y2);
+    line.setAttribute('stroke', 'rgba(255,255,255,0.25)');
+    line.setAttribute('stroke-width', '1.5');
+    line.setAttribute('marker-end', 'url(#arrow-head)');
+    _viewport.appendChild(line);
   }
 
   function _drawStarfield(W, H) {
