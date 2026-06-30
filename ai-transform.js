@@ -169,13 +169,7 @@ window.AiTransform = (() => {
 
       _suggestedText = result.trim();
 
-      // Применяем текст в textarea
-      _ta._skipWordComplete = true;
-      _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
-      _ta.dispatchEvent(new Event('input', { bubbles: true }));
-      _ta._skipWordComplete = false;
-
-      // Скрываем popup, показываем diff
+      // Скрываем popup, показываем diff (текст НЕ заменяется до принятия)
       if (_popup) _popup.style.display = 'none';
       _showDiffPanel(_origText, _suggestedText);
 
@@ -266,7 +260,13 @@ window.AiTransform = (() => {
 
   // ── Принятие ──────────────────────────────────────────────
   function _acceptChange() {
-    if (_ta && _suggestedText) window.Toast?.show('Принято ✓', 'success');
+    if (_ta && _suggestedText) {
+      _ta._skipWordComplete = true;
+      _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
+      _ta.dispatchEvent(new Event('input', { bubbles: true }));
+      _ta._skipWordComplete = false;
+      window.Toast?.show('Принято ✓', 'success');
+    }
   }
 
   // ── Публичный API ────────────────────────────────────────
