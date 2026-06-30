@@ -1478,6 +1478,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         _applyPasteCursor();
       });
     });
+    ta.addEventListener('click', () => window._scrollPaddingTick?.(ta));
     ta.addEventListener('blur', e => {
       // Если фокус ушёл на undo/redoBtn — не фиксируем снапшот:
       // кнопка вернёт фокус обратно в ta после отката

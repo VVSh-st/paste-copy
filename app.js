@@ -443,26 +443,17 @@
     if (!ta || ta.tagName !== 'TEXTAREA') return;
     const lines = State.getLayout()?.scrollPaddingLines || 0;
     if (!lines) return;
-    requestAnimationFrame(() => {
-      if (!ta.isConnected) return;
-      const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-      const pad = lines * lineHeight;
-      const cursorPos = ta.selectionStart;
-      const textBefore = ta.value.substring(0, cursorPos);
-      const linesBefore = textBefore.split('\n').length;
-      const needed = linesBefore * lineHeight + pad + lineHeight;
-      const minCss = parseFloat(getComputedStyle(ta).minHeight) || 80;
-      const h = Math.max(minCss, needed);
-      ta.style.height = h + 'px';
-    });
-  };
-
-  document.addEventListener('selectionchange', () => {
-    const ta = document.activeElement;
-    if (ta?.tagName === 'TEXTAREA' && ta.classList.contains('block-textarea')) {
-      window._scrollPaddingTick(ta);
+    const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+    const pad = lines * lineHeight;
+    const cursorPos = ta.selectionStart;
+    const textBefore = ta.value.substring(0, cursorPos);
+    const linesBefore = textBefore.split('\n').length;
+    const cursorY = linesBefore * lineHeight;
+    const bottomEdge = ta.scrollTop + ta.clientHeight - pad;
+    if (cursorY > bottomEdge) {
+      ta.scrollTop = cursorY - ta.clientHeight + pad;
     }
-  });
+  };
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/
   const anchorSettings = Anchors?.getMarkerSettings?.() || { lineMarkers: true, bgHighlight: true, color: '#4f8ef7' };
