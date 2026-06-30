@@ -3127,4 +3127,27 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   return { render, applyLayout, setupColumns, syncColumnElements, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge };
 })();
 
+document.addEventListener('mindmap:jump-word', e => {
+  const word = e.detail.word;
+  if (!word) return;
+  const tab = window.State?.getActive?.();
+  if (!tab) return;
+  const re = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  for (const b of (tab.blocks || [])) {
+    if (b.type !== 'text' && b.type !== 'todo') continue;
+    const el = document.querySelector(`.block[data-id="${b.id}"] textarea.block-textarea`);
+    if (!el) continue;
+    const m = re.exec(el.value);
+    if (!m) continue;
+    el.focus();
+    el.setSelectionRange(m.index, m.index + m[0].length);
+    const linesBefore = el.value.substring(0, m.index).split('\n').length - 1;
+    const lineHeight = parseInt(getComputedStyle(el).lineHeight) || 20;
+    el.scrollTop = Math.max(0, linesBefore * lineHeight - el.clientHeight / 3);
+    el.classList.add('jump-highlight');
+    setTimeout(() => el.classList.remove('jump-highlight'), 2000);
+    break;
+  }
+});
+
 window.Blocks = Blocks;

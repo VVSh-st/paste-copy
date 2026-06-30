@@ -40,7 +40,11 @@ const MindMap = (() => {
           <button class="mindmap-btn" data-mode="graph" title="Граф связей">G</button>
           <button class="mindmap-btn" data-mode="tree" title="Дерево аргументов">T</button>
           <button class="mindmap-btn" data-mode="clusters" title="Кластеры тем">C</button>
+          <button class="mindmap-btn mindmap-refresh" title="Обновить анализ">↻</button>
           <button class="mindmap-btn mindmap-close" title="Закрыть">✕</button>
+        </div>
+        <div class="mindmap-zoom">
+          <input type="range" class="mindmap-zoom-range" min="40" max="400" value="100" step="1">
         </div>
         <div class="mindmap-status"></div>
         <div class="mindmap-canvas"></div>
@@ -71,17 +75,48 @@ const MindMap = (() => {
         _mode = btn.dataset.mode;
         _overlay.querySelectorAll('.mindmap-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === _mode));
         _resetTransform();
+        _syncZoomSlider();
         if (_data) _render();
       });
     });
 
-    const controls = _overlay.querySelector('.mindmap-controls');
-    _overlay.addEventListener('mousemove', e => {
-      const r = controls.getBoundingClientRect();
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-      controls.classList.toggle('near', dist < 150);
+    _overlay.querySelector('.mindmap-refresh').addEventListener('click', () => {
+      if (_loading) return;
+      const text = window.Preview?.getText?.() ?? '';
+      if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
+      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+      _overlay.querySelector('.mindmap-refresh').classList.add('spinning');
+      _fetch(text);
+    });
+
+    function _setupProximityReveal(el, radius) {
+      _overlay.addEventListener('mousemove', e => {
+        const r = el.getBoundingClientRect();
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
+        el.classList.toggle('near', dist < radius);
+      });
+    }
+    _setupProximityReveal(_overlay.querySelector('.mindmap-controls'), 150);
+    _setupProximityReveal(_overlay.querySelector('.mindmap-zoom'), 120);
+
+    const zoomRange = _overlay.querySelector('.mindmap-zoom-range');
+    const zoomWrap = _overlay.querySelector('.mindmap-zoom');
+    zoomRange.addEventListener('input', () => {
+      if (_loading) return;
+      const newZoom = zoomRange.value / 100;
+      const rect = _svg.getBoundingClientRect();
+      const cx = rect.width / 2, cy = rect.height / 2;
+      _panX = cx - (cx - _panX) * (newZoom / _zoom);
+      _panY = cy - (cy - _panY) * (newZoom / _zoom);
+      _zoom = newZoom;
+      _applyTransform();
+    });
+    zoomRange.addEventListener('mousedown', () => zoomWrap.classList.add('dragging'));
+    window.addEventListener('mouseup', () => zoomWrap.classList.remove('dragging'));
+    zoomRange.addEventListener('dblclick', () => {
+      _resetTransform();
+      zoomRange.value = 100;
     });
 
     document.addEventListener('keydown', e => {
@@ -125,6 +160,11 @@ const MindMap = (() => {
     });
   }
 
+  function _jumpToWord(word) {
+    document.dispatchEvent(new CustomEvent('mindmap:jump-word', { detail: { word } }));
+    close();
+  }
+
   function _smoothZoomTo(targetX, targetY, targetZoom) {
     cancelAnimationFrame(_inertiaRaf);
     _viewport.style.transition = 'transform 0.4s cubic-bezier(.2,.8,.2,1)';
@@ -158,6 +198,11 @@ const MindMap = (() => {
     });
   }
 
+  function _syncZoomSlider() {
+    const r = _overlay?.querySelector('.mindmap-zoom-range');
+    if (r) r.value = Math.round(_zoom * 100);
+  }
+
   function _applyParallax(nx, ny) {
     if (!_viewport) return;
     _viewport.querySelectorAll('[data-depth]').forEach(el => {
@@ -171,10 +216,8 @@ const MindMap = (() => {
   function open() {
     _ensureOverlay();
     if (_loading) return;
-    const text = window.Preview?.getText?.() ?? '';
-    if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
+
     _overlay.classList.add('visible');
-    _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
     _overlay.querySelector('.mindmap-canvas').innerHTML = '';
     _svg = document.createElementNS(SVG_NS, 'svg');
     _svg.setAttribute('width', '100%');
@@ -183,12 +226,26 @@ const MindMap = (() => {
     _overlay.querySelector('.mindmap-canvas').appendChild(_svg);
     _overlay.querySelectorAll('.mindmap-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === _mode));
     _resetTransform();
+    _syncZoomSlider();
     _setupSvgListeners();
+
+    if (_data) {
+      _overlay.querySelector('.mindmap-status').textContent = '';
+      _overlay.querySelector('.mindmap-refresh')?.classList.remove('spinning');
+      _render();
+      return;
+    }
+
+    const text = window.Preview?.getText?.() ?? '';
+    if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
+    _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+    _overlay.querySelector('.mindmap-refresh')?.classList.add('spinning');
     _fetch(text);
   }
 
   function _setupSvgListeners() {
     _svg.addEventListener('wheel', e => {
+      if (_loading) return;
       e.preventDefault();
       const rect = _svg.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -199,10 +256,11 @@ const MindMap = (() => {
       _panY = my - (my - _panY) * (newZoom / _zoom);
       _zoom = newZoom;
       _applyTransform();
+      _syncZoomSlider();
     }, { passive: false });
 
     _svg.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || _loading) return;
       cancelAnimationFrame(_inertiaRaf);
       _dragging = true; _movedEnough = false;
       _lastX = e.clientX; _lastY = e.clientY;
@@ -252,6 +310,7 @@ const MindMap = (() => {
       close();
     } finally {
       _loading = false;
+      _overlay?.querySelector('.mindmap-refresh')?.classList.remove('spinning');
     }
   }
 
@@ -362,7 +421,16 @@ const MindMap = (() => {
       text.style.transition = 'opacity 0.2s, font-size 0.2s';
       text.addEventListener('mouseenter', () => { text.setAttribute('opacity', '1'); text.setAttribute('font-size', fontSize + 4); text.classList.add('mm-pulse'); });
       text.addEventListener('mouseleave', () => { text.setAttribute('opacity', String(0.4 + (item.weight / maxW) * 0.6)); text.setAttribute('font-size', fontSize); text.classList.remove('mm-pulse'); });
-      text.addEventListener('dblclick', () => _smoothZoomTo(x + tw / 2, y - th / 2, 2));
+      let clickTimer = null;
+      text.addEventListener('click', () => {
+        clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => { clickTimer = null; _jumpToWord(item.w); }, 220);
+      });
+      text.addEventListener('dblclick', () => {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+        _smoothZoomTo(x + tw / 2, y - th / 2, 2);
+      });
       depthG.appendChild(text);
       enterG.appendChild(depthG);
       _viewport.appendChild(enterG);
