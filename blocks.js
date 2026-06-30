@@ -1848,11 +1848,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     thesaurusDropdown.className = 'translate-dropdown';
     thesaurusDropdown.style.display = 'none';
 
-    let lastThesaurusMode = localStorage.getItem('thesaurus_mode') || 'antonyms';
+    let lastThesaurusMode = localStorage.getItem('thesaurus_mode') || 'thesaurus';
+    const _thesaurusModeLabels = { thesaurus: 'Тезаурус', antonyms: 'Антонимы', rephrase: 'Перефразирование', explain: 'Объяснение', structure: 'Структурирование' };
 
     function _buildThesaurusMenu() {
       thesaurusDropdown.innerHTML = '';
       const modes = [
+        { id: 'thesaurus', label: 'Тезаурус' },
         { id: 'antonyms', label: 'Антонимы' },
         { id: 'rephrase', label: 'Перефразирование' },
         { id: 'explain', label: 'Объяснение' },
@@ -1867,14 +1869,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           e.stopPropagation();
           lastThesaurusMode = m.id;
           localStorage.setItem('thesaurus_mode', m.id);
+          thesaurusBtn.title = 'Тезаурус → ' + _thesaurusModeLabels[m.id] + ' (Alt+T)';
           _buildThesaurusMenu();
           thesaurusDropdown.style.display = 'none';
-          window.LLMFeatures?._executeThesaurusMode?.(m.id, b.id);
         };
         thesaurusDropdown.appendChild(opt);
       });
     }
     _buildThesaurusMenu();
+    thesaurusBtn.title = 'Тезаурус → ' + _thesaurusModeLabels[lastThesaurusMode] + ' (Alt+T)';
 
     let thesaurusLongPressTimer = null;
     let thesaurusLongPressed = false;
@@ -1898,7 +1901,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       clearTimeout(thesaurusLongPressTimer);
       if (thesaurusLongPressed) { thesaurusLongPressed = false; return; }
       thesaurusDropdown.style.display = 'none';
-      window.LLMFeatures?._thesaurusAtBlock?.(b.id);
+      if (lastThesaurusMode === 'thesaurus') {
+        window.LLMFeatures?._thesaurusAtBlock?.(b.id);
+      } else {
+        window.LLMFeatures?._executeThesaurusMode?.(lastThesaurusMode, b.id);
+      }
     };
 
     document.addEventListener('mousedown', e => {
