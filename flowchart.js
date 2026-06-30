@@ -457,7 +457,7 @@ const Flowchart = (() => {
           <button class="flowchart-btn flowchart-add" title="Добавить блок">+</button>
           <button class="flowchart-btn flowchart-connect" title="Соединить блоки">↗</button>
           <button class="flowchart-btn flowchart-refresh" title="Обновить анализ">↻</button>
-          <button class="flowchart-btn flowchart-export" title="Копировать в вкладку">⇪</button>
+          <button class="flowchart-btn flowchart-export" title="Дублировать полотно">⇪</button>
           <button class="flowchart-btn flowchart-close" title="Закрыть">✕</button>
         </div>
         <div class="flowchart-canvases"></div>
@@ -532,9 +532,11 @@ const Flowchart = (() => {
     });
 
     _overlay.querySelector('.flowchart-export').addEventListener('click', () => {
-      const mermaid = _toMermaid();
-      document.dispatchEvent(new CustomEvent('flowchart:export-to-tab', { detail: { content: mermaid } }));
-      window.Toast?.show('Скопировано в новую вкладку', 'info');
+      const id = 'c' + Date.now();
+      const sourceName = _canvases.find(c => c.id === _activeCanvasId)?.name || '1';
+      _canvases.push({ id, name: sourceName + ' (копия)', data: JSON.parse(JSON.stringify(_data)), updatedAt: Date.now() });
+      _switchCanvas(id);
+      window.Toast?.show('Скопировано в новое полотно', 'info');
     });
 
     function _setupProximity(el, r) {
@@ -679,6 +681,17 @@ const Flowchart = (() => {
     const cv = _canvases.find(c => c.id === _activeCanvasId);
     _data = cv ? JSON.parse(JSON.stringify(cv.data)) : { nodes: [], edges: [] };
     _renderCanvasPills();
+
+    const isEmpty = !_data.nodes || !_data.nodes.length;
+    if (isEmpty) {
+      const text = window.Preview?.getText?.() ?? '';
+      if (text.trim()) {
+        _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
+        _overlay.querySelector('.flowchart-refresh').classList.add('spinning');
+        _fetch(text);
+        return;
+      }
+    }
     _render();
   }
 
