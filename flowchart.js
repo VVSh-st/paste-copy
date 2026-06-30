@@ -1,5 +1,5 @@
 const Flowchart = (() => {
-  const VCW = 1600, VCH = 1000;
+  const VCW = 2000, VCH = 1400;
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const PALETTE = ['#4f8ef7', '#5cb87a', '#f0a050', '#e05c6a', '#a78bfa', '#f472b6', '#22d3ee', '#fbbf24'];
 
@@ -141,8 +141,8 @@ const Flowchart = (() => {
     }
     _nodes.filter(n => !visited.has(n.id) && n.x == null).forEach(n => { levels.push([n.id]); visited.add(n.id); });
 
-    const maxRowsPerCol = 5, colW = 340, levelGap = 110;
-    const startY = 80;
+    const maxRowsPerCol = 5, colW = 400, levelGap = 130;
+    const startY = 100;
 
     levels.forEach((level, li) => {
       const col = Math.floor(li / maxRowsPerCol);
@@ -151,7 +151,7 @@ const Flowchart = (() => {
       level.forEach((id, ni) => {
         const node = nodeMap[id];
         if (node && node.x == null) {
-          node.x = baseX + ni * 200;
+          node.x = baseX + ni * 240;
           node.y = startY + rowInCol * levelGap;
         }
       });
