@@ -831,7 +831,7 @@ const MindMap = (() => {
       _viewport.appendChild(_emptyMsg('Нет последовательности шагов в тексте'));
       return;
     }
-    const cardW = 220, cardH = 110, gap = 70;
+    const cardW = 240, cardH = 120, gap = 70;
     const totalW = steps.length * (cardW + gap) - gap;
     const startX = (W - totalW) / 2 > 40 ? (W - totalW) / 2 : 40;
     const y = H / 2 - cardH / 2;
@@ -870,16 +870,20 @@ const MindMap = (() => {
     order.textContent = `ШАГ ${step.order || i + 1}`;
     depthG.appendChild(order);
 
-    const title = document.createElementNS(SVG_NS, 'text');
-    title.setAttribute('x', x + 14); title.setAttribute('y', y + 36);
-    title.setAttribute('fill', 'var(--text0)'); title.setAttribute('font-weight', '600');
-    title.setAttribute('font-size', '12'); title.setAttribute('font-family', 'var(--mono)');
-    title.textContent = step.title;
-    depthG.appendChild(title);
-
-    _wrapTextLines(step.desc || '', w - 28, 3).forEach((line, li) => {
+    const titleLines = _wrapTextLines(step.title || '', w - 28, 2);
+    titleLines.forEach((ln, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
-      t.setAttribute('x', x + 14); t.setAttribute('y', y + 54 + li * 16);
+      t.setAttribute('x', x + 14); t.setAttribute('y', y + 36 + li * 15);
+      t.setAttribute('fill', 'var(--text0)'); t.setAttribute('font-weight', '600');
+      t.setAttribute('font-size', '12'); t.setAttribute('font-family', 'var(--mono)');
+      t.textContent = ln;
+      depthG.appendChild(t);
+    });
+
+    const descY = y + 36 + titleLines.length * 15 + 4;
+    _wrapTextLines(step.desc || '', w - 28, 2).forEach((line, li) => {
+      const t = document.createElementNS(SVG_NS, 'text');
+      t.setAttribute('x', x + 14); t.setAttribute('y', descY + li * 15);
       t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '11');
       t.setAttribute('font-family', 'var(--mono)');
       t.textContent = line;
