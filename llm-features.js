@@ -463,9 +463,16 @@ window.LLMFeatures = (() => {
       if (!result?.trim()) { window.Toast?.show('Нет синонимов', 'info'); return; }
       const lines = result.trim().split('\n');
       const items = [];
-      for (const line of lines) {
-        const m = line.match(/^\d+\.\s*(.+?)(?:\s*\[(офиц|нейтр|разг)\])?\s*$/i);
-        if (m) items.push({ word: m[1].trim() });
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        let m = line.match(/^\d+[\.\)]\s*(.+?)(?:\s*\[.*?\])?\s*$/i);
+        if (!m) m = line.match(/^[-•·]\s*(.+?)\s*$/);
+        if (!m) m = line.match(/^(.+?)\s*$/);
+        if (m && m[1].trim().length > 1 && m[1].trim().length < 40) {
+          const w = m[1].trim().replace(/\s+/g, ' ');
+          if (!items.some(x => x.word === w)) items.push({ word: w });
+        }
       }
       if (!items.length) { window.Toast?.show('Не удалось распарсить синонимы', 'error'); return; }
       _thesaurusItems = items;
@@ -509,9 +516,16 @@ window.LLMFeatures = (() => {
       if (!result?.trim()) { window.Toast?.show('Нет синонимов', 'info'); return; }
       const lines = result.trim().split('\n');
       const items = [];
-      for (const line of lines) {
-        const m = line.match(/^\d+\.\s*(.+?)(?:\s*\[(офиц|нейтр|разг)\])?\s*$/i);
-        if (m) items.push({ word: m[1].trim() });
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        let m = line.match(/^\d+[\.\)]\s*(.+?)(?:\s*\[.*?\])?\s*$/i);
+        if (!m) m = line.match(/^[-•·]\s*(.+?)\s*$/);
+        if (!m) m = line.match(/^(.+?)\s*$/);
+        if (m && m[1].trim().length > 1 && m[1].trim().length < 40) {
+          const w = m[1].trim().replace(/\s+/g, ' ');
+          if (!items.some(x => x.word === w)) items.push({ word: w });
+        }
       }
       if (!items.length) { window.Toast?.show('Не удалось распарсить синонимы', 'error'); return; }
       _thesaurusItems = items;
