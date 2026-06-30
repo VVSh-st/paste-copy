@@ -436,9 +436,7 @@
 
   function _applyScrollPadding(lines) {
     const px = lines * 20;
-    document.querySelectorAll('textarea.block-textarea').forEach(ta => {
-      ta.style.scrollPaddingBottom = px + 'px';
-    });
+    document.documentElement.style.setProperty('--scroll-padding-bottom', px + 'px');
   }
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/
