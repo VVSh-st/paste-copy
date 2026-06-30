@@ -172,8 +172,14 @@ window.AiTransform = (() => {
 
       _suggestedText = result.trim();
 
-      // Показываем diff в textarea
-      _showDiffInTextarea();
+      // Показываем diff-панель
+      _showDiffPanel(_origText, _suggestedText);
+
+      // Применяем текст в textarea
+      _ta._skipWordComplete = true;
+      _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
+      _ta.dispatchEvent(new Event('input', { bubbles: true }));
+      _ta._skipWordComplete = false;
 
       _showResult();
       window.Toast?.show('Результат готов. ✓ Принять / ✕ Отмена / правый клик', 'success');
@@ -203,15 +209,15 @@ window.AiTransform = (() => {
     }
   }
 
-  // ── Inline diff в textarea ────────────────────────────────
-  function _showDiffInTextarea() {
-    if (!_ta || !_origText || !_suggestedText) return;
+  // ── Inline diff — показ в отдельной панели ─────────────────
+  let _diffPanel = null;
 
-    // Word-level diff
-    const origWords = _origText.split(/(\s+)/);
-    const sugWords = _suggestedText.split(/(\s+)/);
+  function _showDiffPanel(origText, sugText) {
+    if (_diffPanel) _diffPanel.remove();
 
-    // LCS
+    const origWords = origText.split(/(\s+)/);
+    const sugWords = sugText.split(/(\s+)/);
+
     const m = origWords.length;
     const n = sugWords.length;
     const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
@@ -221,7 +227,6 @@ window.AiTransform = (() => {
           ? dp[i - 1][j - 1] + 1
           : Math.max(dp[i - 1][j], dp[i][j - 1]);
 
-    // Восстанавливаем
     const parts = [];
     let i = m, j = n;
     while (i > 0 || j > 0) {
@@ -237,72 +242,35 @@ window.AiTransform = (() => {
       }
     }
 
-    // Формируем показ в textarea
-    // textarea не поддерживает HTML, поэтому показываем результат как текст,
-    // а diff-индикатор — через подсветку фона через overlay
-    _ta._skipWordComplete = true;
-    _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
-    _ta.dispatchEvent(new Event('input', { bubbles: true }));
-    _ta._skipWordComplete = false;
-
-    // Показываем overlay с diff-подсветкой
-    _showDiffOverlay(parts);
-  }
-
-  function _showDiffOverlay(parts) {
-    // Удаляем старый overlay
-    const old = document.getElementById('ai-transform-diff-overlay');
-    if (old) old.remove();
-
-    if (!_ta) return;
-
-    const container = _ta.closest('.block-body, .subtab-content, .code-block');
-    if (!container) return;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'ai-transform-diff-overlay';
-    overlay.className = 'ai-transform-diff-overlay';
-    overlay.style.cssText = [
-      'position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none',
-      'font-family:monospace;font-size:13px;line-height:1.6;padding:8px',
-      'white-space:pre-wrap;word-break:break-word;overflow:auto',
-      'color:transparent;mix-blend-mode:normal;z-index:10',
-    ].join(';');
-
-    // Подсвечиваем добавления/удаления
-    const html = parts.map(p => {
+    const diffHtml = parts.map(p => {
       if (p.type === 'eq') return esc(p.text);
       if (p.type === 'add') return `<span class="ai-transform-added">${esc(p.text)}</span>`;
       if (p.type === 'del') return `<span class="ai-transform-removed">${esc(p.text)}</span>`;
       return esc(p.text);
     }).join('');
 
-    overlay.innerHTML = `<span style="position:relative">${html}</span>`;
+    _diffPanel = document.createElement('div');
+    _diffPanel.className = 'ai-transform-diff-panel';
+    _diffPanel.style.cssText = [
+      'margin-top:6px;padding:8px 10px;border-radius:6px',
+      'background:var(--bg1,#11111b);border:1px solid var(--border,#45475a)',
+      'font-size:12px;line-height:1.6;max-height:200px;overflow-y:auto',
+      'color:var(--text1,#cdd6f4)',
+    ].join(';');
+    _diffPanel.innerHTML = diffHtml;
 
-    // Позиционируем относительно textarea
-    const style = getComputedStyle(_ta);
-    overlay.style.font = style.font;
-    overlay.style.lineHeight = style.lineHeight;
-    overlay.style.padding = style.padding;
-    overlay.style.width = _ta.offsetWidth + 'px';
-    overlay.style.height = _ta.offsetHeight + 'px';
+    const container = _ta?.closest('.block-body, .subtab-content, .code-block');
+    if (container) container.appendChild(_diffPanel);
 
-    container.style.position = 'relative';
-    container.appendChild(overlay);
-
-    // Автоскрытие через 5 сек
-    setTimeout(() => overlay.remove(), 5000);
+    setTimeout(() => { if (_diffPanel) { _diffPanel.remove(); _diffPanel = null; } }, 8000);
   }
 
   // ── Принятие/отмена ──────────────────────────────────────
   function _acceptChange() {
     if (_ta && _suggestedText) {
-      // Текст уже применён через setRangeText в _showDiffInTextarea
       window.Toast?.show('Принято ✓', 'success');
     }
-    // Убираем overlay
-    const overlay = document.getElementById('ai-transform-diff-overlay');
-    if (overlay) overlay.remove();
+    if (_diffPanel) { _diffPanel.remove(); _diffPanel = null; }
   }
 
   // ── Публичный API ────────────────────────────────────────
