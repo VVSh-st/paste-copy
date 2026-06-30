@@ -705,16 +705,28 @@ const MindMap = (() => {
       const depthG = document.createElementNS(SVG_NS, 'g');
       depthG.dataset.depth = '0.3';
 
-      const gradId = 'grad-' + color.replace('#', '');
+      const cgradId = `cgrad-${ci}`;
+      const cgrad = document.createElementNS(SVG_NS, 'radialGradient');
+      cgrad.setAttribute('id', cgradId);
+      cgrad.setAttribute('cx', `${20 + Math.random() * 60}%`);
+      cgrad.setAttribute('cy', `${20 + Math.random() * 60}%`);
+      cgrad.setAttribute('r', '70%');
+      cgrad.innerHTML = `
+        <stop offset="0%" stop-color="#fff" stop-opacity="0.8"/>
+        <stop offset="30%" stop-color="${color}" stop-opacity="0.9"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0.1"/>
+      `;
+      _svg.querySelector('defs').appendChild(cgrad);
+
       const ellipse = document.createElementNS(SVG_NS, 'ellipse');
       ellipse.setAttribute('cx', ccx); ellipse.setAttribute('cy', ccy);
       ellipse.setAttribute('rx', r); ellipse.setAttribute('ry', r * 0.7);
-      ellipse.setAttribute('fill', `url(#${gradId})`);
+      ellipse.setAttribute('fill', `url(#${cgradId})`);
       ellipse.setAttribute('fill-opacity', '0.35');
       ellipse.setAttribute('stroke', color + '40');
       ellipse.setAttribute('stroke-width', '1');
       ellipse.style.transition = 'fill-opacity 0.3s, stroke 0.3s';
-      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('fill-opacity', '0.5'); ellipse.setAttribute('stroke', color + '60'); ellipse.classList.add('mm-pulse'); });
+      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('fill-opacity', '0.55'); ellipse.setAttribute('stroke', color + '60'); ellipse.classList.add('mm-pulse'); });
       ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('fill-opacity', '0.35'); ellipse.setAttribute('stroke', color + '40'); ellipse.classList.remove('mm-pulse'); });
       depthG.appendChild(ellipse);
 
