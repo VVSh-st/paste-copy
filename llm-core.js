@@ -1827,6 +1827,7 @@ const BUILTIN_PROMPTS = {
   ask_system: 'You are a Q&A assistant. Answer the question using only the provided text. Do NOT add outside knowledge, guesses, or unsupported details. Format the answer as a Markdown blockquote: every line must start with "> ". Return ONLY the blockquote answer.',
   plan_system: 'Ты — планировщик задач в редакторе промптов. По тексту ниже составь короткий практичный план улучшений. Дай 3–7 шагов, где каждый шаг представляет одно конкретное действие, начинается с глагола (например: добавить, удалить, уточнить, разделить, переписать) и описывает точное изменение текста. Без вступлений, объяснений и выводов, только список действий, направленных на улучшение промпта.',
   chat_system: 'Ты — помощник в приложении. Пиши ясно и по делу: 1–3 предложения на ответ. Упрощай сложные вещи до сути, не теряя смысл, и давай конкретные, применимые советы вместо общих рассуждений. Если уместно — добавь лёгкую метафору или короткую шутку, но только если она усиливает понимание и не отвлекает. Всегда отвечай на языке пользователя. Если запрос неясен или двусмысленен — не угадывай, а задавай уточняющий вопрос.',
+  mindmap: 'You are a text analyst. Analyze the text below and return ONLY valid JSON with no markdown fences:\n{"words":[{"w":"word","weight":1,"role":"topic|action|modifier|entity"}],"links":[{"from":"word1","to":"word2","strength":0.5}],"claim":"main thesis or empty string","evidence":[{"text":"evidence text","supports":true}],"conclusion":"conclusion or empty string","clusters":[{"topic":"topic name","words":["word1","word2"]}]}.\nRules: extract 15-25 most important words; weight 1-10 by importance; roles: topic=subject, action=verb, modifier=adjective/adverb, entity=name/proper noun; links connect related words (5-15 links); clusters group 3-6 semantically close words (3-6 clusters); claim/evidence/conclusion only if the text has an argument structure, otherwise empty strings.',
 };
 
   const PROMPT_GROUPS = [
@@ -1835,7 +1836,7 @@ const BUILTIN_PROMPTS = {
     { label: 'Промпт-инженерия', keys: ['positive_instr', 'audit', 'compress', 'variations', 'negatives', 'grade_prompt'] },
     { label: 'БРО-теги', keys: ['bro_system', 'fix_system', 'eng_system', 'ru_system', 'sum_system', 'ask_system', 'plan_system'] },
     { label: 'Чат', keys: ['chat_system'] },
-    { label: 'Служебные', keys: ['autotitle', 'subtab_autotitle', 'summary', 'thesaurus', 'thesaurus_antonyms', 'thesaurus_rephrase', 'thesaurus_explain', 'thesaurus_structure', 'fill_ph'] },
+    { label: 'Служебные', keys: ['autotitle', 'subtab_autotitle', 'summary', 'thesaurus', 'thesaurus_antonyms', 'thesaurus_rephrase', 'thesaurus_explain', 'thesaurus_structure', 'fill_ph', 'mindmap'] },
   ];
 
   const PROMPT_META = {
@@ -1873,6 +1874,7 @@ const BUILTIN_PROMPTS = {
     thesaurus_explain: { title: 'Тезаурус: объяснение', group: 'Служебные', short: 'Объясняет как для пятилетки.', usedIn: 'Меню тезауруса → «Объяснение».', output: 'Простое объяснение в мини-чат.', vars: [], requiresOnly: true },
     thesaurus_structure: { title: 'Тезаурус: структурирование', group: 'Служебные', short: 'Превращает текст в нумерованный список.', usedIn: 'Меню тезауруса → «Структурирование».', output: 'Нумерованный список.', vars: [], requiresOnly: true },
     fill_ph: { title: 'Заполнить {{llm:...}}', group: 'Служебные', short: 'Дозаполняет inline-инструкцию.', usedIn: 'LLM-меню → «Заполнить {{llm:...}}».', output: 'Короткое завершение без кавычек.', vars: ['instruction'], requiresOnly: true },
+    mindmap: { title: 'MindMap', group: 'Служебные', short: 'Анализ текста для визуализации.', usedIn: 'Кнопка 🧠 в превью.', output: 'JSON со словами, связями, кластерами.', vars: [], requiresJson: true, requiresOnly: true },
   };
 
   function getPrompt(key, vars = {}) {

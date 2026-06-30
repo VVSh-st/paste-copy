@@ -5991,3 +5991,60 @@ body.help-open {
   padding: 32px; text-align: center; color: var(--text-muted);
 }
 
+/* ── MindMap overlay ────────────────────────────────────────────────── */
+.mindmap-overlay {
+  position: fixed; inset: 0; z-index: 9400;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  opacity: 0; visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+.mindmap-overlay.visible { opacity: 1; visibility: visible; }
+
+.mindmap-panel {
+  position: relative;
+  width: 70vw; max-width: 900px;
+  height: 60vh; max-height: 600px;
+  background: var(--bg1);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+.mindmap-controls {
+  position: absolute; top: 12px; right: 12px;
+  display: flex; gap: 6px;
+  opacity: 0; transform: translateY(-8px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  z-index: 10;
+}
+.mindmap-panel:hover .mindmap-controls {
+  opacity: 1; transform: translateY(0);
+}
+
+.mindmap-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--bg2); border: 1px solid var(--border2);
+  color: var(--text2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; font-family: var(--mono);
+  transition: all 0.2s ease;
+}
+.mindmap-btn:hover { color: var(--accent); border-color: var(--accent); }
+.mindmap-btn.active { color: var(--accent); background: rgba(79,142,247,0.1); border-color: var(--accent); }
+.mindmap-close { font-size: 14px; }
+.mindmap-close:hover { color: var(--red); border-color: var(--red); }
+
+.mindmap-status {
+  padding: 8px 16px;
+  font-size: 12px; color: var(--text3);
+  text-align: center;
+}
+
+.mindmap-canvas {
+  flex: 1; overflow: hidden;
+  padding: 0;
+}
+.mindmap-canvas svg { width: 100%; height: 100%; display: block; }

@@ -896,6 +896,7 @@
 
     onEvent('prev-audit', 'click',    () => LLMFeatures.handleAction('audit'));
     onEvent('prev-compress', 'click', () => LLMFeatures.handleAction('compress'));
+    onEvent('prev-mindmap', 'click',  () => MindMap?.open());
 
     onEvent('llm-modal-close', 'click', () => {
       const m = $id('llm-settings-modal');
