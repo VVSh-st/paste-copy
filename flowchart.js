@@ -141,7 +141,7 @@ const Flowchart = (() => {
     }
     _nodes.filter(n => !visited.has(n.id) && n.x == null).forEach(n => { levels.push([n.id]); visited.add(n.id); });
 
-    const maxRowsPerCol = 6, colW = 280, levelGap = 90;
+    const maxRowsPerCol = 5, colW = 340, levelGap = 110;
     const startY = 80;
 
     levels.forEach((level, li) => {
@@ -343,8 +343,8 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'polygon');
         shapeEl.setAttribute('points', pts);
         shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.3');
-        shapeEl.setAttribute('stroke', color + '50');
+        shapeEl.setAttribute('fill-opacity', '0.5');
+        shapeEl.setAttribute('stroke', color + '60');
         shapeEl.setAttribute('stroke-width', '1.5');
         break;
       }
@@ -352,13 +352,13 @@ const Flowchart = (() => {
         const r = Math.min(w, h) / 2;
         const back = document.createElementNS(SVG_NS, 'circle');
         back.setAttribute('cx', node.x); back.setAttribute('cy', node.y); back.setAttribute('r', r);
-        back.setAttribute('fill', 'rgba(10,11,16,0.92)');
+        back.setAttribute('fill', 'rgba(10,11,16,0.95)');
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'circle');
         shapeEl.setAttribute('cx', node.x); shapeEl.setAttribute('cy', node.y); shapeEl.setAttribute('r', r);
         shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.3');
-        shapeEl.setAttribute('stroke', color + '50');
+        shapeEl.setAttribute('fill-opacity', '0.5');
+        shapeEl.setAttribute('stroke', color + '60');
         shapeEl.setAttribute('stroke-width', '1.5');
         break;
       }
@@ -373,7 +373,7 @@ const Flowchart = (() => {
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
         rect.setAttribute('rx', '6'); rect.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        rect.setAttribute('fill-opacity', '0.3'); rect.setAttribute('stroke', color + '50'); rect.setAttribute('stroke-width', '1.5');
+        rect.setAttribute('fill-opacity', '0.5'); rect.setAttribute('stroke', color + '60'); rect.setAttribute('stroke-width', '1.5');
         shapeEl.appendChild(rect);
         const top = document.createElementNS(SVG_NS, 'ellipse');
         top.setAttribute('cx', node.x); top.setAttribute('cy', y + 7); top.setAttribute('rx', w / 2); top.setAttribute('ry', 7);
@@ -384,23 +384,23 @@ const Flowchart = (() => {
       case 'stadium': {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', h / 2); back.setAttribute('fill', 'rgba(10,11,16,0.92)');
+        back.setAttribute('rx', h / 2); back.setAttribute('fill', 'rgba(10,11,16,0.95)');
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', h / 2); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.3'); shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.5'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
         break;
       }
       default: {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', '8'); back.setAttribute('fill', 'rgba(10,11,16,0.92)');
+        back.setAttribute('rx', '8'); back.setAttribute('fill', 'rgba(10,11,16,0.95)');
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', '8'); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.3'); shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.5'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
         break;
       }
     }
