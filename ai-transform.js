@@ -17,6 +17,7 @@ window.AiTransform = (() => {
   let _onClickOutside = null;
   let _onContextMenu = null;
   let _diffPanel = null;
+  let _useWholeText = false;
 
   // ── История запросов ──────────────────────────────────────
   const HISTORY_KEY = 'ai-transform-history';
@@ -62,7 +63,16 @@ window.AiTransform = (() => {
     _ta = ta;
     _origStart = ta.selectionStart;
     _origEnd = ta.selectionEnd;
-    _origText = ta.value.slice(_origStart, _origEnd);
+    const sel = ta.value.slice(_origStart, _origEnd).trim();
+
+    if (sel) {
+      _origText = sel;
+      _useWholeText = false;
+    } else {
+      _origText = ta.value;
+      _useWholeText = true;
+    }
+
     _suggestedText = '';
     _removeDiffPanel();
     _loadHistory();
@@ -71,7 +81,7 @@ window.AiTransform = (() => {
     popup.innerHTML = `
       <div class="ai-transform-row">
         <input type="text" id="ai-transform-input"
-               placeholder="Что сделать с текстом?"
+               placeholder="${_useWholeText ? 'Запрос ко всему тексту...' : 'Что сделать с текстом?'}"
                autocomplete="off" spellcheck="false">
         <button type="button" id="ai-transform-send" title="Выполнить (Enter)">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8l12-5-5 12-2-5z"/><path d="M14 3l-5 5"/></svg>
@@ -122,15 +132,23 @@ window.AiTransform = (() => {
 
   function hidePopup(restore = false) {
     if (restore && _ta && _origText != null) {
-      _ta._skipWordComplete = true;
-      _ta.setRangeText(_origText, _origStart, _origEnd, 'end');
-      _ta.dispatchEvent(new Event('input', { bubbles: true }));
-      _ta._skipWordComplete = false;
+      if (_useWholeText) {
+        _ta._skipWordComplete = true;
+        _ta.value = _origText;
+        _ta.dispatchEvent(new Event('input', { bubbles: true }));
+        _ta._skipWordComplete = false;
+      } else {
+        _ta._skipWordComplete = true;
+        _ta.setRangeText(_origText, _origStart, _origEnd, 'end');
+        _ta.dispatchEvent(new Event('input', { bubbles: true }));
+        _ta._skipWordComplete = false;
+      }
     }
     if (_popup) _popup.style.display = 'none';
     _removeDiffPanel();
     _ta = null;
     _suggestedText = '';
+    _useWholeText = false;
     if (_onClickOutside) { document.removeEventListener('click', _onClickOutside, true); _onClickOutside = null; }
     if (_onContextMenu) { document.removeEventListener('contextmenu', _onContextMenu, true); _onContextMenu = null; }
   }
@@ -138,7 +156,7 @@ window.AiTransform = (() => {
   // ── Запрос к LLM ─────────────────────────────────────────
   async function _runTransform(instruction) {
     if (!instruction?.trim() || !_ta || !_LLMCore) return;
-    if (!_origText?.trim()) { window.Toast?.show('Нет выделенного текста', 'error'); return; }
+    if (!_origText?.trim()) { window.Toast?.show('Нет текста для обработки', 'error'); return; }
 
     _addToHistory(instruction.trim());
     _removeDiffPanel();
@@ -169,7 +187,7 @@ window.AiTransform = (() => {
 
       _suggestedText = result.trim();
 
-      // Скрываем popup, показываем diff (текст НЕ заменяется до принятия)
+      // Скрываем popup, показываем diff
       if (_popup) _popup.style.display = 'none';
       _showDiffPanel(_origText, _suggestedText);
 
@@ -195,19 +213,27 @@ window.AiTransform = (() => {
     if (_diffPanel) { _diffPanel.remove(); _diffPanel = null; }
   }
 
+  function _isLargeChange(orig, sug) {
+    const origLen = orig.length;
+    const sugLen = sug.length;
+    if (origLen === 0) return true;
+    const ratio = Math.abs(sugLen - origLen) / origLen;
+    return ratio > 0.5;
+  }
+
   function _showDiffPanel(origText, sugText) {
     _removeDiffPanel();
     if (!_ta) return;
 
     const lay = window.State?.getLayout?.();
     const savedSize = lay?.llm?.diffFontSize || 12;
+    const isLarge = _isLargeChange(origText, sugText);
 
     let diffHtml;
-    const engine = window.DiffEngine;
-    if (engine?.compute && engine?.renderHtml) {
-      diffHtml = engine.renderHtml(engine.compute(origText, sugText), 'classic', { durationMs: 3500 });
-    } else {
+    if (isLarge) {
       diffHtml = esc(sugText);
+    } else {
+      diffHtml = _renderAdditionsOnly(origText, sugText);
     }
 
     _diffPanel = document.createElement('div');
@@ -226,12 +252,11 @@ window.AiTransform = (() => {
         `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓</button>` +
         `<button type="button" class="btn-sm" data-action="reject">✕</button>` +
       `</div>` +
-      `<div class="llm-result-content llm-result-content--classic text-lint-result-content">${diffHtml}</div>`;
+      `<div class="llm-result-content text-lint-result-content">${diffHtml}</div>`;
 
     const parent = _ta.parentNode;
     if (parent) parent.insertBefore(_diffPanel, _ta.nextSibling);
 
-    //.stopPropagation на всех кнопках чтобы не срабатывал _onClickOutside
     _diffPanel.addEventListener('click', e => e.stopPropagation());
 
     _diffPanel.querySelector('[data-action="accept"]')?.addEventListener('click', () => {
@@ -258,11 +283,50 @@ window.AiTransform = (() => {
     });
   }
 
+  function _renderAdditionsOnly(orig, sug) {
+    const origWords = orig.split(/(\s+)/);
+    const sugWords = sug.split(/(\s+)/);
+
+    const m = origWords.length;
+    const n = sugWords.length;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = origWords[i - 1] === sugWords[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+
+    const parts = [];
+    let i = m, j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && origWords[i - 1] === sugWords[j - 1]) {
+        parts.unshift({ type: 'eq', text: origWords[i - 1] });
+        i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        parts.unshift({ type: 'ins', text: sugWords[j - 1] });
+        j--;
+      } else {
+        parts.unshift({ type: 'del', text: origWords[i - 1] });
+        i--;
+      }
+    }
+
+    return parts.map(p => {
+      if (p.type === 'eq') return esc(p.text);
+      if (p.type === 'ins') return `<span class="ai-transform-ins">${esc(p.text)}</span>`;
+      return '';
+    }).join('');
+  }
+
   // ── Принятие ──────────────────────────────────────────────
   function _acceptChange() {
     if (_ta && _suggestedText) {
       _ta._skipWordComplete = true;
-      _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
+      if (_useWholeText) {
+        _ta.value = _suggestedText;
+      } else {
+        _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
+      }
       _ta.dispatchEvent(new Event('input', { bubbles: true }));
       _ta._skipWordComplete = false;
       window.Toast?.show('Принято ✓', 'success');
@@ -272,20 +336,7 @@ window.AiTransform = (() => {
   // ── Публичный API ────────────────────────────────────────
   function openForSelection(ta) {
     if (!ta || ta.tagName !== 'TEXTAREA') return;
-    const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
-    if (!sel) { window.Toast?.show('Выделите текст', 'error'); return; }
-
-    const start = ta.selectionStart;
-    const text = ta.value;
-    let lineStart = start;
-    while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--;
-    const lineIdx = text.slice(0, lineStart).split('\n').length - 1;
-    const charHeight = parseInt(getComputedStyle(ta).lineHeight) || 18;
-    const rect = ta.getBoundingClientRect();
-    const y = rect.top + lineIdx * charHeight;
-    const x = rect.left + 10;
-
-    showPopup(ta, x, y);
+    showPopup(ta, ta.getBoundingClientRect().left + 10, ta.getBoundingClientRect().top);
   }
 
   let _inited = false;
@@ -294,6 +345,20 @@ window.AiTransform = (() => {
     _inited = true;
     _State = State;
     _LLMCore = LLMCore;
+
+    if (!document.getElementById('ai-transform-css')) {
+      const style = document.createElement('style');
+      style.id = 'ai-transform-css';
+      style.textContent = `
+        .ai-transform-ins {
+          background: rgba(34,197,94,0.2);
+          color: #a6e3a1;
+          padding: 1px 2px;
+          border-radius: 2px;
+        }
+      `;
+      document.head.appendChild(style);
+    }
   }
 
   return {
