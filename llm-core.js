@@ -1813,6 +1813,10 @@ const BUILTIN_PROMPTS = {
   subtab_autotitle: 'You are a tab-title generator. Based on the text below, create exactly 10 alternative tab titles. Rules: (1) each title is 3–6 words; (2) the FIRST word should be a short powerful keyword (4–6 chars) that captures the core essence — for example "цвет", "GPT", "баг", "код"; (3) avoid generic openers like "это", "как", "вот"; (4) no periods, quotes, markdown, numbering. Return exactly 10 lines, one title per line, nothing else.',
   summary: 'Ты — редактор промптов. Составь краткое резюме (3–5 предложений) промпта ниже: опиши задачу, ожидаемый ввод, требуемый вывод и ключевые ограничения. Говори на русском. Верни ТОЛЬКО резюме без пояснений.',
   thesaurus: 'You are a contextual thesaurus. Suggest exactly 10 synonyms for the word "{word}" in the context: "{ctx}". Match the language of the input word (if English — respond in English, if Russian — respond in Russian). Avoid rare or awkward options. Return ONLY a numbered list without tags or explanations, e.g.: 1. word',
+  thesaurus_antonyms: 'You are a contextual antonyms generator. Suggest exactly 10 antonyms for the word "{word}" in the context: "{ctx}". Match the language of the input word (if English — respond in English, if Russian — respond in Russian). Avoid rare or awkward options. Return ONLY a numbered list without tags or explanations, e.g.: 1. word',
+  thesaurus_rephrase: 'You are a text rephraser. Rephrase the following text in a different way while preserving the exact meaning. Match the language of the input text. Return ONLY the rephrased text without explanations, quotes, or commentary.',
+  thesaurus_explain: 'You are an explainer for a 5-year-old. Explain the following text in very simple words, using everyday examples and analogies. Keep it short and clear. Match the language of the input text. Return ONLY the explanation without prefixes or commentary.',
+  thesaurus_structure: 'You are a text structurer. Convert the following text into a numbered list with clear, concise items. Preserve all key information. Match the language of the input text. Return ONLY the numbered list without explanations or commentary.',
   fill_ph: 'You are an instruction completer. Complete this inline instruction: "{instruction}". Keep the result short, concrete, natural, and in the same style as the original. Do NOT add quotes, explanation, or extra alternatives. Return ONLY the completed instruction.',
   grade_prompt: 'You are a prompt evaluator. Rate this prompt on 5 criteria using integers from 1 to 10 only. Judge clarity, specificity, completeness, consistency, and conciseness. Return ONLY a valid JSON object with no markdown: {"clarity":N,"specificity":N,"completeness":N,"consistency":N,"conciseness":N,"summary":"one sentence overall verdict"}',
   bro_system: 'You are a concise helpful assistant embedded in a prompt editor. Answer directly in 1–3 sentences. Do NOT restate the question, add filler, or give examples unless asked. If the request is unclear, ask one short clarifying question.',
@@ -1831,7 +1835,7 @@ const BUILTIN_PROMPTS = {
     { label: 'Промпт-инженерия', keys: ['positive_instr', 'audit', 'compress', 'variations', 'negatives', 'grade_prompt'] },
     { label: 'БРО-теги', keys: ['bro_system', 'fix_system', 'eng_system', 'ru_system', 'sum_system', 'ask_system', 'plan_system'] },
     { label: 'Чат', keys: ['chat_system'] },
-    { label: 'Служебные', keys: ['autotitle', 'subtab_autotitle', 'summary', 'thesaurus', 'fill_ph'] },
+    { label: 'Служебные', keys: ['autotitle', 'subtab_autotitle', 'summary', 'thesaurus', 'thesaurus_antonyms', 'thesaurus_rephrase', 'thesaurus_explain', 'thesaurus_structure', 'fill_ph'] },
   ];
 
   const PROMPT_META = {
@@ -1864,6 +1868,10 @@ const BUILTIN_PROMPTS = {
     subtab_autotitle: { title: 'Авто-заголовок вкладки', group: 'Служебные', short: 'Генерирует 10 вариантов, выбирает 4 лучших.', usedIn: 'Кнопка авто-заголовка вкладки <12345>.', output: '10 строк, фильтр до 4 (первое слово 4–6 символов).', vars: [], requiresOnly: true },
     summary: { title: 'Резюме вкладки', group: 'Служебные', short: 'Объясняет назначение prompt-а.', usedIn: 'LLM-меню → «Резюме вкладки».', output: '3–5 предложений.', vars: [], requiresOnly: true },
     thesaurus: { title: 'Тезаурус', group: 'Служебные', short: 'Предлагает синонимы выделенного слова.', usedIn: 'Функция подбора слов.', output: 'Нумерованный список из 5 синонимов.', vars: ['word'], requiresOnly: true },
+    thesaurus_antonyms: { title: 'Тезаурус: антонимы', group: 'Служебные', short: 'Предлагает антонимы выделенного слова.', usedIn: 'Меню тезауруса → «Антонимы».', output: 'Нумерованный список из 10 антонимов.', vars: ['word'], requiresOnly: true },
+    thesaurus_rephrase: { title: 'Тезаурус: перефразирование', group: 'Служебные', short: 'Иной способ сказать то же самое.', usedIn: 'Меню тезауруса → «Перефразирование».', output: 'Только перефразированный текст.', vars: [], requiresOnly: true },
+    thesaurus_explain: { title: 'Тезаурус: объяснение', group: 'Служебные', short: 'Объясняет как для пятилетки.', usedIn: 'Меню тезауруса → «Объяснение».', output: 'Простое объяснение в мини-чат.', vars: [], requiresOnly: true },
+    thesaurus_structure: { title: 'Тезаурус: структурирование', group: 'Служебные', short: 'Превращает текст в нумерованный список.', usedIn: 'Меню тезауруса → «Структурирование».', output: 'Нумерованный список.', vars: [], requiresOnly: true },
     fill_ph: { title: 'Заполнить {{llm:...}}', group: 'Служебные', short: 'Дозаполняет inline-инструкцию.', usedIn: 'LLM-меню → «Заполнить {{llm:...}}».', output: 'Короткое завершение без кавычек.', vars: ['instruction'], requiresOnly: true },
   };
 

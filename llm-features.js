@@ -558,6 +558,158 @@ window.LLMFeatures = (() => {
     }
   }
 
+  async function _thesaurusAntonymsAtBlock(blockId) {
+    const tab = _State?.getActive?.();
+    const block = tab?.blocks?.find(b => b.id === blockId);
+    if (!block || block.type !== 'text') return;
+    const blockEl = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+    const ta = blockEl?.querySelector('textarea.block-textarea');
+    if (!ta) { window.Toast?.show('Textarea не найдена', 'error'); return; }
+    const savedStart = ta.selectionStart;
+    const savedEnd = ta.selectionEnd;
+    const savedValue = ta.value;
+    const sel = savedValue.slice(savedStart, savedEnd).trim();
+    const pos = savedStart;
+    const wordRe = /[\wА-Яа-яЁёA-Za-z\u00C0-\u024F]/;
+    let ws = pos, we = pos;
+    while (ws > 0 && wordRe.test(savedValue[ws - 1])) ws--;
+    while (we < savedValue.length && wordRe.test(savedValue[we])) we++;
+    const word = sel || savedValue.slice(ws, we).trim();
+    if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
+    const ctx = savedValue.slice(Math.max(0, pos - 100), pos + 100);
+    _showThinking(`◕ Антонимы: «${word}»`);
+    try {
+      const result = await _LLMCore.request({
+        messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus_antonyms', { word, ctx }) }],
+        stream:     false,
+        maxTokens:  600,
+        featureTag: 'thesaurus_antonyms',
+      });
+      _hideThinking();
+      if (!result?.trim()) { window.Toast?.show('Нет антонимов', 'info'); return; }
+      const lines = result.trim().split('\n');
+      const items = [];
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+        let m = line.match(/^\d+[\.\)]\s*(.+?)(?:\s*\[.*?\])?\s*$/i);
+        if (!m) m = line.match(/^[-•·]\s*(.+?)\s*$/);
+        if (!m) m = line.match(/^(.+?)\s*$/);
+        if (m && m[1].trim().length > 1 && m[1].trim().length < 40) {
+          const w = m[1].trim().replace(/\s+/g, ' ');
+          if (!items.some(x => x.word === w)) items.push({ word: w });
+        }
+      }
+      if (!items.length) { window.Toast?.show('Не удалось распарсить антонимы', 'error'); return; }
+      _thesaurusItems = items;
+      _thesaurusIdx = 0;
+      _thesaurusTa = ta;
+      _thesaurusStart = ws;
+      _thesaurusEnd = we;
+      const raw = savedValue.slice(ws, we);
+      _thesaurusOrig = raw;
+      const leadMatch = raw.match(/^(\s*)/);
+      const trailMatch = raw.match(/(\s*)$/);
+      _thesaurusLeadSpace = leadMatch ? leadMatch[1] : '';
+      _thesaurusTrailSpace = trailMatch ? trailMatch[1] : '';
+      _showThesaurusPopupInline();
+      _applyThesaurusItem();
+    } catch (e) {
+      _hideThinking();
+      if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
+    }
+  }
+
+  async function _thesaurusTransformAtBlock(blockId, promptKey, featureTag, thinkingMsg) {
+    const tab = _State?.getActive?.();
+    const block = tab?.blocks?.find(b => b.id === blockId);
+    if (!block || block.type !== 'text') return;
+    const blockEl = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+    const ta = blockEl?.querySelector('textarea.block-textarea');
+    if (!ta) { window.Toast?.show('Textarea не найдена', 'error'); return; }
+    const savedStart = ta.selectionStart;
+    const savedEnd = ta.selectionEnd;
+    const savedValue = ta.value;
+    const hasSelection = savedEnd > savedStart;
+    const text = hasSelection ? savedValue.slice(savedStart, savedEnd) : savedValue;
+    if (!text.trim()) { window.Toast?.show('Текст пустой', 'error'); return; }
+    _showThinking(thinkingMsg);
+    try {
+      const result = await _LLMCore.request({
+        messages:   [{ role: 'user', content: _LLMCore.getPrompt(promptKey) + '\n\n' + text }],
+        stream:     false,
+        maxTokens:  2000,
+        featureTag,
+      });
+      _hideThinking();
+      if (!result?.trim()) { window.Toast?.show('Пустой ответ', 'info'); return; }
+      const replacement = result.trim();
+      const leadSpace = text.match(/^(\s*)/)[1];
+      const trailSpace = text.match(/(\s*)$/)[1];
+      const fullReplacement = leadSpace + replacement + trailSpace;
+      ta._skipWordComplete = true;
+      ta.focus();
+      if (hasSelection) {
+        ta.setRangeText(fullReplacement, savedStart, savedEnd, 'end');
+      } else {
+        ta.setRangeText(fullReplacement, 0, savedValue.length, 'end');
+      }
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta._skipWordComplete = false;
+      window.Toast?.show('✓ Выполнено', 'success');
+    } catch (e) {
+      _hideThinking();
+      if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
+    }
+  }
+
+  async function _thesaurusExplainAtBlock(blockId) {
+    const tab = _State?.getActive?.();
+    const block = tab?.blocks?.find(b => b.id === blockId);
+    if (!block || block.type !== 'text') return;
+    const blockEl = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+    const ta = blockEl?.querySelector('textarea.block-textarea');
+    if (!ta) { window.Toast?.show('Textarea не найдена', 'error'); return; }
+    const savedStart = ta.selectionStart;
+    const savedEnd = ta.selectionEnd;
+    const savedValue = ta.value;
+    const hasSelection = savedEnd > savedStart;
+    const text = hasSelection ? savedValue.slice(savedStart, savedEnd) : savedValue;
+    if (!text.trim()) { window.Toast?.show('Текст пустой', 'error'); return; }
+    MiniChat.newSession();
+    MiniChat.open();
+    MiniChat.addSystemMessage('◕ Объясняю как для пятилетки...');
+    MiniChat.pushToHistory('user', text);
+    _showThinking('◕ Объясняю...');
+    try {
+      const result = await _LLMCore.request({
+        messages:   [{ role: 'user', content: _LLMCore.getPrompt('thesaurus_explain') + '\n\n' + text }],
+        stream:     true,
+        onChunk:    chunk => MiniChat.appendChunk(chunk),
+        featureTag: 'thesaurus_explain',
+      });
+      MiniChat.finalizeLastMessage(result);
+      MiniChat.pushToHistory('assistant', result);
+    } catch (e) {
+      MiniChat.finalizeLastMessage('');
+      if (e.name !== 'AbortError') {
+        MiniChat.addSystemMessage('Ошибка: ' + e.message);
+        window.Toast?.show(e.message, 'error');
+      }
+    } finally {
+      _hideThinking();
+    }
+  }
+
+  function _executeThesaurusMode(mode, blockId) {
+    switch (mode) {
+      case 'antonyms':  return _thesaurusAntonymsAtBlock(blockId);
+      case 'rephrase':  return _thesaurusTransformAtBlock(blockId, 'thesaurus_rephrase', 'thesaurus_rephrase', '↬ Перефразирую...');
+      case 'explain':   return _thesaurusExplainAtBlock(blockId);
+      case 'structure': return _thesaurusTransformAtBlock(blockId, 'thesaurus_structure', 'thesaurus_structure', '☰ Структурирую...');
+    }
+  }
+
   const PromptRephrase = (() => {
     async function rephrase() {
       if (!_guard()) return;
@@ -4238,6 +4390,7 @@ const AutoPoet = (() => {
     setActiveProfile,
     groomBlock,
     _thesaurusAtBlock,
+    _executeThesaurusMode,
     AutoTitle,
     SubtabAutoTitle,
     AutoPoet,

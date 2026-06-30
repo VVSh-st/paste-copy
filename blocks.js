@@ -431,6 +431,36 @@ const Blocks = (() => {
         else if (b.type === 'todo')     renderTodoBody(b, body);
         else if (b.type === 'table')    renderTableBody(b, body);
         el.appendChild(body);
+
+        if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
+          const chk = document.createElement('button');
+          chk.type = 'button';
+          chk.className = 'todo-complete-cb';
+          chk.innerHTML = '<svg viewBox="0 0 14 14"><polyline points="2.5 7.5 5.5 10.5 11.5 3.5"/></svg>';
+          chk.title = 'Отметка выполнения';
+          const sub = b.subtabs[b.activeSubtab];
+          if (sub?.completed) chk.classList.add('checked');
+          chk.onclick = e => {
+            e.stopPropagation();
+            const cur = b.subtabs[b.activeSubtab];
+            if (!cur) return;
+            State.update(() => { cur.completed = !cur.completed; });
+            chk.classList.toggle('checked', cur.completed);
+            updateSubtabCompletedColors(b);
+          };
+          el.appendChild(chk);
+
+          el.addEventListener('mousemove', e => {
+            const r = chk.getBoundingClientRect();
+            const cx = e.clientX - (r.left + r.width / 2);
+            const cy = e.clientY - (r.top + r.height / 2);
+            const dist = Math.sqrt(cx * cx + cy * cy);
+            chk.classList.toggle('near', dist <= 100);
+          });
+          el.addEventListener('mouseleave', () => {
+            chk.classList.remove('near');
+          });
+        }
       } else {
         renderGroupBody(b, el, orderMap);
       }
@@ -946,8 +976,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const sub = b.subtabs[idx];
       if (sub) {
         btn.classList.toggle('filled', !!(sub.value || '').trim());
+        btn.classList.toggle('subtab-completed', !!sub.completed);
       }
     });
+
+    const chk = blockEl.querySelector('.todo-complete-cb');
+    if (chk) chk.classList.toggle('checked', !!b.subtabs[newIdx]?.completed);
 
     const arrows = blockEl.querySelectorAll('.subtab-arrow');
     if (arrows[0]) arrows[0].disabled = newIdx <= 0;
@@ -967,7 +1001,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           const sub = b.subtabs[i];
           const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
           const btn = document.createElement('span');
-          btn.className = 'block-subtab' + (i === newIdx ? ' active' : '');
+          btn.className = 'block-subtab' + (i === newIdx ? ' active' : '') + (sub.completed ? ' subtab-completed' : '');
           btn.dataset.subtabIdx = i;
           if ((sub.value || '').trim()) btn.classList.add('filled');
           const labelSpan = document.createElement('span');
@@ -1024,7 +1058,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const sub = b.subtabs[i];
         const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
         const btn = document.createElement('span');
-        btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '');
+      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '') + (sub.completed ? ' subtab-completed' : '');
         btn.dataset.subtabIdx = i;
         if ((sub.value || '').trim()) btn.classList.add('filled');
 
@@ -1809,8 +1843,78 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     thesaurusBtn.className = 'font-ctrl-btn';
     thesaurusBtn.title = 'Тезаурус — подбор синонимов (Alt+T)';
     thesaurusBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 5h4M3 8h3M3 11h4"/><path d="M10 5l2 3-2 3"/><path d="M12 8h2"/></svg>';
-    thesaurusBtn.onclick = e => { e.stopPropagation(); window.LLMFeatures?._thesaurusAtBlock?.(b.id); };
+
+    const thesaurusDropdown = document.createElement('div');
+    thesaurusDropdown.className = 'translate-dropdown';
+    thesaurusDropdown.style.display = 'none';
+
+    let lastThesaurusMode = localStorage.getItem('thesaurus_mode') || 'antonyms';
+
+    function _buildThesaurusMenu() {
+      thesaurusDropdown.innerHTML = '';
+      const modes = [
+        { id: 'antonyms', label: 'Антонимы' },
+        { id: 'rephrase', label: 'Перефразирование' },
+        { id: 'explain', label: 'Объяснение' },
+        { id: 'structure', label: 'Структурирование' },
+      ];
+      modes.forEach(m => {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'translate-lang-opt' + (m.id === lastThesaurusMode ? ' active' : '');
+        opt.textContent = m.label;
+        opt.onclick = e => {
+          e.stopPropagation();
+          lastThesaurusMode = m.id;
+          localStorage.setItem('thesaurus_mode', m.id);
+          _buildThesaurusMenu();
+          thesaurusDropdown.style.display = 'none';
+          window.LLMFeatures?._executeThesaurusMode?.(m.id, b.id);
+        };
+        thesaurusDropdown.appendChild(opt);
+      });
+    }
+    _buildThesaurusMenu();
+
+    let thesaurusLongPressTimer = null;
+    let thesaurusLongPressed = false;
+
+    thesaurusBtn.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      thesaurusLongPressed = false;
+      thesaurusLongPressTimer = setTimeout(() => {
+        thesaurusLongPressed = true;
+        const rect = thesaurusBtn.getBoundingClientRect();
+        thesaurusDropdown.style.left = rect.left + 'px';
+        thesaurusDropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        thesaurusDropdown.style.display = thesaurusDropdown.style.display === 'none' ? 'block' : 'none';
+      }, 400);
+    });
+    thesaurusBtn.addEventListener('mouseup', () => clearTimeout(thesaurusLongPressTimer));
+    thesaurusBtn.addEventListener('mouseleave', () => clearTimeout(thesaurusLongPressTimer));
+
+    thesaurusBtn.onclick = e => {
+      e.stopPropagation();
+      clearTimeout(thesaurusLongPressTimer);
+      if (thesaurusLongPressed) { thesaurusLongPressed = false; return; }
+      thesaurusDropdown.style.display = 'none';
+      window.LLMFeatures?._thesaurusAtBlock?.(b.id);
+    };
+
+    document.addEventListener('mousedown', e => {
+      if (!thesaurusDropdown.contains(e.target) && e.target !== thesaurusBtn) {
+        thesaurusDropdown.style.display = 'none';
+      }
+    });
+    document.addEventListener('contextmenu', e => {
+      if (!thesaurusDropdown.contains(e.target) && e.target !== thesaurusBtn) {
+        thesaurusDropdown.style.display = 'none';
+        e.preventDefault();
+      }
+    });
+
     footer.appendChild(thesaurusBtn);
+    body.appendChild(thesaurusDropdown);
 
     const aiTransformBtn = document.createElement('button');
     aiTransformBtn.type = 'button';
@@ -2622,7 +2726,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     b.subtabs.forEach((sub, i) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '');
+      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '') + (sub.completed ? ' subtab-completed' : '');
       const done = (sub.items || []).filter(x => x.done).length;
       const total = (sub.items || []).length;
       const lbl = document.createElement('span');
@@ -2636,6 +2740,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const blockEl = nav.closest('.block');
         const body = blockEl?.querySelector('.block-body');
         if (body) renderTodoBody(b, body);
+        updateSubtabCompletedColors(b);
       };
       btn.appendChild(lbl);
       row.appendChild(btn);
@@ -2761,6 +2866,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const total = items.length;
     badge.textContent = `${done}/${total}`;
     badge.classList.toggle('all-done', done === total && total > 0);
+  }
+
+  function updateSubtabCompletedColors(b) {
+    const blockEl = document.querySelector(`.block[data-id="${b.id}"]`);
+    if (!blockEl) return;
+    blockEl.querySelectorAll('.block-subtab').forEach((btn, i) => {
+      btn.classList.toggle('subtab-completed', !!b.subtabs[i]?.completed);
+    });
   }
 
   /* ================================================================
