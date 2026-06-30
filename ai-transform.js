@@ -8,7 +8,6 @@ window.AiTransform = (() => {
   let _State = null;
   let _LLMCore = null;
 
-  // ── Состояние ─────────────────────────────────────────────
   let _popup = null;
   let _ta = null;
   let _origStart = 0;
@@ -18,6 +17,7 @@ window.AiTransform = (() => {
   let _autoTimer = null;
   let _onClickOutside = null;
   let _onContextMenu = null;
+  let _diffPanel = null;
 
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g,
@@ -41,6 +41,7 @@ window.AiTransform = (() => {
     _origText = ta.value.slice(_origStart, _origEnd);
     _suggestedText = '';
     clearTimeout(_autoTimer);
+    _removeDiffPanel();
 
     popup.innerHTML = `
       <div class="ai-transform-row">
@@ -73,18 +74,14 @@ window.AiTransform = (() => {
     const input = popup.querySelector('#ai-transform-input');
     setTimeout(() => input?.focus(), 50);
 
-    const sendBtn = popup.querySelector('#ai-transform-send');
-    const acceptBtn = popup.querySelector('#ai-transform-accept');
-    const cancelBtn = popup.querySelector('#ai-transform-cancel');
+    popup.querySelector('#ai-transform-send')?.addEventListener('click', e => { e.stopPropagation(); _runTransform(input.value); });
+    popup.querySelector('#ai-transform-accept')?.addEventListener('click', e => { e.stopPropagation(); _acceptChange(); hidePopup(); });
+    popup.querySelector('#ai-transform-cancel')?.addEventListener('click', e => { e.stopPropagation(); hidePopup(true); });
 
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); _runTransform(input.value); }
       if (e.key === 'Escape') { e.preventDefault(); hidePopup(true); }
     });
-
-    sendBtn.addEventListener('click', e => { e.stopPropagation(); _runTransform(input.value); });
-    acceptBtn.addEventListener('click', e => { e.stopPropagation(); _acceptChange(); hidePopup(); });
-    cancelBtn.addEventListener('click', e => { e.stopPropagation(); hidePopup(true); });
   }
 
   function hidePopup(restore = false) {
@@ -131,15 +128,10 @@ window.AiTransform = (() => {
     _showLoading();
     _removeDiffPanel();
 
-    const systemPrompt = `Ты — AI-ассистент для трансформации текста.
-Пользователь выделил текст и даёт инструкцию что с ним сделать.
-Выполни инструкцию и верни ТОЛЬКО результат без пояснений, Markdown-обёрток и лишнего текста.
-Язык результата — такой же как у исходного текста.`;
-
     try {
       const result = await _LLMCore.request({
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: 'Ты — AI-ассистент для трансформации текста. Выполни инструкцию и верни ТОЛЬКО результат без пояснений. Язык результата — такой же как у исходного текста.' },
           { role: 'user', content: `Текст: "${_origText}"\n\nИнструкция: ${instruction}` }
         ],
         stream: false,
@@ -155,10 +147,10 @@ window.AiTransform = (() => {
 
       _suggestedText = result.trim();
 
-      // Diff-панель
+      // Diff-панель как в text-linter
       _showDiffPanel(_origText, _suggestedText);
 
-      // Применяем текст
+      // Применяем текст в textarea
       _ta._skipWordComplete = true;
       _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
       _ta.dispatchEvent(new Event('input', { bubbles: true }));
@@ -171,11 +163,9 @@ window.AiTransform = (() => {
         if (_suggestedText) { _acceptChange(); hidePopup(); }
       }, 5000);
 
-      // Клик вне — закрыть без принятия
+      // Клик вне — закрыть
       _onClickOutside = (e) => {
-        if (_popup && !_popup.contains(e.target) && e.target !== _ta) {
-          hidePopup();
-        }
+        if (_popup && !_popup.contains(e.target) && e.target !== _ta) hidePopup();
       };
       setTimeout(() => document.addEventListener('click', _onClickOutside, true), 0);
 
@@ -194,71 +184,46 @@ window.AiTransform = (() => {
     }
   }
 
-  // ── Diff-панель (как snap-diff) ───────────────────────────
-  let _diffPanel = null;
-
+  // ── Diff-панель (как в text-linter) ───────────────────────
   function _removeDiffPanel() {
     if (_diffPanel) { _diffPanel.remove(); _diffPanel = null; }
   }
 
   function _showDiffPanel(origText, sugText) {
     _removeDiffPanel();
+    if (!_ta) return;
 
-    const origWords = origText.split(/(\s+)/);
-    const sugWords = sugText.split(/(\s+)/);
-
-    const m = origWords.length;
-    const n = sugWords.length;
-    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-    for (let i = 1; i <= m; i++)
-      for (let j = 1; j <= n; j++)
-        dp[i][j] = origWords[i - 1] === sugWords[j - 1]
-          ? dp[i - 1][j - 1] + 1
-          : Math.max(dp[i - 1][j], dp[i][j - 1]);
-
-    const parts = [];
-    let i = m, j = n;
-    while (i > 0 || j > 0) {
-      if (i > 0 && j > 0 && origWords[i - 1] === sugWords[j - 1]) {
-        parts.unshift({ type: 'eq', text: origWords[i - 1] });
-        i--; j--;
-      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-        parts.unshift({ type: 'ins', text: sugWords[j - 1] });
-        j--;
-      } else {
-        parts.unshift({ type: 'del', text: origWords[i - 1] });
-        i--;
-      }
+    // Используем DiffEngine если доступен
+    let diffHtml;
+    const engine = window.DiffEngine;
+    if (engine?.compute && engine?.renderHtml) {
+      diffHtml = engine.renderHtml(engine.compute(origText, sugText), 'classic', { durationMs: 3500 });
+    } else {
+      diffHtml = esc(sugText);
     }
 
-    const diffHtml = parts.map(p => {
-      if (p.type === 'eq') return `<span class="diff-eq">${esc(p.text)}</span>`;
-      if (p.type === 'ins') return `<span class="diff-ins">${esc(p.text)}</span>`;
-      if (p.type === 'del') return `<span class="diff-del">${esc(p.text)}</span>`;
-      return esc(p.text);
-    }).join('');
-
-    const added = parts.filter(p => p.type === 'ins').length;
-    const removed = parts.filter(p => p.type === 'del').length;
-
     _diffPanel = document.createElement('div');
-    _diffPanel.className = 'snap-diff-overlay';
-    _diffPanel.style.display = 'flex';
-    _diffPanel.innerHTML = `
-      <div class="snap-diff-panel" style="max-height:200px">
-        <div class="snap-diff-header">
-          <span class="snap-diff-title">Diff</span>
-          <span class="snap-diff-stats">+${added} −${removed}</span>
-          <button type="button" class="snap-diff-close" aria-label="Закрыть">✕</button>
-        </div>
-        <div class="snap-diff-body">${diffHtml}</div>
-      </div>
-    `;
+    _diffPanel.className = 'llm-result-panel';
+    _diffPanel.innerHTML =
+      `<div class="llm-result-toolbar">` +
+        `<span class="llm-result-stats">AI-трансформация</span>` +
+        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓ Принять</button>` +
+        `<button type="button" class="btn-sm" data-action="reject">✕ Отменить</button>` +
+      `</div>` +
+      `<div class="llm-result-content">${diffHtml}</div>`;
 
-    _diffPanel.querySelector('.snap-diff-close')?.addEventListener('click', () => _removeDiffPanel());
+    // Вставляем после textarea
+    const parent = _ta.parentNode;
+    if (parent) parent.insertBefore(_diffPanel, _ta.nextSibling);
 
-    const container = _ta?.closest('.block-body, .subtab-content, .code-block');
-    if (container) container.appendChild(_diffPanel);
+    // Обработчики кнопок
+    _diffPanel.querySelector('[data-action="accept"]')?.addEventListener('click', () => {
+      _acceptChange();
+      hidePopup();
+    });
+    _diffPanel.querySelector('[data-action="reject"]')?.addEventListener('click', () => {
+      hidePopup(true);
+    });
   }
 
   // ── Принятие ──────────────────────────────────────────────
@@ -287,7 +252,6 @@ window.AiTransform = (() => {
     showPopup(ta, x, y);
   }
 
-  // ── Инициализация ─────────────────────────────────────────
   let _inited = false;
   function init(State, LLMCore) {
     if (_inited) return;

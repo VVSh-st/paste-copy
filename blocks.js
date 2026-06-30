@@ -1819,8 +1819,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     aiTransformBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>';
     aiTransformBtn.onclick = e => {
       e.stopPropagation();
-      const ta = blockEl?.querySelector('textarea.block-textarea');
-      if (ta && window.AiTransform) window.AiTransform.openForSelection(ta);
+      if (window.AiTransform) window.AiTransform.openForSelection(ta);
     };
     footer.appendChild(aiTransformBtn);
 
