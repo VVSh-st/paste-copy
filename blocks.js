@@ -1750,14 +1750,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       _spellPopupLen = len;
 
       const popup = document.createElement('div');
-      popup.className = 'spell-popup';
+      popup.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:9500;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;box-shadow:0 4px 20px rgba(0,0,0,.4);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text1);';
       popup.innerHTML =
-        `<span class="spell-popup-word">${_escBlock(word)}</span>` +
-        `<span class="spell-popup-arrow">→</span>` +
+        `<span style="text-decoration:line-through;color:#e74c3c;font-weight:600">${_escBlock(word)}</span>` +
+        `<span style="color:var(--text3)">→</span>` +
         suggestions.map((s, i) =>
-          `<span class="spell-popup-suggestion" data-idx="${i}">${_escBlock(s)}</span>`
+          `<span class="spell-popup-suggestion" data-idx="${i}" style="font-weight:600;color:#4ade80;cursor:pointer;padding:2px 6px;border-radius:4px">${_escBlock(s)}</span>`
         ).join('') +
-        `<span class="spell-popup-hint">Tab/→ · Enter ✓ · Esc ✕</span>`;
+        `<span style="color:var(--text3);font-size:10px;margin-left:8px">Tab/→ · Enter ✓ · Esc ✕</span>`;
       document.body.appendChild(popup);
       _spellPopup = popup;
 
@@ -1780,65 +1780,43 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     // Определение позиции клика через mirror-элемент
-    function _getCharPosFromClick(taEl, clientX, clientY) {
-      const cs = getComputedStyle(taEl);
-      const mirror = document.createElement('div');
-      mirror.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;box-sizing:content-box;';
-      for (const prop of lineMirrorProps) mirror.style[prop] = cs[prop];
+    function _getCharPosFromClick(clientX, clientY) {
+      const text = ta.value;
+      if (!text || !_spellOverlay) return -1;
+
+      const cs = getComputedStyle(ta);
       const pl = parseFloat(cs.paddingLeft) || 0;
       const pr = parseFloat(cs.paddingRight) || 0;
-      mirror.style.width = Math.max(0, taEl.clientWidth - pl - pr) + 'px';
+      const pt = parseFloat(cs.paddingTop) || 0;
+      const bt = parseFloat(cs.borderTopWidth) || 0;
+      const bl = parseFloat(cs.borderLeftWidth) || 0;
+
+      // Позиция контент-области textarea в viewport
+      const taRect = ta.getBoundingClientRect();
+      const contentLeft = taRect.left + bl + pl;
+      const contentTop = taRect.top + bt + pt;
+
+      // Создаём mirror в той же позиции, что и контент textarea
+      const mirror = document.createElement('div');
+      mirror.style.cssText = `position:fixed;left:${contentLeft}px;top:${contentTop - ta.scrollTop}px;visibility:hidden;pointer-events:none;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;box-sizing:content-box;`;
+      for (const prop of lineMirrorProps) mirror.style[prop] = cs[prop];
+      mirror.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
+      mirror.textContent = text;
       document.body.appendChild(mirror);
 
-      // Разбиваем текст на сегменты: обычные куски и spell-слова
-      const text = taEl.value;
-      const sorted = [..._spellWords].sort((a, b) => a.pos - b.pos);
-      let html = '';
-      let lastEnd = 0;
-      for (const w of sorted) {
-        if (w.pos < lastEnd || w.pos + w.len > text.length) continue;
-        html += _escBlock(text.slice(lastEnd, w.pos));
-        html += `<span data-spell-pos="${w.pos}">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
-        lastEnd = w.pos + w.len;
-      }
-      html += _escBlock(text.slice(lastEnd));
-      mirror.innerHTML = html;
-
-      const mirrorRect = mirror.getBoundingClientRect();
-      const relX = clientX - mirrorRect.left;
-      const relY = clientY - mirrorRect.top;
-
-      // Ищем символ через tiny span
+      // Ищем символ: для каждой позиции измеряем через range
       let charPos = text.length;
-      const spans = mirror.querySelectorAll('span[data-spell-pos]');
-      const allNodes = [];
-      mirror.childNodes.forEach(n => allNodes.push(n));
-
-      for (const node of allNodes) {
-        if (node.nodeType === 3) {
-          // Text node — измеряем посимвольно
-          const txt = node.textContent;
-          for (let i = 0; i < txt.length; i++) {
-            const range = document.createRange();
-            range.setStart(node, i);
-            range.setEnd(node, i + 1);
-            const r = range.getBoundingClientRect();
-            if (r.top <= clientY && r.bottom >= clientY && r.left <= clientX) {
-              charPos = (node._startOffset || 0) + i;
-            }
-          }
-        } else if (node.nodeType === 1 && node.dataset.spellPos != null) {
-          // Spell word span
-          const nodePos = parseInt(node.dataset.spellPos);
-          const txt = node.textContent;
-          for (let i = 0; i < txt.length; i++) {
-            const range = document.createRange();
-            range.setStart(node, i);
-            range.setEnd(node, i + 1);
-            const r = range.getBoundingClientRect();
-            if (r.top <= clientY && r.bottom >= clientY && r.left <= clientX) {
-              charPos = nodePos + i;
-            }
+      const textNode = mirror.firstChild;
+      if (textNode && textNode.nodeType === 3) {
+        for (let i = 0; i < text.length; i++) {
+          const range = document.createRange();
+          range.setStart(textNode, i);
+          range.setEnd(textNode, Math.min(i + 1, text.length));
+          const r = range.getBoundingClientRect();
+          if (r.width === 0) continue;
+          if (clientY >= r.top && clientY <= r.bottom && clientX >= r.left && clientX <= r.right) {
+            charPos = i;
+            break;
           }
         }
       }
@@ -1850,7 +1828,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     // Клик по textarea → проверяем, попали ли в spell-слово
     function _onTaSpellClick(e) {
       if (!_spellWords.length) return;
-      const charPos = _getCharPosFromClick(ta, e.clientX, e.clientY);
+      const charPos = _getCharPosFromClick(e.clientX, e.clientY);
+      if (charPos < 0) return;
       const hit = _spellWords.find(w => charPos >= w.pos && charPos < w.pos + w.len);
       if (hit) {
         e.preventDefault();
