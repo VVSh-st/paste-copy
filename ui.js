@@ -522,7 +522,8 @@ const Preview = (() => {
   }
 
   function applyHeight() {
-    if (panel) panel.style.height = (State.getLayout().previewHeight || 220) + 'px';
+    // preview-panel теперь flex: 1, высота определяется layout
+    // Explicit height убран — preview заполняет оставшееся пространство
   }
 
   function _trackPreviewCopy(text) {
