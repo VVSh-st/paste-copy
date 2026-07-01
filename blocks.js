@@ -966,6 +966,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (savedTop != null) ta.scrollTop = savedTop;
       const body = blockEl.querySelector('.block-body');
       if (body) updateBlockCounter(ta, b, body);
+    } else if (b.type === 'todo') {
+      b.activeSubtab = newIdx;
+      const body = blockEl.querySelector('.block-body');
+      if (body) { body.innerHTML = ''; renderTodoBody(b, body); }
     } else {
       b.activeSubtab = newIdx;
     }
@@ -2532,9 +2536,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.style.display = 'flex';
     body.style.flexDirection = 'column';
 
-    const sub = b.subtabs[b.activeSubtab];
-    if (!sub) return;
-
     // Subtab nav is in createHeader, skip here
 
     // Todo list
@@ -2543,7 +2544,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     function renderItems() {
       list.innerHTML = '';
-      const items = sub.items || [];
+      const cur = b.subtabs[b.activeSubtab];
+      const items = cur?.items || [];
       if (!items.length) {
         const empty = document.createElement('div');
         empty.className = 'todo-empty';
@@ -2551,7 +2553,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         list.appendChild(empty);
       } else {
         items.forEach((item, idx) => {
-          list.appendChild(createTodoItem(b, sub, item, idx, items));
+          list.appendChild(createTodoItem(b, cur, item, idx, items));
         });
       }
     }
@@ -2564,8 +2566,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     addBtn.className = 'todo-add-btn';
     addBtn.textContent = '+ Добавить пункт';
     addBtn.onclick = () => {
+      const cur = b.subtabs[b.activeSubtab];
+      if (!cur) return;
       const newItem = { id: State.uid(), text: '', done: false };
-      sub.items.push(newItem);
+      cur.items.push(newItem);
       State.updateLive(() => {});
       renderItems();
       const inputs = list.querySelectorAll('.todo-text');
