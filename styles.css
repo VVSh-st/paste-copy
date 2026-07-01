@@ -219,7 +219,7 @@ body {
 }
 .column {
   display: flex; flex-direction: column; gap: 8px;
-  min-width: 80px; overflow-y: auto; overflow-x: hidden; padding: 0 4px;
+  min-width: 80px; overflow: visible; padding: 0 4px;
   flex: 1; scrollbar-width: none;
 }
 .column::-webkit-scrollbar { display: none; }
