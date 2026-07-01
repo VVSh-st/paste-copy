@@ -11,11 +11,11 @@ if %errorlevel%==0 (
 :: Ищем Python: сначала встроенный, потом системный
 set "PYEXE=%~dp0python\python.exe"
 if exist "%PYEXE%" (
-    start "" /b "%PYEXE%" -m http.server 8080
+    start /min "" "%PYEXE%" -m http.server 8080
 ) else (
     where python >nul 2>&1
     if %errorlevel%==0 (
-        start "" /b python -m http.server 8080
+        start /min "" python -m http.server 8080
     ) else (
         echo Python не найден. Установите Python или используйте встроенную версию.
         pause
