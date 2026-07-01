@@ -1292,6 +1292,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     const undoBtn  = makeToolBtn(svgIcon('undo'), 'Отменить (блок)', () => {
       State.blockUndo(b.id);
+      State.snapshot();
       if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: -1 });
       requestAnimationFrame(() => {
         const val = b.subtabs[b.activeSubtab]?.value ?? '';
@@ -1307,6 +1308,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     const redoBtn  = makeToolBtn(svgIcon('redo'), 'Повторить (блок)', () => {
       State.blockRedo(b.id);
+      State.snapshot();
       if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: 1 });
       requestAnimationFrame(() => {
         const val = b.subtabs[b.activeSubtab]?.value ?? '';

@@ -354,6 +354,54 @@ const Preview = (() => {
     return fence ? text + '\n' + fence : text;
   }
 
+  // Рендер одного блока в markdown-кусок для превью (используется и для top-level, и для детей группы)
+  function _renderBlockPreview(b, vars, showHeaders) {
+    if (b.previewDisabled === true) return null;
+    const applyVars = str =>
+      str.replace(/\{\{(\w+)\}\}/g, (_, key) => (key in vars ? vars[key] : `{{${key}}}`));
+
+    if (b.type === 'text') {
+      const idx = b.activeSubtab ?? 0;
+      const raw = (b.subtabs?.[idx]?.value || '').trim();
+      const val = applyVars(raw);
+      return val ? _closeOpenFences(showHeaders ? `# ${b.title}\n${val}` : val) : null;
+
+    } else if (b.type === 'snippets') {
+      const items = (b.items || []).filter(i => i.enabled && (i.value || '').trim());
+      if (!items.length) return null;
+      const showTitles = b.showTitles !== false;
+      const content = items.map(i =>
+        (showTitles && i.title) ? `## ${i.title}\n${i.value.trim()}` : i.value.trim()
+      ).join('\n\n');
+      return _closeOpenFences(showHeaders ? `# ${b.title}\n${applyVars(content)}` : applyVars(content));
+
+    } else if (b.type === 'todo') {
+      const sub = b.subtabs?.[b.activeSubtab];
+      if (!sub || !sub.items?.length) return null;
+      const lines = sub.items
+        .filter(it => (it.text || '').trim())
+        .map(it => `- [${it.done ? 'x' : ' '}] ${it.text}`);
+      if (!lines.length) return null;
+      if (sub.name) return `## ${sub.name}\n${_closeOpenFences(showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n'))}`;
+      return _closeOpenFences(showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n'));
+
+    } else if (b.type === 'table') {
+      const sub = b.subtabs?.[b.activeSubtab];
+      if (!sub || !sub.rows?.length) return null;
+      const cols = sub.cols || 2;
+      const header = sub.rows[0] || [];
+      const data = sub.rows.slice(1).filter(r => r.some(c => (c || '').trim()));
+      if (!header.some(c => (c || '').trim()) && !data.length) return null;
+      const tsep = '| ' + Array(cols).fill('---').join(' | ') + ' |';
+      const hdr = '| ' + header.slice(0, cols).map(c => (c || '').trim() || ' ').join(' | ') + ' |';
+      const body = data.map(r => '| ' + r.slice(0, cols).map(c => (c || '').trim() || ' ').join(' | ') + ' |');
+      const md = [hdr, tsep, ...body].join('\n');
+      if (sub.name) return `## ${sub.name}\n${showHeaders ? `# ${b.title}\n${md}` : md}`;
+      return showHeaders ? `# ${b.title}\n${md}` : md;
+    }
+    return null;
+  }
+
   function build() {
     const tab = State.getActive();
     if (!tab) return '';
@@ -375,62 +423,14 @@ const Preview = (() => {
       if (b.type === 'commands' || b.type === 'variable') return;
       if (b.type === 'sticky') return;
 
-      // Блок может быть скрыт из превью флагом previewDisabled
-      if (b.previewDisabled === true) return;
-
-      if (b.type === 'snippets') {
-        const items = (b.items || []).filter(i => i.enabled && (i.value || '').trim());
-        if (!items.length) return;
-        const showTitles = b.showTitles !== false;
-        const content = items.map(i =>
-          (showTitles && i.title) ? `## ${i.title}\n${i.value.trim()}` : i.value.trim()
-        ).join('\n\n');
-        parts.push(_closeOpenFences(showHeaders ? `# ${b.title}\n${applyVars(content)}` : applyVars(content)));
-
-      } else if (b.type === 'text') {
-        const idx = b.activeSubtab ?? 0;
-        const raw = (b.subtabs?.[idx]?.value || '').trim();
-        const val = applyVars(raw);
-        if (val) parts.push(_closeOpenFences(showHeaders ? `# ${b.title}\n${val}` : val));
-
-      } else if (b.type === 'todo') {
-        const sub = b.subtabs[b.activeSubtab];
-        if (sub && sub.items?.length) {
-          const lines = sub.items
-            .filter(it => (it.text || '').trim())
-            .map(it => `- [${it.done ? 'x' : ' '}] ${it.text}`);
-          if (lines.length) {
-            if (sub.name) parts.push(`## ${sub.name}`);
-            parts.push(_closeOpenFences(showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n')));
-          }
-        }
-
-      } else if (b.type === 'table') {
-        const sub = b.subtabs[b.activeSubtab];
-        if (sub && sub.rows?.length) {
-          const cols = sub.cols || 2;
-          const header = sub.rows[0] || [];
-          const data = sub.rows.slice(1).filter(r => r.some(c => (c || '').trim()));
-          if (header.some(c => (c || '').trim()) || data.length) {
-            const sep = '| ' + Array(cols).fill('---').join(' | ') + ' |';
-            const hdr = '| ' + header.slice(0, cols).map(c => (c || '').trim() || ' ').join(' | ') + ' |';
-            const body = data.map(r => '| ' + r.slice(0, cols).map(c => (c || '').trim() || ' ').join(' | ') + ' |');
-            const md = [hdr, sep, ...body].join('\n');
-            if (sub.name) parts.push(`## ${sub.name}`);
-            parts.push(showHeaders ? `# ${b.title}\n${md}` : md);
-          }
-        }
-
-      } else if (b.type === 'group' && b.enabled !== false) {
+      if (b.type === 'group' && b.enabled !== false) {
         (b.children || []).forEach(child => {
-          if (child.previewDisabled === true) return;
-          if (child.type === 'text') {
-            const idx = child.activeSubtab ?? 0;
-            const raw = (child.subtabs?.[idx]?.value || '').trim();
-            const val = applyVars(raw);
-            if (val) parts.push(_closeOpenFences(showHeaders ? `# ${child.title}\n${val}` : val));
-          }
+          const md = _renderBlockPreview(child, vars, showHeaders);
+          if (md) parts.push(md);
         });
+      } else {
+        const md = _renderBlockPreview(b, vars, showHeaders);
+        if (md) parts.push(md);
       }
     });
 
@@ -662,9 +662,23 @@ const Preview = (() => {
     }
     if (block.type === 'group') {
       return !(block.children || []).some(c => {
-        if (c.previewDisabled === true || c.type !== 'text') return false;
-        const idx = c.activeSubtab ?? 0;
-        return (c.subtabs?.[idx]?.value || '').trim();
+        if (c.previewDisabled === true) return false;
+        if (c.type === 'text') {
+          const idx = c.activeSubtab ?? 0;
+          return (c.subtabs?.[idx]?.value || '').trim();
+        }
+        if (c.type === 'snippets') {
+          return (c.items || []).some(i => i.enabled && (i.value || '').trim());
+        }
+        if (c.type === 'todo') {
+          const sub = c.subtabs?.[c.activeSubtab ?? 0];
+          return (sub?.items || []).some(i => (i.text || '').trim());
+        }
+        if (c.type === 'table') {
+          const sub = c.subtabs?.[c.activeSubtab ?? 0];
+          return (sub?.rows || []).some(r => r.some(cc => (cc || '').trim()));
+        }
+        return false;
       });
     }
     if (block.type === 'text') {
@@ -680,10 +694,28 @@ const Preview = (() => {
       return items.map(i => i.title ? `${i.title}: ${i.value.trim()}` : i.value.trim()).join(' ').slice(0, 120);
     }
     if (block.type === 'group') {
-      return (block.children || []).filter(c => c.type === 'text').map(c => {
-        const idx = c.activeSubtab ?? 0;
-        return (c.subtabs?.[idx]?.value || '').trim();
-      }).join(' ').slice(0, 120);
+      return (block.children || []).filter(c => c.previewDisabled !== true).map(c => {
+        if (c.type === 'text') {
+          const idx = c.activeSubtab ?? 0;
+          return (c.subtabs?.[idx]?.value || '').trim();
+        }
+        if (c.type === 'snippets') {
+          const items = (c.items || []).filter(i => i.enabled && (i.value || '').trim());
+          return items.map(i => i.title ? `${i.title}: ${i.value.trim()}` : i.value.trim()).join(' ');
+        }
+        if (c.type === 'todo') {
+          const idx = c.activeSubtab ?? 0;
+          const items = c.subtabs?.[idx]?.items || [];
+          return items.filter(i => i.text?.trim()).map(i => `${i.done ? '☑' : '☐'} ${i.text}`).join(' ');
+        }
+        if (c.type === 'table') {
+          const idx = c.activeSubtab ?? 0;
+          const sub = c.subtabs?.[idx];
+          if (!sub?.rows?.length) return '';
+          return sub.rows.map(r => r.join(' | ')).join(' / ');
+        }
+        return '';
+      }).filter(Boolean).join(' ').slice(0, 120);
     }
     if (block.type === 'text') {
       const idx = block.activeSubtab ?? 0;
@@ -742,9 +774,9 @@ const Preview = (() => {
       if (b.type === 'group' && b.enabled !== false) {
         (b.children || []).forEach(child => {
           if (child.previewDisabled === true) return;
-          if (child.type === 'text' && !_isBlockEmpty(child) && !_isCodeOnlyBlock(child)) {
-            entries.push({ id: child.id, title: child.title || 'Без названия', type: 'text', text: _extractPreviewText(child) });
-          }
+          if (_isBlockEmpty(child)) return;
+          if (child.type === 'text' && _isCodeOnlyBlock(child)) return;
+          entries.push({ id: child.id, title: child.title || 'Без названия', type: _getBlockType(child), text: _extractPreviewText(child) });
         });
       } else {
         entries.push({ id: b.id, title: b.title || 'Без названия', type: _getBlockType(b), text: _extractPreviewText(b) });
