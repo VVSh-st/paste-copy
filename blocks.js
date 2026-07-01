@@ -1680,12 +1680,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     let _spellCorrections = new Map(); // pos → {orig, replacement, corrected}
     let _spellAcceptHandler = null;
     let _spellCancelHandler = null;
-    let _spellCursorHandler = null;
-    let _spellLastClickTime = 0;
-    let _spellClickHandled = false;
-
     function _clearSpellOverlay() {
-      console.log('[spell] _clearSpellOverlay called');
       if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
       _spellOverlay = null;
       _spellCorrections.clear();
@@ -1693,9 +1688,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     function _removeSpellDocListeners() {
-      if (_spellAcceptHandler) { document.removeEventListener('click', _spellAcceptHandler, true); _spellAcceptHandler = null; }
+      if (_spellAcceptHandler) { document.removeEventListener('click', _spellAcceptHandler); _spellAcceptHandler = null; }
       if (_spellCancelHandler) { document.removeEventListener('contextmenu', _spellCancelHandler, true); _spellCancelHandler = null; }
-      if (_spellCursorHandler) { ta.removeEventListener('click', _spellCursorHandler); _spellCursorHandler = null; }
     }
 
     function _spellToggleWord(pos) {
@@ -1740,48 +1734,36 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     function _addSpellDocListeners() {
       if (_spellAcceptHandler) return;
       _spellAcceptHandler = (e) => {
-        console.log('[spell] acceptHandler flag=', _spellClickHandled, 'overlay=', !!_spellOverlay, 'contains=', _spellOverlay?.contains(e.target));
-        if (_spellClickHandled) return;
         if (!_spellOverlay) return;
         if (_spellOverlay.contains(e.target)) return;
+        if (ta.contains(e.target)) return;
         _spellAcceptAll();
       };
       _spellCancelHandler = (e) => {
         if (!_spellOverlay) return;
         if (_spellOverlay.contains(e.target)) return;
+        if (ta.contains(e.target)) return;
         e.preventDefault();
         _spellCancelAll();
-      };
-      _spellCursorHandler = (e) => {
-        console.log('[spell] cursorHandler flag=', _spellClickHandled, 'overlay=', !!_spellOverlay, 'contains=', _spellOverlay?.contains(e.target));
-        if (_spellClickHandled) return;
-        if (!_spellOverlay) return;
-        if (_spellOverlay.contains(e.target)) return;
-        _spellAcceptAll();
       };
       setTimeout(() => {
         document.addEventListener('click', _spellAcceptHandler);
         document.addEventListener('contextmenu', _spellCancelHandler, true);
       }, 0);
-      ta.addEventListener('click', _spellCursorHandler);
     }
 
     function _onTaSpellClick(e) {
-      _spellClickHandled = false;
       if (!_spellCorrections.size || !ta.isConnected) return;
       let charPos = -1;
       if (document.caretRangeFromPoint) {
         const range = document.caretRangeFromPoint(e.clientX, e.clientY);
         if (range) charPos = range.startOffset;
       }
-      console.log('[spell] _onTaSpellClick charPos=', charPos, 'corrections=', _spellCorrections.size);
       if (charPos < 0) return;
       for (const [pos, c] of _spellCorrections) {
         if (charPos >= pos && charPos < pos + (c.corrected ? c.replacement.length : c.orig.length)) {
-          console.log('[spell] HIT pos=', pos, 'corrected=', c.corrected);
           e.preventDefault();
           e.stopPropagation();
-          _spellClickHandled = true;
           _spellToggleWord(pos);
           return;
         }
