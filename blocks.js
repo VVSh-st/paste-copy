@@ -1019,8 +1019,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     }
 
-    State.snapshot();
-    updateGroomBadge(b.id);
+    if (b.type !== 'todo') {
+      State.snapshot();
+      updateGroomBadge(b.id);
+    }
   }
 
   /* ================================================================
