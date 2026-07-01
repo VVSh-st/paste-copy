@@ -1682,6 +1682,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     let _spellCancelHandler = null;
     let _spellCursorHandler = null;
     let _spellLastClickTime = 0;
+    let _spellClickHandled = false;
 
     function _clearSpellOverlay() {
       if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
@@ -1738,6 +1739,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     function _addSpellDocListeners() {
       if (_spellAcceptHandler) return;
       _spellAcceptHandler = (e) => {
+        if (_spellClickHandled) return;
         if (!_spellOverlay) return;
         if (_spellOverlay.contains(e.target)) return;
         _spellAcceptAll();
@@ -1749,6 +1751,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         _spellCancelAll();
       };
       _spellCursorHandler = (e) => {
+        if (_spellClickHandled) return;
         if (!_spellOverlay) return;
         if (_spellOverlay.contains(e.target)) return;
         _spellAcceptAll();
@@ -1761,6 +1764,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     function _onTaSpellClick(e) {
+      _spellClickHandled = false;
       if (!_spellCorrections.size || !ta.isConnected) return;
       let charPos = -1;
       if (document.caretRangeFromPoint) {
@@ -1772,6 +1776,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         if (charPos >= pos && charPos < pos + (c.corrected ? c.replacement.length : c.orig.length)) {
           e.preventDefault();
           e.stopPropagation();
+          _spellClickHandled = true;
           _spellToggleWord(pos);
           return;
         }
