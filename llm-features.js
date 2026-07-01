@@ -738,6 +738,7 @@ window.LLMFeatures = (() => {
           text: t, done: false
         }));
         State.update(() => {});
+        requestAnimationFrame(() => window.Blocks?.patchSubtab?.(todoBlock, idx));
         window.Toast?.show(`Чеклист: ${items.length} пунктов`, 'success');
         overlay.remove();
       });
@@ -796,7 +797,9 @@ window.LLMFeatures = (() => {
       text: t, done: false
     }));
 
+    const subtabIdx = todoBlock.subtabs.indexOf(freeSubtab);
     State.update(() => {});
+    if (subtabIdx >= 0) requestAnimationFrame(() => window.Blocks?.patchSubtab?.(todoBlock, subtabIdx));
     window.Toast?.show(`Чеклист: ${items.length} пунктов`, 'success');
   }
 

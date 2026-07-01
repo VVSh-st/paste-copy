@@ -1853,7 +1853,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     function _updateThesaurusBtnLabel() {
       const label = _thesaurusModeLabels[lastThesaurusMode] || 'Тезаурус';
-      thesaurusBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 5h4M3 8h3M3 11h4"/><path d="M10 5l2 3-2 3"/><path d="M12 8h2"/></svg><span style="font-size:9px;margin-left:2px">${label}</span>`;
       thesaurusBtn.title = 'Тезаурус → ' + label + ' (Alt+T)';
     }
 
@@ -1879,6 +1878,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           _updateThesaurusBtnLabel();
           _buildThesaurusMenu();
           thesaurusDropdown.style.display = 'none';
+          document.querySelectorAll('.font-ctrl-btn[title^="Тезаурус"]').forEach(btn => {
+            const lbl = _thesaurusModeLabels[m.id] || 'Тезаурус';
+            btn.title = 'Тезаурус → ' + lbl + ' (Alt+T)';
+          });
         };
         thesaurusDropdown.appendChild(opt);
       });
@@ -1908,10 +1911,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       clearTimeout(thesaurusLongPressTimer);
       if (thesaurusLongPressed) { thesaurusLongPressed = false; return; }
       thesaurusDropdown.style.display = 'none';
-      if (lastThesaurusMode === 'thesaurus') {
+      const mode = localStorage.getItem('thesaurus_mode') || 'thesaurus';
+      if (mode === 'thesaurus') {
         window.LLMFeatures?._thesaurusAtBlock?.(b.id);
       } else {
-        window.LLMFeatures?._executeThesaurusMode?.(lastThesaurusMode, b.id);
+        window.LLMFeatures?._executeThesaurusMode?.(mode, b.id);
       }
     };
 
@@ -2789,8 +2793,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     cb.onchange = () => {
       item.done = cb.checked;
       text.classList.toggle('done', item.done);
+      const blockEl = row.closest('.block');
+      const scrollEl = blockEl?.querySelector('.block-body');
+      const savedScroll = scrollEl?.scrollTop;
       State.update(() => {});
       updateTodoBadge(b);
+      if (scrollEl && savedScroll != null) requestAnimationFrame(() => { scrollEl.scrollTop = savedScroll; });
     };
 
     // Text input
@@ -3131,7 +3139,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     textLintBadgeCache.clear();
   }
 
-  return { render, applyLayout, setupColumns, syncColumnElements, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge };
+  return { render, applyLayout, setupColumns, syncColumnElements, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge, patchSubtab };
 })();
 
 document.addEventListener('mindmap:jump-word', e => {
