@@ -820,9 +820,10 @@ const Preview = (() => {
     const scrollMax = container.scrollHeight - container.clientHeight;
     const ratio = scrollMax > 0 ? Math.min(1, Math.max(0, container.scrollTop / scrollMax)) : 0;
 
-    const totalH = structBody.scrollHeight;
+    const totalH = structBody.clientHeight;
     const bgH = items[0].offsetHeight;
-    const targetY = ratio * (totalH - bgH);
+    const maxTop = Math.max(0, totalH - bgH);
+    const targetY = Math.min(maxTop, ratio * maxTop);
 
     if (_structActiveBg) {
       _structActiveBg.style.top = targetY + 'px';
