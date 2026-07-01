@@ -17,11 +17,30 @@ const Flowchart = (() => {
   let _saveTimer = null;
   let _resizing = false, _startW, _startH, _startMX, _startMY;
   let _skipRestore = false;
+  let _fontSize = parseFloat(localStorage.getItem('fc_fontsize')) || 13;
+
+  function _setFontSize(v) {
+    _fontSize = Math.min(18, Math.max(9, v));
+    localStorage.setItem('fc_fontsize', _fontSize);
+    _render();
+  }
 
   function _resetTransform() { _zoom = 1; _panX = 0; _panY = 0; if (_viewport) _viewport.setAttribute('transform', 'translate(0,0) scale(1)'); }
   function _applyTransform() { if (_viewport) _viewport.setAttribute('transform', `translate(${_panX},${_panY}) scale(${_zoom})`); }
   function _gradIdFor(c) { return 'fcg-' + c.replace('#', ''); }
-  function _syncZoomSlider() { const r = _overlay?.querySelector('.flowchart-zoom-range'); if (r) r.value = Math.round(_zoom * 100); }
+  function _syncZoomLabel() { const b = _overlay?.querySelector('.fc-zoom-reset'); if (b) b.textContent = Math.round(_zoom * 100) + '%'; }
+
+  const ZOOM_STEP = 0.1;
+  function _zoomBy(delta) {
+    const pt = _svg.createSVGPoint();
+    const rect = _svg.getBoundingClientRect();
+    pt.x = rect.left + rect.width / 2; pt.y = rect.top + rect.height / 2;
+    const svgP = pt.matrixTransform(_svg.getScreenCTM().inverse());
+    const newZoom = Math.min(4, Math.max(0.4, _zoom + delta));
+    _panX = svgP.x - (svgP.x - _panX) * (newZoom / _zoom);
+    _panY = svgP.y - (svgP.y - _panY) * (newZoom / _zoom);
+    _zoom = newZoom; _applyTransform(); _syncZoomLabel(); _saveViewport();
+  }
 
   function _ensureGradient(color) {
     if (_svg?.querySelector(`#${_gradIdFor(color)}`)) return;
@@ -52,9 +71,10 @@ const Flowchart = (() => {
   function _nodeSize(node) {
     const label = node.label || node.id || '';
     const lines = label.split('\n');
-    const maxLineW = Math.max(...lines.map(l => l.length), 4) * 7 + 32;
+    const fs = _fontSize || 13;
+    const maxLineW = Math.max(...lines.map(l => l.length), 4) * (fs * 0.62) + 32;
     const w = Math.max(140, Math.min(220, maxLineW));
-    const h = 46 + Math.max(0, (lines.length - 1) * 14);
+    const h = (fs * 2.9) + Math.max(0, (lines.length - 1) * (fs * 1.25));
     switch (node.shape) {
       case 'diamond': return { w: Math.max(w, 100), h: Math.max(h, 66) };
       case 'circle': return { w: 50, h: 50 };
@@ -91,6 +111,46 @@ const Flowchart = (() => {
 
   function _closeTooltip() { if (_currentTooltip) { _currentTooltip.remove(); _currentTooltip = null; } }
 
+  const SHAPE_ICONS = {
+    rect:     '<rect x="3" y="7" width="18" height="10" rx="2"/>',
+    stadium:  '<rect x="2" y="7" width="20" height="10" rx="5"/>',
+    diamond:  '<polygon points="12,2 22,12 12,22 2,12"/>',
+    circle:   '<circle cx="12" cy="12" r="10"/>',
+    cylinder: '<path d="M4,6 a8,3 0 0,0 16,0 v12 a8,3 0 0,1 -16,0 z"/><ellipse cx="12" cy="6" rx="8" ry="3"/>',
+  };
+
+  function _showAddNodeTooltip(x, y, onSubmit) {
+    _closeTooltip();
+    let selectedShape = 'rect';
+    const box = document.createElement('div');
+    box.className = 'fc-tooltip fc-add-tooltip';
+    box.style.left = x + 'px'; box.style.top = y + 'px';
+    box.innerHTML = `
+      <div class="fc-tooltip-title">Новый блок</div>
+      <input type="text" class="fc-add-input" placeholder="Текст блока">
+      <div class="fc-shape-row">
+        ${Object.entries(SHAPE_ICONS).map(([shape, svg]) => `
+          <button class="fc-shape-btn${shape === 'rect' ? ' active' : ''}" data-shape="${shape}" title="${shape}">
+            <svg viewBox="0 0 24 24" width="18" height="18">${svg}</svg>
+          </button>`).join('')}
+      </div>
+      <div class="fc-tooltip-actions">
+        <button class="fc-tooltip-ok">✓</button>
+        <button class="fc-tooltip-cancel">✕</button>
+      </div>`;
+    _overlay.appendChild(box);
+    const input = box.querySelector('.fc-add-input'); input.focus();
+    box.querySelectorAll('.fc-shape-btn').forEach(b => b.addEventListener('click', () => {
+      box.querySelectorAll('.fc-shape-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active'); selectedShape = b.dataset.shape;
+    }));
+    const submit = () => { if (input.value.trim()) onSubmit({ label: input.value.trim(), shape: selectedShape }); box.remove(); _currentTooltip = null; };
+    box.querySelector('.fc-tooltip-ok').addEventListener('click', submit);
+    box.querySelector('.fc-tooltip-cancel').addEventListener('click', () => { box.remove(); _currentTooltip = null; });
+    box.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { box.remove(); _currentTooltip = null; } });
+    _currentTooltip = box;
+  }
+
   function _showTooltip({ x, y, fields, onSubmit, title }) {
     _closeTooltip();
     const box = document.createElement('div');
@@ -116,9 +176,16 @@ const Flowchart = (() => {
     _currentTooltip = box;
   }
 
+  function _pxToSvgUnits(px) {
+    const ctm = _svg?.getScreenCTM();
+    return ctm ? px / ctm.a : px;
+  }
+
   function _canvasCoords(e) {
-    const rect = _svg.getBoundingClientRect();
-    return { x: (e.clientX - rect.left - _panX) / _zoom, y: (e.clientY - rect.top - _panY) / _zoom };
+    const pt = _svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const svgP = pt.matrixTransform(_svg.getScreenCTM().inverse());
+    return { x: (svgP.x - _panX) / _zoom, y: (svgP.y - _panY) / _zoom };
   }
 
   /* ── Layout ─────────────────────────────────────────────────────────── */
@@ -152,8 +219,8 @@ const Flowchart = (() => {
       level.forEach((id, ni) => {
         const node = nodeMap[id];
         if (node && node.x == null) {
-          node.x = baseX + ni * 240;
-          node.y = startY + rowInCol * levelGap;
+          node.x = baseX + ni * Math.max(240, (node.w || 140) + 40);
+          node.y = startY + rowInCol * Math.max(levelGap, (node.h || 46) + 30);
         }
       });
     });
@@ -164,7 +231,14 @@ const Flowchart = (() => {
     for (let iter = 0; iter < 60; iter++) {
       _nodes.forEach(a => {
         let fx = 0, fy = 0;
-        _nodes.forEach(b => { if (a === b) return; const dx = a.x - b.x, dy = a.y - b.y; const dist = Math.max(20, Math.hypot(dx, dy)); const repel = 2200 / (dist * dist); fx += (dx / dist) * repel; fy += (dy / dist) * repel; });
+        _nodes.forEach(b => {
+          if (a === b) return;
+          const dx = a.x - b.x, dy = a.y - b.y;
+          const minDist = (Math.max(a.w, a.h) + Math.max(b.w, b.h)) / 2 + 20;
+          const dist = Math.max(minDist * 0.5, Math.hypot(dx, dy));
+          const repel = (minDist * minDist * 4) / (dist * dist);
+          fx += (dx / dist) * repel; fy += (dy / dist) * repel;
+        });
         _edges.forEach(e => { if (e.from !== a.id && e.to !== a.id) return; const other = _nodes.find(n => n.id === (e.from === a.id ? e.to : e.from)); if (!other) return; const dx = other.x - a.x, dy = other.y - a.y; const dist = Math.max(20, Math.hypot(dx, dy)); const attract = (dist - 150) * 0.02; fx += (dx / dist) * attract; fy += (dy / dist) * attract; });
         a._vx = (a._vx || 0) * 0.8 + fx; a._vy = (a._vy || 0) * 0.8 + fy;
       });
@@ -207,6 +281,20 @@ const Flowchart = (() => {
     _saveCanvases();
   }
 
+  function _confirmDeleteCanvas(cv, btn) {
+    if (_canvases.length <= 1) { window.Toast?.show('Нельзя удалить последнее полотно', 'info'); return; }
+    const rect = btn.getBoundingClientRect(), panelRect = _panel.getBoundingClientRect();
+    _showTooltip({
+      x: rect.left - panelRect.left, y: rect.bottom - panelRect.top + 4,
+      title: `Удалить «${cv.name}»?`, fields: [],
+      onSubmit: () => {
+        _canvases = _canvases.filter(c => c.id !== cv.id);
+        if (_activeCanvasId === cv.id) _activeCanvasId = _canvases[0].id;
+        _saveCanvases(); _switchCanvas(_activeCanvasId); _renderCanvasPills();
+      }
+    });
+  }
+
   function _renderCanvasPills() {
     const wrap = _overlay?.querySelector('.flowchart-canvases');
     if (!wrap) return;
@@ -215,7 +303,20 @@ const Flowchart = (() => {
       const btn = document.createElement('button');
       btn.className = 'fc-canvas-pill' + (cv.id === _activeCanvasId ? ' active' : '');
       btn.textContent = cv.name; btn.dataset.id = cv.id;
-      btn.addEventListener('click', () => _switchCanvas(cv.id));
+      let holdTimer = null, holding = false;
+      btn.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        holding = false;
+        btn.classList.add('fc-pill-charging');
+        holdTimer = setTimeout(() => {
+          holding = true;
+          btn.classList.remove('fc-pill-charging');
+          _confirmDeleteCanvas(cv, btn);
+        }, 600);
+      });
+      btn.addEventListener('mouseup', () => { clearTimeout(holdTimer); btn.classList.remove('fc-pill-charging'); });
+      btn.addEventListener('mouseleave', () => { clearTimeout(holdTimer); btn.classList.remove('fc-pill-charging'); });
+      btn.addEventListener('click', e => { if (holding) { e.stopPropagation(); holding = false; return; } _switchCanvas(cv.id); });
       btn.addEventListener('dblclick', e => {
         e.stopPropagation();
         const rect = btn.getBoundingClientRect();
@@ -293,7 +394,14 @@ const Flowchart = (() => {
       const t = document.createElementNS(SVG_NS, 'text');
       t.setAttribute('x', mx + 8); t.setAttribute('y', my);
       t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '10'); t.setAttribute('font-family', 'var(--mono)');
-      t.textContent = edge.label; _edgesG.appendChild(t);
+      t.textContent = edge.label;
+      const bg = document.createElementNS(SVG_NS, 'rect');
+      const len = edge.label.length * 6 + 8;
+      bg.setAttribute('x', mx + 4); bg.setAttribute('y', my - 10);
+      bg.setAttribute('width', len); bg.setAttribute('height', 14);
+      bg.setAttribute('rx', 3); bg.setAttribute('fill', 'rgba(10,11,16,0.85)');
+      _edgesG.appendChild(bg);
+      _edgesG.appendChild(t);
     }
   }
 
@@ -344,9 +452,9 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'polygon');
         shapeEl.setAttribute('points', pts);
         shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.5');
-        shapeEl.setAttribute('stroke', color + '60');
-        shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.18');
+        shapeEl.setAttribute('stroke', color + '90');
+        shapeEl.setAttribute('stroke-width', '2');
         break;
       }
       case 'circle': {
@@ -358,9 +466,9 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'circle');
         shapeEl.setAttribute('cx', node.x); shapeEl.setAttribute('cy', node.y); shapeEl.setAttribute('r', r);
         shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.5');
-        shapeEl.setAttribute('stroke', color + '60');
-        shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.18');
+        shapeEl.setAttribute('stroke', color + '90');
+        shapeEl.setAttribute('stroke-width', '2');
         break;
       }
       case 'cylinder': {
@@ -374,7 +482,7 @@ const Flowchart = (() => {
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
         rect.setAttribute('rx', '6'); rect.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        rect.setAttribute('fill-opacity', '0.32'); rect.setAttribute('stroke', color + '60'); rect.setAttribute('stroke-width', '1.5');
+        rect.setAttribute('fill-opacity', '0.18'); rect.setAttribute('stroke', color + '90'); rect.setAttribute('stroke-width', '2');
         shapeEl.appendChild(rect);
         const top = document.createElementNS(SVG_NS, 'ellipse');
         top.setAttribute('cx', node.x); top.setAttribute('cy', y + 7); top.setAttribute('rx', w / 2); top.setAttribute('ry', 7);
@@ -390,7 +498,7 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', h / 2); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.32'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.18'); shapeEl.setAttribute('stroke', color + '90'); shapeEl.setAttribute('stroke-width', '2');
         break;
       }
       default: {
@@ -401,18 +509,26 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', '8'); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.32'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.18'); shapeEl.setAttribute('stroke', color + '90'); shapeEl.setAttribute('stroke-width', '2');
         break;
       }
     }
     depthG.appendChild(shapeEl);
+
+    if (['rect', 'stadium', 'cylinder', undefined].includes(node.shape)) {
+      const bar = document.createElementNS(SVG_NS, 'rect');
+      bar.setAttribute('x', x); bar.setAttribute('y', y);
+      bar.setAttribute('width', 4); bar.setAttribute('height', h);
+      bar.setAttribute('rx', 2); bar.setAttribute('fill', color);
+      depthG.appendChild(bar);
+    }
 
     const lines = _wrapTextLines(node.label || node.id, w - 20, 3);
     lines.forEach((ln, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
       t.setAttribute('x', node.x); t.setAttribute('y', node.y + 4 + (li - (lines.length - 1) / 2) * 14);
       t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', 'var(--text0)');
-      t.setAttribute('font-size', '11'); t.setAttribute('font-family', 'var(--mono)');
+      t.setAttribute('font-size', String(_fontSize || 13)); t.setAttribute('font-family', 'var(--mono)');
       t.setAttribute('paint-order', 'stroke'); t.setAttribute('stroke', 'rgba(0,0,0,0.55)');
       t.setAttribute('stroke-width', '3'); t.setAttribute('stroke-linejoin', 'round');
       t.textContent = ln; depthG.appendChild(t);
@@ -461,11 +577,15 @@ const Flowchart = (() => {
           <button class="flowchart-btn flowchart-connect" title="Соединить блоки">↗</button>
           <button class="flowchart-btn flowchart-refresh" title="Обновить анализ">↻</button>
           <button class="flowchart-btn flowchart-export" title="Дублировать полотно">⇪</button>
+          <button class="flowchart-btn fc-font-dec" title="Меньше шрифт">A−</button>
+          <button class="flowchart-btn fc-font-inc" title="Больше шрифт">A+</button>
           <button class="flowchart-btn flowchart-close" title="Закрыть">✕</button>
         </div>
         <div class="flowchart-canvases"></div>
-        <div class="flowchart-zoom">
-          <input type="range" class="flowchart-zoom-range" min="40" max="400" value="100" step="1">
+        <div class="flowchart-zoombar">
+          <button class="fc-zoom-btn fc-zoom-out" title="Уменьшить">−</button>
+          <button class="fc-zoom-reset" title="Вписать содержимое">100%</button>
+          <button class="fc-zoom-btn fc-zoom-in" title="Увеличить">+</button>
         </div>
         <div class="flowchart-status"></div>
         <div class="flowchart-canvas"></div>
@@ -509,22 +629,12 @@ const Flowchart = (() => {
     });
 
     _overlay.querySelector('.flowchart-add').addEventListener('click', e => {
-      const rect = e.target.getBoundingClientRect();
-      const panelRect = _panel.getBoundingClientRect();
-      _showTooltip({
-        x: rect.left - panelRect.left, y: rect.bottom - panelRect.top + 4,
-        title: 'Новый блок',
-        fields: [
-          { name: 'label', placeholder: 'Текст блока' },
-          { name: 'shape', type: 'select', value: 'rect', options: ['rect', 'stadium', 'diamond', 'circle', 'cylinder'] }
-        ],
-        onSubmit: v => {
-          if (!v.label) return;
-          const id = 'n' + Date.now();
-          const node = { id, label: v.label, shape: v.shape, x: VCW / 2 - _panX / _zoom, y: VCH / 2 - _panY / _zoom };
-          const sz = _nodeSize(node); node.w = sz.w; node.h = sz.h;
-          _nodes.push(node); _syncData(); _render();
-        }
+      const rect = e.target.getBoundingClientRect(), panelRect = _panel.getBoundingClientRect();
+      _showAddNodeTooltip(rect.left - panelRect.left, rect.bottom - panelRect.top + 4, v => {
+        const id = 'n' + Date.now();
+        const node = { id, label: v.label, shape: v.shape, x: (VCW / 2 - _panX) / _zoom, y: (VCH / 2 - _panY) / _zoom };
+        const sz = _nodeSize(node); node.w = sz.w; node.h = sz.h;
+        _nodes.push(node); _syncData(); _render();
       });
     });
 
@@ -547,21 +657,14 @@ const Flowchart = (() => {
     }
     _setupProximity(_overlay.querySelector('.flowchart-controls'), 150);
     _setupProximity(_overlay.querySelector('.flowchart-canvases'), 150);
-    _setupProximity(_overlay.querySelector('.flowchart-zoom'), 120);
+    _setupProximity(_overlay.querySelector('.flowchart-zoombar'), 120);
 
-    const zoomRange = _overlay.querySelector('.flowchart-zoom-range');
-    const zoomWrap = _overlay.querySelector('.flowchart-zoom');
-    zoomRange.addEventListener('input', () => {
-      const newZoom = zoomRange.value / 100;
-      const rect = _svg.getBoundingClientRect();
-      const cx = rect.width / 2, cy = rect.height / 2;
-      _panX = cx - (cx - _panX) * (newZoom / _zoom);
-      _panY = cy - (cy - _panY) * (newZoom / _zoom);
-      _zoom = newZoom; _applyTransform(); _saveViewport();
-    });
-    zoomRange.addEventListener('mousedown', () => zoomWrap.classList.add('dragging'));
-    window.addEventListener('mouseup', () => zoomWrap.classList.remove('dragging'));
-    zoomRange.addEventListener('dblclick', () => { _resetTransform(); zoomRange.value = 100; _saveViewport(); });
+    _overlay.querySelector('.fc-zoom-in').addEventListener('click', () => _zoomBy(ZOOM_STEP));
+    _overlay.querySelector('.fc-zoom-out').addEventListener('click', () => _zoomBy(-ZOOM_STEP));
+    _overlay.querySelector('.fc-zoom-reset').addEventListener('click', () => { _fitToContent(); _saveViewport(); });
+
+    _overlay.querySelector('.fc-font-inc').addEventListener('click', () => _setFontSize(_fontSize + 0.5));
+    _overlay.querySelector('.fc-font-dec').addEventListener('click', () => _setFontSize(_fontSize - 0.5));
 
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && _overlay?.classList.contains('visible')) { _closeTooltip(); close(); } });
 
@@ -575,7 +678,7 @@ const Flowchart = (() => {
       if (!_dragging) return;
       const dx = e.clientX - _lastX, dy = e.clientY - _lastY;
       if (Math.abs(dx) + Math.abs(dy) > 3) _movedEnough = true;
-      if (_movedEnough) { _velX = dx; _velY = dy; _panX += dx; _panY += dy; _lastX = e.clientX; _lastY = e.clientY; _applyTransform(); }
+      if (_movedEnough) { const s = _pxToSvgUnits(1); _velX = dx * s; _velY = dy * s; _panX += _velX; _panY += _velY; _lastX = e.clientX; _lastY = e.clientY; _applyTransform(); }
     });
     window.addEventListener('mouseup', () => {
       if (_resizing) { _resizing = false; localStorage.setItem('fc_panelW', _panel.style.width); localStorage.setItem('fc_panelH', _panel.style.height); return; }
@@ -590,13 +693,14 @@ const Flowchart = (() => {
 
     _svg.addEventListener('wheel', e => {
       e.preventDefault();
-      const rect = _svg.getBoundingClientRect();
-      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      const pt = _svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      const svgP = pt.matrixTransform(_svg.getScreenCTM().inverse());
       const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
       const newZoom = Math.min(4, Math.max(0.4, _zoom * factor));
-      _panX = mx - (mx - _panX) * (newZoom / _zoom);
-      _panY = my - (my - _panY) * (newZoom / _zoom);
-      _zoom = newZoom; _applyTransform(); _syncZoomSlider(); _saveViewport();
+      _panX = svgP.x - (svgP.x - _panX) * (newZoom / _zoom);
+      _panY = svgP.y - (svgP.y - _panY) * (newZoom / _zoom);
+      _zoom = newZoom; _applyTransform(); _syncZoomLabel(); _saveViewport();
     }, { passive: false });
 
     _svg.addEventListener('mousedown', e => {
@@ -605,8 +709,16 @@ const Flowchart = (() => {
       if (nodeEl) {
         const nodeId = nodeEl.dataset.nodeId;
         if (_connectMode) {
-          if (!_connectFrom) { _connectFrom = nodeId; window.Toast?.show('Теперь кликните на целевой блок', 'info'); }
-          else if (_connectFrom !== nodeId) { _edges.push({ from: _connectFrom, to: nodeId, label: '' }); _connectFrom = null; _connectMode = false; _overlay.querySelector('.flowchart-connect').classList.remove('active'); _syncData(); _renderEdges(); }
+          if (!_connectFrom) {
+            _connectFrom = nodeId;
+            nodeEl.classList.add('fc-connect-source');
+            window.Toast?.show('Теперь кликните на целевой блок', 'info');
+          }
+          else if (_connectFrom !== nodeId) {
+            const srcEl = _viewport.querySelector(`[data-node-id="${_connectFrom}"]`);
+            if (srcEl) srcEl.classList.remove('fc-connect-source');
+            _edges.push({ from: _connectFrom, to: nodeId, label: '' }); _connectFrom = null; _connectMode = false; _overlay.querySelector('.flowchart-connect').classList.remove('active'); _syncData(); _renderEdges();
+          }
           return;
         }
         e.stopPropagation(); cancelAnimationFrame(_inertiaRaf); _dragging = false;
@@ -663,16 +775,6 @@ const Flowchart = (() => {
       _parallaxNY = (e.clientY - rect.top - rect.height / 2) / rect.height;
       if (!_rafPending) { _rafPending = true; requestAnimationFrame(() => { _rafPending = false; _applyParallax(_parallaxNX, _parallaxNY); }); }
     });
-  }
-
-  function _toMermaid() {
-    const lines = ['flowchart TD'];
-    _nodes.forEach(n => {
-      const sw = { diamond: ['{', '}'], circle: ['((', '))'], stadium: ['([', '])'], cylinder: ['[(', ')]'], rect: ['[', ']'] }[n.shape] || ['[', ']'];
-      lines.push(`  ${n.id}${sw[0]}"${n.label}"${sw[1]}`);
-    });
-    _edges.forEach(e => { lines.push(`  ${e.from} -->${e.label ? `|${e.label}|` : ''} ${e.to}`); });
-    return lines.join('\n');
   }
 
   function open() {
@@ -750,7 +852,7 @@ const Flowchart = (() => {
     _zoom = zoom;
     _panX = pad + (targetW - scaledW) / 2 - minX * zoom;
     _panY = pad + (targetH - scaledH) / 2 - minY * zoom;
-    _applyTransform(); _syncZoomSlider();
+    _applyTransform(); _syncZoomLabel();
   }
 
   let _viewportSaveTimer = null;
@@ -769,7 +871,7 @@ const Flowchart = (() => {
     const cv = _canvases.find(c => c.id === _activeCanvasId);
     if (cv?.viewport) {
       _zoom = cv.viewport.zoom; _panX = cv.viewport.panX; _panY = cv.viewport.panY;
-      _applyTransform(); _syncZoomSlider();
+      _applyTransform(); _syncZoomLabel();
     } else {
       _fitToContent();
       _saveViewport();

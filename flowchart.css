@@ -56,6 +56,8 @@
   box-shadow: 0 0 8px rgba(79,142,247,0.3);
 }
 
+.fc-connect-source { filter: drop-shadow(0 0 6px rgba(79,142,247,0.6)); }
+
 .flowchart-refresh { margin-left: 4px; }
 .flowchart-refresh.spinning { animation: fc-spin 0.8s linear infinite; }
 @keyframes fc-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -81,41 +83,21 @@
 .fc-canvas-pill:hover { background: rgba(255,255,255,0.08); color: var(--text1); }
 .fc-canvas-pill.active { background: rgba(79,142,247,0.15); border-color: rgba(79,142,247,0.4); color: var(--accent); }
 .fc-canvas-add { font-size: 14px; }
+.fc-pill-charging { transition: box-shadow 0.6s linear; box-shadow: inset 0 0 0 12px rgba(224,92,106,0.35); }
 
-.flowchart-zoom {
-  position: absolute; left: 14px; top: 50%;
-  transform: translateY(-50%);
-  height: 150px; width: 28px;
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity 0.4s ease;
-  pointer-events: none; z-index: 10;
+.flowchart-zoombar {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 4px; align-items: center;
+  opacity: 0; transition: opacity 0.4s ease; pointer-events: none; z-index: 10;
 }
-.flowchart-zoom.near, .flowchart-zoom.dragging { opacity: 1; pointer-events: auto; }
-
-.flowchart-zoom-range {
-  width: 150px; height: 24px;
-  transform: rotate(-90deg);
-  -webkit-appearance: none; appearance: none;
-  background: transparent; cursor: pointer;
+.flowchart-zoombar.near { opacity: 1; pointer-events: auto; }
+.fc-zoom-btn, .fc-zoom-reset {
+  width: 28px; height: 24px; border-radius: 6px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.5); cursor: pointer; font-family: var(--mono); font-size: 11px;
+  display: flex; align-items: center; justify-content: center; transition: all 0.2s;
 }
-.flowchart-zoom-range::-webkit-slider-runnable-track { height: 2px; border-radius: 2px; background: rgba(255,255,255,0.12); }
-.flowchart-zoom-range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 10px; height: 10px; border-radius: 50%;
-  background: rgba(79,142,247,0.7);
-  border: 1px solid rgba(79,142,247,0.9);
-  margin-top: -4px;
-  transition: background 0.2s, transform 0.15s;
-}
-.flowchart-zoom-range::-webkit-slider-thumb:hover { background: var(--accent); transform: scale(1.2); }
-.flowchart-zoom-range::-moz-range-track { height: 2px; border-radius: 2px; background: rgba(255,255,255,0.12); border: none; }
-.flowchart-zoom-range::-moz-range-thumb {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: rgba(79,142,247,0.7);
-  border: 1px solid rgba(79,142,247,0.9);
-  transition: background 0.2s, transform 0.15s;
-}
-.flowchart-zoom-range::-moz-range-thumb:hover { background: var(--accent); transform: scale(1.2); }
+.fc-zoom-btn:hover, .fc-zoom-reset:hover { background: rgba(255,255,255,0.08); color: var(--accent); border-color: rgba(79,142,247,0.3); }
 
 .flowchart-status {
   padding: 8px 16px;
@@ -125,8 +107,10 @@
 
 .flowchart-canvas {
   flex: 1; overflow: hidden; padding: 0;
-  cursor: default;
+  cursor: grab;
 }
+.flowchart-canvas:active { cursor: grabbing; }
+.flowchart-canvas svg text { pointer-events: none; }
 .flowchart-canvas svg { width: 100%; height: 100%; display: block; }
 
 .flowchart-resize-handle {
@@ -170,6 +154,22 @@
 }
 .fc-tooltip-ok:hover { color: var(--accent); background: rgba(79,142,247,0.1); }
 .fc-tooltip-cancel:hover { color: var(--red); background: rgba(224,92,106,0.1); }
+
+.fc-add-input {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px; color: var(--text0); padding: 6px 8px; font-family: var(--mono); font-size: 12px; outline: none;
+}
+.fc-add-input:focus { border-color: rgba(79,142,247,0.4); }
+.fc-shape-row { display: flex; gap: 4px; }
+.fc-shape-btn {
+  width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.fc-shape-btn svg { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.fc-shape-btn:hover { color: var(--text1); background: rgba(255,255,255,0.07); }
+.fc-shape-btn.active { color: var(--accent); background: rgba(79,142,247,0.12); border-color: rgba(79,142,247,0.35); }
 
 .fc-enter {
   animation: fc-enter-kf 0.35s cubic-bezier(.2,.8,.2,1) backwards;
