@@ -788,7 +788,7 @@ const Preview = (() => {
     structBody.innerHTML = entries.map(e => {
       const icon = _typeIcons[e.type] || _typeIcons.text;
       const title = escHtmlUi(e.title);
-      const preview = escHtmlUi(e.text.slice(0, 120));
+      const preview = escHtmlUi(e.text.slice(0, 120)).replace(/\|/g, '∣');
       return `<div class="structure-item" data-block-id="${e.id}">
         <span class="structure-item-icon">${icon}</span>
         <div class="structure-item-body">
@@ -820,10 +820,9 @@ const Preview = (() => {
     const scrollMax = container.scrollHeight - container.clientHeight;
     const ratio = scrollMax > 0 ? Math.min(1, Math.max(0, container.scrollTop / scrollMax)) : 0;
 
-    const totalH = structBody.clientHeight;
+    const totalH = structBody.scrollHeight;
     const bgH = items[0].offsetHeight;
-    const maxTop = Math.max(0, totalH - bgH);
-    const targetY = Math.min(maxTop, ratio * maxTop);
+    const targetY = ratio * (totalH - bgH);
 
     if (_structActiveBg) {
       _structActiveBg.style.top = targetY + 'px';
