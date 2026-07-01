@@ -445,7 +445,7 @@ const Flowchart = (() => {
 
     function makeBacking(shapeEl) {
       const b = shapeEl.cloneNode(true);
-      b.removeAttribute('fill'); b.setAttribute('fill', 'rgba(16,18,26,0.78)');
+      b.removeAttribute('fill'); b.style.fill = 'rgba(16,18,26,0.78)';
       b.removeAttribute('stroke'); b.removeAttribute('stroke-width');
       b.removeAttribute('fill-opacity'); b.removeAttribute('filter');
       return b;
@@ -461,8 +461,8 @@ const Flowchart = (() => {
         depthG.appendChild(backing);
         shapeEl = document.createElementNS(SVG_NS, 'polygon');
         shapeEl.setAttribute('points', pts);
-        shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
-        shapeEl.setAttribute('stroke', color + '50');
+        shapeEl.style.fill = 'rgba(255,255,255,0.045)';
+        shapeEl.style.stroke = color + '50';
         shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
@@ -471,13 +471,13 @@ const Flowchart = (() => {
         const r = Math.min(w, h) / 2;
         const back = document.createElementNS(SVG_NS, 'circle');
         back.setAttribute('cx', node.x); back.setAttribute('cy', node.y); back.setAttribute('r', r);
-        back.setAttribute('fill', 'rgba(10,11,16,0.95)');
+        back.style.fill = 'rgba(16,18,26,0.78)';
         back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'circle');
         shapeEl.setAttribute('cx', node.x); shapeEl.setAttribute('cy', node.y); shapeEl.setAttribute('r', r);
-        shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
-        shapeEl.setAttribute('stroke', color + '50');
+        shapeEl.style.fill = 'rgba(255,255,255,0.045)';
+        shapeEl.style.stroke = color + '50';
         shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
@@ -486,20 +486,20 @@ const Flowchart = (() => {
         const backG = document.createElementNS(SVG_NS, 'g');
         const br = document.createElementNS(SVG_NS, 'rect');
         br.setAttribute('x', x); br.setAttribute('y', y + 7); br.setAttribute('width', w); br.setAttribute('height', h - 14);
-        br.setAttribute('rx', '6'); br.setAttribute('fill', 'rgba(16,18,26,0.78)');
+        br.setAttribute('rx', '6'); br.style.fill = 'rgba(16,18,26,0.78)';
         br.dataset.role = 'backing';
         backG.appendChild(br);
         depthG.appendChild(backG);
         shapeEl = document.createElementNS(SVG_NS, 'g');
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
-        rect.setAttribute('rx', '6'); rect.setAttribute('fill', 'rgba(255,255,255,0.045)');
-        rect.setAttribute('stroke', color + '50'); rect.setAttribute('stroke-width', '1.25');
+        rect.setAttribute('rx', '6'); rect.style.fill = 'rgba(255,255,255,0.045)';
+        rect.style.stroke = color + '50'; rect.setAttribute('stroke-width', '1.25');
         rect.dataset.role = 'shape-body';
         shapeEl.appendChild(rect);
         const top = document.createElementNS(SVG_NS, 'ellipse');
         top.setAttribute('cx', node.x); top.setAttribute('cy', y + 7); top.setAttribute('rx', w / 2); top.setAttribute('ry', 7);
-        top.setAttribute('fill', 'rgba(255,255,255,0.06)'); top.setAttribute('stroke', color + '40');
+        top.style.fill = 'rgba(255,255,255,0.06)'; top.style.stroke = color + '40';
         top.dataset.role = 'shape-top';
         shapeEl.appendChild(top);
         break;
@@ -507,26 +507,26 @@ const Flowchart = (() => {
       case 'stadium': {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', h / 2); back.setAttribute('fill', 'rgba(16,18,26,0.78)');
+        back.setAttribute('rx', h / 2); back.style.fill = 'rgba(16,18,26,0.78)';
         back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
-        shapeEl.setAttribute('rx', h / 2); shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
-        shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
+        shapeEl.setAttribute('rx', h / 2); shapeEl.style.fill = 'rgba(255,255,255,0.045)';
+        shapeEl.style.stroke = color + '50'; shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
       default: {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', '8'); back.setAttribute('fill', 'rgba(16,18,26,0.78)');
+        back.setAttribute('rx', '8'); back.style.fill = 'rgba(16,18,26,0.78)';
         back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
-        shapeEl.setAttribute('rx', '8'); shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
-        shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
+        shapeEl.setAttribute('rx', '8'); shapeEl.style.fill = 'rgba(255,255,255,0.045)';
+        shapeEl.style.stroke = color + '50'; shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
@@ -537,7 +537,7 @@ const Flowchart = (() => {
     lines.forEach((ln, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
       t.setAttribute('x', node.x); t.setAttribute('y', node.y + 4 + (li - (lines.length - 1) / 2) * 14);
-      t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', 'var(--text0)');
+      t.setAttribute('text-anchor', 'middle'); t.style.fill = 'var(--text0)';
       t.setAttribute('font-size', String(_fontSize || 13));
       t.setAttribute('font-family', "'Segoe UI', system-ui, -apple-system, sans-serif");
       t.textContent = ln; depthG.appendChild(t);
