@@ -1669,25 +1669,36 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       lineMirror = null;
       _clearSpellOverlay();
       clearTimeout(_spellCheckTimer);
+      if (_spellClickHandler) {
+        ta.removeEventListener('click', _spellClickHandler);
+        _spellClickHandler = null;
+      }
     });
 
     // ── Spell-check overlay ────────────────────────────────────────
     let _spellPopup = null;
+    let _spellWords = [];       // [{pos, len, word, suggestions}] для click detection
+    let _spellClickHandler = null;
+    let _spellClickOutsideHandler = null;
 
     function _clearSpellOverlay() {
       if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
       _spellOverlay = null;
+      _spellWords = [];
       _closeSpellPopup();
     }
 
     function _closeSpellPopup() {
       if (_spellPopup) { _spellPopup.remove(); _spellPopup = null; }
       document.removeEventListener('keydown', _onSpellPopupKey, true);
-      document.removeEventListener('click', _onSpellPopupClickOutside, true);
+      if (_spellClickOutsideHandler) {
+        document.removeEventListener('click', _spellClickOutsideHandler, true);
+        _spellClickOutsideHandler = null;
+      }
     }
 
     let _spellPopupIdx = -1;
-    let _spellPopupWords = [];
+    let _spellPopupSuggestions = [];
     let _spellPopupTa = null;
     let _spellPopupPos = 0;
     let _spellPopupLen = 0;
@@ -1696,23 +1707,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!_spellPopup) return;
       if (e.key === 'ArrowRight' || e.key === 'Tab') {
         e.preventDefault(); e.stopPropagation();
-        _spellPopupIdx = (_spellPopupIdx + 1) % _spellPopupWords.length;
+        _spellPopupIdx = (_spellPopupIdx + 1) % _spellPopupSuggestions.length;
         _highlightSpellSuggestion();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault(); e.stopPropagation();
-        _spellPopupIdx = (_spellPopupIdx - 1 + _spellPopupWords.length) % _spellPopupWords.length;
+        _spellPopupIdx = (_spellPopupIdx - 1 + _spellPopupSuggestions.length) % _spellPopupSuggestions.length;
         _highlightSpellSuggestion();
       } else if (e.key === 'Enter') {
         e.preventDefault(); e.stopPropagation();
         _applySpellSuggestion();
       } else if (e.key === 'Escape') {
         e.preventDefault(); e.stopPropagation();
-        _closeSpellPopup();
-      }
-    }
-
-    function _onSpellPopupClickOutside(e) {
-      if (_spellPopup && !_spellPopup.contains(e.target)) {
         _closeSpellPopup();
       }
     }
@@ -1725,8 +1730,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     function _applySpellSuggestion() {
-      if (_spellPopupIdx < 0 || _spellPopupIdx >= _spellPopupWords.length) return;
-      const replacement = _spellPopupWords[_spellPopupIdx];
+      if (_spellPopupIdx < 0 || _spellPopupIdx >= _spellPopupSuggestions.length) return;
+      const replacement = _spellPopupSuggestions[_spellPopupIdx];
       const ta = _spellPopupTa;
       _closeSpellPopup();
       if (!ta) return;
@@ -1739,7 +1744,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       _closeSpellPopup();
       if (!suggestions.length) return;
       _spellPopupIdx = 0;
-      _spellPopupWords = suggestions;
+      _spellPopupSuggestions = suggestions;
       _spellPopupTa = taEl;
       _spellPopupPos = pos;
       _spellPopupLen = len;
@@ -1767,12 +1772,97 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       _highlightSpellSuggestion();
       setTimeout(() => {
         document.addEventListener('keydown', _onSpellPopupKey, true);
-        document.addEventListener('click', _onSpellPopupClickOutside, true);
+        _spellClickOutsideHandler = (e) => {
+          if (_spellPopup && !_spellPopup.contains(e.target)) _closeSpellPopup();
+        };
+        document.addEventListener('click', _spellClickOutsideHandler, true);
       }, 0);
+    }
+
+    // Определение позиции клика через mirror-элемент
+    function _getCharPosFromClick(taEl, clientX, clientY) {
+      const cs = getComputedStyle(taEl);
+      const mirror = document.createElement('div');
+      mirror.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;pointer-events:none;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;box-sizing:content-box;';
+      for (const prop of lineMirrorProps) mirror.style[prop] = cs[prop];
+      const pl = parseFloat(cs.paddingLeft) || 0;
+      const pr = parseFloat(cs.paddingRight) || 0;
+      mirror.style.width = Math.max(0, taEl.clientWidth - pl - pr) + 'px';
+      document.body.appendChild(mirror);
+
+      // Разбиваем текст на сегменты: обычные куски и spell-слова
+      const text = taEl.value;
+      const sorted = [..._spellWords].sort((a, b) => a.pos - b.pos);
+      let html = '';
+      let lastEnd = 0;
+      for (const w of sorted) {
+        if (w.pos < lastEnd || w.pos + w.len > text.length) continue;
+        html += _escBlock(text.slice(lastEnd, w.pos));
+        html += `<span data-spell-pos="${w.pos}">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
+        lastEnd = w.pos + w.len;
+      }
+      html += _escBlock(text.slice(lastEnd));
+      mirror.innerHTML = html;
+
+      const mirrorRect = mirror.getBoundingClientRect();
+      const relX = clientX - mirrorRect.left;
+      const relY = clientY - mirrorRect.top;
+
+      // Ищем символ через tiny span
+      let charPos = text.length;
+      const spans = mirror.querySelectorAll('span[data-spell-pos]');
+      const allNodes = [];
+      mirror.childNodes.forEach(n => allNodes.push(n));
+
+      for (const node of allNodes) {
+        if (node.nodeType === 3) {
+          // Text node — измеряем посимвольно
+          const txt = node.textContent;
+          for (let i = 0; i < txt.length; i++) {
+            const range = document.createRange();
+            range.setStart(node, i);
+            range.setEnd(node, i + 1);
+            const r = range.getBoundingClientRect();
+            if (r.top <= clientY && r.bottom >= clientY && r.left <= clientX) {
+              charPos = (node._startOffset || 0) + i;
+            }
+          }
+        } else if (node.nodeType === 1 && node.dataset.spellPos != null) {
+          // Spell word span
+          const nodePos = parseInt(node.dataset.spellPos);
+          const txt = node.textContent;
+          for (let i = 0; i < txt.length; i++) {
+            const range = document.createRange();
+            range.setStart(node, i);
+            range.setEnd(node, i + 1);
+            const r = range.getBoundingClientRect();
+            if (r.top <= clientY && r.bottom >= clientY && r.left <= clientX) {
+              charPos = nodePos + i;
+            }
+          }
+        }
+      }
+
+      mirror.remove();
+      return charPos;
+    }
+
+    // Клик по textarea → проверяем, попали ли в spell-слово
+    function _onTaSpellClick(e) {
+      if (!_spellWords.length) return;
+      const charPos = _getCharPosFromClick(ta, e.clientX, e.clientY);
+      const hit = _spellWords.find(w => charPos >= w.pos && charPos < w.pos + w.len);
+      if (hit) {
+        e.preventDefault();
+        e.stopPropagation();
+        _showSpellPopup(ta, hit.word, hit.pos, hit.len, hit.suggestions);
+      }
     }
 
     function _renderSpellOverlay(taEl, words) {
       if (!words.length) { _clearSpellOverlay(); return; }
+
+      _spellWords = words;
 
       if (!_spellOverlay) {
         _spellOverlay = document.createElement('div');
@@ -1804,23 +1894,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       for (const w of sorted) {
         if (w.pos < lastEnd || w.pos + w.len > text.length) continue;
         html += _escBlock(text.slice(lastEnd, w.pos));
-        html += `<span class="spell-word" data-pos="${w.pos}" data-len="${w.len}" data-word="${_escBlock(w.word)}" data-suggestions="${_escBlock(JSON.stringify(w.suggestions))}">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
+        html += `<span class="spell-word">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
         lastEnd = w.pos + w.len;
       }
       html += _escBlock(text.slice(lastEnd));
       _spellOverlay.innerHTML = html;
 
-      // Клик по слову → popup
-      _spellOverlay.querySelectorAll('.spell-word').forEach(el => {
-        el.addEventListener('click', e => {
-          e.stopPropagation();
-          const pos = parseInt(el.dataset.pos);
-          const len = parseInt(el.dataset.len);
-          const word = el.dataset.word;
-          const suggestions = JSON.parse(el.dataset.suggestions || '[]');
-          _showSpellPopup(taEl, word, pos, len, suggestions);
-        });
-      });
+      // Регистрируем click handler на textarea (один раз)
+      if (!_spellClickHandler) {
+        _spellClickHandler = _onTaSpellClick;
+        taEl.addEventListener('click', _spellClickHandler);
+      }
     }
 
     // Focus → restore spell overlay if results cached
