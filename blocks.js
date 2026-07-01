@@ -1669,6 +1669,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       lineMirror = null;
       _clearSpellOverlay();
       clearTimeout(_spellCheckTimer);
+      if (_spellClickHandler) {
+        ta.removeEventListener('click', _spellClickHandler, true);
+        _spellClickHandler = null;
+      }
     });
 
     // ── Spell-check overlay ────────────────────────────────────────
@@ -1775,30 +1779,31 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }, 0);
     }
 
-    // Клик по overlay → spell word или пересылка в textarea
-    let _spellOverlayClickHandler = null;
+    // Клик по textarea → проверяем, попали ли в spell-слово
+    let _spellClickHandler = null;
 
-    function _onSpellOverlayClick(e) {
-      // Клик по spell-word → показать popup
-      const spellEl = e.target.closest('.spell-word');
-      if (spellEl) {
+    function _onTaSpellClick(e) {
+      if (!_spellWords.length || !ta.isConnected) return;
+      // Используем нативный caretRangeFromPoint для определения позиции
+      let charPos = -1;
+      if (document.caretRangeFromPoint) {
+        const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+        if (range && range.startContainer === ta) {
+          charPos = range.startOffset;
+        } else if (range && range.startContainer.nodeType === 3) {
+          // Fallback: текстовый узел — считаем глобальную позицию
+          const textContent = range.startContainer.textContent;
+          const offset = range.startOffset;
+          // Ищем этот узел в DOM textarea (не работает для replaced elements)
+          charPos = offset;
+        }
+      }
+      if (charPos < 0) return;
+      const hit = _spellWords.find(w => charPos >= w.pos && charPos < w.pos + w.len);
+      if (hit) {
         e.preventDefault();
         e.stopPropagation();
-        const hit = _spellWords.find(w => w.pos === parseInt(spellEl.dataset.pos));
-        if (hit) _showSpellPopup(ta, hit.word, hit.pos, hit.len, hit.suggestions);
-        return;
-      }
-      // Клик по пустому месту → переслать в textarea
-      e.preventDefault();
-      _spellOverlay.style.pointerEvents = 'none';
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      _spellOverlay.style.pointerEvents = 'auto';
-      if (el) {
-        el.focus();
-        el.dispatchEvent(new MouseEvent('click', {
-          bubbles: true, clientX: e.clientX, clientY: e.clientY,
-          button: e.button, buttons: e.buttons,
-        }));
+        _showSpellPopup(ta, hit.word, hit.pos, hit.len, hit.suggestions);
       }
     }
 
@@ -1810,7 +1815,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!_spellOverlay) {
         _spellOverlay = document.createElement('div');
         _spellOverlay.className = 'spell-check-overlay';
-        _spellOverlay.style.pointerEvents = 'auto';
         lineWrap.appendChild(_spellOverlay);
       }
 
@@ -1844,16 +1848,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       html += _escBlock(text.slice(lastEnd));
       _spellOverlay.innerHTML = html;
 
-      // Регистрируем click + wheel handler на overlay (один раз)
-      if (!_spellOverlayClickHandler) {
-        _spellOverlayClickHandler = _onSpellOverlayClick;
-        _spellOverlay.addEventListener('click', _spellOverlayClickHandler);
-        // Пробрасываем скролл в textarea
-        _spellOverlay.addEventListener('wheel', e => {
-          e.preventDefault();
-          taEl.scrollTop += e.deltaY;
-          taEl.scrollLeft += e.deltaX;
-        }, { passive: false });
+      // Регистрируем click handler на textarea (один раз)
+      if (!_spellClickHandler) {
+        _spellClickHandler = _onTaSpellClick;
+        taEl.addEventListener('click', _spellClickHandler, true);
       }
     }
 
