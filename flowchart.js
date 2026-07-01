@@ -227,9 +227,20 @@ const Flowchart = (() => {
   }
 
   function _forceLayout() {
-    _nodes.forEach(n => { if (n.x == null) { n.x = VCW / 2 + (Math.random() - 0.5) * 400; n.y = VCH / 2 + (Math.random() - 0.5) * 300; } });
+    _nodes.forEach(n => {
+      if (n.x == null) {
+        n.x = VCW / 2 + (Math.random() - 0.5) * 400;
+        n.y = VCH / 2 + (Math.random() - 0.5) * 300;
+        n._movable = true;
+      } else {
+        n._movable = false;
+      }
+    });
+    const movable = _nodes.filter(n => n._movable);
+    if (!movable.length) return;
+
     for (let iter = 0; iter < 60; iter++) {
-      _nodes.forEach(a => {
+      movable.forEach(a => {
         let fx = 0, fy = 0;
         _nodes.forEach(b => {
           if (a === b) return;
@@ -239,10 +250,21 @@ const Flowchart = (() => {
           const repel = (minDist * minDist * 4) / (dist * dist);
           fx += (dx / dist) * repel; fy += (dy / dist) * repel;
         });
-        _edges.forEach(e => { if (e.from !== a.id && e.to !== a.id) return; const other = _nodes.find(n => n.id === (e.from === a.id ? e.to : e.from)); if (!other) return; const dx = other.x - a.x, dy = other.y - a.y; const dist = Math.max(20, Math.hypot(dx, dy)); const attract = (dist - 150) * 0.02; fx += (dx / dist) * attract; fy += (dy / dist) * attract; });
+        _edges.forEach(e => {
+          if (e.from !== a.id && e.to !== a.id) return;
+          const other = _nodes.find(n => n.id === (e.from === a.id ? e.to : e.from));
+          if (!other) return;
+          const dx = other.x - a.x, dy = other.y - a.y;
+          const dist = Math.max(20, Math.hypot(dx, dy));
+          const attract = (dist - 150) * 0.02;
+          fx += (dx / dist) * attract; fy += (dy / dist) * attract;
+        });
         a._vx = (a._vx || 0) * 0.8 + fx; a._vy = (a._vy || 0) * 0.8 + fy;
       });
-      _nodes.forEach(a => { a.x = Math.min(VCW - 60, Math.max(60, a.x + a._vx)); a.y = Math.min(VCH - 60, Math.max(60, a.y + a._vy)); });
+      movable.forEach(a => {
+        a.x = Math.min(VCW - 60, Math.max(60, a.x + a._vx));
+        a.y = Math.min(VCH - 60, Math.max(60, a.y + a._vy));
+      });
     }
   }
 
@@ -447,14 +469,16 @@ const Flowchart = (() => {
       case 'diamond': {
         const cx = node.x, cy = node.y, dw = w * 0.55, dh = h * 0.55;
         const pts = `${cx},${cy - dh} ${cx + dw},${cy} ${cx},${cy + dh} ${cx - dw},${cy}`;
-        depthG.appendChild(makeBacking(Object.assign(document.createElementNS(SVG_NS, 'polygon'), { outerHTML: '' })));
-        depthG.lastChild.setAttribute('points', pts);
+        const backing = makeBacking(Object.assign(document.createElementNS(SVG_NS, 'polygon'), { outerHTML: '' }));
+        backing.setAttribute('points', pts); backing.dataset.role = 'backing';
+        depthG.appendChild(backing);
         shapeEl = document.createElementNS(SVG_NS, 'polygon');
         shapeEl.setAttribute('points', pts);
         shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
         shapeEl.setAttribute('fill-opacity', '0.18');
         shapeEl.setAttribute('stroke', color + '90');
         shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.dataset.role = 'shape';
         break;
       }
       case 'circle': {
@@ -462,6 +486,7 @@ const Flowchart = (() => {
         const back = document.createElementNS(SVG_NS, 'circle');
         back.setAttribute('cx', node.x); back.setAttribute('cy', node.y); back.setAttribute('r', r);
         back.setAttribute('fill', 'rgba(10,11,16,0.95)');
+        back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'circle');
         shapeEl.setAttribute('cx', node.x); shapeEl.setAttribute('cy', node.y); shapeEl.setAttribute('r', r);
@@ -469,6 +494,7 @@ const Flowchart = (() => {
         shapeEl.setAttribute('fill-opacity', '0.18');
         shapeEl.setAttribute('stroke', color + '90');
         shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.dataset.role = 'shape';
         break;
       }
       case 'cylinder': {
@@ -476,6 +502,7 @@ const Flowchart = (() => {
         const br = document.createElementNS(SVG_NS, 'rect');
         br.setAttribute('x', x); br.setAttribute('y', y + 7); br.setAttribute('width', w); br.setAttribute('height', h - 14);
         br.setAttribute('rx', '6'); br.setAttribute('fill', 'rgba(10,11,16,0.92)');
+        br.dataset.role = 'backing';
         backG.appendChild(br);
         depthG.appendChild(backG);
         shapeEl = document.createElementNS(SVG_NS, 'g');
@@ -483,10 +510,12 @@ const Flowchart = (() => {
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
         rect.setAttribute('rx', '6'); rect.setAttribute('fill', `url(#${_gradIdFor(color)})`);
         rect.setAttribute('fill-opacity', '0.18'); rect.setAttribute('stroke', color + '90'); rect.setAttribute('stroke-width', '2');
+        rect.dataset.role = 'shape-body';
         shapeEl.appendChild(rect);
         const top = document.createElementNS(SVG_NS, 'ellipse');
         top.setAttribute('cx', node.x); top.setAttribute('cy', y + 7); top.setAttribute('rx', w / 2); top.setAttribute('ry', 7);
         top.setAttribute('fill', `url(#${_gradIdFor(color)})`); top.setAttribute('fill-opacity', '0.25'); top.setAttribute('stroke', color + '40');
+        top.dataset.role = 'shape-top';
         shapeEl.appendChild(top);
         break;
       }
@@ -494,22 +523,26 @@ const Flowchart = (() => {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
         back.setAttribute('rx', h / 2); back.setAttribute('fill', 'rgba(10,11,16,0.95)');
+        back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', h / 2); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
         shapeEl.setAttribute('fill-opacity', '0.18'); shapeEl.setAttribute('stroke', color + '90'); shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.dataset.role = 'shape';
         break;
       }
       default: {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
         back.setAttribute('rx', '8'); back.setAttribute('fill', 'rgba(10,11,16,0.95)');
+        back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', '8'); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
         shapeEl.setAttribute('fill-opacity', '0.18'); shapeEl.setAttribute('stroke', color + '90'); shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.dataset.role = 'shape';
         break;
       }
     }
@@ -520,6 +553,7 @@ const Flowchart = (() => {
       bar.setAttribute('x', x); bar.setAttribute('y', y);
       bar.setAttribute('width', 4); bar.setAttribute('height', h);
       bar.setAttribute('rx', 2); bar.setAttribute('fill', color);
+      bar.dataset.role = 'bar';
       depthG.appendChild(bar);
     }
 
@@ -544,18 +578,26 @@ const Flowchart = (() => {
     if (!g) return;
     const { w, h } = _nodeSize(node);
     const x = node.x - w / 2, y = node.y - h / 2;
-    g.querySelectorAll('rect').forEach(r => {
-      if (r.getAttribute('rx') === String(h / 2) || r.getAttribute('rx') === '8' || r.getAttribute('rx') === '6') {
-        r.setAttribute('x', x); r.setAttribute('y', r.getAttribute('y') && parseInt(r.getAttribute('y')) === parseInt(String(y + 7)) ? y + 7 : y);
-        r.setAttribute('width', w); if (r.getAttribute('height') !== String(h - 14)) r.setAttribute('height', h);
+
+    g.querySelectorAll('[data-role="backing"], [data-role="shape"]').forEach(r => {
+      if (r.tagName === 'rect') {
+        r.setAttribute('x', x); r.setAttribute('y', y);
+        r.setAttribute('width', w); r.setAttribute('height', h);
       }
     });
-    g.querySelectorAll('circle').forEach(c => { c.setAttribute('cx', node.x); c.setAttribute('cy', node.y); });
-    g.querySelectorAll('polygon').forEach(p => {
+    g.querySelectorAll('[data-role="shape-body"]').forEach(r => {
+      r.setAttribute('x', x); r.setAttribute('y', y + 7);
+      r.setAttribute('width', w); r.setAttribute('height', h - 14);
+    });
+    g.querySelectorAll('[data-role="bar"]').forEach(bar => {
+      bar.setAttribute('x', x); bar.setAttribute('y', y); bar.setAttribute('height', h);
+    });
+    g.querySelectorAll('circle[data-role]').forEach(c => { c.setAttribute('cx', node.x); c.setAttribute('cy', node.y); });
+    g.querySelectorAll('polygon[data-role]').forEach(p => {
       const dw = w * 0.55, dh = h * 0.55;
       p.setAttribute('points', `${node.x},${node.y - dh} ${node.x + dw},${node.y} ${node.x},${node.y + dh} ${node.x - dw},${node.y}`);
     });
-    g.querySelectorAll('ellipse').forEach(e => { e.setAttribute('cx', node.x); e.setAttribute('cy', y + 7); e.setAttribute('rx', w / 2); });
+    g.querySelectorAll('[data-role="shape-top"]').forEach(e => { e.setAttribute('cx', node.x); e.setAttribute('cy', y + 7); e.setAttribute('rx', w / 2); });
     g.querySelectorAll('text').forEach((t, i, all) => {
       t.setAttribute('x', node.x);
       t.setAttribute('y', node.y + 4 + (i - (all.length - 1) / 2) * 14);
@@ -847,7 +889,15 @@ const Flowchart = (() => {
     const maxY = Math.max(..._nodes.map(n => n.y + n.h / 2));
     const contentW = Math.max(1, maxX - minX), contentH = Math.max(1, maxY - minY);
     const targetW = VCW - pad * 2, targetH = VCH - pad * 2;
-    const zoom = Math.min(2, Math.max(0.4, Math.min(targetW / contentW, targetH / contentH)));
+
+    const idealFitZoom = Math.min(targetW / contentW, targetH / contentH);
+
+    const ctm = _svg.getScreenCTM();
+    const pxPerUnit = ctm ? ctm.a : 1;
+    const MIN_READABLE_PX = 10;
+    const minZoomForText = pxPerUnit > 0 ? MIN_READABLE_PX / (_fontSize * pxPerUnit) : 0.4;
+
+    const zoom = Math.max(minZoomForText, Math.min(2, idealFitZoom));
     const scaledW = contentW * zoom, scaledH = contentH * zoom;
     _zoom = zoom;
     _panX = pad + (targetW - scaledW) / 2 - minX * zoom;
