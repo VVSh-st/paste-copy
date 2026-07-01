@@ -20,129 +20,120 @@
 - **дропдаун** = dropdown
 - **блок** = block (элемент UI)
 
-## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-01)
+## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-01, продолжение)
 
-### start-server — Python Embedded
+### Spell-check
 
-1. ✅ **start-server.bat** — `start /min` вместо `start /b` для надёжного запуска Python Embedded
-2. ✅ **start-server.vbs** — скрытый запуск без окна, прямой вызов python.exe через WScript.Shell
-3. ✅ **start-server-debug.bat** — для отладки, прямой запуск в консоли (видны ошибки)
-4. ✅ **stop-server.bat** — taskkill по имени + по PID через порт 8080, проверка результата
-5. ✅ **Кириллица в BAT** — убрана, латиница для совместимости кодировок
+1. ✅ **Spell-check модуль** (`spell-check.js`) — Yandex Speller API, батчинг для больших текстов (4000 chars), LRU-кеш в памяти, graceful degradation, placeholder masking
+2. ✅ **Spell-check toggle** — в настройках, `State.spellCheck`, overlay с подчёркиванием ошибок
+3. ❌ **Popup-подсказки** — откат (11 коммитов), textarea не даёт доступ к DOM-позиции символов
+4. ❌ **Inline-toggle** — откат, мерцание/автопринятие
 
-### Flowchart — Round 7
+### Основные баги (прошлая сессия)
 
-6. ✅ **getScreenCTM координаты** — `_canvasCoords`, pan, wheel, zoom через `_svg.getScreenCTM().inverse()` вместо ручного `VCW/rect.width`
-7. ✅ **Фикс позиции нового блока** — `(VCW / 2 - _panX) / _zoom` вместо `VCW / 2 - _panX / _zoom`
-8. ✅ **Визуал: fill-opacity 0.18** — все формы (diamond, circle, stadium, rect), stroke 2px + color+90
-9. ✅ **Цветная полоса** — `rect` слева у rect/stadium/cylinder, `data-role="bar"`
-10. ✅ **Шрифт 13px** — `_fontSize` в localStorage, `_nodeSize` зависит от `_fontSize`
-11. ✅ **Долгий клик удаление вкладки** — 600ms hold на пилюлю, `_confirmDeleteCanvas`, защита от удаления последнего
-12. ✅ **Зум кнопки** — −/100%/+ вместо слайдера, `_zoomBy(delta)`, кнопка-центр = `_fitToContent()`
-13. ✅ **Force layout: movable-only** — `n._movable` флаг, размещённые узлы неподвижны
-14. ✅ **Auto layout: dynamic spacing** — `Math.max(240, node.w + 40)` вместо фиксированного 240
-15. ✅ **Тултип добавления блока** — SVG-иконки 5 форм, `_showAddNodeTooltip`, `SHAPE_ICONS`
-16. ✅ **patchSubtab в API** — добавлен в `Blocks` public API
+5. ✅ **Ollama temperature** — `options: { temperature, num_predict: maxTokens }` в `_buildRequestBody`
+6. ✅ **Profile race fix** — `_selectedProfileId` снапшот перед await в load-models/test-conn
+7. ✅ **Thesaurus meta** — "5 синонимов" → "10 синонимов"
+8. ✅ **Group children в preview** — `_renderBlockPreview()` хелпер, snippet/todo/table рендерятся в группах
+9. ✅ **Block undo sync** — `State.snapshot()` после `blockUndo()`/`blockRedo()`
+10. ✅ **Preview badge** — обновляется сразу при вводе через `buildOrderMap` + DOM update
+11. ✅ **Workspace gap** — `flex: 0 1 auto` + preview `flex: 1`
 
-### Flowchart — Round 8
+### Blocked subtab (заблокированные подвкладки)
 
-17. ✅ **_fitToContent min zoom** — `minZoomForText` через `getScreenCTM().a` + `_fontSize`, `MIN_READABLE_PX=10`
-18. ✅ **data-role вместо rx** — backing/shape/shape-body/shape-top/bar, `_updateNodePosition` по ролям
-19. ✅ **Force layout锚点** — `_forceLayout`: movable фильтр, только новые узлы двигаются
+12. ✅ **Долгое нажатие на галочку** — 500ms mousedown → `sub.blocked = !sub.blocked`, `completed` сбрасывается
+13. ✅ **Короткий клик** — `sub.completed = !sub.completed`, `blocked` сбрасывается
+14. ✅ **Красный цвет** — `.todo-complete-cb.blocked` (рамка + SVG), `.block-subtab.subtab-blocked`, `.subtab-arrow.arrow-blocked`
+15. ✅ **Стрелка навигации** — ◀/▶ подсвечивается красным в сторону заблокированного сабтаба
+16. ✅ **Обновление при переключении** — `updateSubtabBlockedState(b)` в patchSubtab и обработчиках кликов
 
-### Чеклист — LLM TODO
+### Preview — Structure menu scrollbar
 
-20. ✅ **Промпт thesaurus_checklist** — `BUILTIN_PROMPTS`, `PROMPT_META`, `PROMPT_GROUPS`
-21. ✅ **Пункт меню "+ чеклист"** — в `_thesaurusModeLabels` и `modes` array, 6-й режим
-22. ✅ **_thesaurusChecklistAtBlock** — LLM запрос, парсинг тире/нумерации, поиск/создание todo-блока
-23. ✅ **_showChecklistSubtabPicker** — popup выбора подвкладки когда все 5 заняты
-24. ✅ **Глобальный режим** — `localStorage('thesaurus_mode')`, обновление title всех кнопок при смене
-25. ✅ **Селектор textarea** — `data-id` + `textarea.block-textarea` (как в `_thesaurusAtBlock`)
-26. ✅ **Навигация на подвкладку** — double `requestAnimationFrame` после `State.update()`
+17. ❌ **Scrollbar в структуре** — баг: при `|` в тексте последнего блока появляется scrollbar. Откат всех попыток (clientHeight clamp, pipe replacement, CSS hiding). Требует живой отладки в браузере.
 
-### Todo-блоки — подвкладки
+### Flowchart — Round 9
 
-27. ✅ **_renderItems: elPool** — Map с DOM-элементами, переиспользование без `innerHTML = ''`
-28. ✅ **patchSubtab для todo** — `b._renderItems()` вместо `body.innerHTML = ''`
-29. ✅ **Активная подвкладка动态** — `renderItems` читает `b.subtabs[b.activeSubtab]` при каждом вызове
-30. ✅ **Скролл при галочке** — `State.updateLive()` вместо `State.update()`, без полного re-render
-31. ✅ **Скролл при "Отметка выполнения"** — `State.updateLive()` вместо `State.update()`
-32. ✅ **Subtab count** — `b.subtabs?.length` вместо `State.SUBTABS_COUNT` в clampOffset/buildTabs/patchSubtab
+18. ✅ **Убрана обводка текста** — `paint-order`, `stroke`, `stroke-width` удалены. Контраст и так достаточный на тёмном фоне
+19. ✅ **Шрифт Segoe UI** — `'Segoe UI', system-ui, sans-serif` для текста узлов вместо `var(--mono)`
+20. ✅ **Тёмные воздушные карточки:**
+    - Заливка: градиент → `rgba(255,255,255,0.045)` (единая для всех)
+    - Stroke: `color + '90'` / 2px → `color + '50'` / 1.25px
+    - Подложка: `rgba(10,11,16,0.92-0.95)` → `rgba(16,18,26,0.78)`
+    - Градиенты удалены из `_buildDefs` и `_ensureGradient`
+21. ✅ **Маркер-полоса удалена** — из `_drawNode` и `_updateNodePosition` (data-role="bar")
+22. ✅ **Proximity ratio** — фиксированные 150/120px → `ratio` от размера панели (0.22/0.18)
 
-### Preview — обновление при смене подвкладок
+### Flowchart — Inline style fix (CSS override)
 
-33. ✅ **Preview.render()** — вызывается при переключении подвкладок (text + todo), обновляет "симв · стр · KB"
+23. ✅ **style.fill вместо setAttribute('fill')** — все fill/stroke карточек в `_drawNode` через inline `style`, чтобы внешний CSS не перебивал. Решает два симптома: светлые карточки + просвечивающие ребра
 
-### Mindmap — Timeline текст
+### Flowchart — NodeSize fix
 
-34. ✅ **Весь текст в карточке** — `_wrapTextLines` с `maxLines=10` вместо 2
-35. ✅ **Динамическая высота** — `Math.max(minCardH, contentH)`, pre-calculate max height
-
-### AI-трансформация
-
-36. ✅ **Закрытие по ЛКМ вне** — `_onClickOutside` handler, `document.addEventListener('click', ..., true)`
-
-### Якоря — маркеры
-
-37. ✅ **Маркер скрывается за пределами** — `if (rawTop + lineHeight < 0 || rawTop > wrapH) return;`
-38. ✅ **Маркер обновляется при смене подвкладки** — `Anchors._renderMarkersAll()` в patchSubtab и todo-обработчиках
+24. ✅ **_nodeSize: potolok ширины растёт со шрифтом** — `220 * (fs / 13)` вместо фиксированных 220, max 340
+25. ✅ **_nodeSize: word-wrap в высоте** — `_wrapTextLines` вызывается внутри `_nodeSize`, высота считается по реальным строкам
+26. ✅ **_drawNode: lines из _nodeSize** — убран повторный `_wrapTextLines`
 
 ### Git коммиты (эта сессия)
 
 ```
-a7206f9 fix: bat файлы — убрана кириллица из комментариев
-9259421 fix: stop-server — taskkill по PID через порт 8080
-5f2a4e3 fix: start-server-debug — сообщение при старте
-3d45d17 fix: start-server — VBS скрывает окно BAT
-18d6724 fix: start-server — pythonw.exe (не работает с -m http.server)
-1b9cb3d удалён start-server.vbs (затем восстановлен)
-07ce439 fix: anchors — маркер скрывается за пределами wrap, _renderMarkersAll
-c33bd7a fix: AI-трансформация — закрытие тултипа по ЛКМ
-420cd35 fix: mindmap timeline — весь текст в карточке без обрезки
-101acee fix: Preview.render() при переключении подвкладок
-6ae83ee fix: todo subtab — тройное восстановление scrollTop
-ff482f3 fix: todo renderItems — elPool переиспользует DOM-элементы
-281a690 fix: todo subtab — сохранение scrollTop колонки
-55c1b31 fix: todo subtab switch — обход patchSubtab
-4cdd707 fix: patchSubtab для todo — перерендер body
-011fbbb fix: убран дубликат const maxSubtabs
-e9883f4 fix: чеклист — updateLive вместо update, фикс подвкладок
-445e8d7 fix: чеклист — глобальный режим, навигация на подвкладку, фикс скролла
-e8704b8 feat: '+ чеклист' в Тезаурус
-ea13e42 flowchart round 7
-44e707f flowchart round 8
-6a49128 fix: чеклист — правильный селектор textarea
-9afef71 fix: start-server.bat
+e139394 fix: nodeSize scales width with fontSize and accounts for word-wrap
+f499a40 fix: use inline style for fill/stroke in _drawNode to override external CSS
+f8efc7c fix: restore accidentally deleted variable declarations in flowchart.js
+9b0cc05 feat: flowchart round 9 — remove text stroke, dark airy cards, Segoe font, remove bar marker, ratio-based proximity
+6c7d654 Revert "fix: replace | in structure menu preview to prevent scrollbar glitch"
+121a6ee fix: replace | in structure menu preview to prevent scrollbar glitch
+dbdde4d fix: hide structure menu scrollbar, keep scroll-by-wheel
+6a6d2d8 fix: structure menu scrollbar flicker — clamp targetY to clientHeight
+b9bff0b fix: hide scrollbar in preview structure menu
+502686d feat: blocked subtab — long-press checkbox turns red, highlights arrow toward blocked
+e85acd6 fix: workspace gap — columns overflow visible, workspace scrolls
+e7ccb4b revert: workspace layout changes — broke preview panel
+41ee951 fix: workspace gap — preview fills remaining space via flex
+336b2d7 fix: remove min-height from workspace to eliminate dark gap
+298e83f fix: preview badge updates immediately on text input
+78899fc feat: spell-check batching for large texts
+6bf9f4c revert: spell-check popup/inline-toggle attempts — back to basic overlay
+95afee0 fix: remove _spellCursorHandler — was accepting on every textarea click
+628e1cf debug: add console.log to spell-check event handlers
+be58dfd fix: spell overlay not visible — move to body with position:fixed
+```
+
+### Preview — Code fence fix
+
+18. ✅ **`_fixUnclosedBackticks` — fence-aware** — now tracks ```/~~~ state and skips lines inside code fences,不再 adds backtick to ```` ```javascript ````
+19. ✅ **`_closeOpenFences` per-block** — each block closes its own fences, preventing fence leak into subsequent blocks. Per-block → per-block (reverted "final text" approach that broke "Разное")
+
+### Git коммиты (продолжение)
+
+```
+8138e77 fix: revert _closeOpenFences to per-block — prevents fence leaking into subsequent blocks
+2a72c76 fix: code fence detection — _fixUnclosedBackticks now skips lines inside fences
 ```
 
 ### Ключевые файлы
 
-- `flowchart.js` (~1050 строк) — Flowchart: getScreenCTM координаты, data-role, zoom кнопки, dynamic spacing, elPool-like
-- `flowchart.css` (~210 строк) — zoom-bar, checklist picker, glass
-- `mindmap.js` (~940 строк) — MindMap: timeline динамическая высота, весь текст
-- `llm-features.js` (~4500 строк) — _thesaurusChecklistAtBlock, _showChecklistSubtabPicker
-- `llm-core.js` (~1900 строк) — thesaurus_checklist промпт
-- `blocks.js` (~3270 строк) — todo elPool, patchSubtab для todo, Preview.render, Anchors._renderMarkersAll
-- `ai-transform.js` (~370 строк) — _onClickOutside handler
-- `anchors.js` (~570 строк) — rawTop visibility check
-- `start-server.vbs` — скрытый запуск через WScript.Shell
-- `start-server-debug.bat` — прямой запуск в консоли
-- `stop-server.bat` — taskkill по имени + PID
+- `flowchart.js` (~940 строк) — Round 9: style.fill, Segoe font, no bar, ratio proximity, nodeSize word-wrap
+- `flowchart.css` — glass panels, zoom-bar
+- `blocks.js` (~3555 строк) — blocked subtab (long-press), updateSubtabBlockedState
+- `styles.css` (~6100 строк) — blocked subtab CSS (.todo-complete-cb.blocked, .subtab-blocked, .arrow-blocked)
+- `spell-check.js` — Yandex Speller module ( batching, cache, overlay)
+- `ui.js` (~2073 строк) — structure menu, _fixUnclosedBackticks fence-aware, _closeOpenFences per-block
+- `state.js` — spellCheck: false in DEFAULT_LAYOUT
 
 ## Architecture Decisions
 
-- **Flowchart getScreenCTM** — `pt.matrixTransform(_svg.getScreenCTM().inverse())` вместо ручного `VCW/rect.width` из-за preserveAspectRatio леттербоксинга
-- **Flowchart data-role** — `data-role="backing|shape|shape-body|shape-top|bar"` вместо `rx`-гадания в `_updateNodePosition`
-- **Flowchart zoom buttons** — `-`/`100%`/`+` вместо range-слайдера, кнопка-центр = fitToContent
-- **Todo elPool** — Map<id, element> для переиспользования DOM без `innerHTML = ''`
-- **Todo subtab switch** — обход `patchSubtab`, прямое обновление items/active/checkbox
-- **Todo scroll fix** — `State.updateLive()` вместо `State.update()` для checkbox и completion
-- **Checklist global mode** — `localStorage('thesaurus_mode')`, чтение при клике, обновление title всех кнопок
-- **Anchors visibility** — `rawTop + lineHeight < 0 || rawTop > wrapH` для скрытия за пределами
-- **BAT encoding** — латиница в комментариях для совместимости кодировок Windows
-- **Mindmap timeline** — динамическая высота карточек, pre-calculate max, `_wrapTextLines(maxLines=10)`
-- **AiTransform close** — `_onClickOutside` через `document.addEventListener('click', ..., true)`
-- **Сленг**: пользователь называет dropdown "тултип" — имей в виду
+- **Inline style > setAttribute** — SVG fill/stroke через `style.fill`/`style.stroke` вместо `setAttribute`, потому что inline style имеет приоритет выше любого CSS-правила в каскаде (кроме `!important`)
+- **nodeSize с word-wrap** — `_nodeSize` сам вызывает `_wrapTextLines` и возвращает `lines`, чтобы `_drawNode` не делал повторный вызов
+- **Proximity ratio** — фиксированные px заменены на ratio от размера панели, чтобы зона появления масштабировалась
+- **Blocked subtab** — долгое нажатие (500ms) vs короткий клик для двух состояний (blocked vs completed)
+- **Spell-check batching** — 4000 chars per request к Yandex Speller, LRU cache
+- **Flowchart fill cascade** — атрибут `fill` в SVG имеет наименьший приоритет, внешний CSS перебивает; `style.fill` решает это
+- **Code fences per-block** — `_closeOpenFences` применяется per-block, не к финальному тексту. Иначе opening ``` из одного блока «утекает» в следующий и оборачивает его содержимое в код. `_fixUnclosedBackticks` теперь fence-aware — не ломает ```javascript добавлением 4-го бэктика
+
+## Ожидают решения
+
+- **Structure menu scrollbar** — баг с `|` в тексте последнего блока. Все автоматические попытки откачены. Нужна живая отладка в браузере (DevTools → inspect → overflow debugging)
+- **Spell-check interaction** — popup/inline откатены. Возможен подход через external overlay на body с absolute positioning и API Yandex Speller для получения позиций ошибок
 
 ## Ранее выполнено (архив)
 
