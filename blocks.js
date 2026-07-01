@@ -1028,6 +1028,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       State.snapshot();
       updateGroomBadge(b.id);
     }
+    window.Preview?.render?.();
   }
 
   /* ================================================================
@@ -1169,6 +1170,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
               row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === i));
               const chk = blockEl.querySelector('.todo-complete-cb');
               if (chk) chk.classList.toggle('checked', !!b.subtabs[i]?.completed);
+              window.Preview?.render?.();
               if (col && savedScroll != null) {
                 const restore = () => { col.scrollTop = savedScroll; };
                 restore();
@@ -1218,6 +1220,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+          window.Preview?.render?.();
           if (col && savedScroll != null) {
             const restore = () => { col.scrollTop = savedScroll; };
             restore();
@@ -1242,6 +1245,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+          window.Preview?.render?.();
           if (col && savedScroll != null) {
             const restore = () => { col.scrollTop = savedScroll; };
             restore();
