@@ -1531,10 +1531,10 @@ textarea.block-textarea:focus {
 }
 .structure-menu-toggle:hover { background: var(--surface2); color: var(--text0); }
 .structure-menu-body {
-  overflow-y: auto; flex: 1; min-height: 0; padding: 3px 0;
+  overflow-y: hidden; flex: 1; min-height: 0; padding: 3px 0;
 }
-.structure-menu-body::-webkit-scrollbar { width: 4px; }
-.structure-menu-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.structure-menu-body::-webkit-scrollbar { display: none; }
+.structure-menu-body { scrollbar-width: none; }
 .structure-item {
   display: flex; align-items: flex-start; gap: 5px;
   padding: 4px 8px; cursor: pointer;
@@ -5996,11 +5996,11 @@ body.help-open {
 
 /* ── Blocked (red) state ─────────────────────────────────────────────── */
 .todo-complete-cb.blocked { opacity: 1 !important; border-color: #e05555; }
-.todo-complete-cb.blocked svg { stroke: #e05555; opacity: 1; }
+.todo-complete-cb.blocked svg { stroke: #eb0000; opacity: 1; }
 .todo-complete-cb.blocked.near { opacity: 0.85 !important; }
 .todo-complete-cb.blocked.near:hover { opacity: 1 !important; }
 
-.block-subtab.subtab-blocked .block-subtab-label { color: #e05555; }
+.block-subtab.subtab-blocked .block-subtab-label { color: #eb0000; }
 
 .subtab-arrow.arrow-blocked { color: #e05555 !important; }
 .subtab-arrow.arrow-blocked:hover:not(:disabled) { background: var(--surface2); }
