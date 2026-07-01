@@ -5834,7 +5834,7 @@ body.help-open {
 
 /* ── TODO Checklist ─────────────────────────────────────────────────────── */
 .block-type-todo .block-subtabs-nav { max-width: 140px; }
-.block-type-todo .todo-list { padding: 4px 0; }
+.block-type-todo .todo-list { padding: 4px 0; contain: layout style; }
 
 .todo-item {
   display: flex; align-items: center; gap: 6px;

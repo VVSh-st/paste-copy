@@ -1169,7 +1169,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
               row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === i));
               const chk = blockEl.querySelector('.todo-complete-cb');
               if (chk) chk.classList.toggle('checked', !!b.subtabs[i]?.completed);
-              if (col && savedScroll != null) requestAnimationFrame(() => { col.scrollTop = savedScroll; });
+              if (col && savedScroll != null) setTimeout(() => { col.scrollTop = savedScroll; }, 0);
             } else {
               const dir = i > b.activeSubtab ? 1 : -1;
               patchSubtab(b, i);
@@ -2582,31 +2582,44 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.style.display = 'flex';
     body.style.flexDirection = 'column';
 
-    // Subtab nav is in createHeader, skip here
-
-    // Todo list
     const list = document.createElement('div');
     list.className = 'todo-list';
+    const empty = document.createElement('div');
+    empty.className = 'todo-empty';
+    empty.textContent = 'Нет пунктов. Нажмите «+ Добавить пункт»';
+
+    // Pool: element per item id, never destroyed
+    const elPool = new Map();
 
     function renderItems() {
-      list.innerHTML = '';
       const cur = b.subtabs[b.activeSubtab];
       const items = cur?.items || [];
-      if (!items.length) {
-        const empty = document.createElement('div');
-        empty.className = 'todo-empty';
-        empty.textContent = 'Нет пунктов. Нажмите «+ Добавить пункт»';
-        list.appendChild(empty);
-      } else {
-        items.forEach((item, idx) => {
-          list.appendChild(createTodoItem(b, cur, item, idx, items));
-        });
+      const ids = new Set(items.map(it => it.id));
+      // Remove stale elements (deleted items)
+      for (const [id, el] of elPool) {
+        if (!ids.has(id)) { el.remove(); elPool.delete(id); }
       }
+      // Move/create elements in order
+      items.forEach((item, idx) => {
+        let el = elPool.get(item.id);
+        if (!el) {
+          el = createTodoItem(b, cur, item, idx, items);
+          elPool.set(item.id, el);
+        } else {
+          // Update existing element in place
+          el.dataset.idx = idx;
+          const cb = el.querySelector('.todo-checkbox');
+          if (cb) cb.checked = item.done;
+          const txt = el.querySelector('.todo-text');
+          if (txt) { txt.value = item.text || ''; txt.classList.toggle('done', item.done); }
+        }
+        list.appendChild(el);
+      });
+      if (!items.length) list.appendChild(empty); else empty.remove();
     }
 
     renderItems();
 
-    // Add button
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'todo-add-btn';
@@ -2614,8 +2627,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     addBtn.onclick = () => {
       const cur = b.subtabs[b.activeSubtab];
       if (!cur) return;
-      const newItem = { id: State.uid(), text: '', done: false };
-      cur.items.push(newItem);
+      cur.items.push({ id: State.uid(), text: '', done: false });
       State.updateLive(() => {});
       renderItems();
       const inputs = list.querySelectorAll('.todo-text');
@@ -2626,7 +2638,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(list);
     body.appendChild(addBtn);
 
-    // Store re-render for external use
     b._renderItems = renderItems;
   }
 
