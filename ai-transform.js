@@ -93,6 +93,14 @@ window.AiTransform = (() => {
     popup.style.left = x + 'px';
     popup.style.top = (y - 44) + 'px';
 
+    if (_onClickOutside) document.removeEventListener('click', _onClickOutside, true);
+    _onClickOutside = e => {
+      if (!popup.contains(e.target) && e.target !== _ta) {
+        hidePopup(true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', _onClickOutside, true), 0);
+
     requestAnimationFrame(() => {
       const rect = popup.getBoundingClientRect();
       if (rect.top < 10) popup.style.top = (y + 10) + 'px';
