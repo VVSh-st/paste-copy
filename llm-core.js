@@ -459,6 +459,9 @@ window.LLMCore = (() => {
       if (Number.isFinite(Number(temperature))) body.temperature = Math.max(0, Math.min(1, Number(temperature)));
       return body;
     }
+    if (prov.parseModels === 'ollama') {
+      return { model, messages, stream, options: { temperature, num_predict: maxTokens } };
+    }
     return { model, messages, temperature, max_tokens: maxTokens, stream };
   }
 
@@ -1697,19 +1700,21 @@ tags.push({
       });
       document.getElementById('llm-load-models')?.addEventListener('click', async () => {
         if (!_selectedProfileId) return;
+        const profileId = _selectedProfileId;
         const btn = document.getElementById('llm-load-models');
         const st = document.getElementById('llm-conn-status');
         if (btn) btn.disabled = true;
         if (st) st.textContent = '⏳ Загружаю...';
-        _modelsCache.delete(_selectedProfileId);
-        _modelsMeta.delete(_selectedProfileId);
+        _modelsCache.delete(profileId);
+        _modelsMeta.delete(profileId);
         _saveCurrentProfile();
         try {
-          const models = await loadModels(_selectedProfileId);
-          const profile = (_State.getLayout()?.llm?.profiles ?? []).find(p => p.id === _selectedProfileId);
+          const models = await loadModels(profileId);
+          if (profileId !== _selectedProfileId) return;
+          const profile = (_State.getLayout()?.llm?.profiles ?? []).find(p => p.id === profileId);
           if (profile) _populateModelSelect(profile);
           if (st) {
-            const meta = _modelsMeta.get(_selectedProfileId) ?? {};
+            const meta = _modelsMeta.get(profileId) ?? {};
             const cherryNote = profile?.provider === 'cherry'
               ? ' · /v1/models показывает только модели, экспонированные Cherry API'
               : profile?.provider === 'cherryAnthropic'
@@ -1728,11 +1733,13 @@ tags.push({
       document.getElementById('llm-test-all-models')?.addEventListener('click', _openModelStatusModal);
       document.getElementById('llm-test-conn')?.addEventListener('click', async () => {
         if (!_selectedProfileId) return;
+        const profileId = _selectedProfileId;
         const st = document.getElementById('llm-conn-status');
         const status = document.getElementById('llm-prf-status');
         _saveCurrentProfile();
         if (st) st.textContent = '⏳ Проверяю...';
-        const res = await testConnection(_selectedProfileId);
+        const res = await testConnection(profileId);
+        if (profileId !== _selectedProfileId) return;
         if (st) st.textContent = res.ok ? `✓ ${res.message || 'OK'} · ${res.latencyMs} мс` : `✕ ${res.error}`;
         if (status) {
           status.className = 'llm-profile-status ' + (res.ok ? (res.warn ? 'warn' : 'ok') : 'error');
@@ -1870,7 +1877,7 @@ const BUILTIN_PROMPTS = {
     autotitle: { title: 'Авто-заголовок', group: 'Служебные', short: 'Генерирует 10 вариантов, выбирает 4 лучших.', usedIn: 'Кнопка авто-заголовка блока.', output: '10 строк, фильтр до 4 (первое слово 4–6 символов).', vars: [], requiresOnly: true },
     subtab_autotitle: { title: 'Авто-заголовок вкладки', group: 'Служебные', short: 'Генерирует 10 вариантов, выбирает 4 лучших.', usedIn: 'Кнопка авто-заголовка вкладки <12345>.', output: '10 строк, фильтр до 4 (первое слово 4–6 символов).', vars: [], requiresOnly: true },
     summary: { title: 'Резюме вкладки', group: 'Служебные', short: 'Объясняет назначение prompt-а.', usedIn: 'LLM-меню → «Резюме вкладки».', output: '3–5 предложений.', vars: [], requiresOnly: true },
-    thesaurus: { title: 'Тезаурус', group: 'Служебные', short: 'Предлагает синонимы выделенного слова.', usedIn: 'Функция подбора слов.', output: 'Нумерованный список из 5 синонимов.', vars: ['word'], requiresOnly: true },
+    thesaurus: { title: 'Тезаурус', group: 'Служебные', short: 'Предлагает синонимы выделенного слова.', usedIn: 'Функция подбора слов.', output: 'Нумерованный список из 10 синонимов.', vars: ['word'], requiresOnly: true },
     thesaurus_antonyms: { title: 'Тезаурус: антонимы', group: 'Служебные', short: 'Предлагает антонимы выделенного слова.', usedIn: 'Меню тезауруса → «Антонимы».', output: 'Нумерованный список из 10 антонимов.', vars: ['word'], requiresOnly: true },
     thesaurus_rephrase: { title: 'Тезаурус: перефразирование', group: 'Служебные', short: 'Иной способ сказать то же самое.', usedIn: 'Меню тезауруса → «Перефразирование».', output: 'Только перефразированный текст.', vars: [], requiresOnly: true },
     thesaurus_explain: { title: 'Тезаурус: объяснение', group: 'Служебные', short: 'Объясняет как для пятилетки.', usedIn: 'Меню тезауруса → «Объяснение».', output: 'Простое объяснение в мини-чат.', vars: [], requiresOnly: true },
