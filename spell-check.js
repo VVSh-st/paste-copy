@@ -10,6 +10,7 @@ window.SpellCheck = (() => {
   const CACHE_LIMIT = 100;
   const LANG = 'ru,en';
   const OPTIONS = 6; // IGNORE_DIGITS (2) + IGNORE_URLS (4)
+  const MAX_TEXT_LEN = 8000; // лимит Yandex Speller (URL ~10KB, безопасный запас)
 
   let _unreachable = false;
   let _cache = new Map();
@@ -88,13 +89,16 @@ window.SpellCheck = (() => {
     const trimmed = String(text || '').trim();
     if (!trimmed) return { ok: true, words: [], source: 'cache' };
 
+    // Обрезаем до лимита API (не ставим _unreachable — это не ошибка сервиса)
+    const toCheck = trimmed.length > MAX_TEXT_LEN ? trimmed.slice(0, MAX_TEXT_LEN) : trimmed;
+
     // Кэш
-    const cacheKey = _hash(trimmed);
+    const cacheKey = _hash(toCheck);
     const cached = _cacheGet(cacheKey);
     if (cached) return { ...cached, source: 'cache' };
 
     // Маскируем плейсхолдеры
-    const { masked, ranges } = _maskPlaceholders(trimmed);
+    const { masked, ranges } = _maskPlaceholders(toCheck);
 
     try {
       const controller = new AbortController();
@@ -104,6 +108,10 @@ window.SpellCheck = (() => {
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
 
+      // 414 = текст слишком длинный для URL — это не ошибка сервиса, просто обрезаем
+      if (res.status === 414) {
+        return { ok: true, words: [], source: 'cache' };
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();

@@ -677,11 +677,11 @@ textarea.block-textarea:focus {
   text-decoration-skip-ink: none;
   pointer-events: auto;
   cursor: pointer;
-  background: rgba(231, 76, 60, 0.08);
+  background: rgba(231, 76, 60, 0.15);
   border-radius: 2px;
 }
 .spell-check-overlay .spell-word:hover {
-  background: rgba(231, 76, 60, 0.18);
+  background: rgba(231, 76, 60, 0.25);
 }
 .spell-popup {
   position: fixed;
