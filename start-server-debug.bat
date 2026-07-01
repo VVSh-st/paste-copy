@@ -9,10 +9,12 @@ if %errorlevel%==0 (
 
 set "PYEXE=%~dp0python\python.exe"
 if exist "%PYEXE%" (
+    echo Starting server on port 8080...
     "%PYEXE%" -m http.server 8080
 ) else (
     where python >nul 2>&1
     if %errorlevel%==0 (
+        echo Starting server on port 8080...
         python -m http.server 8080
     ) else (
         echo Python not found.
