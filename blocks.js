@@ -1162,14 +1162,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           _clickTimer = setTimeout(() => {
             if (b.type === 'todo') {
               if (i === b.activeSubtab) return;
+              const col = blockEl.closest('.column');
+              const savedScroll = col?.scrollTop;
               b.activeSubtab = i;
               if (b._renderItems) b._renderItems();
-              row.querySelectorAll('.block-subtab').forEach((s, si) => {
-                const realIdx = Number(s.dataset.subtabIdx);
-                s.classList.toggle('active', realIdx === i);
-              });
+              row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === i));
               const chk = blockEl.querySelector('.todo-complete-cb');
               if (chk) chk.classList.toggle('checked', !!b.subtabs[i]?.completed);
+              if (col && savedScroll != null) requestAnimationFrame(() => { col.scrollTop = savedScroll; });
             } else {
               const dir = i > b.activeSubtab ? 1 : -1;
               patchSubtab(b, i);
@@ -1206,11 +1206,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       e.stopPropagation();
       if (b.activeSubtab > 0) {
         if (b.type === 'todo') {
+          const col = blockEl.closest('.column');
+          const savedScroll = col?.scrollTop;
           b.activeSubtab--;
           if (b._renderItems) b._renderItems();
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+          if (col && savedScroll != null) requestAnimationFrame(() => { col.scrollTop = savedScroll; });
         } else {
           patchSubtab(b, b.activeSubtab - 1);
           if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: -1 });
@@ -1222,11 +1225,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
       if (b.activeSubtab < maxSubtabs - 1) {
         if (b.type === 'todo') {
+          const col = blockEl.closest('.column');
+          const savedScroll = col?.scrollTop;
           b.activeSubtab++;
           if (b._renderItems) b._renderItems();
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+          if (col && savedScroll != null) requestAnimationFrame(() => { col.scrollTop = savedScroll; });
         } else {
           patchSubtab(b, b.activeSubtab + 1);
           if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: 1 });
