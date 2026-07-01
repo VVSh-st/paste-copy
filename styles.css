@@ -214,8 +214,8 @@ body {
 /* ===== LAYOUT ===== */
 #main-area { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 #workspace {
-  flex: 0 1 auto; display: flex; gap: 0; padding: 10px;
-  overflow: hidden; align-items: stretch;
+  flex: 1; display: flex; gap: 0; padding: 10px;
+  overflow: auto; align-items: stretch; min-height: 120px;
 }
 .column {
   display: flex; flex-direction: column; gap: 8px;
@@ -1214,7 +1214,6 @@ textarea.block-textarea:focus {
 #preview-panel {
   background: var(--bg1); border-top: 1px solid var(--border);
   display: flex; flex-direction: column; min-height: 36px; overflow: hidden;
-  flex: 1; min-height: 0;
   transition: height 0.28s cubic-bezier(.4,0,.2,1);
 }
 #preview-panel.collapsed { height: 42px !important; }

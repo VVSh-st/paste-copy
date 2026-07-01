@@ -743,8 +743,7 @@
     document.addEventListener('mousemove', e => {
       if (!dragging) return;
       const h = Math.max(60, Math.min(window.innerHeight * 0.7, startH + (startY - e.clientY)));
-      panel.style.flexBasis = h + 'px';
-      panel.style.flexGrow = '0';
+      panel.style.height = h + 'px';
       State.setLayout({ previewHeight: h });
     });
 
