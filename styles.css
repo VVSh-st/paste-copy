@@ -5994,6 +5994,17 @@ body.help-open {
 
 .block-subtab.subtab-completed .block-subtab-label { color: #d4a520; }
 
+/* ── Blocked (red) state ─────────────────────────────────────────────── */
+.todo-complete-cb.blocked { opacity: 1 !important; border-color: #e05555; }
+.todo-complete-cb.blocked svg { stroke: #e05555; opacity: 1; }
+.todo-complete-cb.blocked.near { opacity: 0.85 !important; }
+.todo-complete-cb.blocked.near:hover { opacity: 1 !important; }
+
+.block-subtab.subtab-blocked .block-subtab-label { color: #e05555; }
+
+.subtab-arrow.arrow-blocked { color: #e05555 !important; }
+.subtab-arrow.arrow-blocked:hover:not(:disabled) { background: var(--surface2); }
+
 /* ── Checklist picker ────────────────────────────────────────────────── */
 .checklist-picker-overlay {
   position: fixed; inset: 0; z-index: 10000;

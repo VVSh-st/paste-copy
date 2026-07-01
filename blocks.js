@@ -437,18 +437,53 @@ const Blocks = (() => {
           chk.type = 'button';
           chk.className = 'todo-complete-cb';
           chk.innerHTML = '<svg viewBox="0 0 14 14"><polyline points="2.5 7.5 5.5 10.5 11.5 3.5"/></svg>';
-          chk.title = 'Отметка выполнения';
+          chk.title = 'Клик — выполнено, долгое нажатие — блокировка';
           const sub = b.subtabs[b.activeSubtab];
           if (sub?.completed) chk.classList.add('checked');
-          chk.onclick = e => {
-            e.stopPropagation();
-            const cur = b.subtabs[b.activeSubtab];
-            if (!cur) return;
-            cur.completed = !cur.completed;
-            chk.classList.toggle('checked', cur.completed);
-            updateSubtabCompletedColors(b);
-            State.updateLive(() => {});
-          };
+          if (sub?.blocked) chk.classList.add('blocked');
+
+          /* --- long-press: blocked; short click: completed --- */
+          let _cbLongTimer = null;
+          let _cbLongFired = false;
+
+          chk.addEventListener('mousedown', e => {
+            if (e.button !== 0) return;
+            _cbLongFired = false;
+            _cbLongTimer = setTimeout(() => {
+              _cbLongFired = true;
+              const cur = b.subtabs[b.activeSubtab];
+              if (!cur) return;
+              cur.blocked = !cur.blocked;
+              if (cur.blocked) cur.completed = false;
+              chk.classList.toggle('blocked', !!cur.blocked);
+              chk.classList.toggle('checked', !!cur.completed);
+              updateSubtabCompletedColors(b);
+              updateSubtabBlockedState(b);
+              State.updateLive(() => {});
+            }, 500);
+          });
+
+          chk.addEventListener('mouseup', () => {
+            clearTimeout(_cbLongTimer);
+            if (!_cbLongFired) {
+              const cur = b.subtabs[b.activeSubtab];
+              if (!cur) return;
+              cur.completed = !cur.completed;
+              if (cur.completed) cur.blocked = false;
+              chk.classList.toggle('checked', cur.completed);
+              chk.classList.toggle('blocked', !!cur.blocked);
+              updateSubtabCompletedColors(b);
+              updateSubtabBlockedState(b);
+              State.updateLive(() => {});
+            }
+            _cbLongFired = false;
+          });
+
+          chk.addEventListener('mouseleave', () => {
+            clearTimeout(_cbLongTimer);
+            _cbLongFired = false;
+          });
+
           el.appendChild(chk);
 
           el.addEventListener('mousemove', e => {
@@ -986,11 +1021,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (sub) {
         btn.classList.toggle('filled', !!(sub.value || '').trim());
         btn.classList.toggle('subtab-completed', !!sub.completed);
+        btn.classList.toggle('subtab-blocked', !!sub.blocked);
       }
     });
 
     const chk = blockEl.querySelector('.todo-complete-cb');
-    if (chk) chk.classList.toggle('checked', !!b.subtabs[newIdx]?.completed);
+    if (chk) {
+      chk.classList.toggle('checked', !!b.subtabs[newIdx]?.completed);
+      chk.classList.toggle('blocked', !!b.subtabs[newIdx]?.blocked);
+    }
 
     const arrows = blockEl.querySelectorAll('.subtab-arrow');
     const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
@@ -1011,7 +1050,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           const sub = b.subtabs[i];
           const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
           const btn = document.createElement('span');
-          btn.className = 'block-subtab' + (i === newIdx ? ' active' : '') + (sub.completed ? ' subtab-completed' : '');
+          btn.className = 'block-subtab' + (i === newIdx ? ' active' : '') + (sub.completed ? ' subtab-completed' : '') + (sub.blocked ? ' subtab-blocked' : '');
           btn.dataset.subtabIdx = i;
           if ((sub.value || '').trim()) btn.classList.add('filled');
           const labelSpan = document.createElement('span');
@@ -1028,6 +1067,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       State.snapshot();
       updateGroomBadge(b.id);
     }
+    updateSubtabBlockedState(b);
     window.Preview?.render?.();
     if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
   }
@@ -1074,7 +1114,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const sub = b.subtabs[i];
         const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
         const btn = document.createElement('span');
-      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '') + (sub.completed ? ' subtab-completed' : '');
+      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '') + (sub.completed ? ' subtab-completed' : '') + (sub.blocked ? ' subtab-blocked' : '');
         btn.dataset.subtabIdx = i;
         if ((sub.value || '').trim()) btn.classList.add('filled');
 
@@ -1170,7 +1210,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
               if (b._renderItems) b._renderItems();
               row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === i));
               const chk = blockEl.querySelector('.todo-complete-cb');
-              if (chk) chk.classList.toggle('checked', !!b.subtabs[i]?.completed);
+              if (chk) {
+                chk.classList.toggle('checked', !!b.subtabs[i]?.completed);
+                chk.classList.toggle('blocked', !!b.subtabs[i]?.blocked);
+              }
+              updateSubtabBlockedState(b);
               window.Preview?.render?.();
               if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
               if (col && savedScroll != null) {
@@ -3052,7 +3096,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     b.subtabs.forEach((sub, i) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '') + (sub.completed ? ' subtab-completed' : '');
+      btn.className = 'block-subtab' + (i === b.activeSubtab ? ' active' : '') + (sub.completed ? ' subtab-completed' : '') + (sub.blocked ? ' subtab-blocked' : '');
       const done = (sub.items || []).filter(x => x.done).length;
       const total = (sub.items || []).length;
       const lbl = document.createElement('span');
@@ -3067,6 +3111,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const body = blockEl?.querySelector('.block-body');
         if (body) renderTodoBody(b, body);
         updateSubtabCompletedColors(b);
+        updateSubtabBlockedState(b);
       };
       btn.appendChild(lbl);
       row.appendChild(btn);
@@ -3200,6 +3245,30 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     blockEl.querySelectorAll('.block-subtab').forEach((btn, i) => {
       btn.classList.toggle('subtab-completed', !!b.subtabs[i]?.completed);
     });
+  }
+
+  function updateSubtabBlockedState(b) {
+    const blockEl = document.querySelector(`.block[data-id="${b.id}"]`);
+    if (!blockEl) return;
+
+    /* find first blocked subtab */
+    const blockedIdx = b.subtabs.findIndex(s => s.blocked);
+
+    /* mark blocked number */
+    blockEl.querySelectorAll('.block-subtab').forEach(btn => {
+      const idx = parseInt(btn.dataset.subtabIdx, 10);
+      btn.classList.toggle('subtab-blocked', idx === blockedIdx);
+    });
+
+    /* mark arrow toward blocked */
+    const arrows = blockEl.querySelectorAll('.subtab-arrow');
+    if (arrows.length >= 2) {
+      const cur = b.activeSubtab;
+      let dir = 0;
+      if (blockedIdx >= 0 && blockedIdx !== cur) dir = blockedIdx > cur ? 1 : -1;
+      arrows[0].classList.toggle('arrow-blocked', dir === -1);
+      arrows[1].classList.toggle('arrow-blocked', dir === 1);
+    }
   }
 
   /* ================================================================
