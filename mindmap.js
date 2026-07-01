@@ -846,17 +846,25 @@ const MindMap = (() => {
       _viewport.appendChild(_emptyMsg('Нет последовательности шагов в тексте'));
       return;
     }
-    const cardW = 240, cardH = 120, gap = 70;
+    const cardW = 240, minCardH = 120, gap = 70;
+    // Pre-calculate max card height
+    let maxCardH = minCardH;
+    steps.forEach(step => {
+      const titleLines = _wrapTextLines(step.title || '', cardW - 28, 10);
+      const descLines = _wrapTextLines(step.desc || '', cardW - 28, 10);
+      const contentH = 36 + titleLines.length * 15 + 4 + descLines.length * 15 + 14;
+      if (contentH > maxCardH) maxCardH = contentH;
+    });
     const totalW = steps.length * (cardW + gap) - gap;
     const startX = (W - totalW) / 2 > 40 ? (W - totalW) / 2 : 40;
-    const y = H / 2 - cardH / 2;
+    const y = H / 2 - maxCardH / 2;
 
     steps.forEach((step, i) => {
       const x = startX + i * (cardW + gap);
       if (i > 0) {
-        _drawFlowArrow(startX + (i - 1) * (cardW + gap) + cardW, y + cardH / 2, x, y + cardH / 2);
+        _drawFlowArrow(startX + (i - 1) * (cardW + gap) + cardW, y + maxCardH / 2, x, y + maxCardH / 2);
       }
-      _drawStepCard(step, x, y, cardW, cardH, i);
+      _drawStepCard(step, x, y, cardW, minCardH, i);
     });
   }
 
@@ -868,9 +876,14 @@ const MindMap = (() => {
     const depthG = document.createElementNS(SVG_NS, 'g');
     depthG.dataset.depth = '0.25';
 
+    const titleLines = _wrapTextLines(step.title || '', w - 28, 10);
+    const descLines = _wrapTextLines(step.desc || '', w - 28, 10);
+    const contentH = 36 + titleLines.length * 15 + 4 + descLines.length * 15 + 14;
+    const cardH = Math.max(h, contentH);
+
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('x', x); rect.setAttribute('y', y);
-    rect.setAttribute('width', w); rect.setAttribute('height', h);
+    rect.setAttribute('width', w); rect.setAttribute('height', cardH);
     rect.setAttribute('rx', 10);
     rect.setAttribute('fill', 'rgba(79,142,247,0.06)');
     rect.setAttribute('stroke', 'rgba(79,142,247,0.3)');
@@ -885,7 +898,6 @@ const MindMap = (() => {
     order.textContent = `ШАГ ${step.order || i + 1}`;
     depthG.appendChild(order);
 
-    const titleLines = _wrapTextLines(step.title || '', w - 28, 2);
     titleLines.forEach((ln, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
       t.setAttribute('x', x + 14); t.setAttribute('y', y + 36 + li * 15);
@@ -896,7 +908,7 @@ const MindMap = (() => {
     });
 
     const descY = y + 36 + titleLines.length * 15 + 4;
-    _wrapTextLines(step.desc || '', w - 28, 2).forEach((line, li) => {
+    descLines.forEach((line, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
       t.setAttribute('x', x + 14); t.setAttribute('y', descY + li * 15);
       t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '11');
