@@ -1169,7 +1169,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
               row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === i));
               const chk = blockEl.querySelector('.todo-complete-cb');
               if (chk) chk.classList.toggle('checked', !!b.subtabs[i]?.completed);
-              if (col && savedScroll != null) setTimeout(() => { col.scrollTop = savedScroll; }, 0);
+              if (col && savedScroll != null) {
+                const restore = () => { col.scrollTop = savedScroll; };
+                restore();
+                requestAnimationFrame(restore);
+                requestAnimationFrame(() => requestAnimationFrame(restore));
+              }
             } else {
               const dir = i > b.activeSubtab ? 1 : -1;
               patchSubtab(b, i);
@@ -1213,7 +1218,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
-          if (col && savedScroll != null) requestAnimationFrame(() => { col.scrollTop = savedScroll; });
+          if (col && savedScroll != null) {
+            const restore = () => { col.scrollTop = savedScroll; };
+            restore();
+            requestAnimationFrame(restore);
+            requestAnimationFrame(() => requestAnimationFrame(restore));
+          }
         } else {
           patchSubtab(b, b.activeSubtab - 1);
           if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: -1 });
@@ -1232,7 +1242,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
-          if (col && savedScroll != null) requestAnimationFrame(() => { col.scrollTop = savedScroll; });
+          if (col && savedScroll != null) {
+            const restore = () => { col.scrollTop = savedScroll; };
+            restore();
+            requestAnimationFrame(restore);
+            requestAnimationFrame(() => requestAnimationFrame(restore));
+          }
         } else {
           patchSubtab(b, b.activeSubtab + 1);
           if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: 1 });
