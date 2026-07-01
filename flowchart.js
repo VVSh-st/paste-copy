@@ -2,7 +2,31 @@ const Flowchart = (() => {
   const VCW = 2000, VCH = 1400;
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const PALETTE = ['#4f8ef7', '#5cb87a', '#f0a050', '#e05c6a', '#a78bfa', '#f472b6', '#22d3ee', '#fbbf24'];
-  let _svg, _viewport, _overlay, _panel;
+
+  let _overlay = null, _panel = null, _svg = null, _viewport = null;
+  let _mode = 'flow', _data = null, _loading = false;
+  let _zoom = 1, _panX = 0, _panY = 0;
+  let _dragging = false, _lastX = 0, _lastY = 0, _movedEnough = false;
+  let _velX = 0, _velY = 0, _inertiaRaf = null;
+  let _rafPending = false, _parallaxNX = 0, _parallaxNY = 0;
+  let _dragNode = null, _dragOffX = 0, _dragOffY = 0;
+  let _nodes = [], _edges = [], _edgesG = null;
+  let _connectMode = false, _connectFrom = null;
+  let _currentTooltip = null;
+  let _canvases = [], _activeCanvasId = null;
+  let _saveTimer = null;
+  let _resizing = false, _startW, _startH, _startMX, _startMY;
+  let _skipRestore = false;
+  let _fontSize = parseFloat(localStorage.getItem('fc_fontsize')) || 13;
+
+  function _setFontSize(v) {
+    _fontSize = Math.min(18, Math.max(9, v));
+    localStorage.setItem('fc_fontsize', _fontSize);
+    _render();
+  }
+
+  function _resetTransform() { _zoom = 1; _panX = 0; _panY = 0; if (_viewport) _viewport.setAttribute('transform', 'translate(0,0) scale(1)'); }
+  function _applyTransform() { if (_viewport) _viewport.setAttribute('transform', `translate(${_panX},${_panY}) scale(${_zoom})`); }
   function _syncZoomLabel() { const b = _overlay?.querySelector('.fc-zoom-reset'); if (b) b.textContent = Math.round(_zoom * 100) + '%'; }
 
   const ZOOM_STEP = 0.1;
