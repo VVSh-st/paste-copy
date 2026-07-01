@@ -58,17 +58,20 @@ const Flowchart = (() => {
 
   function _nodeSize(node) {
     const label = node.label || node.id || '';
-    const lines = label.split('\n');
     const fs = _fontSize || 13;
-    const maxLineW = Math.max(...lines.map(l => l.length), 4) * (fs * 0.62) + 32;
-    const w = Math.max(140, Math.min(220, maxLineW));
+    const baseCap = 220 * (fs / 13);
+    const maxW = Math.max(140, Math.min(340, baseCap));
+    const charW = fs * 0.62;
+    const singleLineW = label.length * charW + 32;
+    const w = Math.max(140, Math.min(maxW, singleLineW));
+    const lines = _wrapTextLines(label, w - 20, 3);
     const h = (fs * 2.9) + Math.max(0, (lines.length - 1) * (fs * 1.25));
     switch (node.shape) {
-      case 'diamond': return { w: Math.max(w, 100), h: Math.max(h, 66) };
-      case 'circle': return { w: 50, h: 50 };
-      case 'cylinder': return { w, h: h + 14 };
-      case 'stadium': return { w: Math.max(w, 120), h };
-      default: return { w, h };
+      case 'diamond': return { w: Math.max(w, 100), h: Math.max(h, 66), lines };
+      case 'circle': return { w: 50, h: 50, lines: _wrapTextLines(label, 40, 2) };
+      case 'cylinder': return { w, h: h + 14, lines };
+      case 'stadium': return { w: Math.max(w, 120), h, lines };
+      default: return { w, h, lines };
     }
   }
 
@@ -433,7 +436,7 @@ const Flowchart = (() => {
 
   function _drawNode(node, i) {
     const color = PALETTE[i % PALETTE.length];
-    const { w, h } = _nodeSize(node);
+    const { w, h, lines } = _nodeSize(node);
     const x = node.x - w / 2, y = node.y - h / 2;
 
     const enterG = document.createElementNS(SVG_NS, 'g');
@@ -533,7 +536,6 @@ const Flowchart = (() => {
     }
     depthG.appendChild(shapeEl);
 
-    const lines = _wrapTextLines(node.label || node.id, w - 20, 3);
     lines.forEach((ln, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
       t.setAttribute('x', node.x); t.setAttribute('y', node.y + 4 + (li - (lines.length - 1) / 2) * 14);
