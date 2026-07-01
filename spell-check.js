@@ -3,6 +3,7 @@
 
 /* ============================================================
    SpellCheck — орфографическая проверка через Яндекс.Спеллер
+   Умная отправка порциями для больших текстов.
    ============================================================ */
 window.SpellCheck = (() => {
   const API_URL = 'https://speller.yandex.net/services/spellservice.json/checkText';
@@ -10,7 +11,8 @@ window.SpellCheck = (() => {
   const CACHE_LIMIT = 100;
   const LANG = 'ru,en';
   const OPTIONS = 6; // IGNORE_DIGITS (2) + IGNORE_URLS (4)
-  const MAX_TEXT_LEN = 8000; // лимит Yandex Speller (URL ~10KB, безопасный запас)
+  const CHUNK_SIZE = 4000; // безопасный размер чанка для URL-кодирования
+  const BETWEEN_CHUNKS_DELAY = 150; // пауза между запросами (rate limit)
 
   let _unreachable = false;
   let _cache = new Map();
@@ -65,7 +67,6 @@ window.SpellCheck = (() => {
   function _cacheGet(key) {
     if (_cache.has(key)) {
       const val = _cache.get(key);
-      // Move to end (most recently used)
       _cache.delete(key);
       _cache.set(key, val);
       return val;
@@ -82,6 +83,46 @@ window.SpellCheck = (() => {
     _cache.set(key, val);
   }
 
+  function _sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+  }
+
+  // Разбить текст на чанки по строкам (не ломая слова)
+  function _splitIntoChunks(text) {
+    if (text.length <= CHUNK_SIZE) return [text];
+    const chunks = [];
+    let remaining = text;
+    while (remaining.length > 0) {
+      if (remaining.length <= CHUNK_SIZE) {
+        chunks.push(remaining);
+        break;
+      }
+      // Ищем последний перевод строки в пределах CHUNK_SIZE
+      let splitAt = remaining.lastIndexOf('\n', CHUNK_SIZE);
+      if (splitAt <= 0) splitAt = CHUNK_SIZE; // нет перевода — режем жёстко
+      chunks.push(remaining.slice(0, splitAt));
+      remaining = remaining.slice(splitAt);
+    }
+    return chunks;
+  }
+
+  // Запрос одного чанка к API
+  async function _fetchChunk(masked, signal) {
+    const url = `${API_URL}?text=${encodeURIComponent(masked)}&lang=${LANG}&options=${OPTIONS}&format=plain`;
+    const res = await fetch(url, { signal });
+    if (res.status === 414) return []; // текст слишком длинный — пропускаем
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return (data || [])
+      .map(item => ({
+        word: item.word || '',
+        pos: item.pos || 0,
+        len: item.len || 0,
+        suggestions: item.s || [],
+      }))
+      .filter(w => w.word && w.len > 0);
+  }
+
   async function checkText(text, opts = {}) {
     if (!isEnabled()) return { ok: false, words: [], source: 'unavailable' };
     if (_unreachable) return { ok: false, words: [], source: 'unavailable' };
@@ -89,43 +130,47 @@ window.SpellCheck = (() => {
     const trimmed = String(text || '').trim();
     if (!trimmed) return { ok: true, words: [], source: 'cache' };
 
-    // Обрезаем до лимита API (не ставим _unreachable — это не ошибка сервиса)
-    const toCheck = trimmed.length > MAX_TEXT_LEN ? trimmed.slice(0, MAX_TEXT_LEN) : trimmed;
-
-    // Кэш
-    const cacheKey = _hash(toCheck);
+    // Кэш по полному тексту
+    const cacheKey = _hash(trimmed);
     const cached = _cacheGet(cacheKey);
     if (cached) return { ...cached, source: 'cache' };
 
-    // Маскируем плейсхолдеры
-    const { masked, ranges } = _maskPlaceholders(toCheck);
+    // Разбиваем на чанки
+    const chunks = _splitIntoChunks(trimmed);
+    const allWords = [];
+    let offset = 0;
 
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-      const url = `${API_URL}?text=${encodeURIComponent(masked)}&lang=${LANG}&options=${OPTIONS}&format=plain`;
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const { masked, ranges } = _maskPlaceholders(chunk);
 
-      // 414 = текст слишком длинный для URL — это не ошибка сервиса, просто обрезаем
-      if (res.status === 414) {
-        return { ok: true, words: [], source: 'cache' };
+        const words = await _fetchChunk(masked, controller.signal);
+        const filtered = _filterPlaceholderErrors(words, ranges);
+
+        // Смещаем позиции относительно начала полного текста
+        for (const w of filtered) {
+          allWords.push({
+            word: w.word,
+            pos: w.pos + offset,
+            len: w.len,
+            suggestions: w.suggestions,
+          });
+        }
+
+        offset += chunk.length;
+
+        // Пауза между запросами (кроме последнего)
+        if (i < chunks.length - 1) {
+          await _sleep(BETWEEN_CHUNKS_DELAY);
+        }
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      const data = await res.json();
-      const words = (data || [])
-        .map(item => ({
-          word: item.word || '',
-          pos: item.pos || 0,
-          len: item.len || 0,
-          suggestions: item.s || [],
-        }))
-        .filter(w => w.word && w.len > 0);
-
-      const filtered = _filterPlaceholderErrors(words, ranges);
-      const result = { ok: true, words: filtered, source: 'network' };
+      clearTimeout(timer);
+      const result = { ok: true, words: allWords, source: 'network' };
       _cacheSet(cacheKey, result);
       return result;
 
