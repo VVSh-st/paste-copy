@@ -400,6 +400,9 @@ const Anchors = (() => {
       const rawTop = pos.y - scrollY - taPt;
       const wrapH = wrap.clientHeight;
 
+      // Skip markers scrolled out of view
+      if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
+
       const idx = anchors.indexOf(anchor);
 
       if (settings.lineMarkers) {

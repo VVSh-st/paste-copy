@@ -1029,6 +1029,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       updateGroomBadge(b.id);
     }
     window.Preview?.render?.();
+    if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
   }
 
   /* ================================================================
@@ -1171,6 +1172,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
               const chk = blockEl.querySelector('.todo-complete-cb');
               if (chk) chk.classList.toggle('checked', !!b.subtabs[i]?.completed);
               window.Preview?.render?.();
+              if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
               if (col && savedScroll != null) {
                 const restore = () => { col.scrollTop = savedScroll; };
                 restore();
@@ -1221,6 +1223,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
           window.Preview?.render?.();
+          if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
           if (col && savedScroll != null) {
             const restore = () => { col.scrollTop = savedScroll; };
             restore();
@@ -1246,6 +1249,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           const chk = blockEl.querySelector('.todo-complete-cb');
           if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
           window.Preview?.render?.();
+          if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
           if (col && savedScroll != null) {
             const restore = () => { col.scrollTop = savedScroll; };
             restore();
