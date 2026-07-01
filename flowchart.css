@@ -12,8 +12,8 @@
 
 .flowchart-panel {
   position: relative;
-  width: 75vw; max-width: 960px;
-  height: 65vh; max-height: 640px;
+  width: 75vw;
+  height: 65vh;
   background: linear-gradient(135deg, rgba(20,22,30,0.55), rgba(15,16,22,0.45));
   backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid rgba(255,255,255,0.08);

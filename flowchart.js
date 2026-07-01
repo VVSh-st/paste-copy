@@ -16,6 +16,7 @@ const Flowchart = (() => {
   let _canvases = [], _activeCanvasId = null;
   let _saveTimer = null;
   let _resizing = false, _startW, _startH, _startMX, _startMY;
+  let _skipRestore = false;
 
   function _resetTransform() { _zoom = 1; _panX = 0; _panY = 0; if (_viewport) _viewport.setAttribute('transform', 'translate(0,0) scale(1)'); }
   function _applyTransform() { if (_viewport) _viewport.setAttribute('transform', `translate(${_panX},${_panY}) scale(${_zoom})`); }
@@ -201,7 +202,7 @@ const Flowchart = (() => {
     if (!cv) return;
     _activeCanvasId = id;
     _data = JSON.parse(JSON.stringify(cv.data));
-    _resetTransform(); _render();
+    _render();
     _renderCanvasPills();
     _saveCanvases();
   }
@@ -373,7 +374,7 @@ const Flowchart = (() => {
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
         rect.setAttribute('rx', '6'); rect.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        rect.setAttribute('fill-opacity', '0.5'); rect.setAttribute('stroke', color + '60'); rect.setAttribute('stroke-width', '1.5');
+        rect.setAttribute('fill-opacity', '0.32'); rect.setAttribute('stroke', color + '60'); rect.setAttribute('stroke-width', '1.5');
         shapeEl.appendChild(rect);
         const top = document.createElementNS(SVG_NS, 'ellipse');
         top.setAttribute('cx', node.x); top.setAttribute('cy', y + 7); top.setAttribute('rx', w / 2); top.setAttribute('ry', 7);
@@ -389,7 +390,7 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', h / 2); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.5'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.32'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
         break;
       }
       default: {
@@ -400,7 +401,7 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', '8'); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.5'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
+        shapeEl.setAttribute('fill-opacity', '0.32'); shapeEl.setAttribute('stroke', color + '60'); shapeEl.setAttribute('stroke-width', '1.5');
         break;
       }
     }
@@ -412,6 +413,8 @@ const Flowchart = (() => {
       t.setAttribute('x', node.x); t.setAttribute('y', node.y + 4 + (li - (lines.length - 1) / 2) * 14);
       t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', 'var(--text0)');
       t.setAttribute('font-size', '11'); t.setAttribute('font-family', 'var(--mono)');
+      t.setAttribute('paint-order', 'stroke'); t.setAttribute('stroke', 'rgba(0,0,0,0.55)');
+      t.setAttribute('stroke-width', '3'); t.setAttribute('stroke-linejoin', 'round');
       t.textContent = ln; depthG.appendChild(t);
     });
 
@@ -492,7 +495,7 @@ const Flowchart = (() => {
         _mode = btn.dataset.mode;
         _overlay.querySelectorAll('.flowchart-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === _mode));
         _nodes.forEach(n => { n._vx = 0; n._vy = 0; });
-        _resetTransform(); _syncZoomSlider(); _render();
+        _skipRestore = true; _render();
       });
     });
 
@@ -554,11 +557,11 @@ const Flowchart = (() => {
       const cx = rect.width / 2, cy = rect.height / 2;
       _panX = cx - (cx - _panX) * (newZoom / _zoom);
       _panY = cy - (cy - _panY) * (newZoom / _zoom);
-      _zoom = newZoom; _applyTransform();
+      _zoom = newZoom; _applyTransform(); _saveViewport();
     });
     zoomRange.addEventListener('mousedown', () => zoomWrap.classList.add('dragging'));
     window.addEventListener('mouseup', () => zoomWrap.classList.remove('dragging'));
-    zoomRange.addEventListener('dblclick', () => { _resetTransform(); zoomRange.value = 100; });
+    zoomRange.addEventListener('dblclick', () => { _resetTransform(); zoomRange.value = 100; _saveViewport(); });
 
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && _overlay?.classList.contains('visible')) { _closeTooltip(); close(); } });
 
@@ -579,6 +582,7 @@ const Flowchart = (() => {
       if (_dragNode) { _dragNode = null; _syncData(); return; }
       _dragging = false;
       if (_movedEnough && (Math.abs(_velX) + Math.abs(_velY) > 0.5)) _startInertia();
+      _saveViewport();
     });
 
     const resizeHandle = _overlay.querySelector('.flowchart-resize-handle');
@@ -592,7 +596,7 @@ const Flowchart = (() => {
       const newZoom = Math.min(4, Math.max(0.4, _zoom * factor));
       _panX = mx - (mx - _panX) * (newZoom / _zoom);
       _panY = my - (my - _panY) * (newZoom / _zoom);
-      _zoom = newZoom; _applyTransform(); _syncZoomSlider();
+      _zoom = newZoom; _applyTransform(); _syncZoomSlider(); _saveViewport();
     }, { passive: false });
 
     _svg.addEventListener('mousedown', e => {
@@ -677,7 +681,6 @@ const Flowchart = (() => {
     _loadCanvases();
     _overlay.classList.add('visible');
     _overlay.querySelectorAll('.flowchart-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === _mode));
-    _resetTransform(); _syncZoomSlider();
     const cv = _canvases.find(c => c.id === _activeCanvasId);
     _data = cv ? JSON.parse(JSON.stringify(cv.data)) : { nodes: [], edges: [] };
     _renderCanvasPills();
@@ -733,6 +736,46 @@ const Flowchart = (() => {
     return defs;
   }
 
+  function _fitToContent() {
+    if (!_nodes.length) { _zoom = 1; _panX = 0; _panY = 0; _applyTransform(); return; }
+    const pad = 80;
+    const minX = Math.min(..._nodes.map(n => n.x - n.w / 2));
+    const maxX = Math.max(..._nodes.map(n => n.x + n.w / 2));
+    const minY = Math.min(..._nodes.map(n => n.y - n.h / 2));
+    const maxY = Math.max(..._nodes.map(n => n.y + n.h / 2));
+    const contentW = Math.max(1, maxX - minX), contentH = Math.max(1, maxY - minY);
+    const targetW = VCW - pad * 2, targetH = VCH - pad * 2;
+    const zoom = Math.min(2, Math.max(0.4, Math.min(targetW / contentW, targetH / contentH)));
+    const scaledW = contentW * zoom, scaledH = contentH * zoom;
+    _zoom = zoom;
+    _panX = pad + (targetW - scaledW) / 2 - minX * zoom;
+    _panY = pad + (targetH - scaledH) / 2 - minY * zoom;
+    _applyTransform(); _syncZoomSlider();
+  }
+
+  let _viewportSaveTimer = null;
+  function _saveViewport() {
+    const cv = _canvases.find(c => c.id === _activeCanvasId);
+    if (!cv) return;
+    clearTimeout(_viewportSaveTimer);
+    _viewportSaveTimer = setTimeout(() => {
+      cv.viewport = { zoom: _zoom, panX: _panX, panY: _panY };
+      _saveCanvases();
+    }, 500);
+  }
+
+  function _restoreOrFitViewport() {
+    if (_skipRestore) { _skipRestore = false; _fitToContent(); _saveViewport(); return; }
+    const cv = _canvases.find(c => c.id === _activeCanvasId);
+    if (cv?.viewport) {
+      _zoom = cv.viewport.zoom; _panX = cv.viewport.panX; _panY = cv.viewport.panY;
+      _applyTransform(); _syncZoomSlider();
+    } else {
+      _fitToContent();
+      _saveViewport();
+    }
+  }
+
   function _render() {
     if (!_data || !_svg) return;
     _svg.innerHTML = '';
@@ -771,7 +814,7 @@ const Flowchart = (() => {
     _renderEdges();
 
     _nodes.forEach((node, i) => _drawNode(node, i));
-    _applyTransform();
+    _restoreOrFitViewport();
   }
 
   return { open, close };
