@@ -444,9 +444,10 @@ const Blocks = (() => {
             e.stopPropagation();
             const cur = b.subtabs[b.activeSubtab];
             if (!cur) return;
-            State.update(() => { cur.completed = !cur.completed; });
+            cur.completed = !cur.completed;
             chk.classList.toggle('checked', cur.completed);
             updateSubtabCompletedColors(b);
+            State.updateLive(() => {});
           };
           el.appendChild(chk);
 
@@ -984,19 +985,20 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     if (chk) chk.classList.toggle('checked', !!b.subtabs[newIdx]?.completed);
 
     const arrows = blockEl.querySelectorAll('.subtab-arrow');
+    const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
     if (arrows[0]) arrows[0].disabled = newIdx <= 0;
-    if (arrows[1]) arrows[1].disabled = newIdx >= State.SUBTABS_COUNT - 1;
+    if (arrows[1]) arrows[1].disabled = newIdx >= maxSubtabs - 1;
 
     const oldOff = subtabOffsets.get(b.id) || 0;
     const halfVisible = Math.floor(VISIBLE_SUBTABS / 2);
     let newOff = newIdx - halfVisible;
-    newOff = Math.max(0, Math.min(newOff, State.SUBTABS_COUNT - VISIBLE_SUBTABS));
+    newOff = Math.max(0, Math.min(newOff, maxSubtabs - VISIBLE_SUBTABS));
     if (newOff !== oldOff) {
       subtabOffsets.set(b.id, newOff);
       const row = blockEl.querySelector('.block-subtabs');
       if (row) {
         row.innerHTML = '';
-        const end = Math.min(newOff + VISIBLE_SUBTABS, State.SUBTABS_COUNT);
+        const end = Math.min(newOff + VISIBLE_SUBTABS, maxSubtabs);
         for (let i = newOff; i < end; i++) {
           const sub = b.subtabs[i];
           const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
@@ -1045,7 +1047,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     function clampOffset() {
       const halfVisible = Math.floor(VISIBLE_SUBTABS / 2);
       let off = b.activeSubtab - halfVisible;
-      off = Math.max(0, Math.min(off, State.SUBTABS_COUNT - VISIBLE_SUBTABS));
+      const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
+      off = Math.max(0, Math.min(off, maxSubtabs - VISIBLE_SUBTABS));
       subtabOffsets.set(b.id, off);
       return off;
     }
@@ -1053,7 +1056,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     function buildTabs() {
       const offset = clampOffset();
       row.innerHTML = '';
-      const end = Math.min(offset + VISIBLE_SUBTABS, State.SUBTABS_COUNT);
+      const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
+      const end = Math.min(offset + VISIBLE_SUBTABS, maxSubtabs);
       for (let i = offset; i < end; i++) {
         const sub = b.subtabs[i];
         const displayName = (sub.name && sub.name.length > 0) ? _shortSubtabLabel(sub.name) : sub.label;
@@ -1173,7 +1177,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         row.appendChild(btn);
       }
       prevBtn.disabled = b.activeSubtab <= 0;
-      nextBtn.disabled = b.activeSubtab >= State.SUBTABS_COUNT - 1;
+      const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
+      nextBtn.disabled = b.activeSubtab >= maxSubtabs - 1;
     }
 
     prevBtn.onclick = e => {
@@ -1182,7 +1187,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     };
     nextBtn.onclick = e => {
       e.stopPropagation();
-      if (b.activeSubtab < State.SUBTABS_COUNT - 1) { patchSubtab(b, b.activeSubtab + 1); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: 1 }); }
+      const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
+      if (b.activeSubtab < maxSubtabs - 1) { patchSubtab(b, b.activeSubtab + 1); if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir: 1 }); }
     };
 
     buildTabs();
@@ -2793,12 +2799,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     cb.onchange = () => {
       item.done = cb.checked;
       text.classList.toggle('done', item.done);
-      const blockEl = row.closest('.block');
-      const scrollEl = blockEl?.querySelector('.block-body');
-      const savedScroll = scrollEl?.scrollTop;
-      State.update(() => {});
       updateTodoBadge(b);
-      if (scrollEl && savedScroll != null) requestAnimationFrame(() => { scrollEl.scrollTop = savedScroll; });
+      State.updateLive(() => {});
     };
 
     // Text input
