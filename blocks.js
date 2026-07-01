@@ -1499,6 +1499,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     };
 
+    // Spell-check debounce
+    let _spellCheckTimer = null;
+    let _spellOverlay = null;
+
 
 
     ta.addEventListener('input', () => {
@@ -1520,6 +1524,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       _handleSlashTrigger(ta); // улучш. #4
 
       _scheduleBlockSnap();    // фиксируем состояние блока в историю
+
+      // Spell-check debounce (900ms)
+      if (typeof SpellCheck !== 'undefined' && SpellCheck.isEnabled() && b.type === 'text') {
+        clearTimeout(_spellCheckTimer);
+        _spellCheckTimer = setTimeout(() => {
+          if (!SpellCheck.isEnabled() || !ta.isConnected) return;
+          SpellCheck.checkText(ta.value).then(result => {
+            if (!ta.isConnected) return;
+            if (!result?.words?.length) {
+              _clearSpellOverlay();
+              return;
+            }
+            _renderSpellOverlay(ta, result.words);
+          });
+        }, 900);
+      }
 
       window.Intelligence?.trackEdit?.({
         blockId: b.id,
@@ -1647,7 +1667,186 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       updateCurrentLineHighlight();
       if (lineMirror?.parentNode) lineMirror.parentNode.removeChild(lineMirror);
       lineMirror = null;
+      _clearSpellOverlay();
+      clearTimeout(_spellCheckTimer);
     });
+
+    // ── Spell-check overlay ────────────────────────────────────────
+    let _spellPopup = null;
+
+    function _clearSpellOverlay() {
+      if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
+      _spellOverlay = null;
+      _closeSpellPopup();
+    }
+
+    function _closeSpellPopup() {
+      if (_spellPopup) { _spellPopup.remove(); _spellPopup = null; }
+      document.removeEventListener('keydown', _onSpellPopupKey, true);
+      document.removeEventListener('click', _onSpellPopupClickOutside, true);
+    }
+
+    let _spellPopupIdx = -1;
+    let _spellPopupWords = [];
+    let _spellPopupTa = null;
+    let _spellPopupPos = 0;
+    let _spellPopupLen = 0;
+
+    function _onSpellPopupKey(e) {
+      if (!_spellPopup) return;
+      if (e.key === 'ArrowRight' || e.key === 'Tab') {
+        e.preventDefault(); e.stopPropagation();
+        _spellPopupIdx = (_spellPopupIdx + 1) % _spellPopupWords.length;
+        _highlightSpellSuggestion();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault(); e.stopPropagation();
+        _spellPopupIdx = (_spellPopupIdx - 1 + _spellPopupWords.length) % _spellPopupWords.length;
+        _highlightSpellSuggestion();
+      } else if (e.key === 'Enter') {
+        e.preventDefault(); e.stopPropagation();
+        _applySpellSuggestion();
+      } else if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        _closeSpellPopup();
+      }
+    }
+
+    function _onSpellPopupClickOutside(e) {
+      if (_spellPopup && !_spellPopup.contains(e.target)) {
+        _closeSpellPopup();
+      }
+    }
+
+    function _highlightSpellSuggestion() {
+      if (!_spellPopup) return;
+      _spellPopup.querySelectorAll('.spell-popup-suggestion').forEach((el, i) => {
+        el.style.background = i === _spellPopupIdx ? 'rgba(74, 222, 128, 0.25)' : '';
+      });
+    }
+
+    function _applySpellSuggestion() {
+      if (_spellPopupIdx < 0 || _spellPopupIdx >= _spellPopupWords.length) return;
+      const replacement = _spellPopupWords[_spellPopupIdx];
+      const ta = _spellPopupTa;
+      _closeSpellPopup();
+      if (!ta) return;
+      ta.focus();
+      ta.setRangeText(replacement, _spellPopupPos, _spellPopupPos + _spellPopupLen, 'end');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function _showSpellPopup(taEl, word, pos, len, suggestions) {
+      _closeSpellPopup();
+      if (!suggestions.length) return;
+      _spellPopupIdx = 0;
+      _spellPopupWords = suggestions;
+      _spellPopupTa = taEl;
+      _spellPopupPos = pos;
+      _spellPopupLen = len;
+
+      const popup = document.createElement('div');
+      popup.className = 'spell-popup';
+      popup.innerHTML =
+        `<span class="spell-popup-word">${_escBlock(word)}</span>` +
+        `<span class="spell-popup-arrow">→</span>` +
+        suggestions.map((s, i) =>
+          `<span class="spell-popup-suggestion" data-idx="${i}">${_escBlock(s)}</span>`
+        ).join('') +
+        `<span class="spell-popup-hint">Tab/→ · Enter ✓ · Esc ✕</span>`;
+      document.body.appendChild(popup);
+      _spellPopup = popup;
+
+      popup.querySelectorAll('.spell-popup-suggestion').forEach(el => {
+        el.addEventListener('click', e => {
+          e.stopPropagation();
+          _spellPopupIdx = parseInt(el.dataset.idx);
+          _applySpellSuggestion();
+        });
+      });
+
+      _highlightSpellSuggestion();
+      setTimeout(() => {
+        document.addEventListener('keydown', _onSpellPopupKey, true);
+        document.addEventListener('click', _onSpellPopupClickOutside, true);
+      }, 0);
+    }
+
+    function _renderSpellOverlay(taEl, words) {
+      if (!words.length) { _clearSpellOverlay(); return; }
+
+      if (!_spellOverlay) {
+        _spellOverlay = document.createElement('div');
+        _spellOverlay.className = 'spell-check-overlay';
+        lineWrap.appendChild(_spellOverlay);
+      }
+
+      // Копируем стили textarea в overlay
+      const cs = getComputedStyle(taEl);
+      const syncProps = [
+        'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+        'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariantLigatures',
+        'fontFeatureSettings', 'fontKerning', 'letterSpacing', 'lineHeight',
+        'textTransform', 'textIndent', 'wordBreak', 'overflowWrap', 'tabSize',
+      ];
+      for (const prop of syncProps) _spellOverlay.style[prop] = cs[prop];
+      const pl = parseFloat(cs.paddingLeft) || 0;
+      const pr = parseFloat(cs.paddingRight) || 0;
+      _spellOverlay.style.boxSizing = 'content-box';
+      _spellOverlay.style.width = Math.max(0, taEl.clientWidth - pl - pr) + 'px';
+      _spellOverlay.style.height = taEl.clientHeight + 'px';
+
+      // Строим innerHTML: текст с подчёркиваниями
+      const text = taEl.value;
+      const sorted = [...words].sort((a, b) => a.pos - b.pos);
+      let html = '';
+      let lastEnd = 0;
+      for (const w of sorted) {
+        if (w.pos < lastEnd || w.pos + w.len > text.length) continue;
+        html += _escBlock(text.slice(lastEnd, w.pos));
+        html += `<span class="spell-word" data-pos="${w.pos}" data-len="${w.len}" data-word="${_escBlock(w.word)}" data-suggestions="${_escBlock(JSON.stringify(w.suggestions))}">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
+        lastEnd = w.pos + w.len;
+      }
+      html += _escBlock(text.slice(lastEnd));
+      _spellOverlay.innerHTML = html;
+
+      // Клик по слову → popup
+      _spellOverlay.querySelectorAll('.spell-word').forEach(el => {
+        el.addEventListener('click', e => {
+          e.stopPropagation();
+          const pos = parseInt(el.dataset.pos);
+          const len = parseInt(el.dataset.len);
+          const word = el.dataset.word;
+          const suggestions = JSON.parse(el.dataset.suggestions || '[]');
+          _showSpellPopup(taEl, word, pos, len, suggestions);
+        });
+      });
+    }
+
+    // Focus → restore spell overlay if results cached
+    ta.addEventListener('focus', () => {
+      if (typeof SpellCheck !== 'undefined' && SpellCheck.isEnabled() && b.type === 'text') {
+        const val = ta.value;
+        if (val.trim()) {
+          SpellCheck.checkText(val).then(result => {
+            if (!ta.isConnected) return;
+            if (result?.words?.length) _renderSpellOverlay(ta, result.words);
+          });
+        }
+      }
+    });
+
+    // Scroll sync for spell overlay (one-time)
+    ta.addEventListener('scroll', () => {
+      if (_spellOverlay) {
+        _spellOverlay.scrollTop = ta.scrollTop;
+        _spellOverlay.scrollLeft = ta.scrollLeft;
+      }
+    }, { passive: true });
+
+    function _escBlock(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     body.appendChild(lineWrap);
 

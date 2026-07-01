@@ -150,6 +150,11 @@
     const optCurrentLineColor = $id('opt-current-line-color-misc');
     if (optCurrentLineColor) optCurrentLineColor.value = lay.currentLineColor || 'rgba(79,142,247,0.18)';
 
+    const optSpellCheck = $id('opt-spell-check');
+    if (optSpellCheck) optSpellCheck.checked = lay.spellCheck === true;
+    const spellStatus = $id('spell-check-status');
+    if (spellStatus) spellStatus.textContent = lay.spellCheck ? 'Текст отправляется на speller.yandex.net' : '';
+
     const optColScrollbar = $id('opt-col-scrollbar');
     if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
@@ -420,6 +425,17 @@
     State.setLayout({ colScrollbar: enabled });
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', enabled);
     scheduleSave();
+  };
+
+  const optSpellCheck = $id('opt-spell-check');
+  if (optSpellCheck) optSpellCheck.onchange = e => {
+    const enabled = e.target.checked;
+    State.setLayout({ spellCheck: enabled });
+    const st = $id('spell-check-status');
+    if (st) st.textContent = enabled ? 'Текст отправляется на speller.yandex.net' : '';
+    if (!enabled && typeof SpellCheck !== 'undefined') SpellCheck.clearCache();
+    scheduleSave();
+    Toast.show(enabled ? 'Проверка орфографии включена' : 'Проверка орфографии выключена', 'success');
   };
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/
@@ -813,6 +829,9 @@
 
   _restoreWordDictSettings();
   _restoreClipboardSetting();
+
+  // SpellCheck init
+  if (typeof SpellCheck !== 'undefined') SpellCheck.init(State);
 
   // Restore ninja cursor setting from persisted layout
   if (typeof NinjaCursor !== 'undefined') {
