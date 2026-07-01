@@ -968,8 +968,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (body) updateBlockCounter(ta, b, body);
     } else if (b.type === 'todo') {
       b.activeSubtab = newIdx;
-      const body = blockEl.querySelector('.block-body');
-      if (body) { body.innerHTML = ''; renderTodoBody(b, body); }
+      if (b._renderItems) b._renderItems();
     } else {
       b.activeSubtab = newIdx;
     }
