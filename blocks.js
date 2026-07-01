@@ -1783,13 +1783,29 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     }
 
+    function _positionSpellOverlay(taEl) {
+      if (!_spellOverlay) return;
+      const r = taEl.getBoundingClientRect();
+      const cs = getComputedStyle(taEl);
+      const bt = parseFloat(cs.borderTopWidth) || 0;
+      const bl = parseFloat(cs.borderLeftWidth) || 0;
+      const pt = parseFloat(cs.paddingTop) || 0;
+      const pl = parseFloat(cs.paddingLeft) || 0;
+      const pr = parseFloat(cs.paddingRight) || 0;
+      _spellOverlay.style.position = 'fixed';
+      _spellOverlay.style.left = (r.left + bl + pl) + 'px';
+      _spellOverlay.style.top = (r.top + bt + pt - taEl.scrollTop) + 'px';
+      _spellOverlay.style.width = Math.max(0, taEl.clientWidth - pl - pr) + 'px';
+      _spellOverlay.style.height = taEl.clientHeight + 'px';
+    }
+
     function _renderSpellOverlay(taEl, words) {
       if (!words.length && !_spellCorrections.size) { _clearSpellOverlay(); return; }
 
       if (!_spellOverlay) {
         _spellOverlay = document.createElement('div');
         _spellOverlay.className = 'spell-check-overlay';
-        lineWrap.appendChild(_spellOverlay);
+        document.body.appendChild(_spellOverlay);
       }
 
       const cs = getComputedStyle(taEl);
@@ -1801,11 +1817,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         'textTransform', 'textIndent', 'wordBreak', 'overflowWrap', 'tabSize',
       ];
       for (const prop of syncProps) _spellOverlay.style[prop] = cs[prop];
-      const pl = parseFloat(cs.paddingLeft) || 0;
-      const pr = parseFloat(cs.paddingRight) || 0;
       _spellOverlay.style.boxSizing = 'content-box';
-      _spellOverlay.style.width = Math.max(0, taEl.clientWidth - pl - pr) + 'px';
-      _spellOverlay.style.height = taEl.clientHeight + 'px';
+      _positionSpellOverlay(taEl);
 
       const text = taEl.value;
       const allMarkers = [];
@@ -1853,6 +1866,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         }
       }
     });
+
+    // Scroll sync — overlay следует за прокруткой textarea
+    ta.addEventListener('scroll', () => { _positionSpellOverlay(ta); }, { passive: true });
 
     // Scroll sync for spell overlay (one-time)
     ta.addEventListener('scroll', () => {
