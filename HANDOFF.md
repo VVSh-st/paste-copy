@@ -141,9 +141,35 @@
 
 44. ✅ **e.code вместо e.key** — хоткеи работают на любой раскладке (EN/RU). `e.code='KeyT'` вместо `e.key.toLowerCase()==='t'`. Исправлено в app.js, ui.js, notepad.js
 
-### Git коммиты (mindmap, эта сессия)
+### Flowchart — конструктор блок-схем (新建)
+
+1. ✅ **flowchart.js + flowchart.css** — новый модуль. Кнопка 📐 в превью. LLM генерит JSON `{nodes, edges}`, SVG-рендер с 5 формами нод (rect/stadium/diamond/circle/cylinder)
+2. ✅ **Виртуальное полотно** — фиксированный viewBox 2000×1400, layout не зависит от размера панели. ResizeObserver не нужен
+3. ✅ **Snake layout (Flow)** — змейка: 5 рядов на колонку, 400px ширина, 130px gap. Topological BFS + wrapping
+4. ✅ **Force-directed (Graph)** — repel/attract, 60 итераций. Рёбра без стрелок
+5. ✅ **Drag-and-drop нод** — mousedown на ноде → drag, на пустом → pan. Разводка через `closest('[data-node-id]')`
+6. ✅ **Taper-линии (Flow)** — полигон сужающийся от источника к цели. Shape-specific anchors (_shapeAnchor: diamond через |x/dw|+|y/dh|=1)
+7. ✅ **Без-стрелочные рёбра (Graph)** — кривые Безье без marker-end
+8. ✅ **Glass tooltip** — вместо prompt()/confirm(). Добавление, редактирование, удаление, label ребра
+9. ✅ **Connect mode** — кнопка ↗, клик source → клик target → ребро
+10. ✅ **Удаление** — ПКМ по ноде/ребру → тултип-подтверждение
+11. ✅ **Multi-canvas** — полоска пилюль (1, 2, +). Переключение, переименование (даблклик), автосохранение в localStorage (debounced 600ms)
+12. ✅ **Память масштаба** — `viewport: {zoom, panX, panY}` per-канвас. `_restoreOrFitViewport()` / `_fitToContent()`
+13. ✅ **Export = дублирование** — кнопка⇪ копирует текущее полотно в новое
+14. ✅ **Auto-fetch** — при открытии пустого полотна автоматический LLM-анализ
+15. ✅ **Resize handle** — хэндл в правом нижнем углу, сохранение размера
+16. ✅ **Fit-to-content** — автоматический zoom/pan чтобы диаграмма заполняла канвас
+17. ✅ **Text stroke** — `paint-order: stroke` с тёмным ореолом для читаемости на любом фоне
+18. ✅ **Промпт** — LLM отвечает на языке входного текста (RU/EN), 5-15 нод, shapes: rect/stadium/diamond/circle/cylinder
+
+### Git коммиты (mindmap + flowchart, эта сессия)
 
 ```
+d8da1bd flowchart round 6: fit-to-content, viewport memory, resize max removed, softer fill + text stroke
+4eec8a6 flowchart: fix critical bug — _syncData() was destroying _data before _render()
+72ad941 flowchart round 5: auto-fetch on empty canvas, export = duplicate canvas
+0fb4022 flowchart: full rewrite — virtual canvas, snake/force layout, taper edges, glass tooltip, multi-canvas, resize, export
+e6e653f feat: Flowchart module — SVG flowchart editor with drag-and-drop, zoom/pan, auto-layout, LLM generation
 0010e02 mindmap clusters: random gradient direction per ellipse (cx/cy randomized 20-80%)
 22cc38c mindmap clusters: balanced — radial gradient at 35% opacity, readable text
 9278795 mindmap clusters: subtle ellipses — lighter fill, thinner stroke, text-first
@@ -161,14 +187,16 @@
 
 - `mindmap.js` (~925 строк) — MindMap: SVG-визуализация (6 режимов: words/graph/tree/clusters/hierarchy/timeline), zoom/pan/inertia, parallax, stagger, bloom/glass, jump-to-word
 - `mindmap.css` (~110 строк) — стили оверлея, glass-панели, airy-кнопки, zoom-slider, mm-enter/pulse анимации
+- `flowchart.js` (~820 строк) — Flowchart: конструктор блок-схем, 5 форм нод, snake/force layout, taper-рёбра, drag-and-drop, glass tooltip, multi-canvas, viewport memory, fit-to-content
+- `flowchart.css` (~130 строк) — стили оверлея, glass-панели, tooltip, resize handle, canvas pills
 - `ai-transform.js` (~300 строк) — AI трансформация текста, diff-панель, история запросов
 - `llm-features.js` (~4400 строк) — MiniChat, PromptGrader, Thesaurus, _runGroomInChat, SmartPlaceholders
-- `llm-core.js` (~1894 строк) — request(), _extractContent, _parseSSE, _parseNDJSON, LLMCache, prompts (mindmap с hierarchy/steps)
-- `blocks.js` (~3153 строк) — переводчик (sequential), меню груминга (тултипы), кнопка AiTransform, mindmap:jump-word handler
+- `llm-core.js` (~1900 строк) — request(), prompts (mindmap с hierarchy/steps, flowchart с shapes), LLMCache
+- `blocks.js` (~3153 строк) — переводчик (sequential), меню груминга, mindmap:jump-word handler
 - `ui.js` (~2020 строк) — Preview (scroll sync, backtick fix)
-- `app.js` (~920 строк) — хоткеи (e.code), Ctrl+K для AiTransform
+- `app.js` (~928 строк) — хоткеи (e.code), Ctrl+K, flowchart button handler
 - `notepad.js` (~760 строк) — хоткеи (e.code)
-- `diff-engine.js` (~185 строк) — DiffEngine.compute/renderHtml для diff-панелей
+- `diff-engine.js` (~185 строк) — DiffEngine.compute/renderHtml
 
 ## Architecture Decisions
 
@@ -180,6 +208,15 @@
 - **MindMap jump-to-word** — CustomEvent `mindmap:jump-word` из mindmap.js, handler в blocks.js (разделение ответственности)
 - **MindMap regex** — без `\b` (не работает с кириллицей), простой substring поиск
 - **MindMap cache** — `_data` хранится между открытиями, refresh кнопка ↻ для перезапроса
+- **Flowchart virtual canvas** — фиксированный viewBox 2000×1400, layout не зависит от размера панели
+- **Flowchart snake layout** — 5 рядов на колонку, зигзаг, topological BFS
+- **Flowchart force layout** — repel 2200/dist², attract (dist-150)*0.02, 60 итераций
+- **Flowchart taper edges** — полигон вдоль нормали, wStart=3, wEnd=0.5, через _shapeAnchor
+- **Flowchart shape anchors** — diamond: пересечение луча с |x/dw|+|y/dh|=1; circle: r по направлению; rect: bbox intersection
+- **Flowchart _syncData AFTER _render** — _syncData() перезаписывает _data через _nodes.map, _nodes заполняется _render(). Порядок критичен
+- **Flowchart multi-canvas** — localStorage, debounced 600ms, viewport per-canvas
+- **Flowchart fit-to-content** — bbox нод → zoom/pan, fallback для нового канваса
+- **Flowchart text stroke** — paint-order: stroke, rgba(0,0,0,0.55), 3px — читаемость на любом фоне
 - **AiTransform diff** — большой изменение (>50% длины): показывает ответ; небольшое: только добавления зелёным
 - **AiTransform whole text** — если текст не выделен, запрос применяется ко всему тексту блока
 - **ensureSession(idx)** — переключает MiniChat на нужную сессию, если юзер переключился во время async LLM-запроса
