@@ -1685,6 +1685,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     let _spellClickHandled = false;
 
     function _clearSpellOverlay() {
+      console.log('[spell] _clearSpellOverlay called');
       if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
       _spellOverlay = null;
       _spellCorrections.clear();
@@ -1739,6 +1740,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     function _addSpellDocListeners() {
       if (_spellAcceptHandler) return;
       _spellAcceptHandler = (e) => {
+        console.log('[spell] acceptHandler flag=', _spellClickHandled, 'overlay=', !!_spellOverlay, 'contains=', _spellOverlay?.contains(e.target));
         if (_spellClickHandled) return;
         if (!_spellOverlay) return;
         if (_spellOverlay.contains(e.target)) return;
@@ -1751,6 +1753,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         _spellCancelAll();
       };
       _spellCursorHandler = (e) => {
+        console.log('[spell] cursorHandler flag=', _spellClickHandled, 'overlay=', !!_spellOverlay, 'contains=', _spellOverlay?.contains(e.target));
         if (_spellClickHandled) return;
         if (!_spellOverlay) return;
         if (_spellOverlay.contains(e.target)) return;
@@ -1771,9 +1774,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const range = document.caretRangeFromPoint(e.clientX, e.clientY);
         if (range) charPos = range.startOffset;
       }
+      console.log('[spell] _onTaSpellClick charPos=', charPos, 'corrections=', _spellCorrections.size);
       if (charPos < 0) return;
       for (const [pos, c] of _spellCorrections) {
         if (charPos >= pos && charPos < pos + (c.corrected ? c.replacement.length : c.orig.length)) {
+          console.log('[spell] HIT pos=', pos, 'corrected=', c.corrected);
           e.preventDefault();
           e.stopPropagation();
           _spellClickHandled = true;
