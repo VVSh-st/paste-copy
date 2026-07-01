@@ -746,12 +746,13 @@ window.LLMFeatures = (() => {
   }
 
   async function _thesaurusChecklistAtBlock(blockId) {
-    const tab = State.getActive();
+    const tab = _State?.getActive?.();
     if (!tab) return;
     const b = tab.blocks.find(x => x.id === blockId);
     if (!b) return;
 
-    const ta = document.querySelector(`[data-block-id="${blockId}"] textarea`);
+    const blockEl = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+    const ta = blockEl?.querySelector('textarea.block-textarea');
     const text = ta?.value?.slice(ta.selectionStart, ta.selectionEnd).trim()
       || ta?.value?.trim() || '';
     if (!text) { window.Toast?.show('Нет текста', 'info'); return; }

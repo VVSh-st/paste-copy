@@ -1851,6 +1851,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     let lastThesaurusMode = localStorage.getItem('thesaurus_mode') || 'thesaurus';
     const _thesaurusModeLabels = { thesaurus: 'Тезаурус', antonyms: 'Антонимы', rephrase: 'Перефразирование', explain: 'Объяснение', structure: 'Структурирование', checklist: '+ чеклист' };
 
+    function _updateThesaurusBtnLabel() {
+      const label = _thesaurusModeLabels[lastThesaurusMode] || 'Тезаурус';
+      thesaurusBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 5h4M3 8h3M3 11h4"/><path d="M10 5l2 3-2 3"/><path d="M12 8h2"/></svg><span style="font-size:9px;margin-left:2px">${label}</span>`;
+      thesaurusBtn.title = 'Тезаурус → ' + label + ' (Alt+T)';
+    }
+
     function _buildThesaurusMenu() {
       thesaurusDropdown.innerHTML = '';
       const modes = [
@@ -1870,7 +1876,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           e.stopPropagation();
           lastThesaurusMode = m.id;
           localStorage.setItem('thesaurus_mode', m.id);
-          thesaurusBtn.title = 'Тезаурус → ' + _thesaurusModeLabels[m.id] + ' (Alt+T)';
+          _updateThesaurusBtnLabel();
           _buildThesaurusMenu();
           thesaurusDropdown.style.display = 'none';
         };
@@ -1878,7 +1884,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       });
     }
     _buildThesaurusMenu();
-    thesaurusBtn.title = 'Тезаурус → ' + _thesaurusModeLabels[lastThesaurusMode] + ' (Alt+T)';
+    _updateThesaurusBtnLabel();
 
     let thesaurusLongPressTimer = null;
     let thesaurusLongPressed = false;
