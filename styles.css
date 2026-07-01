@@ -215,7 +215,7 @@ body {
 #main-area { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 #workspace {
   flex: 1; display: flex; gap: 0; padding: 10px;
-  overflow: auto; align-items: stretch; min-height: 120px;
+  overflow: auto; align-items: stretch;
 }
 .column {
   display: flex; flex-direction: column; gap: 8px;
