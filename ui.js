@@ -364,7 +364,7 @@ const Preview = (() => {
       const idx = b.activeSubtab ?? 0;
       const raw = (b.subtabs?.[idx]?.value || '').trim();
       const val = applyVars(raw);
-      return val ? (showHeaders ? `# ${b.title}\n${val}` : val) : null;
+      return val ? _closeOpenFences(showHeaders ? `# ${b.title}\n${val}` : val) : null;
 
     } else if (b.type === 'snippets') {
       const items = (b.items || []).filter(i => i.enabled && (i.value || '').trim());
@@ -373,7 +373,7 @@ const Preview = (() => {
       const content = items.map(i =>
         (showTitles && i.title) ? `## ${i.title}\n${i.value.trim()}` : i.value.trim()
       ).join('\n\n');
-      return showHeaders ? `# ${b.title}\n${applyVars(content)}` : applyVars(content);
+      return _closeOpenFences(showHeaders ? `# ${b.title}\n${applyVars(content)}` : applyVars(content));
 
     } else if (b.type === 'todo') {
       const sub = b.subtabs?.[b.activeSubtab];
@@ -382,8 +382,8 @@ const Preview = (() => {
         .filter(it => (it.text || '').trim())
         .map(it => `- [${it.done ? 'x' : ' '}] ${it.text}`);
       if (!lines.length) return null;
-      if (sub.name) return `## ${sub.name}\n${showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n')}`;
-      return showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n');
+      if (sub.name) return `## ${sub.name}\n${_closeOpenFences(showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n'))}`;
+      return _closeOpenFences(showHeaders ? `# ${b.title}\n${lines.join('\n')}` : lines.join('\n'));
 
     } else if (b.type === 'table') {
       const sub = b.subtabs?.[b.activeSubtab];
@@ -435,7 +435,7 @@ const Preview = (() => {
     });
 
     const raw = parts.join(sep);
-    return _closeOpenFences(raw);
+    return raw;
   }
 
   function _syncPanelButtons() {
