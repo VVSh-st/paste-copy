@@ -20,211 +20,129 @@
 - **дропдаун** = dropdown
 - **блок** = block (элемент UI)
 
-## Status — ТЕКУЩАЯ СЕССИЯ (2026-06-30)
+## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-01)
 
-### MindMap — полный цикл разработки (rounds 1–4)
+### start-server — Python Embedded
 
-#### Round 1 — Багфиксы + фундамент
+1. ✅ **start-server.bat** — `start /min` вместо `start /b` для надёжного запуска Python Embedded
+2. ✅ **start-server.vbs** — скрытый запуск без окна, прямой вызов python.exe через WScript.Shell
+3. ✅ **start-server-debug.bat** — для отладки, прямой запуск в консоли (видны ошибки)
+4. ✅ **stop-server.bat** — taskkill по имени + по PID через порт 8080, проверка результата
+5. ✅ **Кириллица в BAT** — убрана, латиница для совместимости кодировок
 
-1. ✅ **Баг: line overflow в _drawTree** — проверка `lineNum > 2` перенесена в начало `forEach` (была после push)
-2. ✅ **Баг: дубль stroke-width** — убран повторный `setAttribute('stroke-width', '1')` в tree
-3. ✅ **Баг: nodeMap коллизия** — дедупликация слов в `_drawGraph` (Map по тексту + indices), `nodeMap` по индексу
-4. ✅ **ResizeObserver** — пересчёт viewport при ресайзе canvas, сброс zoom/pan
-5. ✅ **Мёртвый код** — `_panel` оставлена локальной в `_ensureOverlay`
-6. ✅ **Viewport `<g>` группа** — все элементы рендера внутри `_viewport` с единым transform
-7. ✅ **Zoom колесом к курсору** — factor 1.12, clamp 0.4–4x, удержание точки под курсором
-8. ✅ **Pan мышью** — drag с порогом 3px (`movedEnough`), cursor grab/grabbing
-9. ✅ **Cursor parallax** — `data-depth` на группах, throttle через rAF, 40px амплитуда
-10. ✅ **Bloom filter** — двухуровневый `feGaussianBlur` (6+12 stdDeviation) вместо простого glow
-11. ✅ **Radial gradients** — "светящийся шар" для circle/ellipse (cx=35% cy=30%)
-12. ✅ **Glassmorphism** — `backdrop-filter: blur(20px) saturate(140%)`, inset glow, preserve-3d
-13. ✅ **Tilt-эффект** — perspective(1000px) rotateX/Y ±4deg на панели
+### Flowchart — Round 7
 
-#### Round 2 — Добивка 2.5D
+6. ✅ **getScreenCTM координаты** — `_canvasCoords`, pan, wheel, zoom через `_svg.getScreenCTM().inverse()` вместо ручного `VCW/rect.width`
+7. ✅ **Фикс позиции нового блока** — `(VCW / 2 - _panX) / _zoom` вместо `VCW / 2 - _panX / _zoom`
+8. ✅ **Визуал: fill-opacity 0.18** — все формы (diamond, circle, stadium, rect), stroke 2px + color+90
+9. ✅ **Цветная полоса** — `rect` слева у rect/stadium/cylinder, `data-role="bar"`
+10. ✅ **Шрифт 13px** — `_fontSize` в localStorage, `_nodeSize` зависит от `_fontSize`
+11. ✅ **Долгий клик удаление вкладки** — 600ms hold на пилюлю, `_confirmDeleteCanvas`, защита от удаления последнего
+12. ✅ **Зум кнопки** — −/100%/+ вместо слайдера, `_zoomBy(delta)`, кнопка-центр = `_fitToContent()`
+13. ✅ **Force layout: movable-only** — `n._movable` флаг, размещённые узлы неподвижны
+14. ✅ **Auto layout: dynamic spacing** — `Math.max(240, node.w + 40)` вместо фиксированного 240
+15. ✅ **Тултип добавления блока** — SVG-иконки 5 форм, `_showAddNodeTooltip`, `SHAPE_ICONS`
+16. ✅ **patchSubtab в API** — добавлен в `Blocks` public API
 
-14. ✅ **Баг: чёрная дыра в clusters** — убран `filter="shadow"` с ellipse (feDropShadow просвечивал сквозь градиент)
-15. ✅ **Баг: наезд кластеров** — `dist = max(Math.min(W,H)*0.28, maxR*1.3)` вместо фиксированного 0.28
-16. ✅ **Панель прозрачна** — background `rgba(20,22,30,0.55/0.45)` вместо `rgba(255,255,255,0.04/0.01)`
-17. ✅ **Инерция pan** — velocity 0.92 затухание, `cancelAnimationFrame` при mousedown
-18. ✅ **Smooth zoom-to-node** — даблклик → `_smoothZoomTo(x, y, 2)`, cubic-bezier 0.4s
-19. ✅ **Atmospheric blur** — `(0.3 - depth) * 3` px, один раз при рендере. **Disabled для hierarchy/timeline**
-20. ✅ **Stagger animation** — `mm-enter` на внешнем `<g>`, parallax на вложенном `<g>`, 25ms задержка
-21. ✅ **Изогнутые линии** — квадратичные Безье `Q` вместо `line` (0.15 изгиб)
-22. ✅ **Звёздный фон** — `floor(W*H/9000)` частиц, depth 0.05
+### Flowchart — Round 8
 
-#### Round 3 — Управление, кэш, jump-to-word
+17. ✅ **_fitToContent min zoom** — `minZoomForText` через `getScreenCTM().a` + `_fontSize`, `MIN_READABLE_PX=10`
+18. ✅ **data-role вместо rx** — backing/shape/shape-body/shape-top/bar, `_updateNodePosition` по ролям
+19. ✅ **Force layout锚点** — `_forceLayout`: movable фильтр, только новые узлы двигаются
 
-23. ✅ **Слайдер зума** — вертикальный range `rotate(-90deg)`, min=40 max=400, double-click reset
-24. ✅ **Proximity reveal** — обобщённый `_setupProximityReveal(el, radius)`: controls 150px, zoom 120px
-25. ✅ **Синхронизация слайдера** — wheel→slider, slider→zoom, reset→100
-26. ✅ **Airy buttons** — `rgba(255,255,255,0.03)` + `backdrop-filter: blur(6px)`
-27. ✅ **Кэш результата** — `open()` проверяет `_data`, показывает кэш без LLM
-28. ✅ **Кнопка ↻ (refresh)** — spinning animation, блокировка wheel/mousedown во время загрузки
-29. ✅ **Click/dblclick split** — 220ms таймер, click→jump-to-word, dblclick→zoom
-30. ✅ **Jump-to-word** — CustomEvent `mindmap:jump-word`, handler в blocks.js: regex поиск, setSelectionRange, scrollTop, jump-highlight 2с
-31. ✅ **Jump-to-word fix** — убран `\b` из regex (не работает с кириллицей), fallback: фокус на первом блоке + тост
+### Чеклист — LLM TODO
 
-#### Round 4 — Режимы "Иерархия" и "Таймлайн"
+20. ✅ **Промпт thesaurus_checklist** — `BUILTIN_PROMPTS`, `PROMPT_META`, `PROMPT_GROUPS`
+21. ✅ **Пункт меню "+ чеклист"** — в `_thesaurusModeLabels` и `modes` array, 6-й режим
+22. ✅ **_thesaurusChecklistAtBlock** — LLM запрос, парсинг тире/нумерации, поиск/создание todo-блока
+23. ✅ **_showChecklistSubtabPicker** — popup выбора подвкладки когда все 5 заняты
+24. ✅ **Глобальный режим** — `localStorage('thesaurus_mode')`, обновление title всех кнопок при смене
+25. ✅ **Селектор textarea** — `data-id` + `textarea.block-textarea` (как в `_thesaurusAtBlock`)
+26. ✅ **Навигация на подвкладку** — double `requestAnimationFrame` после `State.update()`
 
-32. ✅ **Рефакторинг: `_attachWordInteractions`** — click→jump + dblclick→zoom, переиспользуется в Words/Hierarchy
-33. ✅ **Рефакторинг: `_gradIdFor` + `_ensureGradient`** — градиенты на лету с кэшированием
-34. ✅ **Рефакторинг: `_wrapTextLines`** — перенос строк, переиспользуется в Tree/Timeline
-35. ✅ **Рефакторинг: `_emptyMsg`** — заглушка для пустых данных
-36. ✅ **Промпт mindmap (llm-core.js)** — добавлены `hierarchy` (tree max 3 уровня) и `steps` (процесс). maxTokens 3000
-37. ✅ **Промпт mindmap fix** —.steps: "break into 3-8 logical steps" вместо "only if process/procedure"
-38. ✅ **Режим "Иерархия" (M)** — рекурсивный radial tree, layout по углам, кривые Безье, bloom на корне
-39. ✅ **Режим "Таймлайн" (→)** — горизонтальная лента карточек 240×120, стрелки с маркером `#arrow-head`
-40. ✅ **Timeline: wrap title** — заголовок переносится (max 2 строки), описание смещается вниз
+### Todo-блоки — подвкладки
 
-#### Визуальные фиксы
+27. ✅ **_renderItems: elPool** — Map с DOM-элементами, переиспользование без `innerHTML = ''`
+28. ✅ **patchSubtab для todo** — `b._renderItems()` вместо `body.innerHTML = ''`
+29. ✅ **Активная подвкладка动态** — `renderItems` читает `b.subtabs[b.activeSubtab]` при каждом вызове
+30. ✅ **Скролл при галочке** — `State.updateLive()` вместо `State.update()`, без полного re-render
+31. ✅ **Скролл при "Отметка выполнения"** — `State.updateLive()` вместо `State.update()`
+32. ✅ **Subtab count** — `b.subtabs?.length` вместо `State.SUBTABS_COUNT` в clampOffset/buildTabs/patchSubtab
 
-41. ✅ **Depth blur** — коэффициент 6→3, порог 0.3→0.4. **Disabled для hierarchy/timeline**
-42. ✅ **Clusters: баланс** — radial gradient `fill-opacity: 0.35`, stroke 1px `color+40`
-43. ✅ **Clusters: random gradient direction** — уникальный `radialGradient` на каждый эллипс, `cx/cy` рандом 20–80%
+### Preview — обновление при смене подвкладок
 
-### AiTransform — AI трансформация текста
+33. ✅ **Preview.render()** — вызывается при переключении подвкладок (text + todo), обновляет "симв · стр · KB"
 
-3. ✅ **ai-transform.js** — модуль (по аналогии с InlineAI для Obsidian)
-4. ✅ **Ctrl+K** — popup с полем ввода и кнопкой отправки
-5. ✅ **Кнопка в футере блока** — иконка часов перед тезаурусом
-6. ✅ **Если текст не выделен** — запрос ко всему тексту блока
-7. ✅ **Текст НЕ заменяется** до нажатия ✓ в diff-панели
-8. ✅ **Diff** — большое изменение (>50%): только ответ; небольшое: добавления зелёным
-9. ✅ **Отмена (✕/ПКМ)** — возвращает оригинал
-10. ✅ **История запросов** — ↑↓ навигация, хранение в localStorage
-11. ✅ **Diff как text-linter** — A−/A+ размер, копирование, компактные кнопки ✓/✕
+### Mindmap — Timeline текст
 
-### MiniChat — контекст и кэш
+34. ✅ **Весь текст в карточке** — `_wrapTextLines` с `maxLines=10` вместо 2
+35. ✅ **Динамическая высота** — `Math.max(minCardH, contentH)`, pre-calculate max height
 
-1. ✅ **pushToHistory для всех фич** — `_runOnPreview`, `rephrase`, `expand`, `groom`, `PromptGrader`, `PromptAuditor`, `TokenOptimizer`, `!сум` — все пушат user-text в `_history`
-2. ✅ **ensureSession(idx)** — новая функция MiniChat. Если юзер переключил чат во время LLM-запроса, результат попадёт в правильную сессию
-3. ✅ **PromptGrader** — короткий user `pushToHistory('user', 'Оцениваю промпт...')` вместо полного текста; явный `pushScorecard(data)` после `ensureSession`
-4. ✅ **_runGroomInChat** — `ensureSession(targetSessionIdx)` перед обработкой результата; пустой ответ пушится в `_history` как `system`; убран `pushToHistory('user', text)` — полный текст блока больше не засоряет историю
-5. ✅ **Scorecard bars** — двойной `requestAnimationFrame` для анимации полосок (оба: `_renderScorecard` в PromptGrader и `_appendScorecardToDOM` в MiniChat)
+### AI-трансформация
 
-### LLM-модуль — ответы и кэш
+36. ✅ **Закрытие по ЛКМ вне** — `_onClickOutside` handler, `document.addEventListener('click', ..., true)`
 
-6. ✅ **Кэш не хранит пустые ответы** — `llm-core.js:658`: `String(result ?? '').trim()` перед `LLMCache.set()`
-7. ✅ **reasoning_content fallback** — `||` вместо `??` для content/reasoning_content во всех парсерах: `_extractContent`, `_parseSSE`, `_parseNDJSON`
-8. ✅ **Non-stream retry** — повтор запроса при пустом ответе модели (1-2 попытки с паузой 1 сек)
-9. ✅ **useStream scope fix** — убран `console.warn` вне блока `try` (переменная не в скоупе)
+### Якоря — маркеры
 
-### Prompt Loom
+37. ✅ **Маркер скрывается за пределами** — `if (rawTop + lineHeight < 0 || rawTop > wrapH) return;`
+38. ✅ **Маркер обновляется при смене подвкладки** — `Anchors._renderMarkersAll()` в patchSubtab и todo-обработчиках
 
-10. ✅ **pl-list scroll** — `flex: 1` для `.pl-list` + `flex-shrink: 0` для `.pl-card` и `.pl-ultra-card` — карточки не сжимаются, список скроллится
-
-### Превью
-
-11. ✅ **Scroll sync MD/text** — сохранение `scrollTop / (scrollHeight - clientHeight)` перед переключением, восстановление через `requestAnimationFrame`
-12. ✅ **Незакрытые бэктики** — `_fixUnclosedBackticks()` считает `` ` `` на строке; нечётное → добавляет закрывающий. Предотвращает "утекание" заголовков в инлайн-код
-
-### Переводчик
-
-13. ✅ **Последовательный перевод** — `Promise.all` → `for...of` с `await`. Причина бага: каждая строка создавала `_activeController` и абортировала предыдущую
-
-### Тезарус
-
-14. ✅ **ПКМ отмена** — правый клик вне попапа: восстанавливает `_thesaurusOrig` через `setRangeText` + `e.preventDefault()` подавляет контекстное меню. Для обоих вариантов (toolbar + блочный)
-19. ✅ **Меню по долгому клику** — 400мс удержание на кнопке: выпадающее меню (Тезаурус, Антонимы, Перефразирование, Объяснение, Структурирование). Клик по пункту = только запоминает выбор + закрывает. Обычный клик по кнопке = выполняет выбранный режим. Выбор в localStorage. Title кнопки обновляется
-
-### Меню груминга
-
-15. ✅ **Тултипы** — `title` для всех 13 пунктов + кастомный тултип через `mouseenter/mouseleave` с задержкой 1800ms, `position: fixed`, fade-in анимация
-
-### SmartPlaceholders
-
-16. ✅ **Регулярка case-insensitive** — `/\{\{llm:...\}\}/gi` вместо `/g`
-17. ✅ **Кнопка** — `{{llm:...}}` вместо `{{Ilm:...}}`
-18. ✅ **Прямой вызов** — `SmartPlaceholders.fillAll()` вместо `window.SmartPlaceholders?.fillAll?.()`
-
-### Hotkeys — раскладка
-
-44. ✅ **e.code вместо e.key** — хоткеи работают на любой раскладке (EN/RU). `e.code='KeyT'` вместо `e.key.toLowerCase()==='t'`. Исправлено в app.js, ui.js, notepad.js
-
-### Flowchart — конструктор блок-схем (新建)
-
-1. ✅ **flowchart.js + flowchart.css** — новый модуль. Кнопка 📐 в превью. LLM генерит JSON `{nodes, edges}`, SVG-рендер с 5 формами нод (rect/stadium/diamond/circle/cylinder)
-2. ✅ **Виртуальное полотно** — фиксированный viewBox 2000×1400, layout не зависит от размера панели. ResizeObserver не нужен
-3. ✅ **Snake layout (Flow)** — змейка: 5 рядов на колонку, 400px ширина, 130px gap. Topological BFS + wrapping
-4. ✅ **Force-directed (Graph)** — repel/attract, 60 итераций. Рёбра без стрелок
-5. ✅ **Drag-and-drop нод** — mousedown на ноде → drag, на пустом → pan. Разводка через `closest('[data-node-id]')`
-6. ✅ **Taper-линии (Flow)** — полигон сужающийся от источника к цели. Shape-specific anchors (_shapeAnchor: diamond через |x/dw|+|y/dh|=1)
-7. ✅ **Без-стрелочные рёбра (Graph)** — кривые Безье без marker-end
-8. ✅ **Glass tooltip** — вместо prompt()/confirm(). Добавление, редактирование, удаление, label ребра
-9. ✅ **Connect mode** — кнопка ↗, клик source → клик target → ребро
-10. ✅ **Удаление** — ПКМ по ноде/ребру → тултип-подтверждение
-11. ✅ **Multi-canvas** — полоска пилюль (1, 2, +). Переключение, переименование (даблклик), автосохранение в localStorage (debounced 600ms)
-12. ✅ **Память масштаба** — `viewport: {zoom, panX, panY}` per-канвас. `_restoreOrFitViewport()` / `_fitToContent()`
-13. ✅ **Export = дублирование** — кнопка⇪ копирует текущее полотно в новое
-14. ✅ **Auto-fetch** — при открытии пустого полотна автоматический LLM-анализ
-15. ✅ **Resize handle** — хэндл в правом нижнем углу, сохранение размера
-16. ✅ **Fit-to-content** — автоматический zoom/pan чтобы диаграмма заполняла канвас
-17. ✅ **Text stroke** — `paint-order: stroke` с тёмным ореолом для читаемости на любом фоне
-18. ✅ **Промпт** — LLM отвечает на языке входного текста (RU/EN), 5-15 нод, shapes: rect/stadium/diamond/circle/cylinder
-
-### Git коммиты (mindmap + flowchart, эта сессия)
+### Git коммиты (эта сессия)
 
 ```
-d8da1bd flowchart round 6: fit-to-content, viewport memory, resize max removed, softer fill + text stroke
-4eec8a6 flowchart: fix critical bug — _syncData() was destroying _data before _render()
-72ad941 flowchart round 5: auto-fetch on empty canvas, export = duplicate canvas
-0fb4022 flowchart: full rewrite — virtual canvas, snake/force layout, taper edges, glass tooltip, multi-canvas, resize, export
-e6e653f feat: Flowchart module — SVG flowchart editor with drag-and-drop, zoom/pan, auto-layout, LLM generation
-0010e02 mindmap clusters: random gradient direction per ellipse (cx/cy randomized 20-80%)
-22cc38c mindmap clusters: balanced — radial gradient at 35% opacity, readable text
-9278795 mindmap clusters: subtle ellipses — lighter fill, thinner stroke, text-first
-3e036f5 mindmap jump-to-word: fix Cyrillic search (drop \b), show first block + toast if word not found
-43877f9 mindmap: reduce depth blur coefficient 6→3, disable blur for hierarchy/timeline modes
-71f1937 mindmap timeline: wrap title text, widen cards 240x120
-7e946f1 mindmap round 4: hierarchy + timeline modes, prompt update, refactor
-7ac3c9c mindmap prompt: relax steps rules — always try to find logical progression
-6c7b4e3 mindmap round 3: zoom slider, airy buttons, result cache + refresh, click/dblclick split, jump-to-word
-264f969 mindmap round 2: bugfixes, starfield, curved links, depth blur, stagger, inertia, smooth zoom
-4be7af8 mindmap: visual upgrade — bugfixes, viewport, zoom/pan, parallax, neon/glass, tilt
+a7206f9 fix: bat файлы — убрана кириллица из комментариев
+9259421 fix: stop-server — taskkill по PID через порт 8080
+5f2a4e3 fix: start-server-debug — сообщение при старте
+3d45d17 fix: start-server — VBS скрывает окно BAT
+18d6724 fix: start-server — pythonw.exe (не работает с -m http.server)
+1b9cb3d удалён start-server.vbs (затем восстановлен)
+07ce439 fix: anchors — маркер скрывается за пределами wrap, _renderMarkersAll
+c33bd7a fix: AI-трансформация — закрытие тултипа по ЛКМ
+420cd35 fix: mindmap timeline — весь текст в карточке без обрезки
+101acee fix: Preview.render() при переключении подвкладок
+6ae83ee fix: todo subtab — тройное восстановление scrollTop
+ff482f3 fix: todo renderItems — elPool переиспользует DOM-элементы
+281a690 fix: todo subtab — сохранение scrollTop колонки
+55c1b31 fix: todo subtab switch — обход patchSubtab
+4cdd707 fix: patchSubtab для todo — перерендер body
+011fbbb fix: убран дубликат const maxSubtabs
+e9883f4 fix: чеклист — updateLive вместо update, фикс подвкладок
+445e8d7 fix: чеклист — глобальный режим, навигация на подвкладку, фикс скролла
+e8704b8 feat: '+ чеклист' в Тезаурус
+ea13e42 flowchart round 7
+44e707f flowchart round 8
+6a49128 fix: чеклист — правильный селектор textarea
+9afef71 fix: start-server.bat
 ```
 
 ### Ключевые файлы
 
-- `mindmap.js` (~925 строк) — MindMap: SVG-визуализация (6 режимов: words/graph/tree/clusters/hierarchy/timeline), zoom/pan/inertia, parallax, stagger, bloom/glass, jump-to-word
-- `mindmap.css` (~110 строк) — стили оверлея, glass-панели, airy-кнопки, zoom-slider, mm-enter/pulse анимации
-- `flowchart.js` (~820 строк) — Flowchart: конструктор блок-схем, 5 форм нод, snake/force layout, taper-рёбра, drag-and-drop, glass tooltip, multi-canvas, viewport memory, fit-to-content
-- `flowchart.css` (~130 строк) — стили оверлея, glass-панели, tooltip, resize handle, canvas pills
-- `ai-transform.js` (~300 строк) — AI трансформация текста, diff-панель, история запросов
-- `llm-features.js` (~4400 строк) — MiniChat, PromptGrader, Thesaurus, _runGroomInChat, SmartPlaceholders
-- `llm-core.js` (~1900 строк) — request(), prompts (mindmap с hierarchy/steps, flowchart с shapes), LLMCache
-- `blocks.js` (~3153 строк) — переводчик (sequential), меню груминга, mindmap:jump-word handler
-- `ui.js` (~2020 строк) — Preview (scroll sync, backtick fix)
-- `app.js` (~928 строк) — хоткеи (e.code), Ctrl+K, flowchart button handler
-- `notepad.js` (~760 строк) — хоткеи (e.code)
-- `diff-engine.js` (~185 строк) — DiffEngine.compute/renderHtml
+- `flowchart.js` (~1050 строк) — Flowchart: getScreenCTM координаты, data-role, zoom кнопки, dynamic spacing, elPool-like
+- `flowchart.css` (~210 строк) — zoom-bar, checklist picker, glass
+- `mindmap.js` (~940 строк) — MindMap: timeline динамическая высота, весь текст
+- `llm-features.js` (~4500 строк) — _thesaurusChecklistAtBlock, _showChecklistSubtabPicker
+- `llm-core.js` (~1900 строк) — thesaurus_checklist промпт
+- `blocks.js` (~3270 строк) — todo elPool, patchSubtab для todo, Preview.render, Anchors._renderMarkersAll
+- `ai-transform.js` (~370 строк) — _onClickOutside handler
+- `anchors.js` (~570 строк) — rawTop visibility check
+- `start-server.vbs` — скрытый запуск через WScript.Shell
+- `start-server-debug.bat` — прямой запуск в консоли
+- `stop-server.bat` — taskkill по имени + PID
 
 ## Architecture Decisions
 
-- **e.code для хоткеев** — `e.code='KeyT'` вместо `e.key.toLowerCase()==='t'` потому что `e.key` зависит от раскладки
-- **MindMap viewport `<g>`** — все элементы в одной группе с единым transform (zoom/pan/parallax)
-- **MindMap stagger vs parallax** — анимация на внешнем `<g class="mm-enter">`, parallax на вложенном `<g data-depth>` — конфликт transform решён вложенностью
-- **MindMap depth blur** — disabled для hierarchy/timeline (текст для чтения), coefficient 3 для остальных
-- **MindMap clusters gradient** — уникальный radialGradient на каждый эллипс (cx/cy рандом 20–80%) для разнообразия
-- **MindMap jump-to-word** — CustomEvent `mindmap:jump-word` из mindmap.js, handler в blocks.js (разделение ответственности)
-- **MindMap regex** — без `\b` (не работает с кириллицей), простой substring поиск
-- **MindMap cache** — `_data` хранится между открытиями, refresh кнопка ↻ для перезапроса
-- **Flowchart virtual canvas** — фиксированный viewBox 2000×1400, layout не зависит от размера панели
-- **Flowchart snake layout** — 5 рядов на колонку, зигзаг, topological BFS
-- **Flowchart force layout** — repel 2200/dist², attract (dist-150)*0.02, 60 итераций
-- **Flowchart taper edges** — полигон вдоль нормали, wStart=3, wEnd=0.5, через _shapeAnchor
-- **Flowchart shape anchors** — diamond: пересечение луча с |x/dw|+|y/dh|=1; circle: r по направлению; rect: bbox intersection
-- **Flowchart _syncData AFTER _render** — _syncData() перезаписывает _data через _nodes.map, _nodes заполняется _render(). Порядок критичен
-- **Flowchart multi-canvas** — localStorage, debounced 600ms, viewport per-canvas
-- **Flowchart fit-to-content** — bbox нод → zoom/pan, fallback для нового канваса
-- **Flowchart text stroke** — paint-order: stroke, rgba(0,0,0,0.55), 3px — читаемость на любом фоне
-- **AiTransform diff** — большой изменение (>50% длины): показывает ответ; небольшое: только добавления зелёным
-- **AiTransform whole text** — если текст не выделен, запрос применяется ко всему тексту блока
-- **ensureSession(idx)** — переключает MiniChat на нужную сессию, если юзер переключился во время async LLM-запроса
-- **reasoning_content fallback** — `||` вместо `??` потому что пустая строка `""` !== `null/undefined`
-- **Sequential translate** — `Promise.all` конфликтует с `_activeController.abort()` в Translator
-- **_fixUnclosedBackticks** — подсчёт ` на строке; нечётное → закрыть. Работает до marked.parse()
+- **Flowchart getScreenCTM** — `pt.matrixTransform(_svg.getScreenCTM().inverse())` вместо ручного `VCW/rect.width` из-за preserveAspectRatio леттербоксинга
+- **Flowchart data-role** — `data-role="backing|shape|shape-body|shape-top|bar"` вместо `rx`-гадания в `_updateNodePosition`
+- **Flowchart zoom buttons** — `-`/`100%`/`+` вместо range-слайдера, кнопка-центр = fitToContent
+- **Todo elPool** — Map<id, element> для переиспользования DOM без `innerHTML = ''`
+- **Todo subtab switch** — обход `patchSubtab`, прямое обновление items/active/checkbox
+- **Todo scroll fix** — `State.updateLive()` вместо `State.update()` для checkbox и completion
+- **Checklist global mode** — `localStorage('thesaurus_mode')`, чтение при клике, обновление title всех кнопок
+- **Anchors visibility** — `rawTop + lineHeight < 0 || rawTop > wrapH` для скрытия за пределами
+- **BAT encoding** — латиница в комментариях для совместимости кодировок Windows
+- **Mindmap timeline** — динамическая высота карточек, pre-calculate max, `_wrapTextLines(maxLines=10)`
+- **AiTransform close** — `_onClickOutside` через `document.addEventListener('click', ..., true)`
 - **Сленг**: пользователь называет dropdown "тултип" — имей в виду
-- **Тезаурус меню** — клик по пункту = только выбор (не выполнение). Обычный клик по кнопке = выполнение выбранного режима. Режим в localStorage
 
 ## Ранее выполнено (архив)
 
