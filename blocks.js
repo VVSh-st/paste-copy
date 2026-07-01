@@ -1757,7 +1757,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         _spellAcceptAll();
       };
       setTimeout(() => {
-        document.addEventListener('click', _spellAcceptHandler, true);
+        document.addEventListener('click', _spellAcceptHandler);
         document.addEventListener('contextmenu', _spellCancelHandler, true);
       }, 0);
       ta.addEventListener('click', _spellCursorHandler);
