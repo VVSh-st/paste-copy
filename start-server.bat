@@ -8,12 +8,9 @@ if %errorlevel%==0 (
     exit /b
 )
 
-:: Ищем Python: сначала встроенный (pythonw — без окна), потом системный
-set "PYW=%~dp0python\pythonw.exe"
+:: Ищем Python: сначала встроенный, потом системный
 set "PYEXE=%~dp0python\python.exe"
-if exist "%PYW%" (
-    start "" "%PYW%" -m http.server 8080
-) else if exist "%PYEXE%" (
+if exist "%PYEXE%" (
     start /min "" "%PYEXE%" -m http.server 8080
 ) else (
     where python >nul 2>&1
