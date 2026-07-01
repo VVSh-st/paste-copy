@@ -2,32 +2,7 @@ const Flowchart = (() => {
   const VCW = 2000, VCH = 1400;
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const PALETTE = ['#4f8ef7', '#5cb87a', '#f0a050', '#e05c6a', '#a78bfa', '#f472b6', '#22d3ee', '#fbbf24'];
-
-  let _overlay = null, _panel = null, _svg = null, _viewport = null;
-  let _mode = 'flow', _data = null, _loading = false;
-  let _zoom = 1, _panX = 0, _panY = 0;
-  let _dragging = false, _lastX = 0, _lastY = 0, _movedEnough = false;
-  let _velX = 0, _velY = 0, _inertiaRaf = null;
-  let _rafPending = false, _parallaxNX = 0, _parallaxNY = 0;
-  let _dragNode = null, _dragOffX = 0, _dragOffY = 0;
-  let _nodes = [], _edges = [], _edgesG = null;
-  let _connectMode = false, _connectFrom = null;
-  let _currentTooltip = null;
-  let _canvases = [], _activeCanvasId = null;
-  let _saveTimer = null;
-  let _resizing = false, _startW, _startH, _startMX, _startMY;
-  let _skipRestore = false;
-  let _fontSize = parseFloat(localStorage.getItem('fc_fontsize')) || 13;
-
-  function _setFontSize(v) {
-    _fontSize = Math.min(18, Math.max(9, v));
-    localStorage.setItem('fc_fontsize', _fontSize);
-    _render();
-  }
-
-  function _resetTransform() { _zoom = 1; _panX = 0; _panY = 0; if (_viewport) _viewport.setAttribute('transform', 'translate(0,0) scale(1)'); }
-  function _applyTransform() { if (_viewport) _viewport.setAttribute('transform', `translate(${_panX},${_panY}) scale(${_zoom})`); }
-  function _gradIdFor(c) { return 'fcg-' + c.replace('#', ''); }
+  let _svg, _viewport, _overlay, _panel;
   function _syncZoomLabel() { const b = _overlay?.querySelector('.fc-zoom-reset'); if (b) b.textContent = Math.round(_zoom * 100) + '%'; }
 
   const ZOOM_STEP = 0.1;
@@ -40,17 +15,6 @@ const Flowchart = (() => {
     _panX = svgP.x - (svgP.x - _panX) * (newZoom / _zoom);
     _panY = svgP.y - (svgP.y - _panY) * (newZoom / _zoom);
     _zoom = newZoom; _applyTransform(); _syncZoomLabel(); _saveViewport();
-  }
-
-  function _ensureGradient(color) {
-    if (_svg?.querySelector(`#${_gradIdFor(color)}`)) return;
-    const defs = _svg?.querySelector('defs');
-    if (!defs) return;
-    const grad = document.createElementNS(SVG_NS, 'radialGradient');
-    grad.setAttribute('id', _gradIdFor(color));
-    grad.setAttribute('cx', '35%'); grad.setAttribute('cy', '30%'); grad.setAttribute('r', '70%');
-    grad.innerHTML = `<stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="35%" stop-color="${color}" stop-opacity="0.9"/><stop offset="100%" stop-color="${color}" stop-opacity="0.15"/>`;
-    defs.appendChild(grad);
   }
 
   function _wrapTextLines(text, maxW, maxL) {
@@ -445,7 +409,6 @@ const Flowchart = (() => {
 
   function _drawNode(node, i) {
     const color = PALETTE[i % PALETTE.length];
-    _ensureGradient(color);
     const { w, h } = _nodeSize(node);
     const x = node.x - w / 2, y = node.y - h / 2;
 
@@ -458,7 +421,7 @@ const Flowchart = (() => {
 
     function makeBacking(shapeEl) {
       const b = shapeEl.cloneNode(true);
-      b.removeAttribute('fill'); b.setAttribute('fill', 'rgba(10,11,16,0.92)');
+      b.removeAttribute('fill'); b.setAttribute('fill', 'rgba(16,18,26,0.78)');
       b.removeAttribute('stroke'); b.removeAttribute('stroke-width');
       b.removeAttribute('fill-opacity'); b.removeAttribute('filter');
       return b;
@@ -474,10 +437,9 @@ const Flowchart = (() => {
         depthG.appendChild(backing);
         shapeEl = document.createElementNS(SVG_NS, 'polygon');
         shapeEl.setAttribute('points', pts);
-        shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.18');
-        shapeEl.setAttribute('stroke', color + '90');
-        shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
+        shapeEl.setAttribute('stroke', color + '50');
+        shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
@@ -490,10 +452,9 @@ const Flowchart = (() => {
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'circle');
         shapeEl.setAttribute('cx', node.x); shapeEl.setAttribute('cy', node.y); shapeEl.setAttribute('r', r);
-        shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.18');
-        shapeEl.setAttribute('stroke', color + '90');
-        shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
+        shapeEl.setAttribute('stroke', color + '50');
+        shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
@@ -501,20 +462,20 @@ const Flowchart = (() => {
         const backG = document.createElementNS(SVG_NS, 'g');
         const br = document.createElementNS(SVG_NS, 'rect');
         br.setAttribute('x', x); br.setAttribute('y', y + 7); br.setAttribute('width', w); br.setAttribute('height', h - 14);
-        br.setAttribute('rx', '6'); br.setAttribute('fill', 'rgba(10,11,16,0.92)');
+        br.setAttribute('rx', '6'); br.setAttribute('fill', 'rgba(16,18,26,0.78)');
         br.dataset.role = 'backing';
         backG.appendChild(br);
         depthG.appendChild(backG);
         shapeEl = document.createElementNS(SVG_NS, 'g');
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
-        rect.setAttribute('rx', '6'); rect.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        rect.setAttribute('fill-opacity', '0.18'); rect.setAttribute('stroke', color + '90'); rect.setAttribute('stroke-width', '2');
+        rect.setAttribute('rx', '6'); rect.setAttribute('fill', 'rgba(255,255,255,0.045)');
+        rect.setAttribute('stroke', color + '50'); rect.setAttribute('stroke-width', '1.25');
         rect.dataset.role = 'shape-body';
         shapeEl.appendChild(rect);
         const top = document.createElementNS(SVG_NS, 'ellipse');
         top.setAttribute('cx', node.x); top.setAttribute('cy', y + 7); top.setAttribute('rx', w / 2); top.setAttribute('ry', 7);
-        top.setAttribute('fill', `url(#${_gradIdFor(color)})`); top.setAttribute('fill-opacity', '0.25'); top.setAttribute('stroke', color + '40');
+        top.setAttribute('fill', 'rgba(255,255,255,0.06)'); top.setAttribute('stroke', color + '40');
         top.dataset.role = 'shape-top';
         shapeEl.appendChild(top);
         break;
@@ -522,49 +483,39 @@ const Flowchart = (() => {
       case 'stadium': {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', h / 2); back.setAttribute('fill', 'rgba(10,11,16,0.95)');
+        back.setAttribute('rx', h / 2); back.setAttribute('fill', 'rgba(16,18,26,0.78)');
         back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
-        shapeEl.setAttribute('rx', h / 2); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.18'); shapeEl.setAttribute('stroke', color + '90'); shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.setAttribute('rx', h / 2); shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
+        shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
       default: {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', '8'); back.setAttribute('fill', 'rgba(10,11,16,0.95)');
+        back.setAttribute('rx', '8'); back.setAttribute('fill', 'rgba(16,18,26,0.78)');
         back.dataset.role = 'backing';
         depthG.appendChild(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
-        shapeEl.setAttribute('rx', '8'); shapeEl.setAttribute('fill', `url(#${_gradIdFor(color)})`);
-        shapeEl.setAttribute('fill-opacity', '0.18'); shapeEl.setAttribute('stroke', color + '90'); shapeEl.setAttribute('stroke-width', '2');
+        shapeEl.setAttribute('rx', '8'); shapeEl.setAttribute('fill', 'rgba(255,255,255,0.045)');
+        shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
     }
     depthG.appendChild(shapeEl);
 
-    if (['rect', 'stadium', 'cylinder', undefined].includes(node.shape)) {
-      const bar = document.createElementNS(SVG_NS, 'rect');
-      bar.setAttribute('x', x); bar.setAttribute('y', y);
-      bar.setAttribute('width', 4); bar.setAttribute('height', h);
-      bar.setAttribute('rx', 2); bar.setAttribute('fill', color);
-      bar.dataset.role = 'bar';
-      depthG.appendChild(bar);
-    }
-
     const lines = _wrapTextLines(node.label || node.id, w - 20, 3);
     lines.forEach((ln, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
       t.setAttribute('x', node.x); t.setAttribute('y', node.y + 4 + (li - (lines.length - 1) / 2) * 14);
       t.setAttribute('text-anchor', 'middle'); t.setAttribute('fill', 'var(--text0)');
-      t.setAttribute('font-size', String(_fontSize || 13)); t.setAttribute('font-family', 'var(--mono)');
-      t.setAttribute('paint-order', 'stroke'); t.setAttribute('stroke', 'rgba(0,0,0,0.55)');
-      t.setAttribute('stroke-width', '3'); t.setAttribute('stroke-linejoin', 'round');
+      t.setAttribute('font-size', String(_fontSize || 13));
+      t.setAttribute('font-family', "'Segoe UI', system-ui, -apple-system, sans-serif");
       t.textContent = ln; depthG.appendChild(t);
     });
 
@@ -588,9 +539,6 @@ const Flowchart = (() => {
     g.querySelectorAll('[data-role="shape-body"]').forEach(r => {
       r.setAttribute('x', x); r.setAttribute('y', y + 7);
       r.setAttribute('width', w); r.setAttribute('height', h - 14);
-    });
-    g.querySelectorAll('[data-role="bar"]').forEach(bar => {
-      bar.setAttribute('x', x); bar.setAttribute('y', y); bar.setAttribute('height', h);
     });
     g.querySelectorAll('circle[data-role]').forEach(c => { c.setAttribute('cx', node.x); c.setAttribute('cy', node.y); });
     g.querySelectorAll('polygon[data-role]').forEach(p => {
@@ -694,12 +642,17 @@ const Flowchart = (() => {
       window.Toast?.show('Скопировано в новое полотно', 'info');
     });
 
-    function _setupProximity(el, r) {
-      _overlay.addEventListener('mousemove', e => { const rc = el.getBoundingClientRect(); el.classList.toggle('near', Math.hypot(e.clientX - (rc.left + rc.width / 2), e.clientY - (rc.top + rc.height / 2)) < r); });
+    function _setupProximity(el, ratio) {
+      _overlay.addEventListener('mousemove', e => {
+        const rc = el.getBoundingClientRect();
+        const panelRect = _panel.getBoundingClientRect();
+        const r = Math.min(panelRect.width, panelRect.height) * ratio;
+        el.classList.toggle('near', Math.hypot(e.clientX - (rc.left + rc.width / 2), e.clientY - (rc.top + rc.height / 2)) < r);
+      });
     }
-    _setupProximity(_overlay.querySelector('.flowchart-controls'), 150);
-    _setupProximity(_overlay.querySelector('.flowchart-canvases'), 150);
-    _setupProximity(_overlay.querySelector('.flowchart-zoombar'), 120);
+    _setupProximity(_overlay.querySelector('.flowchart-controls'), 0.22);
+    _setupProximity(_overlay.querySelector('.flowchart-canvases'), 0.22);
+    _setupProximity(_overlay.querySelector('.flowchart-zoombar'), 0.18);
 
     _overlay.querySelector('.fc-zoom-in').addEventListener('click', () => _zoomBy(ZOOM_STEP));
     _overlay.querySelector('.fc-zoom-out').addEventListener('click', () => _zoomBy(-ZOOM_STEP));
@@ -869,14 +822,6 @@ const Flowchart = (() => {
       <filter id="fc-shadow"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.25"/></filter>
       <marker id="fc-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,1 L7,4 L0,7 Z" fill="rgba(255,255,255,0.35)"/></marker>
     `;
-    const seen = new Set();
-    PALETTE.forEach(c => {
-      if (seen.has(c)) return; seen.add(c);
-      const grad = document.createElementNS(SVG_NS, 'radialGradient');
-      grad.setAttribute('id', _gradIdFor(c)); grad.setAttribute('cx', '35%'); grad.setAttribute('cy', '30%'); grad.setAttribute('r', '70%');
-      grad.innerHTML = `<stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="35%" stop-color="${c}" stop-opacity="0.9"/><stop offset="100%" stop-color="${c}" stop-opacity="0.15"/>`;
-      defs.appendChild(grad);
-    });
     return defs;
   }
 
