@@ -1780,8 +1780,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     // Клик по textarea → проверяем, попали ли в spell-слово
-    let _spellClickHandler = null;
-
     function _onTaSpellClick(e) {
       if (!_spellWords.length || !ta.isConnected) return;
       // Используем нативный caretRangeFromPoint для определения позиции
