@@ -1817,6 +1817,7 @@ const BUILTIN_PROMPTS = {
   thesaurus_rephrase: 'You are a text rephraser. Rephrase the following text in a different way while preserving the exact meaning. Match the language of the input text. Return ONLY the rephrased text without explanations, quotes, or commentary.',
   thesaurus_explain: 'You are an explainer for a 5-year-old. Explain the following text in very simple words, using everyday examples and analogies. Keep it short and clear. Match the language of the input text. Return ONLY the explanation without prefixes or commentary.',
   thesaurus_structure: 'You are a text structurer. Convert the following text into a numbered list with clear, concise items. Preserve all key information. Match the language of the input text. Return ONLY the numbered list without explanations or commentary.',
+  thesaurus_checklist: 'Создай чеклист (задачи) из текста. Верни ТОЛЬКО список задач, каждая на новой строке, начиная с тире. Без комментариев, без заголовков, без markdown-разметки.\n\nТекст:\n{text}',
   fill_ph: 'You are an instruction completer. Complete this inline instruction: "{instruction}". Keep the result short, concrete, natural, and in the same style as the original. Do NOT add quotes, explanation, or extra alternatives. Return ONLY the completed instruction.',
   grade_prompt: 'You are a prompt evaluator. Rate this prompt on 5 criteria using integers from 1 to 10 only. Judge clarity, specificity, completeness, consistency, and conciseness. Return ONLY a valid JSON object with no markdown: {"clarity":N,"specificity":N,"completeness":N,"consistency":N,"conciseness":N,"summary":"one sentence overall verdict"}',
   bro_system: 'You are a concise helpful assistant embedded in a prompt editor. Answer directly in 1–3 sentences. Do NOT restate the question, add filler, or give examples unless asked. If the request is unclear, ask one short clarifying question.',
@@ -1837,7 +1838,7 @@ const BUILTIN_PROMPTS = {
     { label: 'Промпт-инженерия', keys: ['positive_instr', 'audit', 'compress', 'variations', 'negatives', 'grade_prompt'] },
     { label: 'БРО-теги', keys: ['bro_system', 'fix_system', 'eng_system', 'ru_system', 'sum_system', 'ask_system', 'plan_system'] },
     { label: 'Чат', keys: ['chat_system'] },
-    { label: 'Служебные', keys: ['autotitle', 'subtab_autotitle', 'summary', 'thesaurus', 'thesaurus_antonyms', 'thesaurus_rephrase', 'thesaurus_explain', 'thesaurus_structure', 'fill_ph', 'mindmap', 'flowchart'] },
+    { label: 'Служебные', keys: ['autotitle', 'subtab_autotitle', 'summary', 'thesaurus', 'thesaurus_antonyms', 'thesaurus_rephrase', 'thesaurus_explain', 'thesaurus_structure', 'thesaurus_checklist', 'fill_ph', 'mindmap', 'flowchart'] },
   ];
 
   const PROMPT_META = {
@@ -1874,6 +1875,7 @@ const BUILTIN_PROMPTS = {
     thesaurus_rephrase: { title: 'Тезаурус: перефразирование', group: 'Служебные', short: 'Иной способ сказать то же самое.', usedIn: 'Меню тезауруса → «Перефразирование».', output: 'Только перефразированный текст.', vars: [], requiresOnly: true },
     thesaurus_explain: { title: 'Тезаурус: объяснение', group: 'Служебные', short: 'Объясняет как для пятилетки.', usedIn: 'Меню тезауруса → «Объяснение».', output: 'Простое объяснение в мини-чат.', vars: [], requiresOnly: true },
     thesaurus_structure: { title: 'Тезаурус: структурирование', group: 'Служебные', short: 'Превращает текст в нумерованный список.', usedIn: 'Меню тезауруса → «Структурирование».', output: 'Нумерованный список.', vars: [], requiresOnly: true },
+    thesaurus_checklist: { title: 'Тезаурус: чеклист', group: 'Служебные', short: 'Создаёт список задач из текста.', usedIn: 'Меню тезауруса → «+ чеклист».', output: 'Список задач с тире.', vars: ['text'], requiresOnly: true },
     fill_ph: { title: 'Заполнить {{llm:...}}', group: 'Служебные', short: 'Дозаполняет inline-инструкцию.', usedIn: 'LLM-меню → «Заполнить {{llm:...}}».', output: 'Короткое завершение без кавычек.', vars: ['instruction'], requiresOnly: true },
     mindmap: { title: 'MindMap', group: 'Служебные', short: 'Анализ текста для визуализации.', usedIn: 'Кнопка 🧠 в превью.', output: 'JSON со словами, связями, кластерами, иерархией, шагами.', vars: [], requiresJson: true, requiresOnly: true },
     flowchart: { title: 'Блок-схема', group: 'Служебные', short: 'Генерация блок-схемы из текста.', usedIn: 'Кнопка 📐 в превью.', output: 'JSON с нодами и рёбрами.', vars: [], requiresJson: true, requiresOnly: true },

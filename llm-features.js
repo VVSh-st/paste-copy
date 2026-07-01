@@ -707,7 +707,96 @@ window.LLMFeatures = (() => {
       case 'rephrase':  return _thesaurusTransformAtBlock(blockId, 'thesaurus_rephrase', 'thesaurus_rephrase', '↬ Перефразирую...');
       case 'explain':   return _thesaurusExplainAtBlock(blockId);
       case 'structure': return _thesaurusTransformAtBlock(blockId, 'thesaurus_structure', 'thesaurus_structure', '☰ Структурирую...');
+      case 'checklist': return _thesaurusChecklistAtBlock(blockId);
     }
+  }
+
+  function _showChecklistSubtabPicker(todoBlock, items, text) {
+    const overlay = document.createElement('div');
+    overlay.className = 'checklist-picker-overlay';
+    overlay.innerHTML = `
+      <div class="checklist-picker">
+        <div class="checklist-picker-title">Все вкладки заняты</div>
+        <div class="checklist-picker-subtitle">Какую заменить?</div>
+        ${todoBlock.subtabs.map((s, i) => `
+          <button class="checklist-picker-item" data-idx="${i}">
+            <span class="checklist-picker-name">${s.name || 'Вкладка ' + (i + 1)}</span>
+            <span class="checklist-picker-count">${s.items.length} пунктов</span>
+          </button>
+        `).join('')}
+        <button class="checklist-picker-cancel">Отмена</button>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('.checklist-picker-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        const sub = todoBlock.subtabs[idx];
+        sub.name = text.slice(0, 30) + (text.length > 30 ? '...' : '');
+        sub.items = items.map(t => ({
+          id: crypto.randomUUID?.().slice(0, 8) || String(Date.now()),
+          text: t, done: false
+        }));
+        State.update(() => {});
+        window.Toast?.show(`Чеклист: ${items.length} пунктов`, 'success');
+        overlay.remove();
+      });
+    });
+    overlay.querySelector('.checklist-picker-cancel')?.addEventListener('click', () => overlay.remove());
+  }
+
+  async function _thesaurusChecklistAtBlock(blockId) {
+    const tab = State.getActive();
+    if (!tab) return;
+    const b = tab.blocks.find(x => x.id === blockId);
+    if (!b) return;
+
+    const ta = document.querySelector(`[data-block-id="${blockId}"] textarea`);
+    const text = ta?.value?.slice(ta.selectionStart, ta.selectionEnd).trim()
+      || ta?.value?.trim() || '';
+    if (!text) { window.Toast?.show('Нет текста', 'info'); return; }
+
+    window.Toast?.show('Создаю чеклист...', 'info');
+    const prompt = _LLMCore.getPrompt('thesaurus_checklist', { text: text.slice(0, 4000) });
+
+    let result;
+    try {
+      result = await _LLMCore.request({
+        messages: [{ role: 'user', content: prompt }],
+        stream: false, maxTokens: 1000, featureTag: 'checklist',
+      });
+    } catch { window.Toast?.show('Ошибка LLM', 'error'); return; }
+
+    if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); return; }
+
+    const items = result.trim().split('\n')
+      .map(l => l.replace(/^[-–—*•]\s*/, '').replace(/^\d+[\.\)]\s*/, '').trim())
+      .filter(Boolean);
+
+    if (!items.length) { window.Toast?.show('Чеклист пуст', 'info'); return; }
+
+    let todoBlock = tab.blocks.find(x => x.type === 'todo');
+
+    if (!todoBlock) {
+      todoBlock = State.makeBlock('Чеклист', '☑️', 0, '', 'todo');
+      tab.blocks.push(todoBlock);
+    }
+
+    let freeSubtab = todoBlock.subtabs.find(s => !s.items.length);
+
+    if (!freeSubtab) {
+      _showChecklistSubtabPicker(todoBlock, items, text);
+      return;
+    }
+
+    freeSubtab.name = text.slice(0, 30) + (text.length > 30 ? '...' : '');
+    freeSubtab.items = items.map(t => ({
+      id: crypto.randomUUID?.().slice(0, 8) || String(Date.now()),
+      text: t, done: false
+    }));
+
+    State.update(() => {});
+    window.Toast?.show(`Чеклист: ${items.length} пунктов`, 'success');
   }
 
   const PromptRephrase = (() => {

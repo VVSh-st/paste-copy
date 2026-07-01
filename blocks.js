@@ -1849,7 +1849,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     thesaurusDropdown.style.display = 'none';
 
     let lastThesaurusMode = localStorage.getItem('thesaurus_mode') || 'thesaurus';
-    const _thesaurusModeLabels = { thesaurus: 'Тезаурус', antonyms: 'Антонимы', rephrase: 'Перефразирование', explain: 'Объяснение', structure: 'Структурирование' };
+    const _thesaurusModeLabels = { thesaurus: 'Тезаурус', antonyms: 'Антонимы', rephrase: 'Перефразирование', explain: 'Объяснение', structure: 'Структурирование', checklist: '+ чеклист' };
 
     function _buildThesaurusMenu() {
       thesaurusDropdown.innerHTML = '';
@@ -1859,6 +1859,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         { id: 'rephrase', label: 'Перефразирование' },
         { id: 'explain', label: 'Объяснение' },
         { id: 'structure', label: 'Структурирование' },
+        { id: 'checklist', label: '+ чеклист' },
       ];
       modes.forEach(m => {
         const opt = document.createElement('button');

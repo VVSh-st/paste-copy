@@ -5927,6 +5927,35 @@ body.help-open {
 
 .block-subtab.subtab-completed .block-subtab-label { color: #d4a520; }
 
+/* ── Checklist picker ────────────────────────────────────────────────── */
+.checklist-picker-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+.checklist-picker {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 16px; min-width: 260px;
+  box-shadow: var(--shadow-lg);
+}
+.checklist-picker-title { color: var(--text0); font-weight: 600; font-size: 13px; }
+.checklist-picker-subtitle { color: var(--text2); font-size: 11px; margin-bottom: 10px; }
+.checklist-picker-item {
+  display: flex; justify-content: space-between; width: 100%;
+  padding: 8px 10px; border: none; background: none;
+  color: var(--text1); font-size: 12px; cursor: pointer;
+  border-radius: var(--radius-sm); transition: background var(--trans);
+}
+.checklist-picker-item:hover { background: var(--surface2); color: var(--text0); }
+.checklist-picker-count { color: var(--text3); font-size: 10px; }
+.checklist-picker-cancel {
+  width: 100%; margin-top: 8px; padding: 6px;
+  border: 1px solid var(--border); background: none;
+  color: var(--text2); font-size: 11px; border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
 /* ── Table block ──────────────────────────────────────────────────────── */
 .table-grid {
   display: grid;
