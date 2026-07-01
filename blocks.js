@@ -1177,7 +1177,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         row.appendChild(btn);
       }
       prevBtn.disabled = b.activeSubtab <= 0;
-      const maxSubtabs = b.subtabs?.length || State.SUBTABS_COUNT;
       nextBtn.disabled = b.activeSubtab >= maxSubtabs - 1;
     }
 
