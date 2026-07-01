@@ -683,6 +683,14 @@ textarea.block-textarea:focus {
 .spell-check-overlay .spell-word:hover {
   background: rgba(231, 76, 60, 0.25);
 }
+.spell-check-overlay .spell-corrected {
+  text-decoration: none;
+  background: rgba(74, 222, 128, 0.18);
+  cursor: pointer;
+}
+.spell-check-overlay .spell-corrected:hover {
+  background: rgba(74, 222, 128, 0.3);
+}
 .spell-popup {
   position: fixed;
   bottom: 60px;
