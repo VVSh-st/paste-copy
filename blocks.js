@@ -1669,10 +1669,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       lineMirror = null;
       _clearSpellOverlay();
       clearTimeout(_spellCheckTimer);
-      if (_spellClickHandler) {
-        ta.removeEventListener('click', _spellClickHandler);
-        _spellClickHandler = null;
-      }
     });
 
     // ── Spell-check overlay ────────────────────────────────────────
@@ -1779,62 +1775,30 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }, 0);
     }
 
-    // Определение позиции клика через mirror-элемент
-    function _getCharPosFromClick(clientX, clientY) {
-      const text = ta.value;
-      if (!text || !_spellOverlay) return -1;
+    // Клик по overlay → spell word или пересылка в textarea
+    let _spellOverlayClickHandler = null;
 
-      const cs = getComputedStyle(ta);
-      const pl = parseFloat(cs.paddingLeft) || 0;
-      const pr = parseFloat(cs.paddingRight) || 0;
-      const pt = parseFloat(cs.paddingTop) || 0;
-      const bt = parseFloat(cs.borderTopWidth) || 0;
-      const bl = parseFloat(cs.borderLeftWidth) || 0;
-
-      // Позиция контент-области textarea в viewport
-      const taRect = ta.getBoundingClientRect();
-      const contentLeft = taRect.left + bl + pl;
-      const contentTop = taRect.top + bt + pt;
-
-      // Создаём mirror в той же позиции, что и контент textarea
-      const mirror = document.createElement('div');
-      mirror.style.cssText = `position:fixed;left:${contentLeft}px;top:${contentTop - ta.scrollTop}px;visibility:hidden;pointer-events:none;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;box-sizing:content-box;`;
-      for (const prop of lineMirrorProps) mirror.style[prop] = cs[prop];
-      mirror.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
-      mirror.textContent = text;
-      document.body.appendChild(mirror);
-
-      // Ищем символ: для каждой позиции измеряем через range
-      let charPos = text.length;
-      const textNode = mirror.firstChild;
-      if (textNode && textNode.nodeType === 3) {
-        for (let i = 0; i < text.length; i++) {
-          const range = document.createRange();
-          range.setStart(textNode, i);
-          range.setEnd(textNode, Math.min(i + 1, text.length));
-          const r = range.getBoundingClientRect();
-          if (r.width === 0) continue;
-          if (clientY >= r.top && clientY <= r.bottom && clientX >= r.left && clientX <= r.right) {
-            charPos = i;
-            break;
-          }
-        }
-      }
-
-      mirror.remove();
-      return charPos;
-    }
-
-    // Клик по textarea → проверяем, попали ли в spell-слово
-    function _onTaSpellClick(e) {
-      if (!_spellWords.length) return;
-      const charPos = _getCharPosFromClick(e.clientX, e.clientY);
-      if (charPos < 0) return;
-      const hit = _spellWords.find(w => charPos >= w.pos && charPos < w.pos + w.len);
-      if (hit) {
+    function _onSpellOverlayClick(e) {
+      // Клик по spell-word → показать popup
+      const spellEl = e.target.closest('.spell-word');
+      if (spellEl) {
         e.preventDefault();
         e.stopPropagation();
-        _showSpellPopup(ta, hit.word, hit.pos, hit.len, hit.suggestions);
+        const hit = _spellWords.find(w => w.pos === parseInt(spellEl.dataset.pos));
+        if (hit) _showSpellPopup(ta, hit.word, hit.pos, hit.len, hit.suggestions);
+        return;
+      }
+      // Клик по пустому месту → переслать в textarea
+      e.preventDefault();
+      _spellOverlay.style.pointerEvents = 'none';
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      _spellOverlay.style.pointerEvents = 'auto';
+      if (el) {
+        el.focus();
+        el.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, clientX: e.clientX, clientY: e.clientY,
+          button: e.button, buttons: e.buttons,
+        }));
       }
     }
 
@@ -1846,6 +1810,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!_spellOverlay) {
         _spellOverlay = document.createElement('div');
         _spellOverlay.className = 'spell-check-overlay';
+        _spellOverlay.style.pointerEvents = 'auto';
         lineWrap.appendChild(_spellOverlay);
       }
 
@@ -1873,16 +1838,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       for (const w of sorted) {
         if (w.pos < lastEnd || w.pos + w.len > text.length) continue;
         html += _escBlock(text.slice(lastEnd, w.pos));
-        html += `<span class="spell-word">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
+        html += `<span class="spell-word" data-pos="${w.pos}">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
         lastEnd = w.pos + w.len;
       }
       html += _escBlock(text.slice(lastEnd));
       _spellOverlay.innerHTML = html;
 
-      // Регистрируем click handler на textarea (один раз)
-      if (!_spellClickHandler) {
-        _spellClickHandler = _onTaSpellClick;
-        taEl.addEventListener('click', _spellClickHandler);
+      // Регистрируем click + wheel handler на overlay (один раз)
+      if (!_spellOverlayClickHandler) {
+        _spellOverlayClickHandler = _onSpellOverlayClick;
+        _spellOverlay.addEventListener('click', _spellOverlayClickHandler);
+        // Пробрасываем скролл в textarea
+        _spellOverlay.addEventListener('wheel', e => {
+          e.preventDefault();
+          taEl.scrollTop += e.deltaY;
+          taEl.scrollLeft += e.deltaX;
+        }, { passive: false });
       }
     }
 
