@@ -1513,6 +1513,24 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       updateBlockCounter(ta, b, body);
 
+      // Обновляем badge превью при изменении текста
+      if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
+        const tab = State.getActive();
+        if (tab) {
+          const orderMap = buildOrderMap(tab.blocks);
+          const badge = document.querySelector(`.block[data-id="${b.id}"] .block-order-btn`);
+          if (badge) {
+            const orderNum = orderMap[b.id];
+            const disabled = b.previewDisabled === true;
+            badge.classList.toggle('block-order-disabled', disabled);
+            badge.textContent = disabled ? '✕' : (orderNum != null ? '#' + orderNum : '—');
+            badge.title = disabled
+              ? 'Блок скрыт из превью (нажми чтобы включить)'
+              : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть)' : 'Пустой — в превью не войдёт';
+          }
+        }
+      }
+
       WordDict.scheduleBuild();
 
       WordComplete.handleInput(ta);
