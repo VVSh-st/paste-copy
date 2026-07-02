@@ -203,6 +203,7 @@ const Flowchart = (() => {
     }
     _nodes.filter(n => !rows.has(n.id)).forEach(n => rows.set(n.id, 0));
 
+    // Group nodes by row
     const rowGroups = new Map();
     _nodes.forEach(n => {
       const r = rows.get(n.id) || 0;
@@ -210,18 +211,55 @@ const Flowchart = (() => {
       rowGroups.get(r).push(n);
     });
 
-    const gapY = 200, gapX = 80;
+    // Step 1: Initial placement — center each row
+    const gapY = 100, gapX = 60;
     const startY = 80;
+    const positions = new Map(); // nodeId → { x, y }
 
     rowGroups.forEach((nodes, row) => {
       const totalW = nodes.reduce((s, n) => s + (n.w || 140), 0) + (nodes.length - 1) * gapX;
       let x = Math.max(60, (VCW - totalW) / 2);
       const y = startY + row * gapY;
       nodes.forEach(n => {
-        n.x = x;
-        n.y = y;
+        positions.set(n.id, { x, y, w: n.w || 140, h: n.h || 46 });
         x += (n.w || 140) + gapX;
       });
+    });
+
+    // Step 2: For edges that skip rows, shift targets horizontally
+    // to avoid passing through intermediate nodes
+    const longEdges = _edges.filter(e => {
+      const fromRow = rows.get(e.from) ?? 0;
+      const toRow = rows.get(e.to) ?? 0;
+      return Math.abs(toRow - fromRow) > 1;
+    });
+
+    // Track horizontal shifts per node
+    const shifts = new Map();
+    _nodes.forEach(n => shifts.set(n.id, 0));
+
+    longEdges.forEach(e => {
+      const fromPos = positions.get(e.from);
+      const toPos = positions.get(e.to);
+      if (!fromPos || !toPos) return;
+      // Shift target to the side of the source
+      const direction = fromPos.x > VCW / 2 ? -1 : 1;
+      const shiftAmount = 120;
+      const currentShift = shifts.get(e.to) || 0;
+      // Only shift if not already shifted in this direction
+      if (Math.sign(currentShift) !== Math.sign(direction) || currentShift === 0) {
+        shifts.set(e.to, direction * shiftAmount);
+      }
+    });
+
+    // Apply shifts
+    _nodes.forEach(n => {
+      const pos = positions.get(n.id);
+      const shift = shifts.get(n.id) || 0;
+      if (pos) {
+        n.x = pos.x + shift;
+        n.y = pos.y;
+      }
     });
   }
 
@@ -413,20 +451,31 @@ const Flowchart = (() => {
     const ux = dx / dist, uy = dy / dist;
     const p1 = _shapeAnchor(a, ux, uy);
     const p2 = _shapeAnchor(b, -ux, -uy);
-    const nx = -uy, ny = ux;
 
-    // Use curves for edges that span vertical distance
-    const spanY = Math.abs(p2.y - p1.y);
-    const spanX = Math.abs(p2.x - p1.x);
-    const useCurve = _mode === 'graph' || spanY > 100;
+    // Check if this is a long edge (skips rows)
+    const fromRow = Math.round((a.y - 80) / 100);
+    const toRow = Math.round((b.y - 80) / 100);
+    const skipsRows = Math.abs(toRow - fromRow) > 1;
 
-    if (useCurve) {
-      const path = document.createElementNS(SVG_NS, 'path');
-      // Route curve to the side of nodes, not through them
+    if (skipsRows) {
+      // Orthogonal routing: straight down → horizontal → straight down
       const midY = (p1.y + p2.y) / 2;
-      const sideDir = p1.x > VCW / 2 ? 1 : -1;
-      const bendX = Math.min(Math.max(spanX * 0.3, 30), 120) * sideDir;
-      path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x + bendX} ${midY - 10}, ${p2.x + bendX} ${midY + 10}, ${p2.x} ${p2.y}`);
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'rgba(255,255,255,0.18)');
+      path.setAttribute('stroke-width', '1.5');
+      path.style.cursor = 'pointer';
+      path.dataset.edgeFrom = a.id; path.dataset.edgeTo = b.id;
+      path.addEventListener('mouseenter', () => path.setAttribute('stroke', 'rgba(255,255,255,0.4)'));
+      path.addEventListener('mouseleave', () => path.setAttribute('stroke', 'rgba(255,255,255,0.18)'));
+      path.addEventListener('click', e => { e.stopPropagation(); _openEdgeTooltip(e, a.id, b.id, edge.label || ''); });
+      path.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(a.id, b.id); });
+      _edgesG.appendChild(path);
+    } else if (_mode === 'graph') {
+      const path = document.createElementNS(SVG_NS, 'path');
+      const cdy = Math.abs(p2.y - p1.y) * 0.2 || 20;
+      path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + cdy}, ${p2.x} ${p2.y - cdy}, ${p2.x} ${p2.y}`);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', 'rgba(255,255,255,0.18)');
       path.setAttribute('stroke-width', '1.5');
