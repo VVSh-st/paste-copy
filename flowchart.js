@@ -67,8 +67,19 @@ const Flowchart = (() => {
     const lines = _wrapTextLines(label, w - 20, 3);
     const h = (fs * 2.9) + Math.max(0, (lines.length - 1) * (fs * 1.25));
     switch (node.shape) {
-      case 'diamond': return { w: Math.max(w, 100), h: Math.max(h, 66), lines };
-      case 'circle': return { w: 50, h: 50, lines: _wrapTextLines(label, 40, 2) };
+      case 'diamond': {
+        // Ромб: увеличиваем под текст (с учётом поворота 45°)
+        const dw = Math.max(w, 120);
+        const dh = Math.max(h + 20, 80);
+        return { w: dw, h: dh, lines };
+      }
+      case 'circle': {
+        // Кружок: динамический размер под текст
+        const circW = Math.max(70, Math.min(160, singleLineW * 0.8));
+        const circLines = _wrapTextLines(label, circW * 0.6, 2);
+        const circH = Math.max(circW, (fs * 2.5) + Math.max(0, (circLines.length - 1) * (fs * 1.1)));
+        return { w: circW, h: circH, lines: circLines };
+      }
       case 'cylinder': return { w, h: h + 14, lines };
       case 'stadium': return { w: Math.max(w, 120), h, lines };
       default: return { w, h, lines };
@@ -394,7 +405,23 @@ const Flowchart = (() => {
       }
     }
 
-    // Center entire layout globally (not per-layer)
+    // Repulsion passes: push overlapping nodes apart (3 passes)
+    for (let pass = 0; pass < 3; pass++) {
+      for (const L of layers) {
+        for (let i = 0; i < L.length - 1; i++) {
+          const a = L[i], b = L[i + 1];
+          const aw = widthOf(a) / 2, bw = widthOf(b) / 2;
+          const ax = xOf.get(a.id), bx = xOf.get(b.id);
+          const minDist = aw + bw + NODE_GAP;
+          const dist = bx - ax;
+          if (dist < minDist) {
+            const shift = (minDist - dist) / 2;
+            xOf.set(a.id, ax - shift);
+            xOf.set(b.id, bx + shift);
+          }
+        }
+      }
+    }
     const allX = [...xOf.values()];
     const globalCenter = (Math.min(...allX) + Math.max(...allX)) / 2;
     for (const [id, x] of xOf) xOf.set(id, x - globalCenter);
@@ -767,25 +794,12 @@ const Flowchart = (() => {
     try { const len = pathEl.getTotalLength(); mid = pathEl.getPointAtLength(len / 2); } catch { return; }
     if (!mid) return;
 
-    // Проверяем, не попал ли лейбл внутрь карточки — сдвигаем
-    let lx = mid.x, ly = mid.y;
-    const padding = 8;
-    for (const n of _nodes) {
-      const hw = (n.w || 140) / 2 + padding;
-      const hh = (n.h || 46) / 2 + padding;
-      if (Math.abs(lx - n.x) < hw && Math.abs(ly - n.y) < hh) {
-        // Сдвигаем вправо или влево за пределы карточки
-        lx = n.x + hw + 12;
-        break;
-      }
-    }
-
     const fs = Math.max(8, (_fontSize || 13) - 3);
     const tw = edge.label.length * fs * 0.5 + 8;
     const th = fs + 6;
 
     const bg = document.createElementNS(SVG_NS, 'rect');
-    bg.setAttribute('x', lx - tw / 2); bg.setAttribute('y', ly - th / 2);
+    bg.setAttribute('x', mid.x - tw / 2); bg.setAttribute('y', mid.y - th / 2);
     bg.setAttribute('width', tw); bg.setAttribute('height', th);
     bg.setAttribute('rx', '3');
     bg.setAttribute('fill', 'rgba(30,35,50,0.92)');
@@ -794,7 +808,7 @@ const Flowchart = (() => {
 
     const txt = document.createElementNS(SVG_NS, 'text');
     txt.textContent = edge.label;
-    txt.setAttribute('x', lx); txt.setAttribute('y', ly);
+    txt.setAttribute('x', mid.x); txt.setAttribute('y', mid.y);
     txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('dominant-baseline', 'middle');
     txt.setAttribute('fill', 'rgba(180,195,220,0.7)');
     txt.setAttribute('font-size', String(fs));
