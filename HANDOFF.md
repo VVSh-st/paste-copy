@@ -40,6 +40,17 @@
 11. ✅ **Coordinate assignment** — центрирование слоёв, интерполяция dummy-узлов (3 прохода), min-spacing bounds
 12. ✅ **Edge routing** — прямые линии через waypoints, orthogonal для back-edges (side arcs)
 13. ✅ **Crossing counter** — попарный подсчёт по слоям через Set (не глобальный)
+14. ✅ **Edge labels** — прямоугольник-фон + текст посередине ребра (getTotalLength после appendChild)
+15. ✅ **LAYER_GAP** — 140 → 100, компактнее
+
+### TextSkeletonizer (новое)
+
+16. ✅ **TextSkeletonizer** — клиентское сжатие текста для LLM (>8K символов → автоматическое)
+17. ✅ **Извлечение секций** — заголовки + первые предложения
+18. ✅ **Ключевые термины** — частотный анализ (стоп-слова, топ-30)
+19. ✅ **Списки** — bullet/numbered с контекстом
+20. ✅ **Интеграция** — flowchart.js + mindmap.js
+21. ⏸ **Аудит** — тикет `TICKET-text-skeletonizer.md`, ожидает аудиторов
 
 ### Spell-check (итог)
 
