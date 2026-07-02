@@ -20,14 +20,22 @@
 - **дропдаун** = dropdown
 - **блок** = block (элемент UI)
 
-## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-01, продолжение)
+## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-02)
 
-### Spell-check
+### Spell-check (продолжение)
 
-1. ✅ **Spell-check модуль** (`spell-check.js`) — Yandex Speller API, батчинг для больших текстов (4000 chars), LRU-кеш в памяти, graceful degradation, placeholder masking
-2. ✅ **Spell-check toggle** — в настройках, `State.spellCheck`, overlay с подчёркиванием ошибок
-3. ❌ **Popup-подсказки** — откат (11 коммитов), textarea не даёт доступ к DOM-позиции символов
-4. ❌ **Inline-toggle** — откат, мерцание/автопринятие
+1. ✅ **Click-to-accept** — клик по ошибке = preview suggestion, toggle, клик мимо = commit
+2. ✅ **Rejection tracking** — 3 правых клика на слово → перестаёт предлагаться (per-block + global)
+3. ✅ **Code fence filter** — ``` и ~~~ блоки не проверяются спеллером
+4. ✅ **Position offset fix** — компенсация leadingTrim для API позиций
+5. ✅ **Blur guard** — `setRangeText` не сбрасывает active error
+6. ✅ **e.target guard** — клик по иконке блока не триггерит spell-check
+7. ⏸ **Overlay drift** — floating баг: после ~10 строк фон сдвигается вправо на 1-2 символа. Debug-логи добавлены, отложено до тестирования.
+
+### Тикеты (применены)
+
+8. ✅ **LLM stale index** — блокировка textarea при groom, валидация позиций в SmartPlaceholders
+9. ✅ **MiniChat featureKey crash** — `featureKey` → `'chat'` в error handler
 
 ### Основные баги (прошлая сессия)
 
@@ -76,6 +84,15 @@
 ### Git коммиты (эта сессия)
 
 ```
+e55cf02 debug: add position tracking logs for spell-check overlay drift investigation
+65b4ac1 feat: spell-check skips code fences (```/~~~) — content inside fenced blocks not sent to Yandex Speller
+9d3135f feat: spell-check rejection tracking — 3 reverts per-block or globally hides word from overlay
+84dadbf fix: spell-check position offset — API counts from trimmed text but overlay renders from full ta.value, compensate with leadingTrim offset
+9de8b16 fix: spell-check blur handler was clearing active error during setRangeText — add _spellApplying guard
+392f666 fix: spell-check click handler ignores clicks on block icons (e.target !== ta guard)
+3b3be8a feat: spell-check click-to-accept with toggle, commit/revert, visual debounce — no popup needed
+7984255 fix: replace undefined featureKey with 'chat' in MiniChat.send() error handler
+1a54a8a fix: stale index protection for LLM async operations
 e139394 fix: nodeSize scales width with fontSize and accounts for word-wrap
 f499a40 fix: use inline style for fill/stroke in _drawNode to override external CSS
 f8efc7c fix: restore accidentally deleted variable declarations in flowchart.js
@@ -112,6 +129,9 @@ be58dfd fix: spell overlay not visible — move to body with position:fixed
 
 ### Ключевые файлы
 
+- `spell-check.js` (~250 строк) — Yandex Speller API, code fence masking, placeholder masking, position offset compensation
+- `blocks.js` (~3640 строк) — spell-check integration: click-to-accept, toggle, rejection tracking, visual debounce
+- `llm-features.js` (~4510 строк) — stale index protection, MiniChat featureKey fix
 - `flowchart.js` (~940 строк) — Round 9: style.fill, Segoe font, no bar, ratio proximity, nodeSize word-wrap
 - `flowchart.css` — glass panels, zoom-bar
 - `blocks.js` (~3555 строк) — blocked subtab (long-press), updateSubtabBlockedState
