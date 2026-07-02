@@ -135,6 +135,10 @@ window.SpellCheck = (() => {
     const cached = _cacheGet(cacheKey);
     if (cached) return { ...cached, source: 'cache' };
 
+    // Компенсация сдвига: API считает позиции от trimmed, а overlay рисует от полного ta.value
+    const leadingTrim = String(text || '').length - String(text || '').trimStart().length;
+    const trimOffset = leadingTrim;
+
     // Разбиваем на чанки
     const chunks = _splitIntoChunks(trimmed);
     const allWords = [];
@@ -151,11 +155,11 @@ window.SpellCheck = (() => {
         const words = await _fetchChunk(masked, controller.signal);
         const filtered = _filterPlaceholderErrors(words, ranges);
 
-        // Смещаем позиции относительно начала полного текста
+        // Смещаем позиции: API считает от trimmed, а нужен offset от полного текста
         for (const w of filtered) {
           allWords.push({
             word: w.word,
-            pos: w.pos + offset,
+            pos: w.pos + offset + trimOffset,
             len: w.len,
             suggestions: w.suggestions,
           });
