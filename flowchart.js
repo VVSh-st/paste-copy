@@ -424,9 +424,9 @@ const Flowchart = (() => {
       const path = document.createElementNS(SVG_NS, 'path');
       // Route curve to the side of nodes, not through them
       const midY = (p1.y + p2.y) / 2;
-      const sideDir = p1.x > VCW / 2 ? 1 : -1; // right side if source is right of center
-      const bendX = Math.max(spanX * 0.5, 80) * sideDir;
-      path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x + bendX} ${midY - 20}, ${p2.x + bendX} ${midY + 20}, ${p2.x} ${p2.y}`);
+      const sideDir = p1.x > VCW / 2 ? 1 : -1;
+      const bendX = Math.min(Math.max(spanX * 0.3, 30), 120) * sideDir;
+      path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x + bendX} ${midY - 10}, ${p2.x + bendX} ${midY + 10}, ${p2.x} ${p2.y}`);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', 'rgba(255,255,255,0.18)');
       path.setAttribute('stroke-width', '1.5');
