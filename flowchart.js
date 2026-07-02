@@ -844,12 +844,13 @@ const Flowchart = (() => {
     depthG.dataset.depth = '0.2';
     depthG.dataset.nodeId = node.id;
 
-    function makeBacking(shapeEl) {
-      const b = shapeEl.cloneNode(true);
-      b.removeAttribute('fill'); b.style.fill = 'rgba(16,18,26,0.78)';
-      b.removeAttribute('stroke'); b.removeAttribute('stroke-width');
-      b.removeAttribute('fill-opacity'); b.removeAttribute('filter');
-      return b;
+    // Тёмная подложка — рисуется отдельно, гарантированно тёмная
+    function addBacking(el) {
+      el.style.fill = 'rgba(16,18,26,0.78)';
+      el.removeAttribute('stroke'); el.removeAttribute('stroke-width');
+      el.removeAttribute('fill-opacity'); el.removeAttribute('filter');
+      el.dataset.role = 'backing';
+      depthG.appendChild(el);
     }
 
     let shapeEl;
@@ -857,9 +858,9 @@ const Flowchart = (() => {
       case 'diamond': {
         const cx = node.x, cy = node.y, dw = w * 0.55, dh = h * 0.55;
         const pts = `${cx},${cy - dh} ${cx + dw},${cy} ${cx},${cy + dh} ${cx - dw},${cy}`;
-        const backing = makeBacking(Object.assign(document.createElementNS(SVG_NS, 'polygon'), { outerHTML: '' }));
-        backing.setAttribute('points', pts); backing.dataset.role = 'backing';
-        depthG.appendChild(backing);
+        const back = document.createElementNS(SVG_NS, 'polygon');
+        back.setAttribute('points', pts);
+        addBacking(back);
         shapeEl = document.createElementNS(SVG_NS, 'polygon');
         shapeEl.setAttribute('points', pts);
         shapeEl.style.fill = 'rgba(255,255,255,0.045)';
@@ -872,9 +873,7 @@ const Flowchart = (() => {
         const r = Math.min(w, h) / 2;
         const back = document.createElementNS(SVG_NS, 'circle');
         back.setAttribute('cx', node.x); back.setAttribute('cy', node.y); back.setAttribute('r', r);
-        back.style.fill = 'rgba(16,18,26,0.78)';
-        back.dataset.role = 'backing';
-        depthG.appendChild(back);
+        addBacking(back);
         shapeEl = document.createElementNS(SVG_NS, 'circle');
         shapeEl.setAttribute('cx', node.x); shapeEl.setAttribute('cy', node.y); shapeEl.setAttribute('r', r);
         shapeEl.style.fill = 'rgba(255,255,255,0.045)';
@@ -884,13 +883,10 @@ const Flowchart = (() => {
         break;
       }
       case 'cylinder': {
-        const backG = document.createElementNS(SVG_NS, 'g');
-        const br = document.createElementNS(SVG_NS, 'rect');
-        br.setAttribute('x', x); br.setAttribute('y', y + 7); br.setAttribute('width', w); br.setAttribute('height', h - 14);
-        br.setAttribute('rx', '6'); br.style.fill = 'rgba(16,18,26,0.78)';
-        br.dataset.role = 'backing';
-        backG.appendChild(br);
-        depthG.appendChild(backG);
+        const back = document.createElementNS(SVG_NS, 'rect');
+        back.setAttribute('x', x); back.setAttribute('y', y + 7); back.setAttribute('width', w); back.setAttribute('height', h - 14);
+        back.setAttribute('rx', '6');
+        addBacking(back);
         shapeEl = document.createElementNS(SVG_NS, 'g');
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
@@ -908,9 +904,8 @@ const Flowchart = (() => {
       case 'stadium': {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', h / 2); back.style.fill = 'rgba(16,18,26,0.78)';
-        back.dataset.role = 'backing';
-        depthG.appendChild(back);
+        back.setAttribute('rx', h / 2);
+        addBacking(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', h / 2); shapeEl.style.fill = 'rgba(255,255,255,0.045)';
@@ -921,9 +916,8 @@ const Flowchart = (() => {
       default: {
         const back = document.createElementNS(SVG_NS, 'rect');
         back.setAttribute('x', x); back.setAttribute('y', y); back.setAttribute('width', w); back.setAttribute('height', h);
-        back.setAttribute('rx', '8'); back.style.fill = 'rgba(16,18,26,0.78)';
-        back.dataset.role = 'backing';
-        depthG.appendChild(back);
+        back.setAttribute('rx', '8');
+        addBacking(back);
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', '8'); shapeEl.style.fill = 'rgba(255,255,255,0.045)';
