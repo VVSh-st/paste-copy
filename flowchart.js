@@ -179,91 +179,260 @@ const Flowchart = (() => {
     return { x: (svgP.x - _panX) / _zoom, y: (svgP.y - _panY) / _zoom };
   }
 
-  /* ── Layout ─────────────────────────────────────────────────────────── */
+  /* ── Layout: Sugiyama with dummy nodes ──────────────────────────────── */
 
-  function _flowchartLayout() {
-    const incoming = new Map(_nodes.map(n => [n.id, 0]));
-    _edges.forEach(e => incoming.set(e.to, (incoming.get(e.to) || 0) + 1));
+  const LAYER_GAP = 180, NODE_GAP = 80, EDGE_LABEL_GAP = 40;
 
-    const rows = new Map();
-    const bfs = _nodes.filter(n => (incoming.get(n.id) || 0) === 0);
-    bfs.forEach(n => rows.set(n.id, 0));
-
-    const queue = [...bfs];
-    const MAX_ROWS = 50;
-    while (queue.length) {
-      const node = queue.shift();
-      const r = rows.get(node.id) || 0;
-      if (r >= MAX_ROWS) continue;
-      _edges.filter(e => e.from === node.id).forEach(e => {
-        const child = _nodes.find(n => n.id === e.to);
-        if (child && (rows.get(e.to) || -1) < r + 1) {
-          rows.set(e.to, r + 1);
-          queue.push(child);
-        }
-      });
-    }
-    _nodes.filter(n => !rows.has(n.id)).forEach(n => rows.set(n.id, 0));
-
-    // Group nodes by row
-    const rowGroups = new Map();
-    _nodes.forEach(n => {
-      const r = rows.get(n.id) || 0;
-      if (!rowGroups.has(r)) rowGroups.set(r, []);
-      rowGroups.get(r).push(n);
-    });
-
-    // Step 1: Initial placement — center each row
-    const gapY = 100, gapX = 60;
-    const startY = 80;
-    const positions = new Map(); // nodeId → { x, y }
-
-    rowGroups.forEach((nodes, row) => {
-      const totalW = nodes.reduce((s, n) => s + (n.w || 140), 0) + (nodes.length - 1) * gapX;
-      let x = Math.max(60, (VCW - totalW) / 2);
-      const y = startY + row * gapY;
-      nodes.forEach(n => {
-        positions.set(n.id, { x, y, w: n.w || 140, h: n.h || 46 });
-        x += (n.w || 140) + gapX;
-      });
-    });
-
-    // Step 2: For edges that skip rows, shift targets horizontally
-    // to avoid passing through intermediate nodes
-    const longEdges = _edges.filter(e => {
-      const fromRow = rows.get(e.from) ?? 0;
-      const toRow = rows.get(e.to) ?? 0;
-      return Math.abs(toRow - fromRow) > 1;
-    });
-
-    // Track horizontal shifts per node
-    const shifts = new Map();
-    _nodes.forEach(n => shifts.set(n.id, 0));
-
-    longEdges.forEach(e => {
-      const fromPos = positions.get(e.from);
-      const toPos = positions.get(e.to);
-      if (!fromPos || !toPos) return;
-      // Shift target to the side of the source
-      const direction = fromPos.x > VCW / 2 ? -1 : 1;
-      const shiftAmount = 120;
-      const currentShift = shifts.get(e.to) || 0;
-      // Only shift if not already shifted in this direction
-      if (Math.sign(currentShift) !== Math.sign(direction) || currentShift === 0) {
-        shifts.set(e.to, direction * shiftAmount);
-      }
-    });
-
-    // Apply shifts
-    _nodes.forEach(n => {
-      const pos = positions.get(n.id);
-      const shift = shifts.get(n.id) || 0;
-      if (pos) {
-        n.x = pos.x + shift;
-        n.y = pos.y;
-      }
-    });
+  // Helper: build adjacency map
+  function _buildAdj(edges) {
+    const m = new Map();
+    for (const e of edges) { if (!m.has(e.from)) m.set(e.from, []); m.get(e.from).push(e); }
+    return m;
   }
+
+  // Helper: median of array
+  function _median(arr) {
+    if (!arr.length) return undefined;
+    const s = [...arr].sort((a, b) => a - b), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  // Phase 1: Break cycles via DFS (find back-edges)
+  function _breakCycles(nodes, edges) {
+    const state = new Map(nodes.map(n => [n.id, 0])); // 0=white,1=gray,2=black
+    const reversed = new Set();
+    const adj = _buildAdj(edges);
+
+    function dfs(u) {
+      state.set(u, 1);
+      for (const e of (adj.get(u) || [])) {
+        const s = state.get(e.to) || 0;
+        if (s === 1) reversed.add(e);
+        else if (s === 0) dfs(e.to);
+      }
+      state.set(u, 2);
+    }
+    nodes.forEach(n => { if (state.get(n.id) === 0) dfs(n.id); });
+    return reversed;
+  }
+
+  // Phase 2: Layer assignment (longest-path)
+  function _assignLayers(nodes, edges, reversed) {
+    const dagEdges = edges.filter(e => !reversed.has(e));
+    const adj = _buildAdj(dagEdges);
+    const inc = new Map(nodes.map(n => [n.id, 0]));
+    dagEdges.forEach(e => inc.set(e.to, (inc.get(e.to) || 0) + 1));
+
+    const layer = new Map(nodes.map(n => [n.id, 0]));
+    const queue = nodes.filter(n => (inc.get(n.id) || 0) === 0).map(n => n.id);
+    if (!queue.length && nodes.length) queue.push(nodes[0].id);
+
+    let qi = 0;
+    while (qi < queue.length) {
+      const u = queue[qi++];
+      for (const e of (adj.get(u) || [])) {
+        layer.set(e.to, Math.max(layer.get(e.to) ?? 0, (layer.get(u) ?? 0) + 1));
+        inc.set(e.to, inc.get(e.to) - 1);
+        if (inc.get(e.to) === 0) queue.push(e.to);
+      }
+    }
+    nodes.forEach(n => { if (!layer.has(n.id)) layer.set(n.id, 0); });
+    return layer;
+  }
+
+  // Phase 3: Insert dummy nodes for long edges
+  function _insertDummyNodes(nodes, edges, layerMap, reversed) {
+    const layers = [];
+    const maxLayer = Math.max(...[...layerMap.values()]);
+    for (let i = 0; i <= maxLayer; i++) layers.push([]);
+    nodes.forEach(n => layers[layerMap.get(n.id)].push({ id: n.id, real: true, node: n }));
+
+    const routedEdges = [];
+    let dummyId = 0;
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+    for (const e of edges) {
+      if (reversed.has(e)) {
+        // Back-edge: reverse for routing, route as side arc
+        routedEdges.push({ e, chain: [e.to, e.from], isBack: true });
+        continue;
+      }
+      const l1 = layerMap.get(e.from), l2 = layerMap.get(e.to);
+      if (Math.abs(l2 - l1) <= 1) {
+        routedEdges.push({ e, chain: [e.from, e.to], isBack: false });
+        continue;
+      }
+      const step = l2 > l1 ? 1 : -1;
+      const chain = [e.from];
+      for (let l = l1 + step; l !== l2; l += step) {
+        const did = `__d${dummyId++}`;
+        layers[l].push({ id: did, real: false, w: 1, h: 1 });
+        layerMap.set(did, l);
+        chain.push(did);
+      }
+      chain.push(e.to);
+      routedEdges.push({ e, chain, isBack: false });
+    }
+    return { layers, routedEdges, nodeMap };
+  }
+
+  // Phase 4: Crossing minimization (median heuristic)
+  function _minimizeCrossings(layers, edges) {
+    // Build adjacency for all nodes (including dummies)
+    const allIds = new Set();
+    layers.forEach(L => L.forEach(v => allIds.add(v.id)));
+    const dagEdges = edges.filter(e => allIds.has(e.from) && allIds.has(e.to));
+
+    const succ = new Map(), pred = new Map();
+    const add = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+    for (const e of dagEdges) { add(succ, e.from, e.to); add(pred, e.to, e.from); }
+
+    const pos = new Map();
+    layers.forEach(L => L.forEach((v, i) => pos.set(v.id, i)));
+
+    for (let iter = 0; iter < 8; iter++) {
+      const down = iter % 2 === 0;
+      const range = down ? [...layers.keys()].slice(1) : [...layers.keys()].slice(0, -1).reverse();
+      for (const li of range) {
+        const L = layers[li];
+        for (const v of L) {
+          const neigh = down ? (pred.get(v.id) || []) : (succ.get(v.id) || []);
+          v._med = _median(neigh.map(id => pos.get(id)));
+        }
+        L.sort((a, b) => (a._med ?? pos.get(a.id)) - (b._med ?? pos.get(b.id)));
+        L.forEach((v, i) => pos.set(v.id, i));
+      }
+    }
+  }
+
+  // Phase 5: Coordinate assignment
+  function _assignCoordinates(layers) {
+    const xOf = new Map();
+    for (const L of layers) {
+      let cursor = 0;
+      for (const v of L) {
+        const w = v.real ? (v.node.w || 140) : 20;
+        xOf.set(v.id, cursor + w / 2);
+        cursor += w + NODE_GAP + EDGE_LABEL_GAP;
+      }
+    }
+
+    // Median alignment (4 passes)
+    const succ = new Map(), pred = new Map();
+    const add = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+    layers.forEach(L => L.forEach(v => {
+      const chainSucc = [], chainPred = [];
+      // Find neighbors in adjacent layers via chain adjacency
+      for (const e of _currentEdges) {
+        if (e.from === v.id) chainSucc.push(e.to);
+        if (e.to === v.id) chainPred.push(e.from);
+      }
+      add(succ, v.id, ...chainSucc);
+      add(pred, v.id, ...chainPred);
+    }));
+
+    for (let iter = 0; iter < 4; iter++) {
+      for (const L of layers) {
+        for (let i = 0; i < L.length; i++) {
+          const v = L[i];
+          const nb = [...(pred.get(v.id) || []), ...(succ.get(v.id) || [])];
+          if (!nb.length) continue;
+          const desired = _median(nb.map(id => xOf.get(id)).filter(x => x !== undefined));
+          if (desired === undefined) continue;
+          const w = v.real ? (v.node.w || 140) : 20;
+          const leftBound = i > 0 ? xOf.get(L[i - 1].id) + ((L[i - 1].real ? (L[i - 1].node.w || 140) : 20) / 2) + NODE_GAP + w / 2 : -Infinity;
+          const rightBound = i < L.length - 1 ? xOf.get(L[i + 1].id) - ((L[i + 1].real ? (L[i + 1].node.w || 140) : 20) / 2) - NODE_GAP - w / 2 : Infinity;
+          xOf.set(v.id, Math.max(leftBound, Math.min(rightBound, desired)));
+        }
+      }
+    }
+
+    // Assign coordinates
+    let y = 100;
+    for (const L of layers) {
+      const maxH = Math.max(...L.map(v => v.real ? (v.node.h || 46) : 1));
+      L.forEach(v => {
+        v._x = xOf.get(v.id);
+        v._y = y + maxH / 2;
+      });
+      y += maxH + LAYER_GAP;
+    }
+    return xOf;
+  }
+
+  // Helper: Catmull-Rom spline through points
+  function _catmullRomPath(pts) {
+    if (pts.length < 2) return '';
+    if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)];
+      const p1 = pts[i];
+      const p2 = pts[Math.min(pts.length - 1, i + 1)];
+      const p3 = pts[Math.min(pts.length - 1, i + 2)];
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+    }
+    return d;
+  }
+
+  // Helper: anchor point on node boundary toward target
+  function _edgeAnchor(node, toward) {
+    const dx = toward.x - node.x, dy = toward.y - node.y;
+    const hw = (node.w || 140) / 2, hh = (node.h || 46) / 2;
+    const dist = Math.hypot(dx, dy) || 1;
+    if (node.shape === 'circle') {
+      const r = Math.min(hw, hh);
+      return { x: node.x + (dx / dist) * r, y: node.y + (dy / dist) * r };
+    }
+    if (node.shape === 'diamond') {
+      const t = 1 / (Math.abs(dx) / hw + Math.abs(dy) / hh);
+      return { x: node.x + dx * t, y: node.y + dy * t };
+    }
+    const t = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh);
+    return { x: node.x + dx * t, y: node.y + dy * t };
+  }
+
+  // Reference to current edges for coordinate assignment
+  let _currentEdges = [];
+
+  // Main layout function
+  function _flowchartLayout() {
+    if (!_nodes.length) return;
+
+    const reversed = _breakCycles(_nodes, _edges);
+    const layerMap = _assignLayers(_nodes, _edges, reversed);
+    const { layers, routedEdges, nodeMap } = _insertDummyNodes(_nodes, _edges, layerMap, reversed);
+
+    _currentEdges = [];
+    routedEdges.forEach(r => {
+      for (let i = 0; i < r.chain.length - 1; i++) {
+        _currentEdges.push({ from: r.chain[i], to: r.chain[i + 1] });
+      }
+    });
+
+    _minimizeCrossings(layers, _edges);
+    const xOf = _assignCoordinates(layers);
+
+    // Apply coordinates to real nodes
+    const allNodes = [];
+    layers.forEach(L => L.forEach(v => {
+      if (v.real) {
+        v.node.x = v._x;
+        v.node.y = v._y;
+      }
+      allNodes.push(v);
+    }));
+
+    // Store routing data for _drawEdge
+    _routeData = { routedEdges, reversed, nodeMap, allNodes };
+  }
+
+  let _routeData = null;
 
   function _timelineLayout() {
     if (!_nodes.length) return;
@@ -444,64 +613,102 @@ const Flowchart = (() => {
     if (!_edgesG) return;
     _edgesG.innerHTML = '';
     const nodeMap = {}; _nodes.forEach(n => nodeMap[n.id] = n);
-    _edges.forEach(e => { const a = nodeMap[e.from], b = nodeMap[e.to]; if (a && b) _drawEdge(a, b, e); });
+
+    if (_mode === 'graph' || !_routeData) {
+      // Graph mode or no route data: simple direct edges
+      _edges.forEach(e => { const a = nodeMap[e.from], b = nodeMap[e.to]; if (a && b) _drawEdgeSimple(a, b, e); });
+      return;
+    }
+
+    // Flow mode: waypoint-based routing through dummy nodes
+    for (const routed of _routeData.routedEdges) {
+      const { e, chain, isBack } = routed;
+      const srcNode = nodeMap[e.from];
+      const dstNode = nodeMap[e.to];
+      if (!srcNode || !dstNode) continue;
+
+      // Build waypoints from chain (real nodes + dummy positions)
+      const pts = chain.map(id => {
+        if (nodeMap[id]) return { x: nodeMap[id].x, y: nodeMap[id].y, real: true, node: nodeMap[id] };
+        const dummy = _routeData.allNodes.find(v => v.id === id);
+        return dummy ? { x: dummy._x, y: dummy._y, real: false } : null;
+      }).filter(Boolean);
+
+      if (pts.length < 2) continue;
+
+      if (isBack) {
+        // Back-edge: route as side arc
+        _drawSideArc(srcNode, dstNode, e);
+      } else if (pts.length === 2) {
+        // Adjacent layers: straight line
+        _drawStraightEdge(srcNode, dstNode, e);
+      } else {
+        // Long edge through dummy nodes: Catmull-Rom
+        _drawWaypointEdge(pts, e, srcNode, dstNode);
+      }
+    }
   }
 
-  function _drawEdge(a, b, edge) {
+  function _drawEdgeSimple(a, b, edge) {
     const dx = b.x - a.x, dy = b.y - a.y;
     const dist = Math.hypot(dx, dy) || 1;
     const ux = dx / dist, uy = dy / dist;
     const p1 = _shapeAnchor(a, ux, uy);
     const p2 = _shapeAnchor(b, -ux, -uy);
-    const nx = -uy, ny = ux;
+    const path = document.createElementNS(SVG_NS, 'path');
+    const cdy = Math.abs(p2.y - p1.y) * 0.2 || 20;
+    path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + cdy}, ${p2.x} ${p2.y - cdy}, ${p2.x} ${p2.y}`);
+    _styleEdge(path, a.id, b.id, edge);
+    _edgesG.appendChild(path);
+  }
 
-    if (_mode === 'graph') {
-      const path = document.createElementNS(SVG_NS, 'path');
-      const cdy = Math.abs(p2.y - p1.y) * 0.2 || 20;
-      path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + cdy}, ${p2.x} ${p2.y - cdy}, ${p2.x} ${p2.y}`);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', 'rgba(255,255,255,0.18)');
-      path.setAttribute('stroke-width', '1.5');
-      path.style.cursor = 'pointer';
-      path.dataset.edgeFrom = a.id; path.dataset.edgeTo = b.id;
-      path.addEventListener('mouseenter', () => path.setAttribute('stroke', 'rgba(255,255,255,0.4)'));
-      path.addEventListener('mouseleave', () => path.setAttribute('stroke', 'rgba(255,255,255,0.18)'));
-      path.addEventListener('click', e => { e.stopPropagation(); _openEdgeTooltip(e, a.id, b.id, edge.label || ''); });
-      path.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(a.id, b.id); });
-      _edgesG.appendChild(path);
-    } else {
-      const wStart = 3, wEnd = 0.5;
-      const poly = document.createElementNS(SVG_NS, 'polygon');
-      poly.setAttribute('points', [
-        `${p1.x + nx * wStart},${p1.y + ny * wStart}`,
-        `${p2.x + nx * wEnd},${p2.y + ny * wEnd}`,
-        `${p2.x - nx * wEnd},${p2.y - ny * wEnd}`,
-        `${p1.x - nx * wStart},${p1.y - ny * wStart}`,
-      ].join(' '));
-      poly.setAttribute('fill', 'rgba(255,255,255,0.22)');
-      poly.style.cursor = 'pointer';
-      poly.dataset.edgeFrom = a.id; poly.dataset.edgeTo = b.id;
-      poly.addEventListener('mouseenter', () => poly.setAttribute('fill', 'rgba(255,255,255,0.4)'));
-      poly.addEventListener('mouseleave', () => poly.setAttribute('fill', 'rgba(255,255,255,0.22)'));
-      poly.addEventListener('click', e => { e.stopPropagation(); _openEdgeTooltip(e, a.id, b.id, edge.label || ''); });
-      poly.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(a.id, b.id); });
-      _edgesG.appendChild(poly);
-    }
+  function _drawStraightEdge(src, dst, edge) {
+    const dx = dst.x - src.x, dy = dst.y - src.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist, uy = dy / dist;
+    const p1 = _edgeAnchor(src, { x: dst.x, y: dst.y });
+    const p2 = _edgeAnchor(dst, { x: src.x, y: src.y });
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
+    _styleEdge(path, src.id, dst.id, edge);
+    _edgesG.appendChild(path);
+  }
 
-    if (edge.label) {
-      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-      const t = document.createElementNS(SVG_NS, 'text');
-      t.setAttribute('x', mx + 8); t.setAttribute('y', my);
-      t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '10'); t.setAttribute('font-family', 'var(--mono)');
-      t.textContent = edge.label;
-      const bg = document.createElementNS(SVG_NS, 'rect');
-      const len = edge.label.length * 6 + 8;
-      bg.setAttribute('x', mx + 4); bg.setAttribute('y', my - 10);
-      bg.setAttribute('width', len); bg.setAttribute('height', 14);
-      bg.setAttribute('rx', 3); bg.setAttribute('fill', 'rgba(10,11,16,0.85)');
-      _edgesG.appendChild(bg);
-      _edgesG.appendChild(t);
-    }
+  function _drawSideArc(src, dst, edge) {
+    const side = src.x < VCW / 2 ? -1 : 1;
+    const marginX = side > 0 ? VCW - 60 : 60;
+    const p1 = _edgeAnchor(src, { x: marginX, y: src.y });
+    const p2 = _edgeAnchor(dst, { x: marginX, y: dst.y });
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', `M ${p1.x} ${p1.y} L ${marginX} ${p1.y} L ${marginX} ${p2.y} L ${p2.x} ${p2.y}`);
+    _styleEdge(path, src.id, dst.id, edge);
+    _edgesG.appendChild(path);
+  }
+
+  function _drawWaypointEdge(pts, edge, src, dst) {
+    // First point: anchor on source boundary
+    const anchor1 = _edgeAnchor(src, pts[1]);
+    // Last point: anchor on destination boundary
+    const anchorN = _edgeAnchor(dst, pts[pts.length - 2]);
+    // Build full point list: anchor1, dummy centers..., anchorN
+    const fullPath = [anchor1, ...pts.slice(1, -1).map(p => ({ x: p.x, y: p.y })), anchorN];
+    const d = _catmullRomPath(fullPath);
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    _styleEdge(path, src.id, dst.id, edge);
+    _edgesG.appendChild(path);
+  }
+
+  function _styleEdge(el, fromId, toId, edge) {
+    el.setAttribute('fill', 'none');
+    el.setAttribute('stroke', 'rgba(255,255,255,0.18)');
+    el.setAttribute('stroke-width', '1.5');
+    el.style.cursor = 'pointer';
+    el.dataset.edgeFrom = fromId; el.dataset.edgeTo = toId;
+    el.addEventListener('mouseenter', () => el.setAttribute('stroke', 'rgba(255,255,255,0.4)'));
+    el.addEventListener('mouseleave', () => el.setAttribute('stroke', 'rgba(255,255,255,0.18)'));
+    el.addEventListener('click', e => { e.stopPropagation(); _openEdgeTooltip(e, fromId, toId, edge.label || ''); });
+    el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(fromId, toId); });
   }
 
   function _openEdgeTooltip(e, fromId, toId, label) {
