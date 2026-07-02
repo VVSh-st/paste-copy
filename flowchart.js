@@ -451,6 +451,7 @@ const Flowchart = (() => {
     const ux = dx / dist, uy = dy / dist;
     const p1 = _shapeAnchor(a, ux, uy);
     const p2 = _shapeAnchor(b, -ux, -uy);
+    const nx = -uy, ny = ux;
 
     // Check if this is a long edge (skips rows)
     const fromRow = Math.round((a.y - 80) / 100);
