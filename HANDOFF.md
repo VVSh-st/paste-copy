@@ -43,14 +43,15 @@
 14. ✅ **Edge labels** — прямоугольник-фон + текст посередине ребра (getTotalLength после appendChild)
 15. ✅ **LAYER_GAP** — 140 → 100, компактнее
 
-### TextSkeletonizer (новое)
+### TextSkeletonizer (v2 — 2026-07-03)
 
-16. ✅ **TextSkeletonizer** — клиентское сжатие текста для LLM (>8K символов → автоматическое)
-17. ✅ **Извлечение секций** — заголовки + первые предложения
-18. ✅ **Ключевые термины** — частотный анализ (стоп-слова, топ-30)
-19. ✅ **Списки** — bullet/numbered с контекстом
-20. ✅ **Интеграция** — flowchart.js + mindmap.js
-21. ⏸ **Аудит** — тикет `TICKET-text-skeletonizer.md`, ожидает аудиторов
+16. ✅ **TextSkeletonizer** — клиентское сжатие текста для LLM
+17. ✅ **Compression levels** — light (заголовки+статистика), medium (+термины), aggressive (+списки+код+ссылки)
+18. ✅ **Адаптивный порог** — `recommendLevel()` определяет уровень по размеру текста (<5K: нет, <15K: light, <50K: medium, >50K: aggressive)
+19. ✅ **Защита от отрицаний** — "не React" не становится ключевым термином "react"
+20. ✅ **LRU кэш** — hash(text):level → skeleton, до 50 записей
+21. ✅ **Интеграция** — flowchart.js + mindmap.js используют `recommendLevel()`
+22. ⏸ **Аудит** — тикет `TICKET-text-skeletonizer.md`, 4 ответа в `Bigbrat_govorit/`
 
 ### Spell-check (итог)
 
