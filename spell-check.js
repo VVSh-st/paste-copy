@@ -52,8 +52,53 @@ window.SpellCheck = (() => {
     return { masked, ranges };
   }
 
-  // Отфильтровать ошибки, попавшие в диапазоны плейсхолдеров
-  function _filterPlaceholderErrors(words, ranges) {
+  // Заменить содержимое code fences (``` / ~~~) на пробелы той же длины
+  function _maskCodeFences(text) {
+    const ranges = [];
+    let masked = text;
+    let fenceChar = null;
+    let fenceStart = -1;
+    const lines = text.split('\n');
+    let offset = 0;
+    for (const line of lines) {
+      const trimmed = line.trimStart();
+      if (!fenceChar) {
+        // Ищем opening fence: ``` или ~~~ (3+ одинаковых символа)
+        const m = trimmed.match(/^(`{3,}|~{3,})/);
+        if (m) {
+          fenceChar = m[1][0];
+          fenceStart = offset;
+        }
+      } else {
+        // Ищем closing fence тем же символом
+        if (trimmed.startsWith(fenceChar.repeat(3))) {
+          const fenceEnd = offset + line.length;
+          ranges.push({ start: fenceStart, end: fenceEnd });
+          fenceChar = null;
+          fenceStart = -1;
+        }
+      }
+      offset += line.length + 1; // +1 для \n
+    }
+    // Незакрытый fence — маскируем до конца
+    if (fenceChar !== null) {
+      ranges.push({ start: fenceStart, end: text.length });
+    }
+    if (!ranges.length) return { masked, ranges };
+    // Заменяем содержимое на пробелы
+    let result = '';
+    let lastEnd = 0;
+    for (const r of ranges) {
+      result += masked.slice(lastEnd, r.start);
+      result += ' '.repeat(r.end - r.start);
+      lastEnd = r.end;
+    }
+    result += masked.slice(lastEnd);
+    return { masked: result, ranges };
+  }
+
+  // Отфильтровать ошибки, попавшие в диапазоны плейсхолдеров или code fences
+  function _filterExcludedErrors(words, ranges) {
     if (!ranges.length) return words;
     return words.filter(w => {
       for (const r of ranges) {
@@ -144,16 +189,27 @@ window.SpellCheck = (() => {
     const allWords = [];
     let offset = 0;
 
+    // Маскируем code fences в полном тексте (до разбиения на чанки, т.к. fence может пересекать чанки)
+    const { ranges: fenceRanges } = _maskCodeFences(trimmed);
+
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        const { masked, ranges } = _maskPlaceholders(chunk);
+        const { masked, ranges: phRanges } = _maskPlaceholders(chunk);
+
+        // Смещаем ranges плейсхолдеров относительно начала чанка
+        const shiftedPhRanges = phRanges.map(r => ({ start: r.start + offset, end: r.end + offset }));
+        // Смещаем ranges code fences относительно начала чанка и фильтруем по текущему чанку
+        const shiftedFenceRanges = fenceRanges
+          .map(r => ({ start: r.start - offset, end: r.end - offset }))
+          .filter(r => r.end > 0 && r.start < chunk.length);
+        const combinedRanges = [...shiftedPhRanges, ...shiftedFenceRanges];
 
         const words = await _fetchChunk(masked, controller.signal);
-        const filtered = _filterPlaceholderErrors(words, ranges);
+        const filtered = _filterExcludedErrors(words, combinedRanges);
 
         // Смещаем позиции: API считает от trimmed, а нужен offset от полного текста
         for (const w of filtered) {
