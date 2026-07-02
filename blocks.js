@@ -1733,8 +1733,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       updateCurrentLineHighlight();
       if (lineMirror?.parentNode) lineMirror.parentNode.removeChild(lineMirror);
       lineMirror = null;
-      // Commit any pending spell error on blur
-      _spellCommit();
+      // Commit any pending spell error on blur (skip if setRangeText triggered the blur)
+      if (!_spellApplying) _spellCommit();
       // Immediately render spell markers on blur (safest moment)
       if (_lastSpellWords?.length) _renderSpellOverlayImmediate(_lastSpellWords);
       else _clearSpellOverlay();
@@ -1744,6 +1744,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     // ── Spell-check overlay ────────────────────────────────────────
     let _spellActiveError = null; // { word, pos, len, suggestions, originalText }
     let _spellPendingRender = null; // cached { words } awaiting visual debounce
+    let _spellApplying = false; // true while setRangeText is in progress
 
     function _clearSpellOverlay() {
       if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
@@ -1777,19 +1778,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (_spellActiveError) {
         const { pos, len } = _spellActiveError;
         if (idx < pos || idx > pos + len) {
-          // Clicked outside active error — commit
           _spellCommit();
         }
       }
-      // Check if clicked inside any error range
       if (!_lastSpellWords?.length) return;
       const hit = _lastSpellWords.find(w => idx >= w.pos && idx <= w.pos + w.len);
       if (!hit) return;
       if (_spellActiveError && _spellActiveError.pos === hit.pos && _spellActiveError.len === hit.len) {
-        // Clicked same error again — toggle (swap word ↔ first suggestion)
         _spellToggleActive();
       } else {
-        // Clicked a different error — commit current, activate new, apply first replacement
         _spellCommit();
         _spellActivate(hit);
         _spellApplyFirst();
@@ -1811,17 +1808,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const replacement = _spellActiveError.suggestions[0];
       const { pos, len } = _spellActiveError;
       const oldLen = len;
+      _spellApplying = true;
       ta.setRangeText(replacement, pos, pos + oldLen, 'end');
       ta.dispatchEvent(new Event('input', { bubbles: true }));
+      _spellApplying = false;
       // Update active error state with new length
       const newLen = replacement.length;
       _spellActiveError.len = newLen;
-      // Shift positions of subsequent errors
+      // Shift positions of subsequent errors in _lastSpellWords
       const delta = newLen - oldLen;
       if (delta !== 0 && _lastSpellWords) {
         for (const w of _lastSpellWords) {
           if (w.pos > pos) w.pos += delta;
         }
+        // Also update the current error's word in _lastSpellWords
+        const ew = _lastSpellWords.find(w => w.pos === pos);
+        if (ew) { ew.len = newLen; ew.word = replacement; }
         // Re-render overlay to reflect shifted positions
         _renderSpellOverlay(ta, _lastSpellWords);
       }
@@ -1831,8 +1833,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!_spellActiveError || !_spellActiveError.suggestions.length) return;
       const { pos, len, suggestions, originalText } = _spellActiveError;
       const currentText = ta.value.slice(pos, pos + len);
-      // If current text is the original error word → apply first suggestion
-      // If current text is a suggestion → revert to original
       const isFirstSuggestion = currentText === suggestions[0];
       const oldLen = len;
       let replacement;
@@ -1841,8 +1841,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else {
         replacement = suggestions[0];
       }
+      _spellApplying = true;
       ta.setRangeText(replacement, pos, pos + oldLen, 'end');
       ta.dispatchEvent(new Event('input', { bubbles: true }));
+      _spellApplying = false;
       // Update active error state
       const newLen = replacement.length;
       _spellActiveError.len = newLen;
