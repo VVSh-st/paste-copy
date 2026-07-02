@@ -455,27 +455,7 @@ const Flowchart = (() => {
     const p2 = _shapeAnchor(b, -ux, -uy);
     const nx = -uy, ny = ux;
 
-    // Check if this is a long edge (skips rows)
-    const fromRow = Math.round((a.y - 80) / 100);
-    const toRow = Math.round((b.y - 80) / 100);
-    const skipsRows = Math.abs(toRow - fromRow) > 1;
-
-    if (skipsRows) {
-      // Orthogonal routing: straight down → horizontal → straight down
-      const midY = (p1.y + p2.y) / 2;
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', 'rgba(255,255,255,0.18)');
-      path.setAttribute('stroke-width', '1.5');
-      path.style.cursor = 'pointer';
-      path.dataset.edgeFrom = a.id; path.dataset.edgeTo = b.id;
-      path.addEventListener('mouseenter', () => path.setAttribute('stroke', 'rgba(255,255,255,0.4)'));
-      path.addEventListener('mouseleave', () => path.setAttribute('stroke', 'rgba(255,255,255,0.18)'));
-      path.addEventListener('click', e => { e.stopPropagation(); _openEdgeTooltip(e, a.id, b.id, edge.label || ''); });
-      path.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(a.id, b.id); });
-      _edgesG.appendChild(path);
-    } else if (_mode === 'graph') {
+    if (_mode === 'graph') {
       const path = document.createElementNS(SVG_NS, 'path');
       const cdy = Math.abs(p2.y - p1.y) * 0.2 || 20;
       path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + cdy}, ${p2.x} ${p2.y - cdy}, ${p2.x} ${p2.y}`);
@@ -745,6 +725,9 @@ const Flowchart = (() => {
         _mode = btn.dataset.mode;
         _overlay.querySelectorAll('.flowchart-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === _mode));
         _nodes.forEach(n => { n._vx = 0; n._vy = 0; });
+        // Apply appropriate layout for new mode
+        if (_mode === 'flow') _flowchartLayout();
+        else if (_mode === 'graph') _forceLayout();
         _skipRestore = true; _render();
       });
     });
@@ -861,6 +844,8 @@ const Flowchart = (() => {
       if (_mode === 'flow') _flowchartLayout();
       else if (_mode === 'graph') _forceLayout();
       else _flowchartLayout();
+      // Update node sizes after layout
+      _nodes.forEach(n => { const sz = _nodeSize(n); n.w = sz.w; n.h = sz.h; });
       _fitToContent(); _render(); _syncData();
     });
 
@@ -1134,7 +1119,11 @@ const Flowchart = (() => {
 
     if (!_nodes.length) { _viewport.appendChild(_emptyMsg('Нет данных для блок-схемы')); _applyTransform(); return; }
 
-    if (_mode === 'flow') _autoLayout(); else if (_nodes.some(n => n.x == null)) _forceLayout();
+    // Only auto-layout if nodes don't have positions yet
+    if (_nodes.some(n => n.x == null || n.y == null)) {
+      if (_mode === 'flow') _flowchartLayout();
+      else _forceLayout();
+    }
 
     _edgesG = document.createElementNS(SVG_NS, 'g');
     _edgesG.setAttribute('class', 'fc-edges');
