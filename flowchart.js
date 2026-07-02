@@ -210,7 +210,7 @@ const Flowchart = (() => {
       rowGroups.get(r).push(n);
     });
 
-    const gapY = 160, gapX = 80;
+    const gapY = 200, gapX = 80;
     const startY = 80;
 
     rowGroups.forEach((nodes, row) => {
@@ -415,9 +415,13 @@ const Flowchart = (() => {
     const p2 = _shapeAnchor(b, -ux, -uy);
     const nx = -uy, ny = ux;
 
-    if (_mode === 'graph') {
+    // Use curves for edges that span vertical distance
+    const spanY = Math.abs(p2.y - p1.y);
+    const useCurve = _mode === 'graph' || spanY > 100;
+
+    if (useCurve) {
       const path = document.createElementNS(SVG_NS, 'path');
-      const cdy = Math.abs(p2.y - p1.y) * 0.2 || 20;
+      const cdy = Math.max(spanY * 0.3, 40);
       path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + cdy}, ${p2.x} ${p2.y - cdy}, ${p2.x} ${p2.y}`);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', 'rgba(255,255,255,0.18)');
