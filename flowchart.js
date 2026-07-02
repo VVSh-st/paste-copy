@@ -1101,9 +1101,8 @@ const Flowchart = (() => {
       if (_mode === 'flow') _flowchartLayout();
       else if (_mode === 'graph') _forceLayout();
       else _flowchartLayout();
-      // Update node sizes after layout
       _nodes.forEach(n => { const sz = _nodeSize(n); n.w = sz.w; n.h = sz.h; });
-      _fitToContent(); _render(); _syncData();
+      _syncData(); _fitToContent(); _render();
     });
 
     _overlay.querySelector('.flowchart-export').addEventListener('click', () => {
