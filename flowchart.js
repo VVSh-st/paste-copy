@@ -210,7 +210,7 @@ const Flowchart = (() => {
       rowGroups.get(r).push(n);
     });
 
-    const gapY = 110, gapX = 60;
+    const gapY = 120, gapX = 70;
     const startY = 80;
 
     rowGroups.forEach((nodes, row) => {
@@ -801,7 +801,7 @@ const Flowchart = (() => {
       if (_mode === 'flow') _flowchartLayout();
       else if (_mode === 'graph') _forceLayout();
       else _flowchartLayout();
-      _render(); _syncData();
+      _fitToContent(); _render(); _syncData();
     });
 
     _overlay.querySelector('.flowchart-export').addEventListener('click', () => {
@@ -980,10 +980,15 @@ const Flowchart = (() => {
       try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; } }
       if (!json || !Array.isArray(json.nodes) || !json.nodes.length) { window.Toast?.show('LLM вернул пустую схему', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
       _data = json;
-      // Auto-apply layout if nodes have no coordinates
-      if (_data.nodes.some(n => n.x == null || n.y == null)) {
-        _nodes = _data.nodes; _edges = _data.edges || [];
-        _nodes.forEach(n => { const sz = _nodeSize(n); n.w = sz.w; n.h = sz.h; });
+      _nodes = _data.nodes; _edges = _data.edges || [];
+      _nodes.forEach(n => { const sz = _nodeSize(n); n.w = sz.w; n.h = sz.h; });
+      // Always check for overlaps and apply layout if needed
+      const hasOverlap = _nodes.some(a => _nodes.some(b => {
+        if (a === b) return false;
+        return Math.abs((a.x + a.w / 2) - (b.x + b.w / 2)) < (a.w + b.w) / 2 + 10
+            && Math.abs((a.y + a.h / 2) - (b.y + b.h / 2)) < (a.h + b.h) / 2 + 10;
+      }));
+      if (hasOverlap || _nodes.some(n => n.x == null || n.y == null)) {
         _autoLayout();
       }
       _overlay.querySelector('.flowchart-status').textContent = '';
