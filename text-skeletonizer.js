@@ -6,6 +6,8 @@
  *   light     — только заголовки + статистика (~5% от оригинала)
  *   medium    — заголовки + первые предложения + ключевые термины (~10-15%)
  *   aggressive — всё: заголовки, предложения, термины, списки, код, ссылки (~20-30%)
+ *
+ * Поддержка Web Worker: автоматически использует отдельный поток для больших текстов.
  */
 const TextSkeletonizer = (() => {
 
@@ -24,6 +26,55 @@ const TextSkeletonizer = (() => {
     h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489909);
     return ((h2 ^= h1 >>> 16) >>> 0).toString(36) + ((h1 >>> 0).toString(36));
   }
+
+  // ── Web Worker ──────────────────────────────────────────────
+  let _worker = null;
+  let _workerReady = false;
+  let _workerCallbacks = new Map();
+  let _workerId = 0;
+  const WORKER_THRESHOLD = 20000; // используем Worker для текстов >20K
+
+  function _initWorker() {
+    if (_worker || typeof Worker === 'undefined') return;
+    try {
+      _worker = new Worker('text-skeletonizer-worker.js');
+      _worker.onmessage = (e) => {
+        const { id, result, error } = e.data;
+        const cb = _workerCallbacks.get(id);
+        if (cb) {
+          _workerCallbacks.delete(id);
+          if (error) cb.reject(new Error(error));
+          else cb.resolve(result);
+        }
+      };
+      _worker.onerror = () => { _workerReady = false; };
+      _workerReady = true;
+    } catch {
+      _worker = null;
+    }
+  }
+
+  function _processViaWorker(text, level) {
+    return new Promise((resolve, reject) => {
+      if (!_worker || !_workerReady) {
+        resolve(_processSync(text, level));
+        return;
+      }
+      const id = ++_workerId;
+      _workerCallbacks.set(id, { resolve, reject });
+      _worker.postMessage({ text, level, id });
+      // Fallback: если Worker не ответил за 2 сек — синхронно
+      setTimeout(() => {
+        if (_workerCallbacks.has(id)) {
+          _workerCallbacks.delete(id);
+          resolve(_processSync(text, level));
+        }
+      }, 2000);
+    });
+  }
+
+  // Инициализируем Worker при загрузке
+  _initWorker();
 
   // ── Стоп-слова ──────────────────────────────────────────────
   const STOP_WORDS = new Set([
@@ -48,21 +99,69 @@ const TextSkeletonizer = (() => {
   // ── Защита от отрицаний ──────────────────────────────────────
   const NEGATIONS = new Set(['не', 'нет', 'без', 'ни', 'никак', 'никогда', 'ничего']);
 
+  // ── Упрощённый стемминг для русского ─────────────────────────
+  const RU_SUFFIXES = [
+    'ований', 'еваний', 'ировани',                    // 7-8
+    'ования', 'евания', 'ирова', 'ующих', 'ующем',     // 6-7
+    'овала', 'евала', 'ировал', 'оваться', 'еваться',  // 6
+    'ующие', 'ующее', 'ующий', 'ующей', 'ующую',       // 6
+    'ание', 'ение', 'иться', 'аться', 'яться',         // 5
+    'ний', 'ний', 'тие', 'сть', 'ние', 'ции',         // 4
+    'ый', 'ий', 'ой', 'ей', 'ый', 'ая', 'яя',        // 3-4
+    'ое', 'ые', 'ий', 'ов', 'ев', 'ёв',               // 3-4
+    'ть', 'чь', 'шь', 'щь', 'ать', 'ять', 'еть',     // 3
+    'ить', 'оть', 'уть', 'ить', 'ать', 'ять',         // 3
+    'ет', 'ит', 'ут', 'ют', 'ат', 'ят',               // 2-3
+    'ам', 'ям', 'ом', 'ем', 'ой', 'ей',               // 2
+    'ась', 'ясь', 'ишь', 'ешь', 'щи',                  // 2-3
+    'ся', 'сь',                                        // 2
+  ];
+
+  function _lemmatize(word) {
+    if (word.length <= 4) return word;
+    for (const suffix of RU_SUFFIXES) {
+      if (word.endsWith(suffix) && word.length - suffix.length >= 3) {
+        return word.slice(0, -suffix.length);
+      }
+    }
+    return word;
+  }
+
   /**
    * Основная функция: строит скелет текста.
+   * Для текстов >20K автоматически использует Web Worker.
    * @param {string} text — исходный текст
-   * @param {object} opts — настройки: { level: 'light'|'medium'|'aggressive', maxTokens: number }
-   * @returns {string} компактный скелет
+   * @param {object} opts — настройки: { level: 'light'|'medium'|'aggressive' }
+   * @returns {string|Promise<string>} компактный скелет (sync для маленьких, async для больших)
    */
   function process(text, opts = {}) {
     if (!text || !text.trim()) return '';
-
     const level = opts.level || 'medium';
-    const cfg = _configForLevel(level, opts);
 
     // Кэширование
     const key = _hash(text) + ':' + level;
     if (_cache.has(key)) return _cache.get(key);
+
+    // Для больших текстов — через Worker
+    if (text.length > WORKER_THRESHOLD && _workerReady) {
+      return _processViaWorker(text, level).then(result => {
+        if (_cache.size >= MAX_CACHE) _cache.delete(_cache.keys().next().value);
+        _cache.set(key, result);
+        return result;
+      });
+    }
+
+    // Для маленьких — синхронно
+    const result = _processSync(text, level);
+    if (_cache.size >= MAX_CACHE) _cache.delete(_cache.keys().next().value);
+    _cache.set(key, result);
+    return result;
+  }
+
+  /**
+   * Синхронная обработка (используется для маленьких текстов и как fallback).
+   */
+  function _processSync(text, level) {
 
     const sections = _extractSections(text, cfg);
     const parts = [];
@@ -235,7 +334,7 @@ const TextSkeletonizer = (() => {
     return null;
   }
 
-  // ── Ключевые термины (с защитой от отрицаний) ──────────────
+  // ── Ключевые термины (лемматизация + защита от отрицаний) ────
 
   function _extractKeyTerms(text, cfg) {
     if (!cfg.maxKeyTerms) return [];
@@ -246,9 +345,7 @@ const TextSkeletonizer = (() => {
       .replace(/[*_`>\[\]()]/g, '')
       .toLowerCase();
 
-    const words = clean.split(/\s+/).filter(w => w.length > 3 && !STOP_WORDS.has(w));
-
-    // Частотный анализ с учётом отрицаний
+    // Частотный анализ с лемматизацией и учётом отрицаний
     const freq = new Map();
     const rawWords = clean.split(/\s+/);
     for (let i = 0; i < rawWords.length; i++) {
@@ -258,7 +355,9 @@ const TextSkeletonizer = (() => {
       // Проверяем предыдущее слово — если отрицание, пропускаем
       if (i > 0 && NEGATIONS.has(rawWords[i - 1])) continue;
 
-      freq.set(w, (freq.get(w) || 0) + 1);
+      // Лемматизация: приводим к основе
+      const lemma = _lemmatize(w);
+      freq.set(lemma, (freq.get(lemma) || 0) + 1);
     }
 
     return [...freq.entries()]

@@ -1295,7 +1295,7 @@ const Flowchart = (() => {
       // Адаптивное сжатие: определяем уровень по размеру текста
       const level = TextSkeletonizer.recommendLevel(text.length);
       const processedText = level
-        ? TextSkeletonizer.process(text, { level })
+        ? await TextSkeletonizer.process(text, { level })
         : text;
       const userContent = query
         ? `Запрос: "${query}"\n\n${basePrompt}\n\nТекст:\n${processedText.slice(0, 6000)}`
