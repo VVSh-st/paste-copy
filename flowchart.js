@@ -190,9 +190,11 @@ const Flowchart = (() => {
     bfs.forEach(n => rows.set(n.id, 0));
 
     const queue = [...bfs];
+    const MAX_ROWS = 50;
     while (queue.length) {
       const node = queue.shift();
       const r = rows.get(node.id) || 0;
+      if (r >= MAX_ROWS) continue;
       _edges.filter(e => e.from === node.id).forEach(e => {
         const child = _nodes.find(n => n.id === e.to);
         if (child && (rows.get(e.to) || -1) < r + 1) {
@@ -1132,7 +1134,7 @@ const Flowchart = (() => {
 
     if (!_nodes.length) { _viewport.appendChild(_emptyMsg('Нет данных для блок-схемы')); _applyTransform(); return; }
 
-    if (_mode === 'flow') _autoLayout(); else _forceLayout();
+    if (_mode === 'flow') _autoLayout(); else if (_nodes.some(n => n.x == null)) _forceLayout();
 
     _edgesG = document.createElementNS(SVG_NS, 'g');
     _edgesG.setAttribute('class', 'fc-edges');
