@@ -22,6 +22,15 @@
 
 ## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-02)
 
+### Flowchart — Query menu
+
+1. ✅ **Query menu** — левый верхний угол, proximity reveal (ratio 0.25), 5 пресетов + custom input + история (FIFO, localStorage)
+2. ✅ **Пресеты** — "Структура документа", "Ключевые понятия", "Поток действий", "Связи между блоками", "Краткое резюме"
+3. ✅ **История** — 5 последних ручных запросов, удаление по ✕, пресеты не сохраняются
+4. ✅ **_fetchWithQuery** — принимает произвольный запрос, передаёт в промпт LLM
+5. ✅ **Menu width** — 220px, адаптивный текст (ellipsis)
+6. ⏸ **Spell-check toggle** — скрыт из настроек (пока не доработан)
+
 ### Spell-check (итог)
 
 1. ✅ **Click-to-accept** — клик по ошибке = preview suggestion, повторный клик = toggle, клик мимо = commit
@@ -81,7 +90,10 @@
 ### Git коммиты (эта сессия)
 
 ```
-83bdcc2 docs: update HANDOFF — spell-check improvements, LLM fixes, code fence filter
+f4e892d fix: narrower query menu (220px), history only stores manual queries
+eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIFO, proximity reveal
+de089ad hide spell-check toggle from settings — needs further work before release
+2bfa28c docs: clean up HANDOFF — remove duplicates, organize spell-check/ticket/archive sections
 e55cf02 debug: add position tracking logs for spell-check overlay drift investigation
 65b4ac1 feat: spell-check skips code fences (```/~~~)
 9d3135f feat: spell-check rejection tracking — 3 reverts per-block or globally hides word
@@ -95,8 +107,10 @@ e55cf02 debug: add position tracking logs for spell-check overlay drift investig
 
 ### Ключевые файлы
 
+- `flowchart.js` (~944 строк) — блок-схема: query menu (presets + history), node drag, auto-layout
+- `flowchart.css` (~220 строк) — стили блок-схемы, query menu CSS
 - `spell-check.js` (~250 строк) — Yandex Speller API, code fence masking, placeholder masking, position offset compensation
-- `blocks.js` (~3640 строк) — spell-check integration: click-to-accept, toggle, rejection tracking, visual debounce, blocked subtab
+- `blocks.js` (~3640 строк) — spell-check integration: click-to-accept, toggle, rejection tracking
 - `llm-features.js` (~4510 строк) — stale index protection, MiniChat featureKey fix
 - `flowchart.js` (~940 строк) — Round 9: style.fill, Segoe font, no bar, ratio proximity, nodeSize word-wrap
 - `styles.css` (~6100 строк) — blocked subtab CSS, spell-check overlay/popup
