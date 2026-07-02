@@ -210,7 +210,7 @@ const Flowchart = (() => {
       rowGroups.get(r).push(n);
     });
 
-    const gapY = 120, gapX = 70;
+    const gapY = 160, gapX = 80;
     const startY = 80;
 
     rowGroups.forEach((nodes, row) => {
@@ -1064,17 +1064,6 @@ const Flowchart = (() => {
     _viewport = document.createElementNS(SVG_NS, 'g');
     _viewport.setAttribute('class', 'fc-viewport');
     _svg.appendChild(_viewport);
-
-    const starG = document.createElementNS(SVG_NS, 'g');
-    starG.dataset.depth = '0.05';
-    const count = Math.floor((VCW * VCH) / 15000);
-    for (let i = 0; i < count; i++) {
-      const dot = document.createElementNS(SVG_NS, 'circle');
-      dot.setAttribute('cx', Math.random() * VCW); dot.setAttribute('cy', Math.random() * VCH);
-      dot.setAttribute('r', (Math.random() + 0.3).toFixed(1)); dot.setAttribute('fill', 'rgba(255,255,255,0.2)');
-      starG.appendChild(dot);
-    }
-    _viewport.appendChild(starG);
 
     _nodes = (_data.nodes || []).map(n => {
       const existing = _nodes.find(en => en.id === n.id);
