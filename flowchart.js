@@ -172,7 +172,7 @@ const Flowchart = (() => {
 
   /* ── Layout: Sugiyama with dummy nodes ──────────────────────────────── */
 
-  const LAYER_GAP = 100, NODE_GAP = 50;
+  const LAYER_GAP = 90, NODE_GAP = 40;
 
   // Helper: build adjacency map
   function _buildAdj(edges) {
@@ -766,19 +766,37 @@ const Flowchart = (() => {
     let mid;
     try { const len = pathEl.getTotalLength(); mid = pathEl.getPointAtLength(len / 2); } catch { return; }
     if (!mid) return;
-    const fs = Math.max(9, (_fontSize || 13) - 2);
-    const tw = edge.label.length * fs * 0.55 + 10;
+
+    // Проверяем, не попал ли лейбл внутрь карточки — сдвигаем
+    let lx = mid.x, ly = mid.y;
+    const padding = 8;
+    for (const n of _nodes) {
+      const hw = (n.w || 140) / 2 + padding;
+      const hh = (n.h || 46) / 2 + padding;
+      if (Math.abs(lx - n.x) < hw && Math.abs(ly - n.y) < hh) {
+        // Сдвигаем вправо или влево за пределы карточки
+        lx = n.x + hw + 12;
+        break;
+      }
+    }
+
+    const fs = Math.max(8, (_fontSize || 13) - 3);
+    const tw = edge.label.length * fs * 0.5 + 8;
+    const th = fs + 6;
+
     const bg = document.createElementNS(SVG_NS, 'rect');
-    bg.setAttribute('x', mid.x - tw / 2); bg.setAttribute('y', mid.y - 9);
-    bg.setAttribute('width', tw); bg.setAttribute('height', 18);
-    bg.setAttribute('rx', '4'); bg.setAttribute('fill', 'rgba(16,18,26,0.85)');
-    bg.setAttribute('stroke', 'rgba(255,255,255,0.08)'); bg.setAttribute('stroke-width', '0.5');
+    bg.setAttribute('x', lx - tw / 2); bg.setAttribute('y', ly - th / 2);
+    bg.setAttribute('width', tw); bg.setAttribute('height', th);
+    bg.setAttribute('rx', '3');
+    bg.setAttribute('fill', 'rgba(30,35,50,0.92)');
+    bg.setAttribute('stroke', 'rgba(255,255,255,0.12)'); bg.setAttribute('stroke-width', '0.5');
     _edgesG.appendChild(bg);
+
     const txt = document.createElementNS(SVG_NS, 'text');
     txt.textContent = edge.label;
-    txt.setAttribute('x', mid.x); txt.setAttribute('y', mid.y);
+    txt.setAttribute('x', lx); txt.setAttribute('y', ly);
     txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('dominant-baseline', 'middle');
-    txt.setAttribute('fill', 'rgba(255,255,255,0.55)');
+    txt.setAttribute('fill', 'rgba(180,195,220,0.7)');
     txt.setAttribute('font-size', String(fs));
     txt.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
     _edgesG.appendChild(txt);
