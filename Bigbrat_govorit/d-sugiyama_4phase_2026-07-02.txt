@@ -1,0 +1,258 @@
+# Аудит: переработка layout engine для flowchart.js
+
+## 1. Диагноз корневой причины
+
+Все 6 предыдущих попыток проваливались по одной причине: **вы чинили симптомы (сдвиги, кривые), а не задавали структуру**. Настоящий layout pipeline всегда состоит из **4 независимых фаз**, которые нельзя смешивать:
+
+```
+1. Layering (ranking)     — какой узел на каком "уровне" (Y)
+2. Ordering (crossing min) — порядок узлов внутри уровня (X-порядок)
+3. Positioning             — точные X/Y координаты с учётом размеров
+4. Edge routing            — рисование линий между финальными позициями
+```
+
+Проблема "рёбра проходят сквозь карточки" возникает потому, что фаза 2 (ordering) отсутствовала — все узлы совала в одну колонку без учёта того, кто с кем связан. Никакой routing (bezier, orthogonal) не спасёт плохой ordering.
+
+**Решение: Sugiyama framework**, упрощённый под 50 узлов и без внешних либ. Это ровно то, что делает Graphviz `dot`. Реализуем 4 фазы вручную.
+
+---
+
+## 2. Фаза 1 — Layering (assign rank/layer)
+
+Cycles ломают простой BFS-layering. Нужно сначала **разорвать циклы** (DFS, back-edges игнорируем при ранжировании, но сохраняем для routing).
+
+```js
+function _assignLayers(nodes, edges) {
+  const idOf = n => n.id;
+  const adj = new Map(nodes.map(n => [n.id, []]));
+  edges.forEach(e => adj.get(e.from)?.push(e.to));
+
+  // 1. Найти back-edges через DFS (белый/серый/чёрный)
+  const state = new Map(nodes.map(n => [n.id, 0])); // 0=white,1=gray,2=black
+  const backEdges = new Set();
+  function dfs(u) {
+    state.set(u, 1);
+    for (const v of adj.get(u) || []) {
+      if (state.get(v) === 1) backEdges.add(u + '->' + v); // back edge
+      else if (state.get(v) === 0) dfs(v);
+    }
+    state.set(u, 2);
+  }
+  nodes.forEach(n => { if (state.get(n.id) === 0) dfs(n.id); });
+
+  // 2. Longest-path layering по DAG (без back-edges)
+  const layer = new Map(nodes.map(n => [n.id, 0]));
+  const indeg = new Map(nodes.map(n => [n.id, 0]));
+  const dagEdges = edges.filter(e => !backEdges.has(e.from + '->' + e.to));
+  dagEdges.forEach(e => indeg.set(e.to, (indeg.get(e.to) || 0) + 1));
+
+  const queue = nodes.filter(n => indeg.get(n.id) === 0).map(n => n.id);
+  const visited = new Set();
+  while (queue.length) {
+    const u = queue.shift();
+    if (visited.has(u)) continue;
+    visited.add(u);
+    for (const e of dagEdges.filter(e => e.from === u)) {
+      const v = e.to;
+      layer.set(v, Math.max(layer.get(v), layer.get(u) + 1));
+      indeg.set(v, indeg.get(v) - 1);
+      if (indeg.get(v) === 0) queue.push(v);
+    }
+  }
+  // Изолированные компоненты / оставшиеся узлы - fallback layer 0
+  return { layer, backEdges };
+}
+```
+
+Ключевое отличие от вашего BFS: **longest-path вместо shortest-path**. Это гарантирует, что если A→B→C→D и есть ребро A→D напрямую, то D окажется на layer 3 (не 1), и ребро A→D не будет "перепрыгивать" через layer, где стоят B и C в других колонках — она просто идёт вертикально мимо них, потому что B и C будут в разных X-слотах после фазы ordering.
+
+---
+
+## 3. Фаза 2 — Ordering (это то, что вы пропустили)
+
+Внутри каждого layer нужно расставить узлы в X-порядке так, чтобы минимизировать пересечения рёбер между соседними layers. Используем **median heuristic** (упрощённый Sugiyama barycenter) — стандартный, некапризный алгоритм.
+
+```js
+function _orderLayers(nodes, edges, layerOf) {
+  const maxLayer = Math.max(...[...layerOf.values()]);
+  let layers = [];
+  for (let i = 0; i <= maxLayer; i++) {
+    layers[i] = nodes.filter(n => layerOf.get(n.id) === i).map(n => n.id);
+  }
+
+  const adjOut = new Map(nodes.map(n => [n.id, edges.filter(e => e.from === n.id).map(e => e.to)]));
+  const adjIn  = new Map(nodes.map(n => [n.id, edges.filter(e => e.to === n.id).map(e => e.from)]));
+
+  function medianPass(down) {
+    for (let i = down ? 1 : maxLayer - 1; down ? i <= maxLayer : i >= 0; i += down ? 1 : -1) {
+      const prevIdx = new Map(layers[down ? i - 1 : i + 1].map((id, idx) => [id, idx]));
+      const withMedian = layers[i].map(id => {
+        const neigh = (down ? adjIn.get(id) : adjOut.get(id)) || [];
+        const positions = neigh.map(n => prevIdx.get(n)).filter(x => x !== undefined).sort((a,b)=>a-b);
+        const m = positions.length
+          ? positions[Math.floor((positions.length - 1) / 2)]
+          : -1; // нет соседей — не двигаем
+        return { id, m };
+      });
+      withMedian.sort((a, b) => a.m === -1 || b.m === -1 ? 0 : a.m - b.m);
+      layers[i] = withMedian.map(x => x.id);
+    }
+  }
+
+  // Несколько итераций туда-обратно (типично 4-8 достаточно для <50 узлов)
+  for (let iter = 0; iter < 6; iter++) {
+    medianPass(true);
+    medianPass(false);
+  }
+  return layers;
+}
+```
+
+---
+
+## 4. Фаза 3 — Positioning (координаты с учётом размеров карточек)
+
+Здесь решаем "карточки на достаточном расстоянии". Не фиксированный grid — **динамический gap на основе реальных w/h узлов + место под edge labels**.
+
+```js
+function _flowchartLayout(_nodes, _edges) {
+  const VCW = 2000, VCH = 1400;
+  const PAD = 60;
+
+  const { layer: layerOf, backEdges } = _assignLayers(_nodes, _edges);
+  const layers = _orderLayers(_nodes, _edges, layerOf);
+
+  const numLayers = layers.length;
+  // Y: делим доступную высоту на layers, оставляя запас под edge-labels между ними
+  const usableH = VCH - PAD * 2;
+  const rowH = usableH / Math.max(1, numLayers);
+  const minRowGap = 140; // достаточно места под подпись ребра между рядами
+
+  layers.forEach((layerIds, li) => {
+    const y = PAD + li * Math.max(rowH, minRowGap) + rowH / 2;
+
+    // X: раскладываем узлы ряда с учётом их реальной ширины + gap
+    const nodeObjs = layerIds.map(id => _nodes.find(n => n.id === id));
+    const gapX = 80; // минимальный зазор между карточками
+    const totalW = nodeObjs.reduce((s, n) => s + (n.w || 160), 0) + gapX * (nodeObjs.length - 1);
+    let x = (VCW - totalW) / 2;
+
+    nodeObjs.forEach(n => {
+      const w = n.w || 160;
+      n.x = x + w / 2;
+      n.y = y;
+      x += w + gapX;
+    });
+  });
+
+  // Пересчитать общую высоту диаграммы, если layers не влезают в VCH — включить scroll/scale снаружи
+  const neededH = PAD * 2 + numLayers * Math.max(rowH, minRowGap);
+  return { neededH, backEdges };
+}
+```
+
+**Важно:** если `neededH > VCH`, диаграмма должна **скроллиться**, а не сжиматься (сжатие = карточки налезают друг на друга). Добавьте `viewBox` scale-fit только если neededH ненамного больше VCH (например до 1.3x), иначе — прокрутка контейнера.
+
+---
+
+## 5. Edge routing — рисование без пересечения карточек
+
+Теперь, когда ordering сделан правильно, **прямые линии почти никогда не проходят через узлы** — потому что median heuristic минимизировал crossings, и long edges идут через "коридоры" между узлами соседних рядов.
+
+Но нужна защита для оставшихся случаев (skip-layer edges, back-edges для циклов):
+
+```js
+function _drawEdge(edge, nodesById) {
+  const from = nodesById[edge.from];
+  const to   = nodesById[edge.to];
+  const isBackEdge = edge._isBack; // помечено на этапе layering
+  const layerGap = Math.abs(to._layer - from._layer);
+
+  if (isBackEdge) {
+    // Циклы рисуем ДУГОЙ СБОКУ диаграммы, а не через центр
+    return _routeSideArc(from, to);
+  }
+
+  if (layerGap <= 1) {
+    // Соседние ряды — обычно прямая линия безопасна
+    return _routeStraight(from, to);
+  }
+
+  // Skip-layer edge (перепрыгивает через ряды) — обходим стороной
+  return _routeAroundColumn(from, to, nodesById);
+}
+
+function _routeAroundColumn(from, to, nodesById) {
+  // Проверяем прямую линию from->to на пересечение с bbox любого узла между слоями
+  const straightHitsNode = _checkLineIntersectsAnyNode(from, to, nodesById);
+  if (!straightHitsNode) return _routeStraight(from, to);
+
+  // Иначе — строим маршрут через "боковой коридор":
+  // сдвигаем контрольную точку в сторону ближайшего свободного края (лево/право от занятой колонки)
+  const midX = (from.x + to.x) / 2;
+  const clearX = _findNearestFreeXCorridor(midX, from.y, to.y, nodesById);
+  return _bezierThroughPoint(from, to, clearX);
+}
+```
+
+Ключевая функция — `_checkLineIntersectsAnyNode`: проверка отрезка на пересечение с bbox прямоугольника/окружности каждого узла в диапазоне layers между from и to. Простая line-rect intersection (не сложный алгоритм, ~20 строк).
+
+```js
+function _checkLineIntersectsAnyNode(from, to, nodesById) {
+  const minL = Math.min(from._layer, to._layer);
+  const maxL = Math.max(from._layer, to._layer);
+  for (const n of Object.values(nodesById)) {
+    if (n === from || n === to) continue;
+    if (n._layer <= minL || n._layer >= maxL) continue; // только промежуточные ряды
+    const hw = (n.w || 160) / 2 + 10, hh = (n.h || 60) / 2 + 10; // + padding
+    if (_segmentIntersectsRect(from.x, from.y, to.x, to.y, n.x - hw, n.y - hh, n.x + hw, n.y + hh)) {
+      return true;
+    }
+  }
+  return false;
+}
+```
+
+---
+
+## 6. Edge labels — резервирование места
+
+Поскольку в Positioning мы уже гарантировали `minRowGap = 140px` между рядами, у edge label (обычно рисуется в midpoint ребра) физически есть место — оно находится **между** рядами, а не поверх карточки, при условии, что label рисуется строго на середине Y между layers, а не на середине геометрического отрезка (который может быть смещён из-за skip-edges):
+
+```js
+function _edgeLabelPos(edge, from, to) {
+  // НЕ midpoint отрезка — midpoint между layer-Y координатами
+  const midY = (from.y + to.y) / 2;
+  const midX = (from.x + to.x) / 2;
+  return { x: midX, y: midY };
+}
+```
+
+Плюс — при рендере label добавляем белую подложку (`rect` с opacity под текст), это дешёвый и надёжный способ гарантировать читаемость даже в редких edge-cases пересечения.
+
+---
+
+## 7. Циклы (back-edges) — отдельная отрисовка
+
+Back-edges (найденные в фазе 1 через DFS) **никогда не роутить как прямые линии через основной layout** — они по определению идут "назад" и будут пересекать много узлов. Рисуйте их дугой сбоку:
+
+```js
+function _routeSideArc(from, to) {
+  const side = from.x < 1000 ? -1 : 1; // выбираем сторону канваса с меньшей плотностью
+  const arcX = Math.max(from.x, to.x) + side * 120;
+  return `M ${from.x},${from.y} C ${arcX},${from.y} ${arcX},${to.y} ${to.x},${to.y}`;
+}
+```
+
+---
+
+## 8. План внедрения (порядок работ в flowchart.js)
+
+1. Заменить текущий BFS-layout на 3 функции: `_assignLayers`, `_orderLayers`, `_flowchartLayout` (positioning) — это самое важное и должно закрыть 80% проблем само по себе.
+2. Обновить `_drawEdge` — добавить проверку `layerGap` и `_checkLineIntersectsAnyNode`.
+3. Пометить back-edges на этапе layering (`edge._isBack = backEdges.has(...)`) и роутить их дугой.
+4. Поправить `_edgeLabelPos` — считать по layer-Y, не по геометрическому midpoint.
+5. Добавить scroll/viewBox fallback если `neededH > VCH * 1.3`.
+6. Тестировать на графах с известными паттернами: линейный, ветвление (if/else diamond), цикл (retry loop), сложный (10+ узлов с parallel branches).
+
+Это не требует внешних библиотек, работает с циклами (через back-edge detection), детерминированно (median heuristic сходится за 4-8 итераций для 50 узлов) и решает именно корневую причину — отсутствие фазы ordering, а не пытается патчить routing поверх плохого layout.

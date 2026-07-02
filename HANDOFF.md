@@ -31,15 +31,15 @@
 5. ✅ **Menu width** — 220px, адаптивный текст (ellipsis)
 6. ⏸ **Spell-check toggle** — скрыт из настроек (пока не доработан)
 
-### Flowchart — Sugiyama layout engine
+### Flowchart — Sugiyama layout engine (v2 — переписан 2026-07-02)
 
 7. ✅ **Cycle removal** — DFS, back-edges reversed для layering
-8. ✅ **Layer assignment** — longest-path (не BFS)
+8. ✅ **Layer assignment** — longest-path + компактация (удаление пустых слоёв)
 9. ✅ **Dummy nodes** — для рёбер spanning >1 layer, резервируют track в ordering
-10. ✅ **Crossing minimization** — median heuristic, 8 итераций
-11. ✅ **Coordinate assignment** — с учётом реальных размеров карточек + нормализация
-12. ✅ **Edge routing** — waypoint-based: прямые для соседних слоёв, Catmull-Rom через dummy, side arcs для back-edges
-13. ✅ **Edge labels** — на первом сегменте, перпендикулярное смещение
+10. ✅ **Crossing minimization** — median heuristic, **20 итераций**, выбор лучшего ordering по score пересечений
+11. ✅ **Coordinate assignment** — центрирование слоёв, интерполяция dummy-узлов (3 прохода), min-spacing bounds
+12. ✅ **Edge routing** — прямые линии через waypoints, orthogonal для back-edges (side arcs)
+13. ✅ **Crossing counter** — попарный подсчёт по слоям через Set (не глобальный)
 
 ### Spell-check (итог)
 
@@ -119,21 +119,21 @@ e55cf02 debug: add position tracking logs for spell-check overlay drift investig
 
 ### Ключевые файлы
 
-- `flowchart.js` (~1350 строк) — блок-схема: Sugiyama layout (dummy nodes, median heuristic, Catmull-Rom routing), query menu, node drag
+- `flowchart.js` (~1300 строк) — блок-схема: Sugiyama v2 layout (20 iters, dummy nodes, orthogonal routing), query menu, node drag
 - `flowchart.css` (~250 строк) — стили блок-схемы, query menu CSS
 - `spell-check.js` (~250 строк) — Yandex Speller API, code fence masking, placeholder masking, position offset compensation
 - `blocks.js` (~3640 строк) — spell-check integration: click-to-accept, toggle, rejection tracking
 - `llm-features.js` (~4510 строк) — stale index protection, MiniChat featureKey fix
-- `flowchart.js` (~940 строк) — Round 9: style.fill, Segoe font, no bar, ratio proximity, nodeSize word-wrap
 - `styles.css` (~6100 строк) — blocked subtab CSS, spell-check overlay/popup
 - `ui.js` (~2073 строк) — structure menu, _fixUnclosedBackticks fence-aware, _closeOpenFences per-block
-- `state.js` — spellCheck: false in DEFAULT_LAYOUT
+- `Bigbrat_govorit/` — ответы аудиторов (4 файла) + INDEX.md с описаниями
 
 ## Architecture Decisions
 
-- **Sugiyama layout** — 6-фазный pipeline: cycle removal → layer assignment → dummy nodes → crossing minimization → coordinate assignment → waypoint edge routing. Dummy nodes резервируют track для длинных рёбер, гарантируя что они не проходят сквозь узлы.
-- **Edge routing** — прямые для соседних слоёв, Catmull-Rom через dummy nodes, side arcs для back-edges (циклы). `_edgeAnchor` рассчитывает точку на границе узла по shape (rect/circle/diamond).
-- **Crossing minimization** — median heuristic, 8 итераций (4 вниз, 4 вверх). Не оптимальный для 50+ узлов, но достаточный.
+- **Sugiyama v2 layout** — pipeline: cycle removal → layer assignment (longest-path + compact) → dummy nodes → crossing minimization (20 iters, best-score selection) → coordinate assignment (centered, dummy interpolation) → orthogonal edge routing. Dummy nodes резервируют track для длинных рёбер.
+- **Edge routing** — прямые линии через waypoints для длинных рёбер, прямые для соседних слоёв, orthogonal side arcs для back-edges. Catmull-Rom удалён (создавал хаотичные кривые).
+- **Crossing minimization** — median heuristic, 20 итераций с tracking best-score. Попарный подсчёт пересечений по слоям (не глобальный).
+- **Auditor answers** — 4 аудитора консультировали по layout engine. Ответы в `Bigbrat_govorit/` с INDEX.md. Выбран подход Auditor 4 (Sugiyama с dummy nodes).
 
 - **Inline style > setAttribute** — SVG fill/stroke через `style.fill`/`style.stroke` для приоритета над CSS
 - **nodeSize с word-wrap** — `_nodeSize` вызывает `_wrapTextLines`, возвращает `lines`

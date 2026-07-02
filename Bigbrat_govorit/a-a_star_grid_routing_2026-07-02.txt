@@ -1,0 +1,506 @@
+Ⓑ‧③ Аналитический. Архитектор. GEF.
+
+Я бы не пытался «чинить BFS». Здесь нужен другой pipeline: **layout и routing должны проектироваться вместе**. Для ≤50 узлов это достаточно лёгкая задача.
+
+Опираюсь на тикет: 
+
+Ниже схема, которая закрывает все требования:
+
+1. Убираем циклы временно (`feedback edges`)
+2. Layer assignment (Sugiyama)
+3. Crossing minimization
+4. Coordinate assignment с учётом размеров карточек
+5. Создаём obstacle map
+6. Router через A* по сетке
+7. Labels резервируют пространство
+
+---
+
+## Архитектура
+
+```txt
+input(nodes,edges)
+
+↓
+breakCycles()
+
+↓
+assignLayers()
+
+↓
+minimizeCrossings()
+
+↓
+assignCoordinates()
+
+↓
+reserveLabelZones()
+
+↓
+buildObstacleGrid()
+
+↓
+routeEdges()
+
+↓
+output(node.x,node.y,edge.path)
+```
+
+---
+
+## `_flowchartLayout()`
+
+```js
+function _flowchartLayout(nodes, edges){
+
+    const VCW=2000;
+    const VCH=1400;
+
+    const MARGIN=80;
+
+    const GRID=40;
+
+    const LAYER_GAP=220;
+    const NODE_GAP=80;
+
+    //---------------------------------------------------
+    // STEP 1: break cycles
+    //---------------------------------------------------
+
+    const reversedEdges = breakCycles(nodes,edges);
+
+    //---------------------------------------------------
+    // STEP 2: assign layers
+    //---------------------------------------------------
+
+    const layers = assignLayers(nodes,edges);
+
+    //---------------------------------------------------
+    // STEP 3: crossing minimization
+    //---------------------------------------------------
+
+    minimizeCrossings(layers,edges);
+
+    //---------------------------------------------------
+    // STEP 4: coordinates
+    //---------------------------------------------------
+
+    assignCoordinates(
+        layers,
+        VCW,
+        VCH,
+        LAYER_GAP,
+        NODE_GAP
+    );
+
+    //---------------------------------------------------
+    // STEP 5: reserve label zones
+    //---------------------------------------------------
+
+    reserveEdgeLabelSpace(edges);
+
+    //---------------------------------------------------
+    // STEP 6: build obstacle map
+    //---------------------------------------------------
+
+    const grid = buildObstacleGrid(
+        nodes,
+        VCW,
+        VCH,
+        GRID
+    );
+
+    //---------------------------------------------------
+    // STEP 7: route edges
+    //---------------------------------------------------
+
+    for(const e of edges){
+
+        e.path = routeEdge(
+            e,
+            nodes,
+            grid
+        );
+    }
+
+    restoreReversedEdges(
+        reversedEdges,
+        edges
+    );
+
+    return {
+        nodes,
+        edges
+    };
+}
+```
+
+---
+
+## Step 1 — циклы
+
+Для flowchart циклы нормальны.
+
+Не нужно пытаться раскладывать cyclic graph напрямую.
+
+Временно переворачиваем часть рёбер:
+
+```js
+function breakCycles(nodes,edges){
+
+    const visited=new Set();
+    const stack=new Set();
+
+    const reversed=[];
+
+    function dfs(id){
+
+        visited.add(id);
+        stack.add(id);
+
+        for(let e of edges){
+
+            if(e.from!==id) continue;
+
+            if(stack.has(e.to)){
+
+                reversed.push(e);
+
+                [e.from,e.to]=[
+                    e.to,
+                    e.from
+                ];
+            }
+
+            if(!visited.has(e.to))
+                dfs(e.to);
+        }
+
+        stack.delete(id);
+    }
+
+    dfs(nodes[0].id);
+
+    return reversed;
+}
+```
+
+---
+
+## Step 2 — layer assignment
+
+Не BFS-строки.
+
+Используем longest-path layering:
+
+```js
+function assignLayers(nodes,edges){
+
+    const layerMap={};
+
+    function getLayer(id){
+
+        if(layerMap[id]!=null)
+            return layerMap[id];
+
+        let incoming=
+            edges.filter(
+                e=>e.to===id
+            );
+
+        if(!incoming.length){
+
+            layerMap[id]=0;
+            return 0;
+        }
+
+        let L=0;
+
+        for(let e of incoming){
+
+            L=Math.max(
+                L,
+                getLayer(e.from)+1
+            );
+        }
+
+        layerMap[id]=L;
+
+        return L;
+    }
+
+    for(let n of nodes)
+        getLayer(n.id);
+
+    const layers=[];
+
+    for(let n of nodes){
+
+        const L=layerMap[n.id];
+
+        if(!layers[L])
+            layers[L]=[];
+
+        layers[L].push(n);
+    }
+
+    return layers;
+}
+```
+
+---
+
+## Step 3 — crossing minimization
+
+Используем barycenter.
+
+Несколько проходов сверху-вниз и снизу-вверх.
+
+```js
+function minimizeCrossings(layers,edges){
+
+    for(let iter=0;iter<4;iter++){
+
+        for(let L=1;L<layers.length;L++){
+
+            let prev=layers[L-1];
+
+            layers[L].sort((a,b)=>{
+
+                let ax=barycenter(
+                    a,
+                    prev,
+                    edges
+                );
+
+                let bx=barycenter(
+                    b,
+                    prev,
+                    edges
+                );
+
+                return ax-bx;
+            });
+        }
+    }
+}
+```
+
+---
+
+## Step 4 — координаты
+
+Учитываем реальные размеры карточек.
+
+```js
+function assignCoordinates(
+    layers,
+    VCW,
+    VCH,
+    layerGap,
+    nodeGap
+){
+
+    let y=100;
+
+    for(let layer of layers){
+
+        if(!layer) continue;
+
+        let totalWidth=0;
+
+        for(let n of layer){
+
+            totalWidth+=
+                n.w+nodeGap;
+        }
+
+        let x=
+            (VCW-totalWidth)/2;
+
+        let maxH=0;
+
+        for(let n of layer){
+
+            n.x=x+n.w/2;
+
+            n.y=y+n.h/2;
+
+            x+=
+                n.w+
+                nodeGap;
+
+            maxH=Math.max(
+                maxH,
+                n.h
+            );
+        }
+
+        y+=
+            maxH+
+            layerGap;
+    }
+}
+```
+
+---
+
+## Step 5 — резервируем место для labels
+
+Иначе labels опять окажутся внутри карточек.
+
+```js
+function reserveEdgeLabelSpace(edges){
+
+    for(let e of edges){
+
+        if(!e.label)
+            continue;
+
+        e.labelBox={
+
+            w:
+                e.label.length*8
+                +20,
+
+            h:28
+        };
+    }
+}
+```
+
+---
+
+## Step 6 — obstacle map
+
+Запрещённая зона:
+
+* карточка
+* padding
+* label area
+
+```js
+function buildObstacleGrid(
+    nodes,
+    W,
+    H,
+    cell
+){
+
+    const cols=Math.ceil(W/cell);
+    const rows=Math.ceil(H/cell);
+
+    const grid=
+        Array(rows)
+        .fill()
+        .map(()=>
+            Array(cols).fill(0)
+        );
+
+    for(let n of nodes){
+
+        blockRect(
+            grid,
+            n.x-n.w/2-25,
+            n.y-n.h/2-25,
+            n.w+50,
+            n.h+50,
+            cell
+        );
+    }
+
+    return grid;
+}
+```
+
+---
+
+## Step 7 — edge routing
+
+Ключевой момент.
+
+Не рисуем прямую линию.
+
+Ищем путь A* по свободным ячейкам.
+
+```js
+function routeEdge(
+    edge,
+    nodes,
+    grid
+){
+
+    let from=
+        nodes.find(
+            n=>n.id===edge.from
+        );
+
+    let to=
+        nodes.find(
+            n=>n.id===edge.to
+        );
+
+    const start={
+
+        x:from.x,
+        y:from.y+from.h/2
+    };
+
+    const end={
+
+        x:to.x,
+        y:to.y-to.h/2
+    };
+
+    const path=
+        AStar(
+            start,
+            end,
+            grid
+        );
+
+    return smoothPath(path);
+}
+```
+
+---
+
+## `_drawEdge()`
+
+SVG:
+
+```js
+function drawEdge(edge){
+
+    let d="";
+
+    edge.path.forEach((p,i)=>{
+
+        d+=
+        (i===0?"M":"L")
+        +p.x+" "
+        +p.y+" ";
+    });
+
+    return `
+        <path
+          d="${d}"
+          fill="none"
+          stroke="#666"
+        />
+    `;
+}
+```
+
+---
+
+Что получится:
+
+* рёбра больше не проходят через карточки;
+* длинные рёбра обходят препятствия;
+* labels получают свободную зону;
+* циклы работают;
+* прямые линии сохраняются там, где препятствий нет;
+* при ~50 узлах A* по сетке `40×40` остаётся быстрым.
+
+Это уже близко к упрощённому внутреннему варианту того, что делает Graphviz `dot`, но без npm и без полной сложности Graphviz.

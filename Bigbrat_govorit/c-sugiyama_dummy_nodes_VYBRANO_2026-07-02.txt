@@ -1,0 +1,308 @@
+# Аудит: Layout Engine для блок-схемы
+
+Прочитал тикет. Разберу по сути проблемы, дам алгоритм, псевдокод и конкретную реализацию.
+
+## Диагноз
+
+Корень всех проблем — **вы делаете column assignment (все узлы в одной колонке), но не делаете order assignment внутри слоя и не резервируете треки для рёбер.** Отсюда:
+
+- Long edges (row 0 → row 5) идут вертикально сквозь узлы, потому что нет **виртуальных узлов** на промежуточных слоях.
+- Horizontal shift конфликтует, потому что нет глобального упорядочивания — вы двигаете узлы локально.
+
+**Правильный алгоритм — Sugiyama (layered graph drawing), но реализованный полностью, а не «примитивно».** Graphviz `dot` — это и есть Sugiyama. Вам нужны все 4 фазы:
+
+```
+1. Cycle removal      — временно развернуть обратные рёбра (для cycles!)
+2. Layer assignment   — longest-path / Coffman-Graham
+3. Vertex ordering    — crossing minimization (median heuristic + dummy nodes)
+4. Coordinate assign  — x-координаты (priority / Brandes-Köpf упрощённый)
+```
+
+**Ключевая идея, которая решает проблему #1:** между слоями вставляются **dummy nodes** для длинных рёбер. Ребро row0→row5 разбивается на цепочку `row0 → d1 → d2 → d3 → d4 → row5`, где `d1..d4` — невидимые узлы в слоях 1-4. Они **занимают место в ordering**, поэтому реальные узлы расступаются, и ребро физически не может пройти сквозь них.
+
+---
+
+## Реализация `_flowchartLayout()`
+
+```javascript
+const VCW = 2000, VCH = 1400;
+const LAYER_GAP = 180;    // расстояние между слоями (вертикаль)
+const NODE_GAP  = 80;     // мин. зазор между узлами в слое (горизонталь)
+const EDGE_LABEL_GAP = 40; // доп. место под подписи рёбер
+
+function _flowchartLayout(_nodes, _edges) {
+  const N = new Map(_nodes.map(n => [n.id, n]));
+  // гарантируем размеры
+  for (const n of _nodes) {
+    n.w = n.w || defaultW(n.shape);
+    n.h = n.h || defaultH(n.shape);
+  }
+
+  // ---- 1. CYCLE REMOVAL (DFS, разворачиваем back-edges) ----
+  const reversed = new Set();
+  {
+    const state = new Map(); // 0=white,1=gray,2=black
+    const adj = buildAdj(_edges);
+    const dfs = (u) => {
+      state.set(u, 1);
+      for (const e of adj.get(u) || []) {
+        const s = state.get(e.to) || 0;
+        if (s === 1) reversed.add(e);         // back-edge → cycle
+        else if (s === 0) dfs(e.to);
+      }
+      state.set(u, 2);
+    };
+    for (const n of _nodes) if (!(state.get(n.id))) dfs(n.id);
+  }
+  // рабочий список рёбер с учётом разворота
+  const E = _edges.map(e => reversed.has(e)
+    ? { ...e, from: e.to, to: e.from, _rev: true, _orig: e }
+    : { ...e, _orig: e });
+
+  // ---- 2. LAYER ASSIGNMENT (longest path) ----
+  const layer = new Map();
+  const inc = new Map(_nodes.map(n => [n.id, 0]));
+  for (const e of E) inc.set(e.to, (inc.get(e.to) || 0) + 1);
+  // топосорт (граф теперь DAG)
+  const queue = _nodes.filter(n => (inc.get(n.id) || 0) === 0).map(n => n.id);
+  for (const id of queue) layer.set(id, 0);
+  const outAdj = buildAdj(E);
+  let qi = 0;
+  while (qi < queue.length) {
+    const u = queue[qi++];
+    for (const e of outAdj.get(u) || []) {
+      layer.set(e.to, Math.max(layer.get(e.to) ?? 0, (layer.get(u) ?? 0) + 1));
+      inc.set(e.to, inc.get(e.to) - 1);
+      if (inc.get(e.to) === 0) queue.push(e.to);
+    }
+  }
+  // изолированные / недостижимые → layer 0
+  for (const n of _nodes) if (!layer.has(n.id)) layer.set(n.id, 0);
+
+  const maxLayer = Math.max(...[...layer.values()]);
+
+  // ---- 3. DUMMY NODES для длинных рёбер ----
+  const layers = Array.from({ length: maxLayer + 1 }, () => []);
+  for (const n of _nodes) layers[layer.get(n.id)].push({ id: n.id, real: true, node: n });
+
+  const routedEdges = []; // цепочки для routing
+  let dummyId = 0;
+  for (const e of E) {
+    const l1 = layer.get(e.from), l2 = layer.get(e.to);
+    if (Math.abs(l2 - l1) <= 1) { routedEdges.push({ e, chain: [e.from, e.to] }); continue; }
+    const step = l2 > l1 ? 1 : -1;
+    const chain = [e.from];
+    for (let l = l1 + step; l !== l2; l += step) {
+      const did = `__d${dummyId++}`;
+      layers[l].push({ id: did, real: false, w: 1, h: 1 });
+      layer.set(did, l);
+      chain.push(did);
+    }
+    chain.push(e.to);
+    routedEdges.push({ e, chain });
+  }
+  // индекс соседства по цепочкам (для ordering)
+  const chainAdj = buildChainAdj(routedEdges);
+
+  // ---- 4. VERTEX ORDERING (median heuristic, несколько проходов) ----
+  // начальный порядок = как есть
+  const pos = new Map(); // id -> index в слое
+  layers.forEach(L => L.forEach((v, i) => pos.set(v.id, i)));
+
+  for (let iter = 0; iter < 8; iter++) {
+    const down = iter % 2 === 0;
+    const range = down ? [...layers.keys()].slice(1)
+                       : [...layers.keys()].slice(0, -1).reverse();
+    for (const li of range) {
+      const L = layers[li];
+      for (const v of L) {
+        const neigh = down ? chainAdj.pred.get(v.id) : chainAdj.succ.get(v.id);
+        v._med = median((neigh || []).map(id => pos.get(id)));
+      }
+      L.sort((a, b) => (a._med ?? pos.get(a.id)) - (b._med ?? pos.get(b.id)));
+      L.forEach((v, i) => pos.set(v.id, i));
+    }
+    // (опционально) transpose: локальные свапы для уменьшения пересечений
+  }
+
+  // ---- 5. COORDINATE ASSIGNMENT ----
+  // Y = слой * LAYER_GAP; X = приоритетный метод выравнивания по медиане
+  // сначала грубо разложим по X с учётом ширин + зазоров
+  const xOf = new Map();
+  for (const L of layers) {
+    let cursor = 0;
+    for (const v of L) {
+      const w = v.real ? v.node.w : 20; // dummy занимает узкий трек
+      xOf.set(v.id, cursor + w / 2);
+      cursor += w + NODE_GAP + EDGE_LABEL_GAP;
+    }
+  }
+  // выравнивание по медиане соседей (несколько проходов, чтобы рёбра были прямее)
+  for (let iter = 0; iter < 4; iter++) {
+    for (const L of layers) {
+      for (let i = 0; i < L.length; i++) {
+        const v = L[i];
+        const nb = [...(chainAdj.pred.get(v.id) || []), ...(chainAdj.succ.get(v.id) || [])];
+        if (!nb.length) continue;
+        let desired = median(nb.map(id => xOf.get(id)));
+        // ограничиваем соседями чтобы не было наложений
+        const w = v.real ? v.node.w : 20;
+        const leftBound  = i > 0 ? xOf.get(L[i-1].id) + halfW(L[i-1]) + NODE_GAP + w/2 : -Infinity;
+        const rightBound = i < L.length-1 ? xOf.get(L[i+1].id) - halfW(L[i+1]) - NODE_GAP - w/2 : Infinity;
+        xOf.set(v.id, Math.max(leftBound, Math.min(rightBound, desired)));
+      }
+    }
+  }
+
+  // ---- 6. НОРМАЛИЗАЦИЯ в canvas 2000×1400 ----
+  const xs = [...xOf.values()], ys = layers.map((_, li) => li * LAYER_GAP);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const layoutW = (maxX - minX) || 1;
+  const layoutH = (maxLayer * LAYER_GAP) || 1;
+  const pad = 80;
+  const scaleX = Math.min(1, (VCW - 2*pad) / layoutW);
+  const scaleY = Math.min(1, (VCH - 2*pad) / layoutH);
+
+  for (const n of _nodes) {
+    const l = layer.get(n.id);
+    n.x = pad + (xOf.get(n.id) - minX) * scaleX;
+    n.y = pad + l * LAYER_GAP * scaleY;
+  }
+  // сохраняем dummy-координаты для routing
+  const dummyXY = new Map();
+  for (const L of layers) for (const v of L) if (!v.real) {
+    dummyXY.set(v.id, {
+      x: pad + (xOf.get(v.id) - minX) * scaleX,
+      y: pad + layer.get(v.id) * LAYER_GAP * scaleY
+    });
+  }
+
+  return { routedEdges, dummyXY, reversed };
+}
+
+// --- helpers ---
+function median(arr) {
+  if (!arr.length) return undefined;
+  const s = [...arr].sort((a, b) => a - b), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+function buildAdj(edges) {
+  const m = new Map();
+  for (const e of edges) { if (!m.has(e.from)) m.set(e.from, []); m.get(e.from).push(e); }
+  return m;
+}
+function buildChainAdj(routed) {
+  const succ = new Map(), pred = new Map();
+  const add = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+  for (const { chain } of routed)
+    for (let i = 0; i < chain.length - 1; i++) {
+      add(succ, chain[i], chain[i+1]);
+      add(pred, chain[i+1], chain[i]);
+    }
+  return { succ, pred };
+}
+```
+
+---
+
+## Edge routing (`_drawEdge`)
+
+Раз есть цепочка через dummy-узлы — **рисуйте ребро по точкам цепочки**. Оно гарантированно обходит реальные узлы, потому что dummy зарезервировали трек.
+
+```javascript
+function _drawEdge(routed, N, dummyXY) {
+  const { e, chain } = routed;
+  // собираем waypoints (центры узлов/dummy)
+  const pts = chain.map(id => {
+    const n = N.get(id);
+    return n ? { x: n.x, y: n.y } : dummyXY.get(id);
+  });
+  if (e._rev) pts.reverse(); // рисуем в исходном направлении
+
+  // подрезаем первую/последнюю точку к границе карточки (anchor на кромке)
+  const src = N.get(e._rev ? e.to : e.from);
+  const dst = N.get(e._rev ? e.from : e.to);
+  pts[0]            = edgeAnchor(src, pts[1]);
+  pts[pts.length-1] = edgeAnchor(dst, pts[pts.length-2]);
+
+  let d;
+  if (pts.length === 2) {
+    // прямое ребро (требование #5)
+    d = `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
+  } else {
+    // сглаженная полилиния через dummy — мягкий Catmull-Rom → без резких углов
+    d = catmullRomPath(pts);
+  }
+  return d;
+}
+
+// anchor: пересечение линии center→target с границей карточки (по shape)
+function edgeAnchor(node, toward) {
+  const dx = toward.x - node.x, dy = toward.y - node.y;
+  const hw = node.w/2, hh = node.h/2;
+  if (node.shape === 'circle' || node.shape === 'diamond') {
+    // для diamond — ромбовидная граница, для circle — эллипс
+    const t = node.shape === 'circle'
+      ? 1 / Math.hypot(dx/hw, dy/hh)
+      : 1 / (Math.abs(dx)/hw + Math.abs(dy)/hh);
+    return { x: node.x + dx*t, y: node.y + dy*t };
+  }
+  // rect/stadium/cylinder → пересечение с прямоугольником
+  const t = 1 / Math.max(Math.abs(dx)/hw, Math.abs(dy)/hh);
+  return { x: node.x + dx*t, y: node.y + dy*t };
+}
+```
+
+---
+
+## Edge labels (требование #3)
+
+Не ставьте label в геометрический центр ребра — там часто dummy/узел. Правила:
+
+1. **Ставьте label на первом сегменте цепочки** (между src и первым dummy/target) — этот участок гарантированно свободен, т.к. слой ниже.
+2. **Смещайте перпендикулярно** ребру на `labelHeight/2 + 6px`, чтобы текст не лежал на линии.
+3. Рисуйте под текстом **полупрозрачную подложку** (`rect fill=white opacity=0.85`) — читаемость даже при пересечении.
+4. `EDGE_LABEL_GAP` в layout уже резервирует горизонтальный зазор в слое под подписи.
+
+```javascript
+function labelPos(pts) {
+  const a = pts[0], b = pts[1];
+  const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+  const len = Math.hypot(b.x-a.x, b.y-a.y) || 1;
+  const nx = -(b.y-a.y)/len, ny = (b.x-a.x)/len; // нормаль
+  return { x: mx + nx*14, y: my + ny*14 };
+}
+```
+
+---
+
+## Почему это закрывает все требования
+
+| # | Требование | Как решено |
+|---|-----------|-----------|
+| 1 | Рёбра не сквозь карточки | **Dummy nodes** резервируют трек в каждом слое → узлы расступаются |
+| 2 | Достаточное расстояние | `NODE_GAP + EDGE_LABEL_GAP` + bound-clamping при X-выравнивании |
+| 3 | Labels не на карточках | Label на первом сегменте + перпендикулярное смещение + подложка |
+| 4 | Адаптивность | scaleX/scaleY нормализуют под 2000×1400 при любом кол-ве узлов |
+| 5 | Прямые рёбра | Соседние слои → прямая `L`; длинные → плавный Catmull-Rom |
+| 6 | Cycles | **Фаза cycle removal** (DFS back-edge reversal) перед layering |
+
+---
+
+## Что я бы сделал по шагам (для внедрения)
+
+1. **Замените** текущий BFS-row layout целиком на 4-фазный Sugiyama выше. Не пытайтесь «чинить» horizontal shift — это тупик.
+2. Верните из `_flowchartLayout` не только координаты узлов, но и **`routedEdges` + `dummyXY`** — они нужны для рисования.
+3. Перепишите `_drawEdge` на **waypoint-based** (цепочка), убрав bezier-в-бок и orthogonal.
+4. Проверьте на графах: (а) DAG 20 узлов, (б) граф с 2-3 циклами, (в) звезда (1 узел → 15), (г) длинная цепь 0→10.
+
+---
+
+## Оговорки / где нужна калибровка
+
+- **Median heuristic** не гарантирует минимум пересечений — для 50 узлов результат хороший, но не оптимальный. Если увидите остаточные пересечения, добавьте фазу **transpose** (свап соседей, если уменьшает crossings) — я оставил для неё место в цикле ordering.
+- **Coordinate assignment** здесь упрощённый (priority median). Для идеально прямых длинных рёбер нужен Brandes-Köpf, но он сложнее ~150 строк — вводите только если приоритетный метод даёт «зигзаги».
+- Референс `DiagramLayoutEngine` в `thought-agent/main.js:5440-6000` стоит посмотреть на предмет **уже готового Catmull-Rom / anchor кода** — не переизобретайте, переиспользуйте.
+- `LAYER_GAP=180`, `NODE_GAP=80` — стартовые значения, подберите под реальные размеры карточек.
+
+Хотите — распишу фазу **transpose** и **Brandes-Köpf** отдельно, либо помогу адаптировать под конкретный формат ваших `node.shape`/размеров.
