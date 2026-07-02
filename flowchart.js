@@ -181,40 +181,86 @@ const Flowchart = (() => {
 
   /* ── Layout ─────────────────────────────────────────────────────────── */
 
-  function _autoLayout() {
-    const nodeMap = {}; _nodes.forEach(n => nodeMap[n.id] = n);
-    const adj = {}; _nodes.forEach(n => adj[n.id] = []);
-    _edges.forEach(e => { if (adj[e.from]) adj[e.from].push(e.to); });
-    const inDeg = {}; _nodes.forEach(n => inDeg[n.id] = 0);
-    _edges.forEach(e => { if (inDeg[e.to] !== undefined) inDeg[e.to]++; });
+  function _flowchartLayout() {
+    const incoming = new Map(_nodes.map(n => [n.id, 0]));
+    _edges.forEach(e => incoming.set(e.to, (incoming.get(e.to) || 0) + 1));
 
-    const levels = []; const visited = new Set();
-    let queue = _nodes.filter(n => inDeg[n.id] === 0 && n.x == null).map(n => n.id);
-    if (!queue.length && _nodes.some(n => n.x == null)) queue = [_nodes.find(n => n.x == null)?.id].filter(Boolean);
+    const rows = new Map();
+    const bfs = _nodes.filter(n => (incoming.get(n.id) || 0) === 0);
+    bfs.forEach(n => rows.set(n.id, 0));
 
+    const queue = [...bfs];
     while (queue.length) {
-      levels.push([...queue]); queue.forEach(id => visited.add(id));
-      const next = [];
-      queue.forEach(id => { (adj[id] || []).forEach(to => { if (!visited.has(to) && !next.includes(to) && _edges.filter(e => e.to === to).every(e => visited.has(e.from))) next.push(to); }); });
-      queue = next;
-    }
-    _nodes.filter(n => !visited.has(n.id) && n.x == null).forEach(n => { levels.push([n.id]); visited.add(n.id); });
-
-    const maxRowsPerCol = 5, colW = 400, levelGap = 130;
-    const startY = 100;
-
-    levels.forEach((level, li) => {
-      const col = Math.floor(li / maxRowsPerCol);
-      const rowInCol = li % maxRowsPerCol;
-      const baseX = 100 + col * colW;
-      level.forEach((id, ni) => {
-        const node = nodeMap[id];
-        if (node && node.x == null) {
-          node.x = baseX + ni * Math.max(240, (node.w || 140) + 40);
-          node.y = startY + rowInCol * Math.max(levelGap, (node.h || 46) + 30);
+      const node = queue.shift();
+      const r = rows.get(node.id) || 0;
+      _edges.filter(e => e.from === node.id).forEach(e => {
+        const child = _nodes.find(n => n.id === e.to);
+        if (child && (rows.get(e.to) || -1) < r + 1) {
+          rows.set(e.to, r + 1);
+          queue.push(child);
         }
       });
+    }
+    _nodes.filter(n => !rows.has(n.id)).forEach(n => rows.set(n.id, 0));
+
+    const rowGroups = new Map();
+    _nodes.forEach(n => {
+      const r = rows.get(n.id) || 0;
+      if (!rowGroups.has(r)) rowGroups.set(r, []);
+      rowGroups.get(r).push(n);
     });
+
+    const gapY = 110, gapX = 60;
+    const startY = 80;
+
+    rowGroups.forEach((nodes, row) => {
+      const totalW = nodes.reduce((s, n) => s + (n.w || 140), 0) + (nodes.length - 1) * gapX;
+      let x = Math.max(60, (VCW - totalW) / 2);
+      const y = startY + row * gapY;
+      nodes.forEach(n => {
+        n.x = x;
+        n.y = y;
+        x += (n.w || 140) + gapX;
+      });
+    });
+  }
+
+  function _timelineLayout() {
+    if (!_nodes.length) return;
+    const gapX = 60, axisY = VCH / 2;
+    const totalW = _nodes.reduce((s, n) => s + (n.w || 140), 0) + (_nodes.length - 1) * gapX;
+    let x = Math.max(60, (VCW - totalW) / 2);
+
+    _nodes.forEach((n, i) => {
+      const above = i % 2 === 0;
+      n.x = x;
+      n.y = above ? axisY - 200 : axisY + 60;
+      x += (n.w || 140) + gapX;
+    });
+  }
+
+  function _mindmapLayout() {
+    if (!_nodes.length) return;
+    const root = _nodes[0];
+    root.x = VCW / 2 - (root.w || 140) / 2;
+    root.y = VCH / 2 - (root.h || 46) / 2;
+
+    const children = _nodes.slice(1);
+    if (!children.length) return;
+    const angleStep = (Math.PI * 2) / children.length;
+    const radius = 280;
+
+    children.forEach((n, i) => {
+      const angle = angleStep * i - Math.PI / 2;
+      n.x = VCW / 2 + Math.cos(angle) * radius - (n.w || 140) / 2;
+      n.y = VCH / 2 + Math.sin(angle) * radius - (n.h || 46) / 2;
+    });
+  }
+
+  function _autoLayout() {
+    if (_mode === 'flow') _flowchartLayout();
+    else if (_mode === 'graph') _forceLayout();
+    else _flowchartLayout();
   }
 
   function _forceLayout() {
@@ -598,6 +644,7 @@ const Flowchart = (() => {
           <button class="flowchart-btn" data-mode="graph" title="Граф связей">G</button>
           <button class="flowchart-btn flowchart-add" title="Добавить блок">+</button>
           <button class="flowchart-btn flowchart-connect" title="Соединить блоки">↗</button>
+          <button class="flowchart-btn flowchart-auto-layout" title="Авто-раскладка">⊞</button>
           <button class="flowchart-btn flowchart-refresh" title="Обновить анализ">↻</button>
           <button class="flowchart-btn flowchart-export" title="Дублировать полотно">⇪</button>
           <button class="flowchart-btn fc-font-dec" title="Меньше шрифт">A−</button>
@@ -748,6 +795,13 @@ const Flowchart = (() => {
       _connectMode = !_connectMode; _connectFrom = null;
       _overlay.querySelector('.flowchart-connect').classList.toggle('active', _connectMode);
       if (_connectMode) window.Toast?.show('Кликните на исходный блок', 'info');
+    });
+
+    _overlay.querySelector('.flowchart-auto-layout').addEventListener('click', () => {
+      if (_mode === 'flow') _flowchartLayout();
+      else if (_mode === 'graph') _forceLayout();
+      else _flowchartLayout();
+      _render(); _syncData();
     });
 
     _overlay.querySelector('.flowchart-export').addEventListener('click', () => {
@@ -926,6 +980,12 @@ const Flowchart = (() => {
       try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; } }
       if (!json || !Array.isArray(json.nodes) || !json.nodes.length) { window.Toast?.show('LLM вернул пустую схему', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
       _data = json;
+      // Auto-apply layout if nodes have no coordinates
+      if (_data.nodes.some(n => n.x == null || n.y == null)) {
+        _nodes = _data.nodes; _edges = _data.edges || [];
+        _nodes.forEach(n => { const sz = _nodeSize(n); n.w = sz.w; n.h = sz.h; });
+        _autoLayout();
+      }
       _overlay.querySelector('.flowchart-status').textContent = '';
       _render();
       _syncData();
