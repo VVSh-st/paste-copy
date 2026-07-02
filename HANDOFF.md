@@ -31,6 +31,16 @@
 5. ✅ **Menu width** — 220px, адаптивный текст (ellipsis)
 6. ⏸ **Spell-check toggle** — скрыт из настроек (пока не доработан)
 
+### Flowchart — Sugiyama layout engine
+
+7. ✅ **Cycle removal** — DFS, back-edges reversed для layering
+8. ✅ **Layer assignment** — longest-path (не BFS)
+9. ✅ **Dummy nodes** — для рёбер spanning >1 layer, резервируют track в ordering
+10. ✅ **Crossing minimization** — median heuristic, 8 итераций
+11. ✅ **Coordinate assignment** — с учётом реальных размеров карточек + нормализация
+12. ✅ **Edge routing** — waypoint-based: прямые для соседних слоёв, Catmull-Rom через dummy, side arcs для back-edges
+13. ✅ **Edge labels** — на первом сегменте, перпендикулярное смещение
+
 ### Spell-check (итог)
 
 1. ✅ **Click-to-accept** — клик по ошибке = preview suggestion, повторный клик = toggle, клик мимо = commit
@@ -90,6 +100,8 @@
 ### Git коммиты (эта сессия)
 
 ```
+31034c8 feat: Sugiyama layout engine — 6 phases: cycle removal, layer assignment, dummy nodes, crossing minimization, coordinate assignment, waypoint edge routing
+e8792e9 fix: flowchart BFS infinite loop on cycles — add MAX_ROWS=50 guard
 f4e892d fix: narrower query menu (220px), history only stores manual queries
 eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIFO, proximity reveal
 de089ad hide spell-check toggle from settings — needs further work before release
@@ -107,8 +119,8 @@ e55cf02 debug: add position tracking logs for spell-check overlay drift investig
 
 ### Ключевые файлы
 
-- `flowchart.js` (~944 строк) — блок-схема: query menu (presets + history), node drag, auto-layout
-- `flowchart.css` (~220 строк) — стили блок-схемы, query menu CSS
+- `flowchart.js` (~1350 строк) — блок-схема: Sugiyama layout (dummy nodes, median heuristic, Catmull-Rom routing), query menu, node drag
+- `flowchart.css` (~250 строк) — стили блок-схемы, query menu CSS
 - `spell-check.js` (~250 строк) — Yandex Speller API, code fence masking, placeholder masking, position offset compensation
 - `blocks.js` (~3640 строк) — spell-check integration: click-to-accept, toggle, rejection tracking
 - `llm-features.js` (~4510 строк) — stale index protection, MiniChat featureKey fix
@@ -118,6 +130,10 @@ e55cf02 debug: add position tracking logs for spell-check overlay drift investig
 - `state.js` — spellCheck: false in DEFAULT_LAYOUT
 
 ## Architecture Decisions
+
+- **Sugiyama layout** — 6-фазный pipeline: cycle removal → layer assignment → dummy nodes → crossing minimization → coordinate assignment → waypoint edge routing. Dummy nodes резервируют track для длинных рёбер, гарантируя что они не проходят сквозь узлы.
+- **Edge routing** — прямые для соседних слоёв, Catmull-Rom через dummy nodes, side arcs для back-edges (циклы). `_edgeAnchor` рассчитывает точку на границе узла по shape (rect/circle/diamond).
+- **Crossing minimization** — median heuristic, 8 итераций (4 вниз, 4 вверх). Не оптимальный для 50+ узлов, но достаточный.
 
 - **Inline style > setAttribute** — SVG fill/stroke через `style.fill`/`style.stroke` для приоритета над CSS
 - **nodeSize с word-wrap** — `_nodeSize` вызывает `_wrapTextLines`, возвращает `lines`
