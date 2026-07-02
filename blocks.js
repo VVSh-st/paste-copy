@@ -1546,6 +1546,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     // Spell-check debounce
     let _spellCheckTimer = null;
     let _spellOverlay = null;
+    let _lastSpellWords = [];
 
 
 
@@ -1594,11 +1595,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           if (!SpellCheck.isEnabled() || !ta.isConnected) return;
           SpellCheck.checkText(ta.value).then(result => {
             if (!ta.isConnected) return;
-            if (!result?.words?.length) {
+            _lastSpellWords = result?.words || [];
+            if (!_lastSpellWords.length) {
               _clearSpellOverlay();
               return;
             }
-            _renderSpellOverlay(ta, result.words);
+            // Don't render while WordComplete/InlineHint is active
+            if (window.WordComplete?.isVisible?.()) return;
+            _scheduleSpellRender(_lastSpellWords);
           });
         }, 900);
       }
@@ -1729,108 +1733,172 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       updateCurrentLineHighlight();
       if (lineMirror?.parentNode) lineMirror.parentNode.removeChild(lineMirror);
       lineMirror = null;
-      _clearSpellOverlay();
+      // Commit any pending spell error on blur
+      _spellCommit();
+      // Immediately render spell markers on blur (safest moment)
+      if (_lastSpellWords?.length) _renderSpellOverlayImmediate(_lastSpellWords);
+      else _clearSpellOverlay();
       clearTimeout(_spellCheckTimer);
     });
 
     // ── Spell-check overlay ────────────────────────────────────────
-    let _spellPopup = null;
+    let _spellActiveError = null; // { word, pos, len, suggestions, originalText }
+    let _spellPendingRender = null; // cached { words } awaiting visual debounce
 
     function _clearSpellOverlay() {
       if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
       _spellOverlay = null;
-      _closeSpellPopup();
+      _spellActiveError = null;
+      _spellPendingRender = null;
     }
 
-    function _closeSpellPopup() {
-      if (_spellPopup) { _spellPopup.remove(); _spellPopup = null; }
-      document.removeEventListener('keydown', _onSpellPopupKey, true);
-      document.removeEventListener('click', _onSpellPopupClickOutside, true);
+    function _spellCommit() {
+      if (!_spellActiveError) return;
+      _spellActiveError = null;
+      _spellPendingRender = null;
+      // Re-render without pending highlight
+      if (_lastSpellWords?.length) _renderSpellOverlay(ta, _lastSpellWords);
     }
 
-    let _spellPopupIdx = -1;
-    let _spellPopupWords = [];
-    let _spellPopupTa = null;
-    let _spellPopupPos = 0;
-    let _spellPopupLen = 0;
-
-    function _onSpellPopupKey(e) {
-      if (!_spellPopup) return;
-      if (e.key === 'ArrowRight' || e.key === 'Tab') {
-        e.preventDefault(); e.stopPropagation();
-        _spellPopupIdx = (_spellPopupIdx + 1) % _spellPopupWords.length;
-        _highlightSpellSuggestion();
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault(); e.stopPropagation();
-        _spellPopupIdx = (_spellPopupIdx - 1 + _spellPopupWords.length) % _spellPopupWords.length;
-        _highlightSpellSuggestion();
-      } else if (e.key === 'Enter') {
-        e.preventDefault(); e.stopPropagation();
-        _applySpellSuggestion();
-      } else if (e.key === 'Escape') {
-        e.preventDefault(); e.stopPropagation();
-        _closeSpellPopup();
-      }
-    }
-
-    function _onSpellPopupClickOutside(e) {
-      if (_spellPopup && !_spellPopup.contains(e.target)) {
-        _closeSpellPopup();
-      }
-    }
-
-    function _highlightSpellSuggestion() {
-      if (!_spellPopup) return;
-      _spellPopup.querySelectorAll('.spell-popup-suggestion').forEach((el, i) => {
-        el.style.background = i === _spellPopupIdx ? 'rgba(74, 222, 128, 0.25)' : '';
-      });
-    }
-
-    function _applySpellSuggestion() {
-      if (_spellPopupIdx < 0 || _spellPopupIdx >= _spellPopupWords.length) return;
-      const replacement = _spellPopupWords[_spellPopupIdx];
-      const ta = _spellPopupTa;
-      _closeSpellPopup();
-      if (!ta) return;
-      ta.focus();
-      ta.setRangeText(replacement, _spellPopupPos, _spellPopupPos + _spellPopupLen, 'end');
+    function _spellRevert() {
+      if (!_spellActiveError || !ta.isConnected) return;
+      const { pos, len, originalText } = _spellActiveError;
+      ta.setRangeText(originalText, pos, pos + len, 'end');
       ta.dispatchEvent(new Event('input', { bubbles: true }));
+      _spellActiveError = null;
+      _spellPendingRender = null;
     }
 
-    function _showSpellPopup(taEl, word, pos, len, suggestions) {
-      _closeSpellPopup();
-      if (!suggestions.length) return;
-      _spellPopupIdx = 0;
-      _spellPopupWords = suggestions;
-      _spellPopupTa = taEl;
-      _spellPopupPos = pos;
-      _spellPopupLen = len;
+    // Click on textarea — check if inside a misspelled word range
+    ta.addEventListener('click', e => {
+      if (!SpellCheck?.isEnabled() || b.type !== 'text') return;
+      const idx = ta.selectionStart;
+      if (_spellActiveError) {
+        const { pos, len } = _spellActiveError;
+        if (idx < pos || idx > pos + len) {
+          // Clicked outside active error — commit
+          _spellCommit();
+        }
+      }
+      // Check if clicked inside any error range
+      if (!_lastSpellWords?.length) return;
+      const hit = _lastSpellWords.find(w => idx >= w.pos && idx <= w.pos + w.len);
+      if (!hit) return;
+      if (_spellActiveError && _spellActiveError.pos === hit.pos && _spellActiveError.len === hit.len) {
+        // Clicked same error again — toggle (swap word ↔ first suggestion)
+        _spellToggleActive();
+      } else {
+        // Clicked a different error — commit current, activate new, apply first replacement
+        _spellCommit();
+        _spellActivate(hit);
+        _spellApplyFirst();
+      }
+    });
 
-      const popup = document.createElement('div');
-      popup.className = 'spell-popup';
-      popup.innerHTML =
-        `<span class="spell-popup-word">${_escBlock(word)}</span>` +
-        `<span class="spell-popup-arrow">→</span>` +
-        suggestions.map((s, i) =>
-          `<span class="spell-popup-suggestion" data-idx="${i}">${_escBlock(s)}</span>`
-        ).join('') +
-        `<span class="spell-popup-hint">Tab/→ · Enter ✓ · Esc ✕</span>`;
-      document.body.appendChild(popup);
-      _spellPopup = popup;
+    function _spellActivate(error) {
+      _spellActiveError = {
+        word: error.word,
+        pos: error.pos,
+        len: error.len,
+        suggestions: error.suggestions,
+        originalText: ta.value.slice(error.pos, error.pos + error.len),
+      };
+    }
 
-      popup.querySelectorAll('.spell-popup-suggestion').forEach(el => {
-        el.addEventListener('click', e => {
-          e.stopPropagation();
-          _spellPopupIdx = parseInt(el.dataset.idx);
-          _applySpellSuggestion();
-        });
-      });
+    function _spellApplyFirst() {
+      if (!_spellActiveError || !_spellActiveError.suggestions.length) return;
+      const replacement = _spellActiveError.suggestions[0];
+      const { pos, len } = _spellActiveError;
+      const oldLen = len;
+      ta.setRangeText(replacement, pos, pos + oldLen, 'end');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      // Update active error state with new length
+      const newLen = replacement.length;
+      _spellActiveError.len = newLen;
+      // Shift positions of subsequent errors
+      const delta = newLen - oldLen;
+      if (delta !== 0 && _lastSpellWords) {
+        for (const w of _lastSpellWords) {
+          if (w.pos > pos) w.pos += delta;
+        }
+        // Re-render overlay to reflect shifted positions
+        _renderSpellOverlay(ta, _lastSpellWords);
+      }
+    }
 
-      _highlightSpellSuggestion();
-      setTimeout(() => {
-        document.addEventListener('keydown', _onSpellPopupKey, true);
-        document.addEventListener('click', _onSpellPopupClickOutside, true);
-      }, 0);
+    function _spellToggleActive() {
+      if (!_spellActiveError || !_spellActiveError.suggestions.length) return;
+      const { pos, len, suggestions, originalText } = _spellActiveError;
+      const currentText = ta.value.slice(pos, pos + len);
+      // If current text is the original error word → apply first suggestion
+      // If current text is a suggestion → revert to original
+      const isFirstSuggestion = currentText === suggestions[0];
+      const oldLen = len;
+      let replacement;
+      if (isFirstSuggestion) {
+        replacement = originalText;
+      } else {
+        replacement = suggestions[0];
+      }
+      ta.setRangeText(replacement, pos, pos + oldLen, 'end');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      // Update active error state
+      const newLen = replacement.length;
+      _spellActiveError.len = newLen;
+      // Update originalText if we just applied the first suggestion
+      if (!isFirstSuggestion) {
+        _spellActiveError.originalText = currentText;
+      }
+      // Shift positions of subsequent errors
+      const delta = newLen - oldLen;
+      if (delta !== 0 && _lastSpellWords) {
+        for (const w of _lastSpellWords) {
+          if (w.pos > pos) w.pos += delta;
+        }
+        _renderSpellOverlay(ta, _lastSpellWords);
+      }
+    }
+
+    // Arrow keys / Home/End/PageUp/PageDown → commit if cursor left active error
+    ta.addEventListener('keyup', e => {
+      if (!SpellCheck?.isEnabled() || b.type !== 'text') return;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) return;
+      if (!_spellActiveError) return;
+      const idx = ta.selectionStart;
+      const { pos, len } = _spellActiveError;
+      if (idx < pos || idx > pos + len) _spellCommit();
+    });
+
+    // Contextmenu (right-click) → revert active error
+    ta.addEventListener('contextmenu', e => {
+      if (!SpellCheck?.isEnabled() || b.type !== 'text') return;
+      if (_spellActiveError) {
+        e.preventDefault();
+        _spellRevert();
+      }
+    });
+
+    // Visual debounce: don't re-render markers for 1500ms after last keystroke
+    let _spellVisualTimer = null;
+    const _SPELL_VISUAL_DELAY = 1500;
+
+    function _scheduleSpellRender(words) {
+      _spellPendingRender = { words };
+      clearTimeout(_spellVisualTimer);
+      _spellVisualTimer = setTimeout(() => {
+        _spellVisualTimer = null;
+        if (_spellPendingRender && ta.isConnected) {
+          _renderSpellOverlay(ta, _spellPendingRender.words);
+          _spellPendingRender = null;
+        }
+      }, _SPELL_VISUAL_DELAY);
+    }
+
+    function _renderSpellOverlayImmediate(words) {
+      clearTimeout(_spellVisualTimer);
+      _spellVisualTimer = null;
+      _spellPendingRender = null;
+      _renderSpellOverlay(ta, words);
     }
 
     function _renderSpellOverlay(taEl, words) {
@@ -1866,23 +1934,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       for (const w of sorted) {
         if (w.pos < lastEnd || w.pos + w.len > text.length) continue;
         html += _escBlock(text.slice(lastEnd, w.pos));
-        html += `<span class="spell-word" data-pos="${w.pos}" data-len="${w.len}" data-word="${_escBlock(w.word)}" data-suggestions="${_escBlock(JSON.stringify(w.suggestions))}">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
+        const isActive = _spellActiveError && _spellActiveError.pos === w.pos;
+        const cls = isActive ? 'spell-word spell-word--active' : 'spell-word';
+        html += `<span class="${cls}" data-pos="${w.pos}" data-len="${w.len}">${_escBlock(text.slice(w.pos, w.pos + w.len))}</span>`;
         lastEnd = w.pos + w.len;
       }
       html += _escBlock(text.slice(lastEnd));
       _spellOverlay.innerHTML = html;
-
-      // Клик по слову → popup
-      _spellOverlay.querySelectorAll('.spell-word').forEach(el => {
-        el.addEventListener('click', e => {
-          e.stopPropagation();
-          const pos = parseInt(el.dataset.pos);
-          const len = parseInt(el.dataset.len);
-          const word = el.dataset.word;
-          const suggestions = JSON.parse(el.dataset.suggestions || '[]');
-          _showSpellPopup(taEl, word, pos, len, suggestions);
-        });
-      });
     }
 
     // Focus → restore spell overlay if results cached
@@ -1892,7 +1950,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         if (val.trim()) {
           SpellCheck.checkText(val).then(result => {
             if (!ta.isConnected) return;
-            if (result?.words?.length) _renderSpellOverlay(ta, result.words);
+            _lastSpellWords = result?.words || [];
+            if (_lastSpellWords.length) _renderSpellOverlayImmediate(_lastSpellWords);
           });
         }
       }

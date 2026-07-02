@@ -675,7 +675,6 @@ textarea.block-textarea:focus {
   text-decoration: underline wavy;
   text-decoration-color: #e74c3c;
   text-decoration-skip-ink: none;
-  pointer-events: auto;
   cursor: pointer;
   background: rgba(231, 76, 60, 0.15);
   border-radius: 2px;
@@ -683,48 +682,14 @@ textarea.block-textarea:focus {
 .spell-check-overlay .spell-word:hover {
   background: rgba(231, 76, 60, 0.25);
 }
-.spell-popup {
-  position: fixed;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9500;
-  background: var(--bg2);
-  border: 1px solid var(--border2);
-  border-radius: 10px;
-  padding: 8px 14px;
-  box-shadow: 0 4px 20px rgba(0,0,0,.4);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--text1);
+.spell-check-overlay .spell-word--active {
+  background: rgba(74, 222, 128, 0.25);
+  text-decoration-color: #4ade80;
 }
-.spell-popup-word {
-  font-weight: 600;
-  color: #e74c3c;
-  text-decoration: line-through;
+.spell-check-overlay .spell-word--active:hover {
+  background: rgba(74, 222, 128, 0.35);
 }
-.spell-popup-arrow {
-  color: var(--text3);
-  font-size: 10px;
-}
-.spell-popup-suggestion {
-  font-weight: 600;
-  color: #4ade80;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: background 0.15s;
-}
-.spell-popup-suggestion:hover {
-  background: rgba(74, 222, 128, 0.15);
-}
-.spell-popup-hint {
-  color: var(--text3);
-  font-size: 10px;
-  margin-left: 8px;
-}
+
 
 /* ===== ITEMS (Snippets / Commands) ===== */
 .items-list {
