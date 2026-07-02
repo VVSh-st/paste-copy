@@ -2,44 +2,76 @@
  * TextSkeletonizer — извлекает структуру из текста для экономии токенов в LLM-запросах.
  * Аналог Skeletonizer для кода, но для текстовых документов.
  *
- * Вход: сырой текст (10K-100K+ символов)
- * Выход: компактный скелет (2K-5K символов) с структурой, ключевыми понятиями и связями.
+ * Уровни сжатия:
+ *   light     — только заголовки + статистика (~5% от оригинала)
+ *   medium    — заголовки + первые предложения + ключевые термины (~10-15%)
+ *   aggressive — всё: заголовки, предложения, термины, списки, код, ссылки (~20-30%)
  */
 const TextSkeletonizer = (() => {
 
-  const DEFAULTS = {
-    maxHeadingLength: 120,
-    maxSentenceLength: 200,
-    maxKeyTerms: 30,
-    maxSections: 40,
-    maxBulletsPerSection: 5,
-    includeStats: true,
-  };
+  // ── Кэш ──────────────────────────────────────────────────────
+  const _cache = new Map();
+  const MAX_CACHE = 50;
+
+  function _hash(s) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 2654435761);
+      h2 = Math.imul(h2 ^ c, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    return ((h2 ^= h1 >>> 16) >>> 0).toString(36) + ((h1 >>> 0).toString(36));
+  }
+
+  // ── Стоп-слова ──────────────────────────────────────────────
+  const STOP_WORDS = new Set([
+    'это', 'для', 'что', 'как', 'не', 'но', 'или', 'так', 'его', 'при',
+    'она', 'они', 'все', 'ее', 'их', 'быть', 'был', 'была', 'были',
+    'будет', 'будут', 'может', 'могут', 'нужно', 'нужен', 'нужна', 'можно',
+    'которые', 'который', 'которая', 'которое', 'этого', 'этой', 'этот',
+    'этих', 'того', 'той', 'тех', 'такой', 'такая', 'такое', 'такие',
+    'каждый', 'каждая', 'каждое', 'каждые', 'очень', 'также', 'уже',
+    'еще', 'ещё', 'просто', 'только', 'пока', 'после', 'перед',
+    'между', 'через', 'если', 'чтобы', 'потому', 'поэтому',
+    'однако', 'кроме', 'того', 'самый', 'самая', 'самое', 'самые',
+    'другой', 'другая', 'другое', 'другие', 'несколько', 'много',
+    'мало', 'весь', 'вся', 'всё', 'какой', 'какая', 'какое',
+    'какие', 'чей', 'чья', 'чьё', 'чьи', 'где', 'когда', 'откуда',
+    'куда', 'зачем', 'почему', 'сколько', 'кто', 'ваш', 'ваша',
+    'ваше', 'ваши', 'мой', 'моя', 'моё', 'мои', 'наш', 'наша', 'наше',
+    'наши', 'свой', 'своя', 'своё', 'свои', 'тот', 'та', 'те',
+    'вот', 'тут', 'там', 'здесь', 'тогда', 'сейчас', 'потом',
+  ]);
+
+  // ── Защита от отрицаний ──────────────────────────────────────
+  const NEGATIONS = new Set(['не', 'нет', 'без', 'ни', 'никак', 'никогда', 'ничего']);
 
   /**
    * Основная функция: строит скелет текста.
    * @param {string} text — исходный текст
-   * @param {object} opts — настройки сжатия
+   * @param {object} opts — настройки: { level: 'light'|'medium'|'aggressive', maxTokens: number }
    * @returns {string} компактный скелет
    */
   function process(text, opts = {}) {
     if (!text || !text.trim()) return '';
-    const cfg = { ...DEFAULTS, ...opts };
+
+    const level = opts.level || 'medium';
+    const cfg = _configForLevel(level, opts);
+
+    // Кэширование
+    const key = _hash(text) + ':' + level;
+    if (_cache.has(key)) return _cache.get(key);
 
     const sections = _extractSections(text, cfg);
-    const keyTerms = _extractKeyTerms(text, cfg);
-    const lists = _extractLists(text);
-    const codeBlocks = _extractCodeBlocks(text);
-    const links = _extractLinks(text);
-    const stats = _computeStats(text, sections);
-
     const parts = [];
 
     // Заголовок документа
     const title = _extractTitle(text);
     if (title) parts.push(`=== ДОКУМЕНТ ===\n${title}`);
 
-    // Секции
+    // Секции (все уровни)
     if (sections.length) {
       parts.push('=== СТРУКТУРА ===');
       sections.forEach(s => {
@@ -49,40 +81,102 @@ const TextSkeletonizer = (() => {
       });
     }
 
-    // Ключевые термины
-    if (keyTerms.length) {
-      parts.push(`=== КЛЮЧЕВЫЕ ПОНЯТИЯ ===\n${keyTerms.join(', ')}`);
+    // Ключевые термины (medium + aggressive)
+    if (level !== 'light') {
+      const keyTerms = _extractKeyTerms(text, cfg);
+      if (keyTerms.length) parts.push(`=== КЛЮЧЕВЫЕ ПОНЯТИЯ ===\n${keyTerms.join(', ')}`);
     }
 
-    // Списки
-    if (lists.length) {
-      parts.push('=== СПИСКИ ===');
-      lists.forEach(l => {
-        parts.push(`[${l.context || 'список'}]:`);
-        l.items.slice(0, cfg.maxBulletsPerSection).forEach(item => parts.push(`  - ${item}`));
-      });
+    // Списки (aggressive)
+    if (level === 'aggressive') {
+      const lists = _extractLists(text);
+      if (lists.length) {
+        parts.push('=== СПИСКИ ===');
+        lists.forEach(l => {
+          parts.push(`[${l.context || 'список'}]:`);
+          l.items.slice(0, cfg.maxBulletsPerSection).forEach(item => parts.push(`  - ${item}`));
+        });
+      }
     }
 
-    // Блоки кода (только заголовки/описания)
-    if (codeBlocks.length) {
-      parts.push('=== КОД ===');
-      codeBlocks.forEach(b => parts.push(`  [${b.lang || 'code'}] ${b.preview}`));
+    // Блоки кода (aggressive)
+    if (level === 'aggressive') {
+      const codeBlocks = _extractCodeBlocks(text);
+      if (codeBlocks.length) {
+        parts.push('=== КОД ===');
+        codeBlocks.forEach(b => parts.push(`  [${b.lang || 'code'}] ${b.preview}`));
+      }
     }
 
-    // Ссылки
-    if (links.length) {
-      parts.push(`=== ССЫЛКИ ===\n${links.slice(0, 10).join('\n')}`);
+    // Ссылки (aggressive)
+    if (level === 'aggressive') {
+      const links = _extractLinks(text);
+      if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.slice(0, 10).join('\n')}`);
     }
 
-    // Статистика
+    // Статистика (все уровни)
     if (cfg.includeStats) {
+      const stats = _computeStats(text, sections);
       parts.push(`=== СТАТИСТИКА ===\n${stats}`);
     }
 
-    return parts.join('\n');
+    const result = parts.join('\n');
+
+    // Сохраняем в кэш
+    if (_cache.size >= MAX_CACHE) {
+      const firstKey = _cache.keys().next().value;
+      _cache.delete(firstKey);
+    }
+    _cache.set(key, result);
+
+    return result;
   }
 
-  // ── Извлечение секций ──────────────────────────────────────────
+  /**
+   * Адаптивный порог: считает нужно ли сжимать, исходя из размера контекстного окна модели.
+   * @param {number} textLength — длина текста в символах
+   * @param {number} contextWindow — размер контекстного окна модели в токенах
+   * @returns {boolean} true если нужно сжимать
+   */
+  function shouldCompress(textLength, contextWindow = 8000) {
+    // 1 токен ≈ 3-4 символа для русского
+    const charsPerToken = 3.5;
+    const maxChars = contextWindow * charsPerToken * 0.5; // 50% контекста на текст
+    return textLength > maxChars;
+  }
+
+  /**
+   * Рекомендуемый уровень сжатия по размеру текста.
+   */
+  function recommendLevel(textLength) {
+    if (textLength < 5000) return null; // не сжимать
+    if (textLength < 15000) return 'light';
+    if (textLength < 50000) return 'medium';
+    return 'aggressive';
+  }
+
+  // ── Конфигурация по уровню ──────────────────────────────────
+
+  function _configForLevel(level, opts) {
+    const base = {
+      maxHeadingLength: 120,
+      maxSentenceLength: 200,
+      maxKeyTerms: 30,
+      maxSections: 40,
+      maxBulletsPerSection: 5,
+      includeStats: true,
+    };
+    switch (level) {
+      case 'light':
+        return { ...base, maxSections: 20, maxKeyTerms: 0, includeStats: true };
+      case 'aggressive':
+        return { ...base, maxSections: 60, maxKeyTerms: 50, maxBulletsPerSection: 8 };
+      default: // medium
+        return base;
+    }
+  }
+
+  // ── Извлечение секций ──────────────────────────────────────
 
   function _extractSections(text, cfg) {
     const sections = [];
@@ -100,7 +194,6 @@ const TextSkeletonizer = (() => {
         currentSection = { level, heading, preview: '', lines: [] };
       } else if (currentSection && line.trim()) {
         currentSection.lines.push(line.trim());
-        // Берём первое предложение как превью
         if (!currentSection.preview) {
           const sentence = _extractFirstSentence(line.trim());
           if (sentence) currentSection.preview = sentence.slice(0, cfg.maxSentenceLength);
@@ -127,14 +220,12 @@ const TextSkeletonizer = (() => {
   }
 
   function _extractFirstSentence(text) {
-    // Убираем markdown-разметку
     const clean = text.replace(/[#*_`>\[\]()]/g, '').trim();
     const match = clean.match(/^[^.!?]*[.!?]\s/);
     return match ? match[0].trim() : clean.slice(0, 200);
   }
 
   function _extractTitle(text) {
-    // Ищем первый заголовок # или первую непустую строку
     const lines = text.split('\n');
     for (const line of lines) {
       const h1 = line.match(/^#\s+(.+)/);
@@ -144,40 +235,32 @@ const TextSkeletonizer = (() => {
     return null;
   }
 
-  // ── Ключевые термины ──────────────────────────────────────────
+  // ── Ключевые термины (с защитой от отрицаний) ──────────────
 
   function _extractKeyTerms(text, cfg) {
+    if (!cfg.maxKeyTerms) return [];
+
     const clean = text
-      .replace(/```[\s\S]*?```/g, '') // убираем код
-      .replace(/#{1,6}\s/g, '') // убираем заголовки markdown
-      .replace(/[*_`>\[\]()]/g, '') // убираем markdown-символы
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/[*_`>\[\]()]/g, '')
       .toLowerCase();
 
-    // Частотный анализ слов (>3 символов, не стоп-слова)
-    const stopWords = new Set([
-      'это', 'для', 'что', 'как', 'не', 'но', 'или', 'так', 'его', 'при',
-      'она', 'они', 'все', 'его', 'ее', 'их', 'быть', 'был', 'была', 'были',
-      'будет', 'будут', 'может', 'могут', 'нужно', 'нужен', 'нужна', 'можно',
-      'которые', 'который', 'которая', 'которое', 'этого', 'этой', 'этот',
-      'этих', 'того', 'той', 'тех', 'такой', 'такая', 'такое', 'такие',
-      'каждый', 'каждая', 'каждое', 'каждые', 'очень', 'также', 'уже',
-      'еще', 'ещё', 'просто', 'только', 'пока', 'после', 'перед',
-      'между', 'через', 'если', 'чтобы', 'потому', 'поэтому',
-      'однако', 'кроме', 'того', 'самый', 'самая', 'самое', 'самые',
-      'другой', 'другая', 'другое', 'другие', 'несколько', 'много',
-      'мало', 'весь', 'вся', 'все', 'всё', 'какой', 'какая', 'какое',
-      'какие', 'чей', 'чья', 'чьё', 'чьи', 'где', 'когда', 'откуда',
-      'куда', 'зачем', 'почему', 'сколько', 'кто', 'что', 'ваш', 'ваша',
-      'ваше', 'ваши', 'мой', 'моя', 'моё', 'мои', 'наш', 'наша', 'наше',
-      'наши', 'свой', 'своя', 'своё', 'свои', 'тот', 'та', 'те', 'так',
-      'вот', 'тут', 'там', 'здесь', 'тогда', 'сейчас', 'потом',
-    ]);
+    const words = clean.split(/\s+/).filter(w => w.length > 3 && !STOP_WORDS.has(w));
 
-    const words = clean.split(/\s+/).filter(w => w.length > 3 && !stopWords.has(w));
+    // Частотный анализ с учётом отрицаний
     const freq = new Map();
-    words.forEach(w => freq.set(w, (freq.get(w) || 0) + 1));
+    const rawWords = clean.split(/\s+/);
+    for (let i = 0; i < rawWords.length; i++) {
+      const w = rawWords[i];
+      if (w.length <= 3 || STOP_WORDS.has(w)) continue;
 
-    // Сортируем по частоте, берём топ-N
+      // Проверяем предыдущее слово — если отрицание, пропускаем
+      if (i > 0 && NEGATIONS.has(rawWords[i - 1])) continue;
+
+      freq.set(w, (freq.get(w) || 0) + 1);
+    }
+
     return [...freq.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, cfg.maxKeyTerms)
@@ -199,7 +282,6 @@ const TextSkeletonizer = (() => {
         const item = (bulletMatch?.[1] || numMatch?.[1]).trim();
         if (!currentList) {
           currentList = { context: '', items: [] };
-          // Ищем заголовок перед списком
           const idx = lines.indexOf(line);
           for (let i = idx - 1; i >= Math.max(0, idx - 3); i--) {
             const prev = lines[i].trim();
@@ -231,7 +313,6 @@ const TextSkeletonizer = (() => {
     while ((match = regex.exec(text)) !== null) {
       const lang = match[1] || 'code';
       const code = match[2].trim();
-      // Берём первую строку как описание
       const firstLine = code.split('\n')[0].trim().slice(0, 100);
       blocks.push({ lang, preview: firstLine || '(пусто)' });
     }
@@ -263,5 +344,5 @@ const TextSkeletonizer = (() => {
 
   // ── Публичный API ──────────────────────────────────────────
 
-  return { process, DEFAULTS };
+  return { process, shouldCompress, recommendLevel, DEFAULTS: { level: 'medium' } };
 })();

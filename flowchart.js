@@ -1292,10 +1292,10 @@ const Flowchart = (() => {
     _loading = true;
     try {
       const basePrompt = window.LLMCore.getPrompt('flowchart');
-      // Сжимаем текст через skeletonizer если он большой
-      const SKELETON_THRESHOLD = 8000;
-      const processedText = text.length > SKELETON_THRESHOLD
-        ? TextSkeletonizer.process(text)
+      // Адаптивное сжатие: определяем уровень по размеру текста
+      const level = TextSkeletonizer.recommendLevel(text.length);
+      const processedText = level
+        ? TextSkeletonizer.process(text, { level })
         : text;
       const userContent = query
         ? `Запрос: "${query}"\n\n${basePrompt}\n\nТекст:\n${processedText.slice(0, 6000)}`
