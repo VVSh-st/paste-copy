@@ -19,6 +19,9 @@ const Blocks = (() => {
   // Transient UI state: subtab scroll offsets keyed by block id.
   const subtabOffsets = new Map();
 
+  // Spell-check: global rejected words (cross-block, 3 rejections = permanent ignore)
+  const _globalSpellRejected = new Map();
+
   function _shortSubtabLabel(name) {
     if (!name) return '';
     const first = name.split(/\s+/)[0] || '';
@@ -1595,7 +1598,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           if (!SpellCheck.isEnabled() || !ta.isConnected) return;
           SpellCheck.checkText(ta.value).then(result => {
             if (!ta.isConnected) return;
-            _lastSpellWords = result?.words || [];
+            _lastSpellWords = (result?.words || []).filter(w => !_isSpellRejected(w.word));
             if (!_lastSpellWords.length) {
               _clearSpellOverlay();
               return;
@@ -1745,6 +1748,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     let _spellActiveError = null; // { word, pos, len, suggestions, originalText }
     let _spellPendingRender = null; // cached { words } awaiting visual debounce
     let _spellApplying = false; // true while setRangeText is in progress
+    let _spellRejected = new Map(); // word → rejection count (per-block)
+
+    function _isSpellRejected(word) {
+      return (_spellRejected.get(word) || 0) >= 3 || (_globalSpellRejected.get(word) || 0) >= 3;
+    }
 
     function _clearSpellOverlay() {
       if (_spellOverlay?.parentNode) _spellOverlay.parentNode.removeChild(_spellOverlay);
@@ -1763,9 +1771,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     function _spellRevert() {
       if (!_spellActiveError || !ta.isConnected) return;
-      const { pos, len, originalText } = _spellActiveError;
+      const { pos, len, originalText, word } = _spellActiveError;
       ta.setRangeText(originalText, pos, pos + len, 'end');
       ta.dispatchEvent(new Event('input', { bubbles: true }));
+      // Record rejection
+      _spellRejected.set(word, (_spellRejected.get(word) || 0) + 1);
+      _globalSpellRejected.set(word, (_globalSpellRejected.get(word) || 0) + 1);
       _spellActiveError = null;
       _spellPendingRender = null;
     }
@@ -1906,7 +1917,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     function _renderSpellOverlay(taEl, words) {
-      if (!words.length) { _clearSpellOverlay(); return; }
+      const filtered = words.filter(w => !_isSpellRejected(w.word));
+      if (!filtered.length) { _clearSpellOverlay(); return; }
 
       if (!_spellOverlay) {
         _spellOverlay = document.createElement('div');
@@ -1932,7 +1944,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       // Строим innerHTML: текст с подчёркиваниями
       const text = taEl.value;
-      const sorted = [...words].sort((a, b) => a.pos - b.pos);
+      const sorted = [...filtered].sort((a, b) => a.pos - b.pos);
       let html = '';
       let lastEnd = 0;
       for (const w of sorted) {
@@ -1954,7 +1966,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         if (val.trim()) {
           SpellCheck.checkText(val).then(result => {
             if (!ta.isConnected) return;
-            _lastSpellWords = result?.words || [];
+            _lastSpellWords = (result?.words || []).filter(w => !_isSpellRejected(w.word));
             if (_lastSpellWords.length) _renderSpellOverlayImmediate(_lastSpellWords);
           });
         }
