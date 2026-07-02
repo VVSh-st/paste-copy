@@ -155,6 +155,12 @@
     const spellStatus = $id('spell-check-status');
     if (spellStatus) spellStatus.textContent = lay.spellCheck ? 'Текст отправляется на speller.yandex.net' : '';
 
+    // TextSkeletonizer settings
+    const skeletonLevel = $id('opt-skeleton-level');
+    if (skeletonLevel) skeletonLevel.value = lay.skeletonLevel || 'auto';
+    const skeletonWorker = $id('opt-skeleton-worker');
+    if (skeletonWorker) skeletonWorker.checked = lay.skeletonWorker !== false;
+
     const optColScrollbar = $id('opt-col-scrollbar');
     if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
@@ -436,6 +442,21 @@
     if (!enabled && typeof SpellCheck !== 'undefined') SpellCheck.clearCache();
     scheduleSave();
     Toast.show(enabled ? 'Проверка орфографии включена' : 'Проверка орфографии выключена', 'success');
+  };
+
+  /* ── TextSkeletonizer settings ─────────────────────────────────────── */
+  const optSkeletonLevel = $id('opt-skeleton-level');
+  if (optSkeletonLevel) optSkeletonLevel.onchange = e => {
+    State.setLayout({ skeletonLevel: e.target.value });
+    scheduleSave();
+    const labels = { off: 'Выключено', light: 'Лёгкое', medium: 'Среднее', aggressive: 'Полное', auto: 'Авто' };
+    Toast.show(`Сжатие текста: ${labels[e.target.value] || e.target.value}`, 'success');
+  };
+
+  const optSkeletonWorker = $id('opt-skeleton-worker');
+  if (optSkeletonWorker) optSkeletonWorker.onchange = e => {
+    State.setLayout({ skeletonWorker: e.target.checked });
+    scheduleSave();
   };
 
   /* ── Anchor settings ──────────────────────────────────────────────────*/

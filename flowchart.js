@@ -1292,8 +1292,12 @@ const Flowchart = (() => {
     _loading = true;
     try {
       const basePrompt = window.LLMCore.getPrompt('flowchart');
-      // Адаптивное сжатие: определяем уровень по размеру текста
-      const level = TextSkeletonizer.recommendLevel(text.length);
+      // Определяем уровень сжатия из настроек
+      const lay = window.State?.getLayout?.() ?? {};
+      const settingLevel = lay.skeletonLevel || 'auto';
+      const level = settingLevel === 'off' ? null
+        : settingLevel === 'auto' ? TextSkeletonizer.recommendLevel(text.length)
+        : settingLevel;
       const processedText = level
         ? await TextSkeletonizer.process(text, { level })
         : text;

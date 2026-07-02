@@ -459,7 +459,11 @@ const MindMap = (() => {
     _loading = true;
     try {
       const basePrompt = window.LLMCore.getPrompt('mindmap');
-      const level = TextSkeletonizer.recommendLevel(text.length);
+      const lay = window.State?.getLayout?.() ?? {};
+      const settingLevel = lay.skeletonLevel || 'auto';
+      const level = settingLevel === 'off' ? null
+        : settingLevel === 'auto' ? TextSkeletonizer.recommendLevel(text.length)
+        : settingLevel;
       const processedText = level
         ? await TextSkeletonizer.process(text, { level })
         : text;
