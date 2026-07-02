@@ -3952,7 +3952,7 @@ const AutoPoet = (() => {
       if (e.name !== 'AbortError') {
         MiniChat.addSystemMessage('Ошибка: ' + e.message);
         window.Intelligence?.track?.('llm.action.error', {
-          featureKey,
+          featureKey: 'chat',
           message: e?.message || ''
         });
         window.Toast?.show(e.message, 'error');
