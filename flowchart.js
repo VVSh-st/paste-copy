@@ -417,12 +417,16 @@ const Flowchart = (() => {
 
     // Use curves for edges that span vertical distance
     const spanY = Math.abs(p2.y - p1.y);
+    const spanX = Math.abs(p2.x - p1.x);
     const useCurve = _mode === 'graph' || spanY > 100;
 
     if (useCurve) {
       const path = document.createElementNS(SVG_NS, 'path');
-      const cdy = Math.max(spanY * 0.3, 40);
-      path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + cdy}, ${p2.x} ${p2.y - cdy}, ${p2.x} ${p2.y}`);
+      // Route curve to the side of nodes, not through them
+      const midY = (p1.y + p2.y) / 2;
+      const sideDir = p1.x > VCW / 2 ? 1 : -1; // right side if source is right of center
+      const bendX = Math.max(spanX * 0.5, 80) * sideDir;
+      path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x + bendX} ${midY - 20}, ${p2.x + bendX} ${midY + 20}, ${p2.x} ${p2.y}`);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', 'rgba(255,255,255,0.18)');
       path.setAttribute('stroke-width', '1.5');
