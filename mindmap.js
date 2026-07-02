@@ -460,13 +460,17 @@ const MindMap = (() => {
     try {
       const basePrompt = window.LLMCore.getPrompt('mindmap');
       const lay = window.State?.getLayout?.() ?? {};
-      const settingLevel = lay.skeletonLevel || 'auto';
+      const settingLevel = lay.skeletonLevel || 'light';
       const level = settingLevel === 'off' ? null
         : settingLevel === 'auto' ? TextSkeletonizer.recommendLevel(text.length)
         : settingLevel;
-      const processedText = level
-        ? await TextSkeletonizer.process(text, { level })
-        : text;
+      let processedText;
+      try {
+        processedText = level ? TextSkeletonizer.process(text, { level }) : text;
+      } catch (skErr) {
+        console.warn('[Mindmap] Skeletonizer error:', skErr);
+        processedText = text;
+      }
       const userContent = query
         ? `Запрос: "${query}"\n\n${basePrompt}\n\nТекст:\n${processedText.slice(0, 6000)}`
         : basePrompt + '\n\n' + processedText.slice(0, 6000);

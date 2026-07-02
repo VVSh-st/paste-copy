@@ -128,33 +128,16 @@ const TextSkeletonizer = (() => {
   }
 
   /**
-   * Основная функция: строит скелет текста.
-   * Для текстов >20K автоматически использует Web Worker.
+   * Основная функция: строит скелет текста (синхронно).
    * @param {string} text — исходный текст
    * @param {object} opts — настройки: { level: 'light'|'medium'|'aggressive' }
-   * @returns {string|Promise<string>} компактный скелет (sync для маленьких, async для больших)
+   * @returns {string} компактный скелет
    */
   function process(text, opts = {}) {
     if (!text || !text.trim()) return '';
     const level = opts.level || 'medium';
 
-    // Кэширование
-    const key = _hash(text) + ':' + level;
-    if (_cache.has(key)) return _cache.get(key);
-
-    // Для больших текстов — через Worker
-    if (text.length > WORKER_THRESHOLD && _workerReady) {
-      return _processViaWorker(text, level).then(result => {
-        if (_cache.size >= MAX_CACHE) _cache.delete(_cache.keys().next().value);
-        _cache.set(key, result);
-        return result;
-      });
-    }
-
-    // Для маленьких — синхронно
     const result = _processSync(text, level);
-    if (_cache.size >= MAX_CACHE) _cache.delete(_cache.keys().next().value);
-    _cache.set(key, result);
     return result;
   }
 
