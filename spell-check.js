@@ -189,7 +189,7 @@ window.SpellCheck = (() => {
     const allWords = [];
     let offset = 0;
 
-    // Маскируем code fences в полном тексте (до разбиения на чанки, т.к. fence может пересекать чанки)
+    // Маскируем code fences в полном тексте (до разбиения на чанки)
     const { ranges: fenceRanges } = _maskCodeFences(trimmed);
 
     try {
@@ -200,16 +200,10 @@ window.SpellCheck = (() => {
         const chunk = chunks[i];
         const { masked, ranges: phRanges } = _maskPlaceholders(chunk);
 
-        // Смещаем ranges плейсхолдеров относительно начала чанка
-        const shiftedPhRanges = phRanges.map(r => ({ start: r.start + offset, end: r.end + offset }));
-        // Смещаем ranges code fences относительно начала чанка и фильтруем по текущему чанку
-        const shiftedFenceRanges = fenceRanges
-          .map(r => ({ start: r.start - offset, end: r.end - offset }))
-          .filter(r => r.end > 0 && r.start < chunk.length);
-        const combinedRanges = [...shiftedPhRanges, ...shiftedFenceRanges];
-
         const words = await _fetchChunk(masked, controller.signal);
-        const filtered = _filterExcludedErrors(words, combinedRanges);
+        const filtered = _filterExcludedErrors(words, phRanges);
+
+        console.log(`[spell] chunk ${i}: offset=${offset}, chunkLen=${chunk.length}, words=${filtered.length}, firstWord=${filtered[0] ? `${filtered[0].word}@${filtered[0].pos}` : 'none'}`);
 
         // Смещаем позиции: API считает от trimmed, а нужен offset от полного текста
         for (const w of filtered) {
@@ -230,6 +224,12 @@ window.SpellCheck = (() => {
       }
 
       clearTimeout(timer);
+      console.log(`[spell] total: ${allWords.length} words, chunks: ${chunks.length}, textLen: ${trimmed.length}`);
+      if (allWords.length > 0) {
+        console.log(`[spell] first: ${allWords[0].word}@${allWords[0].pos}, last: ${allWords[allWords.length-1].word}@${allWords[allWords.length-1].pos}`);
+        // Check for position drift: compare word positions with expected positions from textarea
+        console.log(`[spell] words:`, allWords.map(w => `${w.word}@${w.pos}`).join(', '));
+      }
       const result = { ok: true, words: allWords, source: 'network' };
       _cacheSet(cacheKey, result);
       return result;

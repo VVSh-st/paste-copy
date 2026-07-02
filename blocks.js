@@ -1599,6 +1599,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           SpellCheck.checkText(ta.value).then(result => {
             if (!ta.isConnected) return;
             _lastSpellWords = (result?.words || []).filter(w => !_isSpellRejected(w.word));
+            console.log('[spell] input result:', _lastSpellWords.map(w => `${w.word}@${w.pos}(len=${w.len})`).join(', '));
+            console.log('[spell] textarea value length:', ta.value.length, 'first 200 chars:', ta.value.slice(0, 200));
             if (!_lastSpellWords.length) {
               _clearSpellOverlay();
               return;
@@ -1794,7 +1796,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
       if (!_lastSpellWords?.length) return;
       const hit = _lastSpellWords.find(w => idx >= w.pos && idx <= w.pos + w.len);
-      if (!hit) return;
+      if (!hit) {
+        console.log('[spell] click at', idx, '— no hit. nearby words:', _lastSpellWords.filter(w => Math.abs(w.pos - idx) < 20).map(w => `${w.word}@${w.pos}`).join(', '));
+        return;
+      }
       if (_spellActiveError && _spellActiveError.pos === hit.pos && _spellActiveError.len === hit.len) {
         _spellToggleActive();
       } else {
@@ -1945,6 +1950,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       // Строим innerHTML: текст с подчёркиваниями
       const text = taEl.value;
       const sorted = [...filtered].sort((a, b) => a.pos - b.pos);
+      console.log('[spell] overlay render:', sorted.map(w => `${w.word}@${w.pos}:${text.slice(w.pos, w.pos + w.len)}`).join(' | '));
       let html = '';
       let lastEnd = 0;
       for (const w of sorted) {
