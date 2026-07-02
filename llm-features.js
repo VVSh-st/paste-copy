@@ -1655,6 +1655,10 @@ window.LLMFeatures = (() => {
           if (!accepted) return;
           const applyTa = _getBlockTextarea(blockId);
           if (!applyTa) { window.Toast?.show('Не найден целевой блок', 'error'); return; }
+          if (hasSel && applyTa.value.slice(selStart, selEnd) !== text) {
+            window.Toast?.show('Текст изменился — вставка отменена. Замените весь блок или попробуйте снова.', 'warning');
+            return;
+          }
           const applyStart = hasSel ? selStart : 0;
           const applyEnd   = hasSel ? selEnd   : applyTa.value.length;
           _applyToScope(applyTa, applyStart, applyEnd, _resultTrimmed);
@@ -1663,10 +1667,14 @@ window.LLMFeatures = (() => {
       } else {
         const applyTa = _getBlockTextarea(blockId);
         if (applyTa) {
-          const applyStart = hasSel ? selStart : 0;
-          const applyEnd   = hasSel ? selEnd   : applyTa.value.length;
-          _applyToScope(applyTa, applyStart, applyEnd, _resultTrimmed);
-          window.Toast?.show('Текст обновлён ✓', 'success');
+          if (hasSel && applyTa.value.slice(selStart, selEnd) !== text) {
+            window.Toast?.show('Текст изменился — вставка отменена. Замените весь блок или попробуйте снова.', 'warning');
+          } else {
+            const applyStart = hasSel ? selStart : 0;
+            const applyEnd   = hasSel ? selEnd   : applyTa.value.length;
+            _applyToScope(applyTa, applyStart, applyEnd, _resultTrimmed);
+            window.Toast?.show('Текст обновлён ✓', 'success');
+          }
         }
       }
     } catch (e) {
@@ -2070,6 +2078,10 @@ window.LLMFeatures = (() => {
 
             let val = block.subtabs[subtabIdx].value ?? '';
             group.sort((a, b) => b.index - a.index).forEach(job => {
+              if (val.slice(job.index, job.end) !== job.full) {
+                failedCount++;
+                return;
+              }
               val = val.slice(0, job.index) + job.result + val.slice(job.end);
               filledCount++;
             });

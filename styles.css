@@ -1532,9 +1532,9 @@ textarea.block-textarea:focus {
 .structure-menu-toggle:hover { background: var(--surface2); color: var(--text0); }
 .structure-menu-body {
   overflow-y: auto; flex: 1; min-height: 0; padding: 3px 0;
-  scrollbar-width: none;
 }
-.structure-menu-body::-webkit-scrollbar { display: none; width: 0; }
+.structure-menu-body::-webkit-scrollbar { width: 4px; }
+.structure-menu-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .structure-menu-body::-webkit-scrollbar { width: 4px; }
 .structure-menu-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .structure-item {
@@ -2532,6 +2532,9 @@ textarea.llm-bro-processing {
   border-color: var(--accent) !important;
   box-shadow: 0 0 0 2px var(--accent-glow2) !important;
   animation: llm-pulse 0.9s infinite alternate;
+}
+.block.llm-loading textarea.block-textarea {
+  pointer-events: none; opacity: .7;
 }
 .block.llm-streaming {
   border-color: #4caf50 !important;
