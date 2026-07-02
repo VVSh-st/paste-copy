@@ -1771,6 +1771,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     // Click on textarea — check if inside a misspelled word range
     ta.addEventListener('click', e => {
+      if (e.target !== ta) return;
       if (!SpellCheck?.isEnabled() || b.type !== 'text') return;
       const idx = ta.selectionStart;
       if (_spellActiveError) {
@@ -1871,6 +1872,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     // Contextmenu (right-click) → revert active error
     ta.addEventListener('contextmenu', e => {
+      if (e.target !== ta) return;
       if (!SpellCheck?.isEnabled() || b.type !== 'text') return;
       if (_spellActiveError) {
         e.preventDefault();
