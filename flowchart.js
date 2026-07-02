@@ -75,15 +75,6 @@ const Flowchart = (() => {
     }
   }
 
-  function _shapeAnchor(node, dirX, dirY) {
-    const { w, h } = node;
-    switch (node.shape) {
-      case 'circle': { const r = Math.min(w, h) / 2; return { x: node.x + dirX * r, y: node.y + dirY * r }; }
-      case 'diamond': { const dw = w * 0.55, dh = h * 0.55; const t = 1 / (Math.abs(dirX) / dw + Math.abs(dirY) / dh); return { x: node.x + dirX * t, y: node.y + dirY * t }; }
-      default: { const hw = w / 2, hh = h / 2; const t = Math.min(hw / Math.abs(dirX || 1e-6), hh / Math.abs(dirY || 1e-6)); return { x: node.x + dirX * t, y: node.y + dirY * t }; }
-    }
-  }
-
   function _startInertia() {
     cancelAnimationFrame(_inertiaRaf);
     function tick() { _velX *= 0.92; _velY *= 0.92; _panX += _velX; _panY += _velY; _applyTransform(); if (Math.abs(_velX) + Math.abs(_velY) > 0.3) _inertiaRaf = requestAnimationFrame(tick); }
@@ -181,7 +172,7 @@ const Flowchart = (() => {
 
   /* ── Layout: Sugiyama with dummy nodes ──────────────────────────────── */
 
-  const LAYER_GAP = 180, NODE_GAP = 80, EDGE_LABEL_GAP = 40;
+  const LAYER_GAP = 140, NODE_GAP = 50;
 
   // Helper: build adjacency map
   function _buildAdj(edges) {
@@ -192,14 +183,15 @@ const Flowchart = (() => {
 
   // Helper: median of array
   function _median(arr) {
-    if (!arr.length) return undefined;
-    const s = [...arr].sort((a, b) => a - b), m = s.length >> 1;
+    const a = arr.filter(v => v !== undefined && v !== null);
+    if (!a.length) return undefined;
+    const s = [...a].sort((x, y) => x - y), m = s.length >> 1;
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   }
 
   // Phase 1: Break cycles via DFS (find back-edges)
   function _breakCycles(nodes, edges) {
-    const state = new Map(nodes.map(n => [n.id, 0])); // 0=white,1=gray,2=black
+    const state = new Map(nodes.map(n => [n.id, 0]));
     const reversed = new Set();
     const adj = _buildAdj(edges);
 
@@ -216,7 +208,7 @@ const Flowchart = (() => {
     return reversed;
   }
 
-  // Phase 2: Layer assignment (longest-path)
+  // Phase 2: Layer assignment (topological longest-path, compacted)
   function _assignLayers(nodes, edges, reversed) {
     const dagEdges = edges.filter(e => !reversed.has(e));
     const adj = _buildAdj(dagEdges);
@@ -237,6 +229,14 @@ const Flowchart = (() => {
       }
     }
     nodes.forEach(n => { if (!layer.has(n.id)) layer.set(n.id, 0); });
+
+    // Compact: remove empty layers
+    const used = new Set(layer.values());
+    const maxL = Math.max(...used);
+    const remap = new Map();
+    let idx = 0;
+    for (let i = 0; i <= maxL; i++) { if (used.has(i)) remap.set(i, idx++); }
+    nodes.forEach(n => layer.set(n.id, remap.get(layer.get(n.id)) || 0));
     return layer;
   }
 
@@ -253,7 +253,6 @@ const Flowchart = (() => {
 
     for (const e of edges) {
       if (reversed.has(e)) {
-        // Back-edge: reverse for routing, route as side arc
         routedEdges.push({ e, chain: [e.to, e.from], isBack: true });
         continue;
       }
@@ -276,12 +275,11 @@ const Flowchart = (() => {
     return { layers, routedEdges, nodeMap };
   }
 
-  // Phase 4: Crossing minimization (median heuristic)
-  function _minimizeCrossings(layers, edges) {
-    // Build adjacency for all nodes (including dummies)
+  // Phase 4: Crossing minimization (barycenter heuristic, 20 iterations)
+  function _minimizeCrossings(layers, chainEdges) {
     const allIds = new Set();
     layers.forEach(L => L.forEach(v => allIds.add(v.id)));
-    const dagEdges = edges.filter(e => allIds.has(e.from) && allIds.has(e.to));
+    const dagEdges = chainEdges.filter(e => allIds.has(e.from) && allIds.has(e.to));
 
     const succ = new Map(), pred = new Map();
     const add = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
@@ -290,64 +288,136 @@ const Flowchart = (() => {
     const pos = new Map();
     layers.forEach(L => L.forEach((v, i) => pos.set(v.id, i)));
 
-    for (let iter = 0; iter < 8; iter++) {
+    let bestScore = _countCrossings(layers, dagEdges, pos);
+    let bestOrdering = layers.map(L => L.map(v => v.id));
+
+    for (let iter = 0; iter < 20; iter++) {
       const down = iter % 2 === 0;
       const range = down ? [...layers.keys()].slice(1) : [...layers.keys()].slice(0, -1).reverse();
       for (const li of range) {
         const L = layers[li];
         for (const v of L) {
           const neigh = down ? (pred.get(v.id) || []) : (succ.get(v.id) || []);
-          v._med = _median(neigh.map(id => pos.get(id)));
+          const positions = neigh.map(id => pos.get(id)).filter(p => p !== undefined);
+          v._med = _median(positions);
         }
         L.sort((a, b) => (a._med ?? pos.get(a.id)) - (b._med ?? pos.get(b.id)));
         L.forEach((v, i) => pos.set(v.id, i));
       }
+      const score = _countCrossings(layers, dagEdges, pos);
+      if (score < bestScore) {
+        bestScore = score;
+        bestOrdering = layers.map(L => L.map(v => v.id));
+      }
     }
+
+    // Restore best ordering
+    layers.forEach((L, li) => {
+      const order = bestOrdering[li];
+      const byId = new Map(L.map(v => [v.id, v]));
+      L.length = 0;
+      order.forEach(id => { if (byId.has(id)) L.push(byId.get(id)); });
+      L.forEach((v, i) => pos.set(v.id, i));
+    });
   }
 
-  // Phase 5: Coordinate assignment
+  function _countCrossings(layers, edges, pos) {
+    let crossings = 0;
+    for (let li = 0; li < layers.length - 1; li++) {
+      const layerSet = new Set(layers[li].map(v => v.id));
+      const nextLayerSet = new Set(layers[li + 1].map(v => v.id));
+      const edgesBetween = [];
+      for (const e of edges) {
+        if (layerSet.has(e.from) && nextLayerSet.has(e.to)) {
+          const p1 = pos.get(e.from), p2 = pos.get(e.to);
+          if (p1 !== undefined && p2 !== undefined) edgesBetween.push([p1, p2]);
+        }
+      }
+      for (let i = 0; i < edgesBetween.length; i++) {
+        for (let j = i + 1; j < edgesBetween.length; j++) {
+          const [a1, a2] = edgesBetween[i], [b1, b2] = edgesBetween[j];
+          if ((a1 < b1 && a2 > b2) || (a1 > b1 && a2 < b2)) crossings++;
+        }
+      }
+    }
+    return crossings;
+  }
+
+  // Phase 5: Coordinate assignment (median-based with compaction)
   function _assignCoordinates(layers) {
+    // Build chain-edge adjacency (from routed edges)
+    const chainAdj = { succ: new Map(), pred: new Map() };
+    const addC = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+    _chainEdges.forEach(e => { addC(chainAdj.succ, e.from, e.to); addC(chainAdj.pred, e.to, e.from); });
+
+    // Initial x-positions: compact left-to-right within each layer
     const xOf = new Map();
+    const widthOf = v => v.real ? (v.node.w || 140) : 24;
+
     for (const L of layers) {
       let cursor = 0;
       for (const v of L) {
-        const w = v.real ? (v.node.w || 140) : 20;
+        const w = widthOf(v);
         xOf.set(v.id, cursor + w / 2);
-        cursor += w + NODE_GAP + EDGE_LABEL_GAP;
+        cursor += w + NODE_GAP;
       }
     }
 
-    // Median alignment (4 passes)
-    const succ = new Map(), pred = new Map();
-    const add = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
-    layers.forEach(L => L.forEach(v => {
-      const chainSucc = [], chainPred = [];
-      // Find neighbors in adjacent layers via chain adjacency
-      for (const e of _currentEdges) {
-        if (e.from === v.id) chainSucc.push(e.to);
-        if (e.to === v.id) chainPred.push(e.from);
-      }
-      add(succ, v.id, ...chainSucc);
-      add(pred, v.id, ...chainPred);
-    }));
-
-    for (let iter = 0; iter < 4; iter++) {
-      for (const L of layers) {
+    // Median alignment passes (12 passes, alternating top-down/bottom-up)
+    for (let iter = 0; iter < 12; iter++) {
+      const down = iter % 2 === 0;
+      const range = down ? layers : [...layers].reverse();
+      for (const L of range) {
+        // Compute median target for each node
+        const targets = [];
+        for (const v of L) {
+          const neighs = down
+            ? (chainAdj.pred.get(v.id) || [])
+            : (chainAdj.succ.get(v.id) || []);
+          const nbX = neighs.map(id => xOf.get(id)).filter(x => x !== undefined);
+          targets.push(_median(nbX));
+        }
+        // Apply targets while respecting min-spacing
         for (let i = 0; i < L.length; i++) {
           const v = L[i];
-          const nb = [...(pred.get(v.id) || []), ...(succ.get(v.id) || [])];
-          if (!nb.length) continue;
-          const desired = _median(nb.map(id => xOf.get(id)).filter(x => x !== undefined));
+          const desired = targets[i];
           if (desired === undefined) continue;
-          const w = v.real ? (v.node.w || 140) : 20;
-          const leftBound = i > 0 ? xOf.get(L[i - 1].id) + ((L[i - 1].real ? (L[i - 1].node.w || 140) : 20) / 2) + NODE_GAP + w / 2 : -Infinity;
-          const rightBound = i < L.length - 1 ? xOf.get(L[i + 1].id) - ((L[i + 1].real ? (L[i + 1].node.w || 140) : 20) / 2) - NODE_GAP - w / 2 : Infinity;
-          xOf.set(v.id, Math.max(leftBound, Math.min(rightBound, desired)));
+          const w = widthOf(v);
+          const minLeft = i > 0
+            ? xOf.get(L[i - 1].id) + (widthOf(L[i - 1]) + w) / 2 + NODE_GAP
+            : -Infinity;
+          const maxRight = i < L.length - 1
+            ? xOf.get(L[i + 1].id) - (widthOf(L[i + 1]) + w) / 2 - NODE_GAP
+            : Infinity;
+          xOf.set(v.id, Math.max(minLeft, Math.min(maxRight, desired)));
         }
       }
     }
 
-    // Assign coordinates
+    // Center each layer around x=0
+    for (const L of layers) {
+      if (!L.length) continue;
+      const minX = Math.min(...L.map(v => xOf.get(v.id) - widthOf(v) / 2));
+      const maxX = Math.max(...L.map(v => xOf.get(v.id) + widthOf(v) / 2));
+      const shift = -(minX + maxX) / 2;
+      L.forEach(v => xOf.set(v.id, xOf.get(v.id) + shift));
+    }
+
+    // Interpolate dummy node coordinates: average of neighbors
+    for (let pass = 0; pass < 3; pass++) {
+      for (const L of layers) {
+        for (const v of L) {
+          if (v.real) continue;
+          const nb = [
+            ...(chainAdj.pred.get(v.id) || []),
+            ...(chainAdj.succ.get(v.id) || []),
+          ].map(id => xOf.get(id)).filter(x => x !== undefined);
+          if (nb.length) xOf.set(v.id, nb.reduce((s, x) => s + x, 0) / nb.length);
+        }
+      }
+    }
+
+    // Assign y-coordinates top-down
     let y = 100;
     for (const L of layers) {
       const maxH = Math.max(...L.map(v => v.real ? (v.node.h || 46) : 1));
@@ -358,26 +428,6 @@ const Flowchart = (() => {
       y += maxH + LAYER_GAP;
     }
     return xOf;
-  }
-
-  // Helper: Catmull-Rom spline through points
-  function _catmullRomPath(pts) {
-    if (pts.length < 2) return '';
-    if (pts.length === 2) return `M ${pts[0].x} ${pts[0].y} L ${pts[1].x} ${pts[1].y}`;
-
-    let d = `M ${pts[0].x} ${pts[0].y}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[Math.max(0, i - 1)];
-      const p1 = pts[i];
-      const p2 = pts[Math.min(pts.length - 1, i + 1)];
-      const p3 = pts[Math.min(pts.length - 1, i + 2)];
-      const cp1x = p1.x + (p2.x - p0.x) / 6;
-      const cp1y = p1.y + (p2.y - p0.y) / 6;
-      const cp2x = p2.x - (p3.x - p1.x) / 6;
-      const cp2y = p2.y - (p3.y - p1.y) / 6;
-      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-    }
-    return d;
   }
 
   // Helper: anchor point on node boundary toward target
@@ -397,8 +447,8 @@ const Flowchart = (() => {
     return { x: node.x + dx * t, y: node.y + dy * t };
   }
 
-  // Reference to current edges for coordinate assignment
-  let _currentEdges = [];
+  // Chain edges for coordinate assignment (built during layout)
+  let _chainEdges = [];
 
   // Main layout function
   function _flowchartLayout() {
@@ -408,27 +458,28 @@ const Flowchart = (() => {
     const layerMap = _assignLayers(_nodes, _edges, reversed);
     const { layers, routedEdges, nodeMap } = _insertDummyNodes(_nodes, _edges, layerMap, reversed);
 
-    _currentEdges = [];
+    // Build chain edges for crossing minimization and coordinate assignment
+    _chainEdges = [];
     routedEdges.forEach(r => {
       for (let i = 0; i < r.chain.length - 1; i++) {
-        _currentEdges.push({ from: r.chain[i], to: r.chain[i + 1] });
+        _chainEdges.push({ from: r.chain[i], to: r.chain[i + 1] });
       }
     });
 
-    _minimizeCrossings(layers, _edges);
+    _minimizeCrossings(layers, _chainEdges);
     const xOf = _assignCoordinates(layers);
 
     // Apply coordinates to real nodes
-    const allNodes = [];
     layers.forEach(L => L.forEach(v => {
       if (v.real) {
         v.node.x = v._x;
         v.node.y = v._y;
       }
-      allNodes.push(v);
     }));
 
     // Store routing data for _drawEdge
+    const allNodes = [];
+    layers.forEach(L => L.forEach(v => allNodes.push(v)));
     _routeData = { routedEdges, reversed, nodeMap, allNodes };
   }
 
@@ -615,7 +666,6 @@ const Flowchart = (() => {
     const nodeMap = {}; _nodes.forEach(n => nodeMap[n.id] = n);
 
     if (_mode === 'graph' || !_routeData) {
-      // Graph mode or no route data: simple direct edges
       _edges.forEach(e => { const a = nodeMap[e.from], b = nodeMap[e.to]; if (a && b) _drawEdgeSimple(a, b, e); });
       return;
     }
@@ -627,7 +677,7 @@ const Flowchart = (() => {
       const dstNode = nodeMap[e.to];
       if (!srcNode || !dstNode) continue;
 
-      // Build waypoints from chain (real nodes + dummy positions)
+      // Build waypoints from chain
       const pts = chain.map(id => {
         if (nodeMap[id]) return { x: nodeMap[id].x, y: nodeMap[id].y, real: true, node: nodeMap[id] };
         const dummy = _routeData.allNodes.find(v => v.id === id);
@@ -637,13 +687,10 @@ const Flowchart = (() => {
       if (pts.length < 2) continue;
 
       if (isBack) {
-        // Back-edge: route as side arc
         _drawSideArc(srcNode, dstNode, e);
       } else if (pts.length === 2) {
-        // Adjacent layers: straight line
         _drawStraightEdge(srcNode, dstNode, e);
       } else {
-        // Long edge through dummy nodes: Catmull-Rom
         _drawWaypointEdge(pts, e, srcNode, dstNode);
       }
     }
@@ -653,19 +700,15 @@ const Flowchart = (() => {
     const dx = b.x - a.x, dy = b.y - a.y;
     const dist = Math.hypot(dx, dy) || 1;
     const ux = dx / dist, uy = dy / dist;
-    const p1 = _shapeAnchor(a, ux, uy);
-    const p2 = _shapeAnchor(b, -ux, -uy);
+    const p1 = _edgeAnchor(a, { x: b.x, y: b.y });
+    const p2 = _edgeAnchor(b, { x: a.x, y: a.y });
     const path = document.createElementNS(SVG_NS, 'path');
-    const cdy = Math.abs(p2.y - p1.y) * 0.2 || 20;
-    path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + cdy}, ${p2.x} ${p2.y - cdy}, ${p2.x} ${p2.y}`);
+    path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
     _styleEdge(path, a.id, b.id, edge);
     _edgesG.appendChild(path);
   }
 
   function _drawStraightEdge(src, dst, edge) {
-    const dx = dst.x - src.x, dy = dst.y - src.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    const ux = dx / dist, uy = dy / dist;
     const p1 = _edgeAnchor(src, { x: dst.x, y: dst.y });
     const p2 = _edgeAnchor(dst, { x: src.x, y: src.y });
     const path = document.createElementNS(SVG_NS, 'path');
@@ -679,6 +722,8 @@ const Flowchart = (() => {
     const marginX = side > 0 ? VCW - 60 : 60;
     const p1 = _edgeAnchor(src, { x: marginX, y: src.y });
     const p2 = _edgeAnchor(dst, { x: marginX, y: dst.y });
+    // Orthogonal: horizontal out, vertical down, horizontal in
+    const midX = (p1.x + p2.x) / 2;
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', `M ${p1.x} ${p1.y} L ${marginX} ${p1.y} L ${marginX} ${p2.y} L ${p2.x} ${p2.y}`);
     _styleEdge(path, src.id, dst.id, edge);
@@ -686,13 +731,18 @@ const Flowchart = (() => {
   }
 
   function _drawWaypointEdge(pts, edge, src, dst) {
-    // First point: anchor on source boundary
+    // Anchor on source boundary toward first waypoint
     const anchor1 = _edgeAnchor(src, pts[1]);
-    // Last point: anchor on destination boundary
+    // Anchor on destination boundary from last waypoint
     const anchorN = _edgeAnchor(dst, pts[pts.length - 2]);
-    // Build full point list: anchor1, dummy centers..., anchorN
+    // Build full path: anchor1 -> dummy centers -> anchorN
     const fullPath = [anchor1, ...pts.slice(1, -1).map(p => ({ x: p.x, y: p.y })), anchorN];
-    const d = _catmullRomPath(fullPath);
+
+    // Draw as straight segments through waypoints
+    let d = `M ${fullPath[0].x} ${fullPath[0].y}`;
+    for (let i = 1; i < fullPath.length; i++) {
+      d += ` L ${fullPath[i].x} ${fullPath[i].y}`;
+    }
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', d);
     _styleEdge(path, src.id, dst.id, edge);
