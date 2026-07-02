@@ -1292,9 +1292,14 @@ const Flowchart = (() => {
     _loading = true;
     try {
       const basePrompt = window.LLMCore.getPrompt('flowchart');
+      // Сжимаем текст через skeletonizer если он большой
+      const SKELETON_THRESHOLD = 8000;
+      const processedText = text.length > SKELETON_THRESHOLD
+        ? TextSkeletonizer.process(text)
+        : text;
       const userContent = query
-        ? `Запрос: "${query}"\n\n${basePrompt}\n\nТекст:\n${text.slice(0, 4000)}`
-        : basePrompt + '\n\n' + text.slice(0, 4000);
+        ? `Запрос: "${query}"\n\n${basePrompt}\n\nТекст:\n${processedText.slice(0, 6000)}`
+        : basePrompt + '\n\n' + processedText.slice(0, 6000);
       const result = await window.LLMCore?.request?.({
         messages: [{ role: 'user', content: userContent }],
         stream: false, maxTokens: 2500, featureTag: 'flowchart',
