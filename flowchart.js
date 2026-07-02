@@ -728,7 +728,7 @@ const Flowchart = (() => {
       if (_loading) return;
       const text = window.Preview?.getText?.() ?? '';
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-      _saveHistory(query);
+      if (!PRESETS.includes(query)) _saveHistory(query);
       _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
       _overlay.querySelector('.flowchart-refresh')?.classList.add('spinning');
       _fetchWithQuery(text, query);
