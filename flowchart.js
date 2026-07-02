@@ -172,7 +172,7 @@ const Flowchart = (() => {
 
   /* ── Layout: Sugiyama with dummy nodes ──────────────────────────────── */
 
-  const LAYER_GAP = 140, NODE_GAP = 50;
+  const LAYER_GAP = 100, NODE_GAP = 50;
 
   // Helper: build adjacency map
   function _buildAdj(edges) {
@@ -394,14 +394,10 @@ const Flowchart = (() => {
       }
     }
 
-    // Center each layer around x=0
-    for (const L of layers) {
-      if (!L.length) continue;
-      const minX = Math.min(...L.map(v => xOf.get(v.id) - widthOf(v) / 2));
-      const maxX = Math.max(...L.map(v => xOf.get(v.id) + widthOf(v) / 2));
-      const shift = -(minX + maxX) / 2;
-      L.forEach(v => xOf.set(v.id, xOf.get(v.id) + shift));
-    }
+    // Center entire layout globally (not per-layer)
+    const allX = [...xOf.values()];
+    const globalCenter = (Math.min(...allX) + Math.max(...allX)) / 2;
+    for (const [id, x] of xOf) xOf.set(id, x - globalCenter);
 
     // Interpolate dummy node coordinates: average of neighbors
     for (let pass = 0; pass < 3; pass++) {
@@ -706,6 +702,7 @@ const Flowchart = (() => {
     path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
     _styleEdge(path, a.id, b.id, edge);
     _edgesG.appendChild(path);
+    _renderEdgeLabel(path, edge);
   }
 
   function _drawStraightEdge(src, dst, edge) {
@@ -715,6 +712,7 @@ const Flowchart = (() => {
     path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
     _styleEdge(path, src.id, dst.id, edge);
     _edgesG.appendChild(path);
+    _renderEdgeLabel(path, edge);
   }
 
   function _drawSideArc(src, dst, edge) {
@@ -728,6 +726,7 @@ const Flowchart = (() => {
     path.setAttribute('d', `M ${p1.x} ${p1.y} L ${marginX} ${p1.y} L ${marginX} ${p2.y} L ${p2.x} ${p2.y}`);
     _styleEdge(path, src.id, dst.id, edge);
     _edgesG.appendChild(path);
+    _renderEdgeLabel(path, edge);
   }
 
   function _drawWaypointEdge(pts, edge, src, dst) {
@@ -747,6 +746,7 @@ const Flowchart = (() => {
     path.setAttribute('d', d);
     _styleEdge(path, src.id, dst.id, edge);
     _edgesG.appendChild(path);
+    _renderEdgeLabel(path, edge);
   }
 
   function _styleEdge(el, fromId, toId, edge) {
@@ -759,6 +759,29 @@ const Flowchart = (() => {
     el.addEventListener('mouseleave', () => el.setAttribute('stroke', 'rgba(255,255,255,0.18)'));
     el.addEventListener('click', e => { e.stopPropagation(); _openEdgeTooltip(e, fromId, toId, edge.label || ''); });
     el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(fromId, toId); });
+  }
+
+  function _renderEdgeLabel(pathEl, edge) {
+    if (!edge.label) return;
+    let mid;
+    try { const len = pathEl.getTotalLength(); mid = pathEl.getPointAtLength(len / 2); } catch { return; }
+    if (!mid) return;
+    const fs = Math.max(9, (_fontSize || 13) - 2);
+    const tw = edge.label.length * fs * 0.55 + 10;
+    const bg = document.createElementNS(SVG_NS, 'rect');
+    bg.setAttribute('x', mid.x - tw / 2); bg.setAttribute('y', mid.y - 9);
+    bg.setAttribute('width', tw); bg.setAttribute('height', 18);
+    bg.setAttribute('rx', '4'); bg.setAttribute('fill', 'rgba(16,18,26,0.85)');
+    bg.setAttribute('stroke', 'rgba(255,255,255,0.08)'); bg.setAttribute('stroke-width', '0.5');
+    _edgesG.appendChild(bg);
+    const txt = document.createElementNS(SVG_NS, 'text');
+    txt.textContent = edge.label;
+    txt.setAttribute('x', mid.x); txt.setAttribute('y', mid.y);
+    txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('dominant-baseline', 'middle');
+    txt.setAttribute('fill', 'rgba(255,255,255,0.55)');
+    txt.setAttribute('font-size', String(fs));
+    txt.setAttribute('font-family', "'Segoe UI', system-ui, sans-serif");
+    _edgesG.appendChild(txt);
   }
 
   function _openEdgeTooltip(e, fromId, toId, label) {
