@@ -586,6 +586,13 @@ const Flowchart = (() => {
     _overlay.className = 'flowchart-overlay';
     _overlay.innerHTML = `
       <div class="flowchart-panel">
+        <div class="fc-queries">
+          <input class="fc-query-input" placeholder="Запрос... (Enter)">
+          <div class="fc-query-sep"></div>
+          <div class="fc-query-presets"></div>
+          <div class="fc-query-sep"></div>
+          <div class="fc-query-history"></div>
+        </div>
         <div class="flowchart-controls">
           <button class="flowchart-btn" data-mode="flow" title="Блок-схема">F</button>
           <button class="flowchart-btn" data-mode="graph" title="Граф связей">G</button>
@@ -641,8 +648,91 @@ const Flowchart = (() => {
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
       _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
       _overlay.querySelector('.flowchart-refresh').classList.add('spinning');
-      _fetch(text);
+      _fetchWithQuery(text, null);
     });
+
+    // ── Query menu: presets, history, input ─────────────────────
+    const PRESETS = [
+      'Структура документа',
+      'Ключевые понятия',
+      'Поток действий',
+      'Связи между блоками',
+      'Краткое резюме',
+    ];
+    const HISTORY_KEY = 'fc-query-history';
+    const MAX_HISTORY = 5;
+
+    function _loadHistory() {
+      try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+      catch { return []; }
+    }
+    function _saveHistory(query) {
+      const hist = _loadHistory().filter(h => h !== query);
+      hist.unshift(query);
+      if (hist.length > MAX_HISTORY) hist.length = MAX_HISTORY;
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
+      _renderHistory();
+    }
+    function _deleteHistory(query) {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(_loadHistory().filter(h => h !== query)));
+      _renderHistory();
+    }
+    function _renderPresets() {
+      const c = _overlay.querySelector('.fc-query-presets');
+      if (!c) return;
+      c.innerHTML = '';
+      PRESETS.forEach(p => {
+        const el = document.createElement('div');
+        el.className = 'fc-query-item';
+        el.textContent = p;
+        el.addEventListener('click', () => _runQuery(p));
+        c.appendChild(el);
+      });
+    }
+    function _renderHistory() {
+      const c = _overlay.querySelector('.fc-query-history');
+      if (!c) return;
+      c.innerHTML = '';
+      _loadHistory().forEach(h => {
+        const el = document.createElement('div');
+        el.className = 'fc-history-item';
+        const span = document.createElement('span');
+        span.textContent = h.length > 30 ? h.slice(0, 30) + '...' : h;
+        span.title = h;
+        const del = document.createElement('span');
+        del.className = 'fc-history-del';
+        del.textContent = '✕';
+        del.addEventListener('click', e => { e.stopPropagation(); _deleteHistory(h); });
+        el.appendChild(span);
+        el.appendChild(del);
+        el.addEventListener('click', () => _runQuery(h));
+        c.appendChild(el);
+      });
+    }
+
+    const queryInput = _overlay.querySelector('.fc-query-input');
+    if (queryInput) {
+      queryInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && queryInput.value.trim()) {
+          _runQuery(queryInput.value.trim());
+          queryInput.value = '';
+        }
+      });
+    }
+
+    _renderPresets();
+    _renderHistory();
+    _setupProximity(_overlay.querySelector('.fc-queries'), 0.25);
+
+    function _runQuery(query) {
+      if (_loading) return;
+      const text = window.Preview?.getText?.() ?? '';
+      if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
+      _saveHistory(query);
+      _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
+      _overlay.querySelector('.flowchart-refresh')?.classList.add('spinning');
+      _fetchWithQuery(text, query);
+    }
 
     _overlay.querySelector('.flowchart-add').addEventListener('click', e => {
       const rect = e.target.getBoundingClientRect(), panelRect = _panel.getBoundingClientRect();
@@ -812,10 +902,7 @@ const Flowchart = (() => {
     if (isEmpty) {
       const text = window.Preview?.getText?.() ?? '';
       if (text.trim()) {
-        _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
-        _overlay.querySelector('.flowchart-refresh').classList.add('spinning');
-        _fetch(text);
-        return;
+        _overlay.querySelector('.flowchart-status').textContent = 'Выберите запрос или введите свой';
       }
     }
     _render();
@@ -823,11 +910,15 @@ const Flowchart = (() => {
 
   function close() { if (_overlay) _overlay.classList.remove('visible'); _closeTooltip(); }
 
-  async function _fetch(text) {
+  async function _fetchWithQuery(text, query) {
     _loading = true;
     try {
+      const basePrompt = window.LLMCore.getPrompt('flowchart');
+      const userContent = query
+        ? `Запрос: "${query}"\n\n${basePrompt}\n\nТекст:\n${text.slice(0, 4000)}`
+        : basePrompt + '\n\n' + text.slice(0, 4000);
       const result = await window.LLMCore?.request?.({
-        messages: [{ role: 'user', content: window.LLMCore.getPrompt('flowchart') + '\n\n' + text.slice(0, 4000) }],
+        messages: [{ role: 'user', content: userContent }],
         stream: false, maxTokens: 2500, featureTag: 'flowchart',
       });
       if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
