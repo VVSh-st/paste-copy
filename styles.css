@@ -215,16 +215,11 @@ body {
 #main-area { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 #workspace {
   flex: 1; display: flex; gap: 0; padding: 10px;
-  overflow: auto; align-items: stretch; min-height: 120px;
-  scrollbar-width: none;
+  overflow: hidden; align-items: stretch; min-height: 120px;
 }
-#workspace::-webkit-scrollbar { display: none; }
-.col-scrollbar #workspace { scrollbar-width: thin; }
-.col-scrollbar #workspace::-webkit-scrollbar { display: block; width: 5px; }
-.col-scrollbar #workspace::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
 .column {
   display: flex; flex-direction: column; gap: 8px;
-  min-width: 80px; overflow: visible; padding: 0 4px;
+  min-width: 80px; overflow-y: auto; overflow-x: hidden; padding: 0 4px;
   flex: 1; scrollbar-width: none;
 }
 .column::-webkit-scrollbar { display: none; }

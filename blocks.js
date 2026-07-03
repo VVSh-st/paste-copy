@@ -4,17 +4,6 @@ const Blocks = (() => {
 
   const workspace = document.getElementById('workspace');
 
-  // Keep resizer markers full-height when columns overflow
-  function _syncResizerHeights() {
-    if (!workspace) return;
-    const h = workspace.scrollHeight;
-    workspace.querySelectorAll('.col-resizer').forEach(r => { r.style.height = h + 'px'; });
-  }
-  if (workspace) {
-    const _resizerRO = new ResizeObserver(() => _syncResizerHeights());
-    _resizerRO.observe(workspace);
-  }
-
   // ── "Ща как напишу" capture mode ──
   let _captureMode = false;
   let _captureStickyId = null;
@@ -464,7 +453,6 @@ const Blocks = (() => {
     if (n === 0) return;
     if (n === 1) {
       cols[0].el.style.flex = '1';
-      _syncResizerHeights();
       return;
     }
     const lay = State.getLayout();
@@ -482,7 +470,6 @@ const Blocks = (() => {
         c.el.style.width = '';
       });
     }
-    _syncResizerHeights();
   }
 
   function renderBlock(b, orderMap) {
