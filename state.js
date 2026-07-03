@@ -104,12 +104,18 @@ const State = (() => {
    *   is intentional to prevent overwriting user deletions.
    * - Primitives / null: saved value wins.
    */
+  // [FIX] Клонируем saved values — предотвращаем скрытые мутации через live-ссылки
+  function _cloneSavedValue(value) {
+    if (value && typeof value === 'object') return _cloneDeep(value);
+    return value;
+  }
+
   function deepMerge(defaults, saved) {
     // Guard: if saved is missing, return a fresh clone of defaults
     if (saved === null || saved === undefined) return _cloneDeep(defaults);
 
-    // Primitive or array in defaults → saved wins outright
-    if (typeof defaults !== 'object' || Array.isArray(defaults)) return saved;
+    // Primitive or array in defaults → saved wins (cloned)
+    if (typeof defaults !== 'object' || Array.isArray(defaults)) return _cloneSavedValue(saved);
 
     // saved is not a plain object → saved wins (type mismatch, e.g. old schema)
     if (typeof saved !== 'object' || Array.isArray(saved)) return _cloneDeep(defaults);
@@ -129,8 +135,8 @@ const State = (() => {
       ) {
         result[key] = deepMerge(dv, sv);
       } else {
-        // Primitives, arrays, null — saved value wins
-        result[key] = sv;
+        // Primitives, arrays, null — saved value wins (cloned)
+        result[key] = _cloneSavedValue(sv);
       }
     }
 
@@ -220,8 +226,8 @@ const State = (() => {
         value: clean,
         enabled: false,
         global: true,
-        createdAt: raw.createdAt || Date.now(),
-        meta: raw.meta || {},
+        createdAt: Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now(),
+        meta: raw.meta && typeof raw.meta === 'object' && !Array.isArray(raw.meta) ? raw.meta : {},
       });
       changed = true;
     }
@@ -304,12 +310,25 @@ const State = (() => {
     ) block.activeSubtab = 0;
   }
 
-  function migrate(blocks) {
+  function migrate(blocks, usedBlockIds = new Set()) {
     // [FIX] Фильтруем невалидные блоки — null/string/array не ломают миграцию
     const list = Array.isArray(blocks) ? blocks : [];
     return list
       .filter(b => b && typeof b === 'object' && !Array.isArray(b))
       .map(b => {
+      // [FIX] Нормализуем базовые поля + дедупликация block ID
+      const rawId = typeof b.id === 'string' ? b.id.trim() : '';
+      if (rawId && !usedBlockIds.has(rawId)) {
+        b.id = rawId;
+        usedBlockIds.add(rawId);
+      } else {
+        do { b.id = uid(); } while (usedBlockIds.has(b.id));
+        usedBlockIds.add(b.id);
+      }
+      b.title = String(b.title || '');
+      if (!Number.isInteger(b.column)) b.column = 0;
+      b.column = Math.max(0, Math.min(4, b.column));
+      b.collapsed = !!b.collapsed;
       if (!b.type) b.type = 'text';
       if (!b.icon) b.icon = randomIcon();
 
@@ -343,7 +362,7 @@ const State = (() => {
         // [FIX] Проверяем что children — массив
         if (!Array.isArray(b.children)) b.children = [];
         if (b.enabled === undefined) b.enabled = true;
-        b.children = migrate(b.children);
+        b.children = migrate(b.children, usedBlockIds);
       }
 
       if (b.type === 'variable' && b.variableName === undefined) {
@@ -570,9 +589,11 @@ const State = (() => {
   }
 
   function scheduleSnapshot(tab) {
+    if (!tab?.id) return;
     clearTimeout(snapTimers.get(tab.id));
     snapTimers.set(tab.id, setTimeout(() => {
-      snapshot(tab);
+      // [FIX] Вкладку могли закрыть после постановки таймера
+      if (tabs.includes(tab)) snapshot(tab);
       snapTimers.delete(tab.id);
     }, 500));
   }
@@ -798,16 +819,22 @@ const State = (() => {
 
   function update(fn) {
     const t = getActive();
-    if (!t) return;
-    fn(t);
+    if (!t || typeof fn !== 'function') return;
+    try { fn(t); } catch (err) {
+      console.error('[State.update] mutation failed.', err);
+      return;
+    }
     scheduleSnapshot(t);
     emit();
   }
 
   function updateLive(fn) {
     const t = getActive();
-    if (!t) return;
-    fn(t);
+    if (!t || typeof fn !== 'function') return;
+    try { fn(t); } catch (err) {
+      console.error('[State.updateLive] mutation failed.', err);
+      return;
+    }
     emitLive();
   }
 
@@ -833,12 +860,26 @@ const State = (() => {
       if (layout[key] !== patch[key]) { shallowSame = false; break; }
     }
     if (shallowSame) return;
-    const before = JSON.stringify(layout);
-    layout = deepMerge(layout, patch);
-    if (JSON.stringify(layout) !== before) emit();
+    // [FIX] Защита от JSON.stringify крэша
+    try {
+      const before = JSON.stringify(layout);
+      layout = deepMerge(layout, patch);
+      if (JSON.stringify(layout) !== before) emit();
+    } catch (err) {
+      console.error('[State.setLayout] Failed to merge layout patch.', err);
+    }
   };
 
   /* ── persistence ── */
+
+  // [FIX] Проверка что snapshot data — валидный JSON с объектом
+  function _isValidSnapshotData(data) {
+    if (typeof data !== 'string') return false;
+    try {
+      const parsed = JSON.parse(data);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+    } catch (_) { return false; }
+  }
 
   function load(data) {
     // Guard: corrupt / empty save → fresh start
@@ -876,7 +917,7 @@ const State = (() => {
         // [FIX] Нормализуем namedSnapshots — фильтруем невалидные элементы
         namedSnapshots: Array.isArray(t.namedSnapshots)
           ? t.namedSnapshots
-              .filter(s => s && typeof s === 'object' && !Array.isArray(s) && typeof s.data === 'string')
+              .filter(s => s && typeof s === 'object' && !Array.isArray(s) && _isValidSnapshotData(s.data))
               .map(s => ({
                 id:   s.id || uid(),
                 name: String(s.name || ''),
@@ -995,6 +1036,15 @@ const State = (() => {
     } catch (_) { return null; }
   }
 
+  // [FIX] Безопасный advance по строке — учитывает Unicode surrogate pairs
+  function _advanceStringIndex(str, index) {
+    if (index + 1 >= str.length) return index + 1;
+    const first = str.charCodeAt(index);
+    const second = str.charCodeAt(index + 1);
+    if (first >= 0xD800 && first <= 0xDBFF && second >= 0xDC00 && second <= 0xDFFF) return index + 2;
+    return index + 1;
+  }
+
   function _collectMatches(re, val) {
     const MAX_MATCHES_PER_VALUE = 1000;
     const matches = [];
@@ -1004,9 +1054,9 @@ const State = (() => {
       matches.push({ index: m.index, length: m[0].length, match: m[0] });
       // [FIX] Лимит совпадений — предотвращает зависание UI на широких regex
       if (matches.length >= MAX_MATCHES_PER_VALUE) break;
-      // Защита от zero-length matches
+      // Защита от zero-length matches (с учётом Unicode surrogate pairs)
       if (m[0].length === 0) {
-        re.lastIndex = m.index + 1;
+        re.lastIndex = _advanceStringIndex(val, m.index);
         if (re.lastIndex > val.length) break;
       }
     }
