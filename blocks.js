@@ -4,6 +4,46 @@ const Blocks = (() => {
 
   const workspace = document.getElementById('workspace');
 
+  // ── "Ща как напишу" capture mode ──
+  let _captureMode = false;
+  let _captureStickyId = null;
+
+  function _getStickyBlock() {
+    const tab = State.getActive();
+    if (!tab) return null;
+    if (_captureStickyId) {
+      const found = tab.blocks.find(b => b.id === _captureStickyId && b.type === 'sticky');
+      if (found) return found;
+    }
+    return tab.blocks.find(b => b.type === 'sticky') || null;
+  }
+
+  function _ensureStickyBlock() {
+    let sticky = _getStickyBlock();
+    if (!sticky) {
+      State.addBlock('sticky');
+      const tab = State.getActive();
+      sticky = tab.blocks[tab.blocks.length - 1];
+    }
+    _captureStickyId = sticky.id;
+    return sticky;
+  }
+
+  function _appendCaptureText(sticky, text) {
+    if (!text) return;
+    const val = sticky.value || '';
+    sticky.value = val ? val + '\n\n' + text : text;
+    State.updateLive(() => {});
+    function _syncTextarea() {
+      const stickyEl = document.querySelector(`.block[data-id="${sticky.id}"] .block-textarea`);
+      if (stickyEl) {
+        stickyEl.value = sticky.value;
+        if (typeof autoGrow === 'function') autoGrow(stickyEl);
+      }
+    }
+    requestAnimationFrame(_syncTextarea);
+  }
+
   function getVisibleColumns() {
     return Array.from(workspace.querySelectorAll('.column'))
       .filter(c => c.style.display !== 'none')
@@ -745,6 +785,32 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         };
         palette.appendChild(dot);
       });
+
+      const copyNoteBtn = document.createElement('button');
+      copyNoteBtn.type = 'button';
+      copyNoteBtn.className = 'block-btn';
+      copyNoteBtn.title = 'Копировать заметку в буфер';
+      copyNoteBtn.innerHTML = svgIcon('copy');
+      copyNoteBtn.querySelector('svg').setAttribute('style', 'width:13px;height:13px');
+      copyNoteBtn.onclick = e => {
+        e.stopPropagation();
+        const text = b.value || '';
+        if (!text) { Toast.show('Заметка пуста', 'info'); return; }
+        if (window._clipboardApiEnabled !== false && navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text)
+            .then(() => Toast.show('Скопировано ✓', 'success'))
+            .catch(() => Toast.show('Ошибка копирования', 'error'));
+        } else {
+          const ta2 = document.createElement('textarea');
+          ta2.value = text;
+          document.body.appendChild(ta2);
+          ta2.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta2);
+          Toast.show('Скопировано ✓', 'success');
+        }
+      };
+      h.appendChild(copyNoteBtn);
 
       const colorBtn = document.createElement('button');
       colorBtn.type = 'button';
@@ -2085,6 +2151,37 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     scrollControls.appendChild(anchorCountEl);
     scrollControls.appendChild(counterSpan);
 
+    // ── Capture mode button ("Ща как напишу") ─────────────────
+    const CAPTURE_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 7h6M7 10h4M7 13h5"/></svg>';
+    const captureBtn = mkBtn('font-ctrl-btn capture-btn', '', 'Ща как напишу');
+    captureBtn.innerHTML = CAPTURE_SVG;
+    captureBtn.setAttribute('aria-label', 'Режим быстрого копирования');
+    function _syncCaptureBtn() {
+      captureBtn.classList.toggle('capture-active', _captureMode);
+    }
+    _syncCaptureBtn();
+    captureBtn.onclick = e => {
+      e.stopPropagation();
+      _captureMode = !_captureMode;
+      if (_captureMode) _ensureStickyBlock();
+      _syncCaptureBtn();
+    };
+
+    // mouseup listener for capture mode
+    ta.addEventListener('mouseup', () => {
+      if (!_captureMode) return;
+      const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd);
+      if (!sel) return;
+      const sticky = _ensureStickyBlock();
+      if (!sticky) return;
+      _appendCaptureText(sticky, sel);
+      // expand sticky if collapsed
+      if (sticky.collapsed) {
+        State.update(() => { sticky.collapsed = false; });
+        Blocks.render();
+      }
+    });
+
     // ── Translate button ───────────────────────────────────────
     const TRANSLATE_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
     const translateBtn = mkBtn('font-ctrl-btn translate-btn', '', 'Перевести');
@@ -2367,6 +2464,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     };
     footer.appendChild(aiTransformBtn);
 
+    footer.appendChild(captureBtn);
     footer.appendChild(translateBtn);
     footer.appendChild(scrollControls);
     body.appendChild(footer);
