@@ -1809,15 +1809,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       mirror.appendChild(before);
       mirror.appendChild(marker);
 
-      const markerRect = marker.getBoundingClientRect();
-      const mirrorRect = mirror.getBoundingClientRect();
-      const taRect = ta.getBoundingClientRect();
-      const wrapRect = lineWrap.getBoundingClientRect();
-      const glyphOffset = Math.max(0, (lineHeight - markerRect.height) / 2) - 1;
-      const top = (taRect.top - wrapRect.top) +
-        (markerRect.top - mirrorRect.top) -
-        glyphOffset -
-        ta.scrollTop;
+      const top = marker.offsetTop - ta.scrollTop;
 
       lineHighlight.style.top = top + 'px';
       lineHighlight.style.height = lineHeight + 'px';
