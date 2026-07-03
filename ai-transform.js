@@ -66,9 +66,9 @@ window.AiTransform = (() => {
     _ta = ta;
     _origStart = ta.selectionStart;
     _origEnd = ta.selectionEnd;
-    const sel = ta.value.slice(_origStart, _origEnd).trim();
+    const sel = ta.value.slice(_origStart, _origEnd);
 
-    if (sel) {
+    if (sel.trim()) {
       _origText = sel;
       _useWholeText = false;
     } else {
@@ -143,17 +143,31 @@ window.AiTransform = (() => {
 
   function hidePopup(restore = false) {
     _requestSeq++;
+    const ta = _ta;
     if (restore && _ta && _origText != null) {
       if (_useWholeText) {
-        _ta._skipWordComplete = true;
-        _ta.value = _origText;
-        _ta.dispatchEvent(new Event('input', { bubbles: true }));
-        _ta._skipWordComplete = false;
+        if (_ta.value !== _origText) restore = false;
+      } else if (_ta.value.slice(_origStart, _origEnd) !== _origText) {
+        restore = false;
+      }
+    }
+    if (restore && _ta && _origText != null) {
+      if (_useWholeText) {
+        try {
+          _ta._skipWordComplete = true;
+          _ta.value = _origText;
+          _ta.dispatchEvent(new Event('input', { bubbles: true }));
+        } finally {
+          _ta._skipWordComplete = false;
+        }
       } else {
-        _ta._skipWordComplete = true;
-        _ta.setRangeText(_origText, _origStart, _origEnd, 'end');
-        _ta.dispatchEvent(new Event('input', { bubbles: true }));
-        _ta._skipWordComplete = false;
+        try {
+          _ta._skipWordComplete = true;
+          _ta.setRangeText(_origText, _origStart, _origEnd, 'end');
+          _ta.dispatchEvent(new Event('input', { bubbles: true }));
+        } finally {
+          _ta._skipWordComplete = false;
+        }
       }
     }
     if (_popup) _popup.style.display = 'none';
@@ -163,6 +177,7 @@ window.AiTransform = (() => {
     _useWholeText = false;
     if (_onClickOutside) { document.removeEventListener('click', _onClickOutside, true); _onClickOutside = null; }
     if (_onContextMenu) { document.removeEventListener('contextmenu', _onContextMenu, true); _onContextMenu = null; }
+    ta?.focus();
   }
 
   // ── Запрос к LLM ─────────────────────────────────────────
@@ -204,6 +219,10 @@ window.AiTransform = (() => {
 
       // Скрываем popup, показываем diff
       if (_popup) _popup.style.display = 'none';
+      if (_onClickOutside) {
+        document.removeEventListener('click', _onClickOutside, true);
+        _onClickOutside = null;
+      }
       _showDiffPanel(_origText, _suggestedText);
 
       // ПКМ — отмена с возвратом оригинала
@@ -229,14 +248,10 @@ window.AiTransform = (() => {
     if (_diffPanel) { _diffPanel.remove(); _diffPanel = null; }
   }
 
-  function _isLargeChange(orig, sug) {
-    const origLen = orig.length;
-    const sugLen = sug.length;
+  function _isLargeChange(origLen, sugLen, origTokens, sugTokens) {
     if (origLen === 0) return true;
     const ratio = Math.abs(sugLen - origLen) / origLen;
     if (ratio > 0.5) return true;
-    const origTokens = orig.split(/(\s+)/).length;
-    const sugTokens = sug.split(/(\s+)/).length;
     return origTokens * sugTokens > 250000;
   }
 
@@ -246,13 +261,15 @@ window.AiTransform = (() => {
 
     const lay = _State?.getLayout?.();
     const savedSize = lay?.llm?.diffFontSize || 12;
-    const isLarge = _isLargeChange(origText, sugText);
+    const origWords = origText.split(/(\s+)/);
+    const sugWords = sugText.split(/(\s+)/);
+    const isLarge = _isLargeChange(origText.length, sugText.length, origWords.length, sugWords.length);
 
     let diffHtml;
     if (isLarge) {
       diffHtml = esc(sugText);
     } else {
-      diffHtml = _renderAdditionsOnly(origText, sugText);
+      diffHtml = _renderAdditionsOnly(origWords, sugWords);
     }
 
     _diffPanel = document.createElement('div');
@@ -307,10 +324,7 @@ window.AiTransform = (() => {
     });
   }
 
-  function _renderAdditionsOnly(orig, sug) {
-    const origWords = orig.split(/(\s+)/);
-    const sugWords = sug.split(/(\s+)/);
-
+  function _renderAdditionsOnly(origWords, sugWords) {
     const m = origWords.length;
     const n = sugWords.length;
     const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
@@ -324,18 +338,18 @@ window.AiTransform = (() => {
     let i = m, j = n;
     while (i > 0 || j > 0) {
       if (i > 0 && j > 0 && origWords[i - 1] === sugWords[j - 1]) {
-        parts.unshift({ type: 'eq', text: origWords[i - 1] });
+        parts.push({ type: 'eq', text: origWords[i - 1] });
         i--; j--;
       } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-        parts.unshift({ type: 'ins', text: sugWords[j - 1] });
+        parts.push({ type: 'ins', text: sugWords[j - 1] });
         j--;
       } else {
-        parts.unshift({ type: 'del', text: origWords[i - 1] });
+        parts.push({ type: 'del', text: origWords[i - 1] });
         i--;
       }
     }
 
-    return parts.map(p => {
+    return parts.reverse().map(p => {
       if (p.type === 'eq') return esc(p.text);
       if (p.type === 'ins') return `<span class="ai-transform-ins">${esc(p.text)}</span>`;
       return '';
@@ -345,14 +359,27 @@ window.AiTransform = (() => {
   // ── Принятие ──────────────────────────────────────────────
   function _acceptChange() {
     if (_ta && _suggestedText) {
-      _ta._skipWordComplete = true;
       if (_useWholeText) {
-        _ta.value = _suggestedText;
-      } else {
-        _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
+        if (_ta.value !== _origText) {
+          window.Toast?.show('Текст изменился, применить AI-правку нельзя', 'error');
+          return;
+        }
+      } else if (_ta.value.slice(_origStart, _origEnd) !== _origText) {
+        window.Toast?.show('Выделенный текст изменился, применить AI-правку нельзя', 'error');
+        return;
       }
-      _ta.dispatchEvent(new Event('input', { bubbles: true }));
-      _ta._skipWordComplete = false;
+      try {
+        _ta._skipWordComplete = true;
+        if (_useWholeText) {
+          _ta.value = _suggestedText;
+        } else {
+          _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
+        }
+        _ta.dispatchEvent(new Event('input', { bubbles: true }));
+      } finally {
+        _ta._skipWordComplete = false;
+      }
+      _ta.focus();
       window.Toast?.show('Принято ✓', 'success');
     }
   }
@@ -360,7 +387,8 @@ window.AiTransform = (() => {
   // ── Публичный API ────────────────────────────────────────
   function openForSelection(ta) {
     if (!ta || ta.tagName !== 'TEXTAREA') return;
-    showPopup(ta, ta.getBoundingClientRect().left + 10, ta.getBoundingClientRect().top);
+    const rect = ta.getBoundingClientRect();
+    showPopup(ta, rect.left + 10, rect.top);
   }
 
   let _inited = false;
