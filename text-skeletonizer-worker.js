@@ -97,7 +97,7 @@ function _extractSections(text, cfg) {
     const line = lines[i];
     const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
     if (headingMatch) {
-  if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
+      if (currentSection) sections.push(currentSection);
       currentSection = { level: headingMatch[1].length, heading: headingMatch[2].trim().slice(0, cfg.maxHeadingLength), preview: '', lines: [] };
     } else if (currentSection && line.trim()) {
       currentSection.lines.push(line.trim());
@@ -107,7 +107,7 @@ function _extractSections(text, cfg) {
       }
     }
   }
-  if (currentSection) sections.push(currentSection);
+  if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
   if (!sections.length) {
     const paragraphs = text.split(/\n{2,}/).filter(p => p.trim());
     paragraphs.slice(0, cfg.maxSections).forEach((p, i) => {

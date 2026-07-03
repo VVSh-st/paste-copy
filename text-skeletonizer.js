@@ -268,7 +268,7 @@ const TextSkeletonizer = (() => {
       const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
 
       if (headingMatch) {
-    if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
+        if (currentSection) sections.push(currentSection);
         const level = headingMatch[1].length;
         const heading = headingMatch[2].trim().slice(0, cfg.maxHeadingLength);
         currentSection = { level, heading, preview: '', lines: [] };
@@ -280,7 +280,7 @@ const TextSkeletonizer = (() => {
         }
       }
     }
-    if (currentSection) sections.push(currentSection);
+    if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
 
     // Если нет заголовков — разбиваем по абзацам
     if (!sections.length) {
