@@ -20,7 +20,7 @@
 - **дропдаун** = dropdown
 - **блок** = block (элемент UI)
 
-## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-02)
+## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-03)
 
 ### Flowchart — Query menu
 
@@ -37,11 +37,11 @@
 8. ✅ **Layer assignment** — longest-path + компактация (удаление пустых слоёв)
 9. ✅ **Dummy nodes** — для рёбер spanning >1 layer, резервируют track в ordering
 10. ✅ **Crossing minimization** — median heuristic, **20 итераций**, выбор лучшего ordering по score пересечений
-11. ✅ **Coordinate assignment** — центрирование слоёв, интерполяция dummy-узлов (3 прохода), min-spacing bounds
+11. ✅ **Coordinate assignment** — центрирование слоёв, интерполяция dummy-узлов (3 прохода), min-spacing bounds + repulsion (3 прохода)
 12. ✅ **Edge routing** — прямые линии через waypoints, orthogonal для back-edges (side arcs)
 13. ✅ **Crossing counter** — попарный подсчёт по слоям через Set (не глобальный)
-14. ✅ **Edge labels** — прямоугольник-фон + текст посередине ребра (getTotalLength после appendChild)
-15. ✅ **LAYER_GAP** — 140 → 100, компактнее
+14. ✅ **Edge labels** — прямоугольник-фон + текст посередине ребра, стоят на месте (не сдвигаются), визуально отличаются от карточек
+15. ✅ **LAYER_GAP** — 90, **NODE_GAP** — 40
 
 ### TextSkeletonizer (v3 — 2026-07-03)
 
@@ -50,10 +50,14 @@
 18. ✅ **Адаптивный порог** — `recommendLevel()` определяет уровень по размеру текста
 19. ✅ **Защита от отрицаний** — "не React" не становится ключевым термином
 20. ✅ **LRU кэш** — hash(text):level → skeleton, до 50 записей
-21. ✅ **Web Worker** — парсинг >20K символов в отдельном потоке, fallback на sync
+21. ✅ **Web Worker** — файл создан (`text-skeletonizer-worker.js`), sync-only из-за Promise-бага
 22. ✅ **Лемматизация** — упрощённый стемминг для русского (suffix stripping)
-23. ✅ **Интеграция** — flowchart.js + mindmap.js, async API (await process())
+23. ✅ **Интеграция** — flowchart.js + mindmap.js, настройки в LLM → Разное (off/light/medium/aggressive/auto)
 24. ⏸ **Аудит** — тикет `TICKET-text-skeletonizer.md`, 4 ответа в `Bigbrat_govorit/`
+
+### Flowchart — Известные баги (ЗАБЛОКИРОВАНО)
+
+25. ❌ **Белые карточки** — backing и shape имеют правильный computed fill (`rgba(16,18,26,0.78)` и `rgba(25,28,40,0.92)`), но рендерятся белыми. Пробовали: `style.fill`, `setAttribute('fill')`, CSS-классы `.fc-shape`/`.fc-backing` в flowchart.css. DevTools подтверждает правильный computed fill. Причина не найдена.
 
 ### Spell-check (итог)
 
