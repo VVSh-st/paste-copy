@@ -19,6 +19,7 @@ window.AiTransform = (() => {
   let _diffPanel = null;
   let _useWholeText = false;
   let _requestSeq = 0;
+  let _isRunning = false;
 
   // ── История запросов ──────────────────────────────────────
   const HISTORY_KEY = 'ai-transform-history';
@@ -62,6 +63,7 @@ window.AiTransform = (() => {
 
   function showPopup(ta, x, y) {
     _requestSeq++;
+    _isRunning = false;
     const popup = ensurePopup();
     _ta = ta;
     _origStart = ta.selectionStart;
@@ -143,6 +145,7 @@ window.AiTransform = (() => {
 
   function hidePopup(restore = false) {
     _requestSeq++;
+    _isRunning = false;
     const ta = _ta;
     if (restore && _ta && _origText != null) {
       if (_useWholeText) {
@@ -182,9 +185,15 @@ window.AiTransform = (() => {
 
   // ── Запрос к LLM ─────────────────────────────────────────
   async function _runTransform(instruction) {
-    if (!instruction?.trim() || !_ta || !_LLMCore) return;
+    if (_isRunning) return;
+    if (!instruction?.trim()) {
+      window.Toast?.show('Введите инструкцию', 'error');
+      return;
+    }
+    if (!_ta || !_LLMCore) return;
     if (!_origText?.trim()) { window.Toast?.show('Нет текста для обработки', 'error'); return; }
 
+    _isRunning = true;
     const requestId = ++_requestSeq;
     _addToHistory(instruction.trim());
     _removeDiffPanel();
@@ -240,6 +249,8 @@ window.AiTransform = (() => {
       if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
       if (input) { input.disabled = false; input.placeholder = 'Новый запрос...'; }
       if (sendBtn) sendBtn.style.display = '';
+    } finally {
+      if (requestId === _requestSeq) _isRunning = false;
     }
   }
 
@@ -250,6 +261,7 @@ window.AiTransform = (() => {
 
   function _isLargeChange(origLen, sugLen, origTokens, sugTokens) {
     if (origLen === 0) return true;
+    if (origLen + sugLen > 20000) return true;
     const ratio = Math.abs(sugLen - origLen) / origLen;
     if (ratio > 0.5) return true;
     return origTokens * sugTokens > 250000;
