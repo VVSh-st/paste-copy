@@ -87,6 +87,9 @@ const State = (() => {
 
   /* ── Deep utilities ── */
 
+  // [FIX] Защита от prototype pollution
+  const UNSAFE_MERGE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
   function _cloneDeep(obj) {
     // JSON round-trip is fine for plain data; avoids lodash dependency
     return JSON.parse(JSON.stringify(obj));
@@ -114,6 +117,7 @@ const State = (() => {
     const result = _cloneDeep(defaults);
 
     for (const key of Object.keys(saved)) {
+      if (UNSAFE_MERGE_KEYS.has(key)) continue;
       const sv = saved[key];
       const dv = result[key]; // use result (already a clone of defaults)
 
@@ -300,7 +304,11 @@ const State = (() => {
   }
 
   function migrate(blocks) {
-    return (blocks || []).map(b => {
+    // [FIX] Фильтруем невалидные блоки — null/string/array не ломают миграцию
+    const list = Array.isArray(blocks) ? blocks : [];
+    return list
+      .filter(b => b && typeof b === 'object' && !Array.isArray(b))
+      .map(b => {
       if (!b.type) b.type = 'text';
       if (!b.icon) b.icon = randomIcon();
 
@@ -314,6 +322,8 @@ const State = (() => {
         // Ensure subtabs array is not shorter than SUBTABS_COUNT (schema upgrade)
         while (b.subtabs.length < SUBTABS_COUNT)
           b.subtabs.push({ label: String(b.subtabs.length + 1), value: '' });
+        // [FIX] Обрезаем слишком длинный массив — защита от повреждённых данных
+        if (b.subtabs.length > SUBTABS_COUNT) b.subtabs.length = SUBTABS_COUNT;
         if (
           !Number.isInteger(b.activeSubtab) ||
           b.activeSubtab < 0 ||
@@ -329,7 +339,9 @@ const State = (() => {
       if (b.type === 'snippets' && b.showTitles === undefined) b.showTitles = true;
 
       if (b.type === 'group') {
-        if (!b.children) { b.children = []; b.enabled = true; }
+        // [FIX] Проверяем что children — массив
+        if (!Array.isArray(b.children)) b.children = [];
+        if (b.enabled === undefined) b.enabled = true;
         b.children = migrate(b.children);
       }
 
@@ -619,6 +631,16 @@ const State = (() => {
     }
   }
 
+  // [FIX] Безопасная сериализация block snapshot — предотвращает JSON.stringify крэш
+  function _stringifyBlockSubtabsSnap(block) {
+    try {
+      return JSON.stringify(block.subtabs);
+    } catch (err) {
+      console.error('[State.blockHistory] Failed to serialize block snapshot.', err);
+      return null;
+    }
+  }
+
   // [FIX] Полный сброс runtime-состояния — предотвращает утечку при повторной загрузке
   function _resetInMemoryState() {
     for (const timer of snapTimers.values()) clearTimeout(timer);
@@ -629,6 +651,13 @@ const State = (() => {
     defaultTemplateId = null;
     globalSnippets    = [];
     layout            = _cloneDeep(DEFAULT_LAYOUT);
+  }
+
+  // [FIX] Убираем globalSnippets из сохранённого layout — это serialization артефакт
+  function _sanitizeSavedLayout(savedLayout) {
+    if (!savedLayout || typeof savedLayout !== 'object' || Array.isArray(savedLayout)) return null;
+    const { globalSnippets: _, ...safeLayout } = savedLayout;
+    return safeLayout;
   }
 
   function _bh(blockId) {
@@ -643,7 +672,8 @@ const State = (() => {
     if (!block) return;
     // История блоков поддерживается для блоков с subtabs: text/todo/table
     if (!block.subtabs) return;
-    const snap = JSON.stringify(block.subtabs);
+    const snap = _stringifyBlockSubtabsSnap(block);
+    if (!snap) return;
     const bh   = _bh(blockId);
     bh.snaps = bh.snaps.slice(0, bh.idx + 1);
     if (bh.snaps.length > 0 && bh.snaps[bh.snaps.length - 1] === snap) return;
@@ -663,7 +693,8 @@ const State = (() => {
     if (bh.idx === -1) { blockSnapshot(blockId); }
     // Если стоим на последнем снапе — проверяем, не ушёл ли текст вперёд (несохранённые изменения)
     if (bh.idx === bh.snaps.length - 1) {
-      const cur = JSON.stringify(block.subtabs);
+      const cur = _stringifyBlockSubtabsSnap(block);
+      if (!cur) return;
       if (cur !== bh.snaps[bh.idx]) {
         bh.snaps = bh.snaps.slice(0, bh.idx + 1);
         bh.snaps.push(cur);
@@ -715,11 +746,21 @@ const State = (() => {
     const t = getActive();
     if (!t) return;
     if (!t.namedSnapshots) t.namedSnapshots = [];
+
+    // [FIX] Защита от JSON.stringify крэша
+    let data;
+    try {
+      data = JSON.stringify({ blocks: t.blocks, separator: t.separator });
+    } catch (err) {
+      console.error('[State.saveNamedSnapshot] Failed to serialize named snapshot.', err);
+      return;
+    }
+
     t.namedSnapshots.unshift({
       id:   uid(),
       name: name || new Date().toLocaleString('ru'),
       date: Date.now(),
-      data: JSON.stringify({ blocks: t.blocks, separator: t.separator }),
+      data,
     });
     if (t.namedSnapshots.length > 30) t.namedSnapshots.pop();
     emit();
@@ -764,7 +805,13 @@ const State = (() => {
   /* ── layout ── */
 
   const getDefaultTemplateId = () => defaultTemplateId;
-  const setDefaultTemplateId = id => { defaultTemplateId = id; };
+  // [FIX] Вызываем emit() — persistence теряет изменение без него
+  const setDefaultTemplateId = id => {
+    const nextId = id || null;
+    if (defaultTemplateId === nextId) return;
+    defaultTemplateId = nextId;
+    emit();
+  };
 
   const getLayout = ()    => layout;
   // [FIX] Deep merge вместо shallow assign — предотвращает потерю вложенных настроек
@@ -794,7 +841,7 @@ const State = (() => {
         id:             t.id || uid(),
         name:           t.name || 'Project',
         separator:      t.separator ?? '\n\n',
-        blocks:         migrate(t.blocks || []),
+        blocks:         migrate(Array.isArray(t.blocks) ? t.blocks : []),
         history:        [],
         historyIdx:     -1,
         namedSnapshots: Array.isArray(t.namedSnapshots) ? t.namedSnapshots : [],
@@ -811,7 +858,8 @@ const State = (() => {
         ? data.activeTabId
         : tabs[0].id;
 
-      layout = data.layout ? deepMerge(DEFAULT_LAYOUT, data.layout) : _cloneDeep(DEFAULT_LAYOUT);
+      const savedLayout = _sanitizeSavedLayout(data.layout);
+      layout = savedLayout ? deepMerge(DEFAULT_LAYOUT, savedLayout) : _cloneDeep(DEFAULT_LAYOUT);
 
       defaultTemplateId = data.defaultTemplateId || null;
       const savedGlobalSnippets = Array.isArray(data.globalSnippets)
