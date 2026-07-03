@@ -2759,8 +2759,10 @@ const Ember = (() => {
     // Idle throttle: when intensity is near zero and no particles active, slow to ~2fps
     const idleNow = intensity < 0.01 && particles.length === 0;
     if (idleNow) {
-      rafId = requestAnimationFrame(animate);
-      if (dt < 400) return; // skip frame if <400ms since last
+      // Use setTimeout instead of rAF to avoid 60fps callback overhead
+      rafId = null;
+      setTimeout(() => { if (root) animate(performance.now()); }, 500);
+      return;
     }
 
     if (reduceMotion) {
