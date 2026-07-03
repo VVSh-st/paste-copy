@@ -377,7 +377,11 @@ const Blocks = (() => {
     }
     _pendingTaScrolls.length = 0;
 
-    requestAnimationFrame(() => requestAnimationFrame(_restoreColScroll));
+    // [FIX] Проверяем tab.id перед восстановлением — предотвращает гонку при переключении вкладок
+    const _currentTabId = tab.id;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (_displayedTabId === _currentTabId) _restoreColScroll();
+    }));
   }
 
   function buildOrderMap(blocks) {
@@ -1046,6 +1050,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           observerMap.get(b.id).disconnect();
           observerMap.delete(b.id);
         }
+        // [FIX] Очистка кешей при удалении блока — предотвращает утечку памяти
+        subtabOffsets.delete(b.id);
+        for (const key of [..._taScrollMap.keys()]) {
+          if (key.startsWith(b.id + ':')) _taScrollMap.delete(key);
+        }
         State.update(tab => { State.removeBlock(tab.blocks, b.id); });
         if (typeof Ember !== 'undefined') Ember.triggerReaction('delete');
       }
@@ -1215,6 +1224,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         let _tipEl = null;
 
         function _removeTooltip() {
+          clearTimeout(_clickTimer);
           clearTimeout(_mqTimer);
           cancelAnimationFrame(_mqRaf);
           _mqTimer = null;
@@ -1345,7 +1355,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           if (b._renderItems) b._renderItems();
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
-          if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+          if (chk) {
+            chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+            chk.classList.toggle('blocked', !!b.subtabs[b.activeSubtab]?.blocked);
+          }
+          updateSubtabBlockedState(b);
           window.Preview?.render?.();
           if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
           if (col && savedScroll != null) {
@@ -1371,7 +1385,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           if (b._renderItems) b._renderItems();
           row.querySelectorAll('.block-subtab').forEach(s => s.classList.toggle('active', Number(s.dataset.subtabIdx) === b.activeSubtab));
           const chk = blockEl.querySelector('.todo-complete-cb');
-          if (chk) chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+          if (chk) {
+            chk.classList.toggle('checked', !!b.subtabs[b.activeSubtab]?.completed);
+            chk.classList.toggle('blocked', !!b.subtabs[b.activeSubtab]?.blocked);
+          }
+          updateSubtabBlockedState(b);
           window.Preview?.render?.();
           if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
           if (col && savedScroll != null) {
@@ -1805,10 +1823,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       lineHighlight.style.background = lay.currentLineColor || 'rgba(79,142,247,0.18)';
     }
 
+    // [FIX] Debounce для line highlight — один rAF вместо двух
+    let _lineUpdateRaf = null;
     ['focus', 'click', 'keyup', 'select', 'input', 'scroll'].forEach(evt => {
       ta.addEventListener(evt, () => {
-        requestAnimationFrame(updateCurrentLineHighlight);
-        requestAnimationFrame(() => requestAnimationFrame(updateCurrentLineHighlight));
+        cancelAnimationFrame(_lineUpdateRaf);
+        _lineUpdateRaf = requestAnimationFrame(updateCurrentLineHighlight);
       });
     });
     ta.addEventListener('blur', () => {
