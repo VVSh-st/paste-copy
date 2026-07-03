@@ -84,8 +84,8 @@ function _extractFirstSentence(text) {
     if ('.!?'.includes(clean[i])) {
       const after = clean[i + 1];
       if (after !== undefined && after !== ' ' && after !== '\n') continue;
-      const before3 = clean.slice(Math.max(0, i - 3), i + 1).toLowerCase();
-      if (ABBREVIATIONS.has(before3)) continue;
+      const prefix = clean.slice(0, i + 1).toLowerCase();
+      if ([...ABBREVIATIONS].some(abbr => prefix.endsWith(abbr))) continue;
       if (i > 0 && /\d/.test(clean[i - 1]) && after && /\d/.test(after)) continue;
       const sentence = clean.slice(0, i + 1).trim();
       if (sentence) return sentence;
@@ -140,7 +140,7 @@ function _extractSections(text, cfg) {
 
 function _extractKeyTerms(text, cfg) {
   if (!cfg.maxKeyTerms) return [];
-  const clean = text.replace(/^\s*(`{3}|~{3})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, '').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
+  const clean = text.replace(/^\s*(`{3}|~{3})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, '').replace(/(`+)([\s\S]*?)\1/g, ' ').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
   const freq = new Map();
   const rawWords = clean.match(/[a-zа-яё0-9-]+/g) || [];
   for (let i = 0; i < rawWords.length; i++) {
