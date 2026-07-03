@@ -236,14 +236,14 @@ body {
   border-radius: var(--radius); background: rgba(79,142,247,0.03);
 }
 #col-resizer, .col-resizer {
-  width: 4px; height: 100%; cursor: col-resize; background: transparent;
+  width: 4px; cursor: col-resize; background: transparent;
   border-radius: 99px; flex-shrink: 0;
   transition: background var(--trans);
   position: relative; z-index: 1;
 }
 #col-resizer::after, .col-resizer::after {
   content: ''; position: absolute; top: 0; bottom: 0; left: 1px; right: 1px;
-  min-height: 100%; background: var(--border); border-radius: 99px;
+  background: var(--border); border-radius: 99px;
   transition: background var(--trans);
 }
 #col-resizer:hover::after, .col-resizer:hover::after,
