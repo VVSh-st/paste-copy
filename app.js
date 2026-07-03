@@ -189,6 +189,7 @@
   });
 
   onClick('btn-export', exportFile);
+  onClick('btn-export-tab', exportCurrentTab);
   onClick('btn-import', () => $id('file-input')?.click());
   const fileInput = $id('file-input');
   if (fileInput) fileInput.onchange = importFile;
@@ -796,6 +797,23 @@
     window.Intelligence?.track?.('file.export', {
       tabs: State.getAll().length
     });
+  }
+
+  function exportCurrentTab() {
+    const tab = State.getActive();
+    if (!tab) { Toast.show('Нет активной вкладки', 'error'); return; }
+    const data = { tabs: [JSON.parse(JSON.stringify(tab))] };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    );
+    const name = (tab.name || 'tab').replace(/[^\wа-яА-ЯёЁ-]/gi, '_').slice(0, 40);
+    Object.assign(document.createElement('a'), {
+      href:     url,
+      download: name + '-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json',
+    }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    Toast.show('Вкладка «' + (tab.name || 'Без имени') + '» экспортирована ✓', 'success');
+    window.Intelligence?.track?.('file.exportTab', { blocks: (tab.blocks || []).length });
   }
 
   function importFile(e) {
