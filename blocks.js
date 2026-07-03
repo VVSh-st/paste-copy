@@ -1811,8 +1811,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const cs = getComputedStyle(ta);
       const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
 
-      // Calculate line number from text content — no mirror DOM, no getBoundingClientRect
-      const linesBefore = (ta.value.substring(0, ta.selectionStart).match(/\n/g) || []).length;
+      // Count newlines before cursor — charCode loop, no substring allocation
+      const sel = ta.selectionStart;
+      const val = ta.value;
+      let linesBefore = 0;
+      for (let i = 0; i < sel; i++) { if (val.charCodeAt(i) === 10) linesBefore++; }
       const top = linesBefore * lineHeight - ta.scrollTop;
 
       lineHighlight.style.top = top + 'px';
@@ -2511,18 +2514,25 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(translateDropdown);
   }
 
-  const _byteEnc = new TextEncoder();
-
-  function _byteLen(s) { return _byteEnc.encode(s).length; }
-
+  function _byteLen(s) {
+    let b = 0; for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i); b += c < 128 ? 1 : c < 2048 ? 2 : 3;
+    } return b;
+  }
+  let _blockCounterTimers = new Map();
   function updateBlockCounter(ta, b, body) {
     const span = body._counterSpan;
     if (!span) return;
-    const text  = ta.value;
-    const chars = text.length;
-    const lines = text ? text.split('\n').length : 0;
-    const kb    = (_byteLen(text) / 1024).toFixed(1);
-    span.textContent = chars + '/' + lines + '/' + kb + 'KB';
+    // Debounce — don't split/encode 30KB on every keystroke
+    clearTimeout(_blockCounterTimers.get(b.id));
+    _blockCounterTimers.set(b.id, setTimeout(() => {
+      const text  = ta.value;
+      const chars = text.length;
+      let lines = 0;
+      for (let i = 0; i < text.length; i++) { if (text.charCodeAt(i) === 10) lines++; }
+      const kb    = (_byteLen(text) / 1024).toFixed(1);
+      span.textContent = chars + '/' + (lines + 1) + '/' + kb + 'KB';
+    }, 300));
   }
 
   const ANCHOR_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="4.5" r="2.5"/><line x1="10" y1="7" x2="10" y2="18"/><path d="M6 12.5H4a8 8 0 0 0 12 0h-2"/></svg>';
