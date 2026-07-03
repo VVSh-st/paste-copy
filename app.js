@@ -730,23 +730,15 @@
       });
       const total = newWidths.reduce((a, b) => a + b, 0);
       const ratios = newWidths.map(w => Math.round((w / total) * 1000));
-      // Apply flex directly — avoid State.setLayout which triggers fullRender and recreates resizers
-      const sum = ratios.reduce((a, b) => a + b, 0) || ratios.length;
-      cols.forEach((c, i) => { c.el.style.flex = (ratios[i] / sum).toFixed(4); });
-      _pendingColRatios = ratios;
+      State.setLayout({ colRatios: ratios });
+      Blocks.applyLayout();
     });
-
-    let _pendingColRatios = null;
 
     document.addEventListener('mouseup', () => {
       if (!activeResizer) return;
       activeResizer.classList.remove('active');
       activeResizer = null;
       document.body.style.cursor = '';
-      if (_pendingColRatios) {
-        State.setLayout({ colRatios: _pendingColRatios });
-        _pendingColRatios = null;
-      }
       scheduleSave();
     });
   })();
