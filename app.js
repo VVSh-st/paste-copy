@@ -730,9 +730,13 @@
       });
       const total = newWidths.reduce((a, b) => a + b, 0);
       const ratios = newWidths.map(w => Math.round((w / total) * 1000));
-      // Apply flex directly — no State.setLayout, no fullRender, resizers stay in DOM
+      // Set explicit width + flex-basis so overflow-y:auto columns resize correctly
       const sum = ratios.reduce((a, b) => a + b, 0) || ratios.length;
-      cols.forEach((c, i) => { c.el.style.flex = (ratios[i] / sum).toFixed(4); });
+      cols.forEach((c, i) => {
+        const pct = (ratios[i] / sum * 100) + '%';
+        c.el.style.flex = 'none';
+        c.el.style.width = pct;
+      });
       activeResizer._pendingRatios = ratios;
     });
 
