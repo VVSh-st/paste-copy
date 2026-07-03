@@ -34,6 +34,23 @@ const TextSkeletonizer = (() => {
   let _workerId = 0;
   const WORKER_THRESHOLD = 20000; // используем Worker для текстов >20K
 
+  function _fallbackWorkerCallbacks() {
+    const cbs = [..._workerCallbacks.values()];
+    _workerCallbacks.clear();
+    cbs.forEach(cb => {
+      clearTimeout(cb.timerId);
+      try { cb.resolve(_processSync(cb.text, cb.level)); }
+      catch (err) { cb.reject(err); }
+    });
+  }
+
+  function _resetWorker() {
+    _workerReady = false;
+    _fallbackWorkerCallbacks();
+    try { _worker?.terminate(); } catch {}
+    _worker = null;
+  }
+
   function _initWorker() {
     if (_worker || typeof Worker === 'undefined') return;
     try {
@@ -55,17 +72,7 @@ const TextSkeletonizer = (() => {
           }
         }
       };
-      _worker.onerror = () => {
-        _workerReady = false;
-        _workerCallbacks.forEach(cb => {
-          clearTimeout(cb.timerId);
-          try { cb.resolve(_processSync(cb.text, cb.level)); }
-          catch (err) { cb.reject(err); }
-        });
-        _workerCallbacks.clear();
-        try { _worker.terminate(); } catch {}
-        _worker = null;
-      };
+      _worker.onerror = () => _resetWorker();
       _workerReady = true;
     } catch {
       _worker = null;
@@ -85,6 +92,7 @@ const TextSkeletonizer = (() => {
       const timerId = setTimeout(() => {
         if (_workerCallbacks.has(id)) {
           _workerCallbacks.delete(id);
+          _resetWorker();
           resolve(_processSync(text, level));
         }
       }, 2000);
@@ -94,7 +102,7 @@ const TextSkeletonizer = (() => {
       } catch {
         clearTimeout(timerId);
         _workerCallbacks.delete(id);
-        _workerReady = false;
+        _resetWorker();
         resolve(_processSync(text, level));
       }
     });
@@ -351,10 +359,25 @@ const TextSkeletonizer = (() => {
     return sections;
   }
 
+  const ABBREVIATIONS = new Set([
+    'т.е.', 'т.д.', 'т.п.', 'т.к.', 'т.н.', 'т.о.',
+    'e.g.', 'i.e.', 'mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'inc.', 'vs.',
+  ]);
+
   function _extractFirstSentence(text) {
     const clean = text.replace(/[#*_`>\[\]()]/g, '').trim();
-    const match = clean.match(/^[^.!?]*[.!?](?=\s|$)/);
-    return match ? match[0].trim() : clean.slice(0, 200);
+    for (let i = 0; i < clean.length; i++) {
+      if ('.!?'.includes(clean[i])) {
+        const after = clean[i + 1];
+        if (after !== undefined && after !== ' ' && after !== '\n') continue;
+        const before3 = clean.slice(Math.max(0, i - 3), i + 1).toLowerCase();
+        if (ABBREVIATIONS.has(before3)) continue;
+        if (i > 0 && /\d/.test(clean[i - 1]) && after && /\d/.test(after)) continue;
+        const sentence = clean.slice(0, i + 1).trim();
+        if (sentence) return sentence;
+      }
+    }
+    return clean.slice(0, 200);
   }
 
   function _extractTitle(text) {

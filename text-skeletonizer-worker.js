@@ -73,10 +73,25 @@ function _configForLevel(level) {
   }
 }
 
+const ABBREVIATIONS = new Set([
+  'т.е.', 'т.д.', 'т.п.', 'т.к.', 'т.н.', 'т.о.',
+  'e.g.', 'i.e.', 'mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'inc.', 'vs.',
+]);
+
 function _extractFirstSentence(text) {
   const clean = text.replace(/[#*_`>\[\]()]/g, '').trim();
-  const match = clean.match(/^[^.!?]*[.!?](?=\s|$)/);
-  return match ? match[0].trim() : clean.slice(0, 200);
+  for (let i = 0; i < clean.length; i++) {
+    if ('.!?'.includes(clean[i])) {
+      const after = clean[i + 1];
+      if (after !== undefined && after !== ' ' && after !== '\n') continue;
+      const before3 = clean.slice(Math.max(0, i - 3), i + 1).toLowerCase();
+      if (ABBREVIATIONS.has(before3)) continue;
+      if (i > 0 && /\d/.test(clean[i - 1]) && after && /\d/.test(after)) continue;
+      const sentence = clean.slice(0, i + 1).trim();
+      if (sentence) return sentence;
+    }
+  }
+  return clean.slice(0, 200);
 }
 
 function _extractTitle(text) {
@@ -189,6 +204,15 @@ function _extractLinks(text) {
   return [...links];
 }
 
+function _computeStats(text, sections) {
+  const chars = text.length;
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const paragraphs = text.split(/\n{2,}/).filter(p => p.trim()).length;
+  const headings = sections.length;
+  const kb = (chars / 1024).toFixed(1);
+  return `${kb} KB | ${words} слов | ${paragraphs} абзацев | ${headings} секций`;
+}
+
 function process(text, level) {
   if (!text || !text.trim()) return '';
   const cfg = _configForLevel(level);
@@ -226,11 +250,7 @@ function process(text, level) {
     if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.slice(0, 10).join('\n')}`);
   }
   if (cfg.includeStats) {
-    const chars = text.length;
-    const words = text.split(/\s+/).filter(Boolean).length;
-    const paragraphs = text.split(/\n{2,}/).filter(p => p.trim()).length;
-    const kb = (chars / 1024).toFixed(1);
-    parts.push(`=== СТАТИСТИКА ===\n${kb} KB | ${words} слов | ${paragraphs} абзацев | ${sections.length} секций`);
+    parts.push(`=== СТАТИСТИКА ===\n${_computeStats(text, sections)}`);
   }
   return parts.join('\n');
 }
