@@ -75,7 +75,7 @@ function _configForLevel(level) {
 
 function _extractFirstSentence(text) {
   const clean = text.replace(/[#*_`>\[\]()]/g, '').trim();
-  const match = clean.match(/^[^.!?]*[.!?]\s/);
+  const match = clean.match(/^[^.!?]*[.!?](?=\s|$)/);
   return match ? match[0].trim() : clean.slice(0, 200);
 }
 
@@ -83,7 +83,7 @@ function _extractTitle(text) {
   const lines = text.split('\n');
   let inFence = false;
   for (const line of lines) {
-    if (line.trimStart().startsWith('```')) { inFence = !inFence; continue; }
+    if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; continue; }
     if (inFence) continue;
     const h1 = line.match(/^#\s+(.+)/);
     if (h1) return h1[1].trim().slice(0, 150);
@@ -96,12 +96,15 @@ function _extractSections(text, cfg) {
   const sections = [];
   const lines = text.split('\n');
   let currentSection = null;
+  let inFence = false;
   for (let i = 0; i < lines.length && sections.length < cfg.maxSections; i++) {
     const line = lines[i];
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
+    if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    const headingMatch = line.match(/^ {0,3}(#{1,6})\s+(.+)/);
     if (headingMatch) {
       if (currentSection) sections.push(currentSection);
-      currentSection = { level: headingMatch[1].length, heading: headingMatch[2].trim().slice(0, cfg.maxHeadingLength), preview: '', lines: [] };
+      currentSection = { level: headingMatch[2].length, heading: headingMatch[3].trim().slice(0, cfg.maxHeadingLength), preview: '', lines: [] };
     } else if (currentSection && line.trim()) {
       currentSection.lines.push(line.trim());
       if (!currentSection.preview) {
@@ -122,7 +125,7 @@ function _extractSections(text, cfg) {
 
 function _extractKeyTerms(text, cfg) {
   if (!cfg.maxKeyTerms) return [];
-  const clean = text.replace(/```[\s\S]*?```/g, '').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
+  const clean = text.replace(/^\s*(`{3}|~{3})[\s\S]*?^\s*\1[\s\S]*$/gm, '').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
   const freq = new Map();
   const rawWords = clean.match(/[a-zа-яё0-9-]{4,}/g) || [];
   for (let i = 0; i < rawWords.length; i++) {
@@ -142,7 +145,7 @@ function _extractLists(text) {
   let inFence = false;
   for (let idx = 0; idx < lines.length; idx++) {
     const line = lines[idx];
-    if (line.trimStart().startsWith('```')) { inFence = !inFence; if (currentList && currentList.items.length) { lists.push(currentList); currentList = null; } continue; }
+    if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; if (currentList && currentList.items.length) { lists.push(currentList); currentList = null; } continue; }
     if (inFence) continue;
     const bulletMatch = line.match(/^\s*[-*+]\s+(.+)/);
     const numMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
@@ -170,10 +173,10 @@ function _extractLists(text) {
 
 function _extractCodeBlocks(text) {
   const blocks = [];
-  const regex = /```(\w*)\n([\s\S]*?)```/g;
+  const regex = /(`{3}|~{3})([^\s`]+)[ \t]*\n?([\s\S]*?)\1/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
-    blocks.push({ lang: match[1] || 'code', preview: match[2].trim().split('\n')[0].trim().slice(0, 100) || '(пусто)' });
+    blocks.push({ lang: match[2] || 'code', preview: match[3].trim().split('\n')[0].trim().slice(0, 100) || '(пусто)' });
   }
   return blocks;
 }

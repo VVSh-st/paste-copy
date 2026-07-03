@@ -52,6 +52,8 @@ const TextSkeletonizer = (() => {
         _workerReady = false;
         _workerCallbacks.forEach(cb => { clearTimeout(cb.timerId); cb.reject(new Error('worker error')); });
         _workerCallbacks.clear();
+        try { _worker.terminate(); } catch {}
+        _worker = null;
       };
       _workerReady = true;
     } catch {
@@ -62,8 +64,11 @@ const TextSkeletonizer = (() => {
   function _processViaWorker(text, level) {
     return new Promise((resolve, reject) => {
       if (!_worker || !_workerReady) {
-        resolve(_processSync(text, level));
-        return;
+        _initWorker();
+        if (!_worker || !_workerReady) {
+          resolve(_processSync(text, level));
+          return;
+        }
       }
       const id = ++_workerId;
       const timerId = setTimeout(() => {
@@ -73,7 +78,14 @@ const TextSkeletonizer = (() => {
         }
       }, 2000);
       _workerCallbacks.set(id, { resolve, reject, timerId });
-      _worker.postMessage({ text, level, id });
+      try {
+        _worker.postMessage({ text, level, id });
+      } catch {
+        clearTimeout(timerId);
+        _workerCallbacks.delete(id);
+        _workerReady = false;
+        resolve(_processSync(text, level));
+      }
     });
   }
 
@@ -266,15 +278,18 @@ const TextSkeletonizer = (() => {
     const sections = [];
     const lines = text.split('\n');
     let currentSection = null;
+    let inFence = false;
 
     for (let i = 0; i < lines.length && sections.length < cfg.maxSections; i++) {
       const line = lines[i];
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
+      if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; continue; }
+      if (inFence) continue;
+      const headingMatch = line.match(/^ {0,3}(#{1,6})\s+(.+)/);
 
       if (headingMatch) {
         if (currentSection) sections.push(currentSection);
-        const level = headingMatch[1].length;
-        const heading = headingMatch[2].trim().slice(0, cfg.maxHeadingLength);
+        const level = headingMatch[2].length;
+        const heading = headingMatch[3].trim().slice(0, cfg.maxHeadingLength);
         currentSection = { level, heading, preview: '', lines: [] };
       } else if (currentSection && line.trim()) {
         currentSection.lines.push(line.trim());
@@ -305,7 +320,7 @@ const TextSkeletonizer = (() => {
 
   function _extractFirstSentence(text) {
     const clean = text.replace(/[#*_`>\[\]()]/g, '').trim();
-    const match = clean.match(/^[^.!?]*[.!?]\s/);
+    const match = clean.match(/^[^.!?]*[.!?](?=\s|$)/);
     return match ? match[0].trim() : clean.slice(0, 200);
   }
 
@@ -313,7 +328,7 @@ const TextSkeletonizer = (() => {
     const lines = text.split('\n');
     let inFence = false;
     for (const line of lines) {
-      if (line.trimStart().startsWith('```')) { inFence = !inFence; continue; }
+      if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; continue; }
       if (inFence) continue;
       const h1 = line.match(/^#\s+(.+)/);
       if (h1) return h1[1].trim().slice(0, 150);
@@ -328,7 +343,7 @@ const TextSkeletonizer = (() => {
     if (!cfg.maxKeyTerms) return [];
 
     const clean = text
-      .replace(/```[\s\S]*?```/g, '')
+      .replace(/^\s*(`{3}|~{3})[\s\S]*?^\s*\1[\s\S]*$/gm, '')
       .replace(/#{1,6}\s/g, '')
       .replace(/[*_`>\[\]()]/g, '')
       .toLowerCase();
@@ -364,7 +379,7 @@ const TextSkeletonizer = (() => {
 
     for (let idx = 0; idx < lines.length; idx++) {
       const line = lines[idx];
-      if (line.trimStart().startsWith('```')) { inFence = !inFence; if (currentList && currentList.items.length) { lists.push(currentList); currentList = null; } continue; }
+      if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; if (currentList && currentList.items.length) { lists.push(currentList); currentList = null; } continue; }
       if (inFence) continue;
       const bulletMatch = line.match(/^\s*[-*+]\s+(.+)/);
       const numMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
@@ -396,11 +411,11 @@ const TextSkeletonizer = (() => {
 
   function _extractCodeBlocks(text) {
     const blocks = [];
-    const regex = /```(\w*)\n([\s\S]*?)```/g;
+    const regex = /(`{3}|~{3})([^\s`]+)[ \t]*\n?([\s\S]*?)\1/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
-      const lang = match[1] || 'code';
-      const code = match[2].trim();
+      const lang = match[2] || 'code';
+      const code = match[3].trim();
       const firstLine = code.split('\n')[0].trim().slice(0, 100);
       blocks.push({ lang, preview: firstLine || '(пусто)' });
     }
