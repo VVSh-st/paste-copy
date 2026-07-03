@@ -277,6 +277,18 @@ const State = (() => {
     return block;
   }
 
+  // [FIX] Выносим общую логику миграции subtabs для todo/table
+  function _migrateSubtabs(block, defaultItemFactory) {
+    if (!block.subtabs) {
+      block.activeSubtab = 0;
+      block.subtabs = Array.from({ length: 5 }, (_, i) => defaultItemFactory(i));
+    }
+    while (block.subtabs.length > 5) block.subtabs.pop();
+    while (block.subtabs.length < 5) block.subtabs.push(defaultItemFactory(block.subtabs.length));
+    if (block.activeSubtab === undefined) block.activeSubtab = 0;
+    if (block.activeSubtab >= 5) block.activeSubtab = 0;
+  }
+
   function migrate(blocks) {
     return (blocks || []).map(b => {
       if (!b.type) b.type = 'text';
@@ -313,34 +325,15 @@ const State = (() => {
       }
 
       if (b.type === 'todo') {
-        if (!b.subtabs) {
-          b.activeSubtab = 0;
-          b.subtabs = Array.from({ length: 5 }, (_, i) => ({
-            label: String(i + 1), name: '', items: [],
-          }));
-        }
-        while (b.subtabs.length > 5) b.subtabs.pop();
-        while (b.subtabs.length < 5) b.subtabs.push({ label: String(b.subtabs.length + 1), name: '', items: [] });
-        if (b.activeSubtab === undefined) b.activeSubtab = 0;
-        if (b.activeSubtab >= 5) b.activeSubtab = 0;
+        _migrateSubtabs(b, i => ({ label: String(i + 1), name: '', items: [] }));
       }
 
       if (b.type === 'table') {
-        if (!b.subtabs) {
-          b.activeSubtab = 0;
-          b.subtabs = Array.from({ length: 5 }, (_, i) => ({
-            label: String(i + 1), name: '', cols: 2,
-            rows: [['', ''], ['', '']],
-          }));
-        }
-        while (b.subtabs.length > 5) b.subtabs.pop();
-        while (b.subtabs.length < 5) b.subtabs.push({ label: String(b.subtabs.length + 1), name: '', cols: 2, rows: [['', ''], ['', '']] });
+        _migrateSubtabs(b, i => ({ label: String(i + 1), name: '', cols: 2, rows: [['', ''], ['', '']] }));
         for (const sub of b.subtabs) {
           if (!sub.rows) sub.rows = [['', ''], ['', '']];
           if (!sub.cols) sub.cols = Math.max(1, Math.min(4, sub.rows[0]?.length || 2));
         }
-        if (b.activeSubtab === undefined) b.activeSubtab = 0;
-        if (b.activeSubtab >= 5) b.activeSubtab = 0;
       }
 
       return b;
@@ -541,6 +534,8 @@ const State = (() => {
     if (!tab) return;
     const block = findBlock(tab.blocks, blockId);
     if (!block) return;
+    // [FIX] История блоков поддерживается только для блоков с subtabs (text/todo)
+    if (!block.subtabs) return;
     const snap = JSON.stringify(block.subtabs);
     const bh   = _bh(blockId);
     bh.snaps = bh.snaps.slice(0, bh.idx + 1);
@@ -570,7 +565,10 @@ const State = (() => {
     }
     if (bh.idx <= 0) return;
     bh.idx--;
-    block.subtabs = JSON.parse(bh.snaps[bh.idx]);
+    // [FIX] Защита от undefined snap — предотвращает JSON.parse крэш
+    const snap = bh.snaps[bh.idx];
+    if (!snap) return;
+    block.subtabs = JSON.parse(snap);
     emitLive();
   }
 
@@ -825,8 +823,7 @@ const State = (() => {
   }
 
   function replaceAll(query, replacement, options = {}) {
-    const t = getActive();
-    if (!t || !query) return 0;
+    if (!query) return 0;
     const flags = options.caseSensitive ? 'g' : 'gi';
     const re    = makeSearchRe(query, options, flags);
     if (!re) return 0;
@@ -863,8 +860,13 @@ const State = (() => {
       }
     }
 
-    replaceBlocks(t.blocks);
-    if (count) { snapshot(t); emit(); }
+    // [FIX] Поддержка allTabs — замена по всем вкладкам, как в searchAll
+    const tabsToReplace = options.allTabs ? tabs : [getActive()].filter(Boolean);
+    for (const t of tabsToReplace) {
+      replaceBlocks(t.blocks);
+      if (count) snapshot(t);
+    }
+    if (count) emit();
     return count;
   }
 
