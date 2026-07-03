@@ -2755,6 +2755,14 @@ const Ember = (() => {
       return;
     }
     lastFrame = timestamp;
+
+    // Idle throttle: when intensity is near zero and no particles active, slow to ~2fps
+    const idleNow = intensity < 0.01 && particles.length === 0;
+    if (idleNow) {
+      rafId = requestAnimationFrame(animate);
+      if (dt < 400) return; // skip frame if <400ms since last
+    }
+
     if (reduceMotion) {
       reduceMotionFrameSkip++;
       if (reduceMotionFrameSkip % 6 !== 0) { rafId = requestAnimationFrame(animate); return; }
