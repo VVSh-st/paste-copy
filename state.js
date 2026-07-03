@@ -279,14 +279,18 @@ const State = (() => {
 
   // [FIX] Выносим общую логику миграции subtabs для todo/table
   function _migrateSubtabs(block, defaultItemFactory) {
-    if (!block.subtabs) {
+    // [FIX] Проверяем что subtabs — массив, а не строка/объект
+    if (!Array.isArray(block.subtabs)) {
       block.activeSubtab = 0;
       block.subtabs = Array.from({ length: 5 }, (_, i) => defaultItemFactory(i));
     }
     while (block.subtabs.length > 5) block.subtabs.pop();
     while (block.subtabs.length < 5) block.subtabs.push(defaultItemFactory(block.subtabs.length));
-    if (block.activeSubtab === undefined) block.activeSubtab = 0;
-    if (block.activeSubtab >= 5) block.activeSubtab = 0;
+    if (
+      !Number.isInteger(block.activeSubtab) ||
+      block.activeSubtab < 0 ||
+      block.activeSubtab >= 5
+    ) block.activeSubtab = 0;
   }
 
   function migrate(blocks) {
@@ -295,11 +299,20 @@ const State = (() => {
       if (!b.icon) b.icon = randomIcon();
 
       if (b.type === 'text') {
-        if (!b.subtabs)                   b.subtabs      = Array.from({ length: SUBTABS_COUNT }, (_, i) => ({ label: String(i + 1), value: '' }));
-        if (b.activeSubtab === undefined) b.activeSubtab = 0;
+        if (!Array.isArray(b.subtabs)) b.subtabs = Array.from({ length: SUBTABS_COUNT }, (_, i) => ({ label: String(i + 1), value: '' }));
+        // [FIX] Безопасная маппинг subtabs — защищает от повреждённых данных
+        b.subtabs = b.subtabs.map((st, i) => ({
+          label: String(st?.label ?? i + 1),
+          value: String(st?.value ?? ''),
+        }));
         // Ensure subtabs array is not shorter than SUBTABS_COUNT (schema upgrade)
         while (b.subtabs.length < SUBTABS_COUNT)
           b.subtabs.push({ label: String(b.subtabs.length + 1), value: '' });
+        if (
+          !Number.isInteger(b.activeSubtab) ||
+          b.activeSubtab < 0 ||
+          b.activeSubtab >= b.subtabs.length
+        ) b.activeSubtab = 0;
         if (!b.fontSize)            b.fontSize = 12;
         if (b.height === undefined) b.height   = null;
       }
@@ -449,9 +462,22 @@ const State = (() => {
     return null;
   }
 
+  // [FIX] Очистка per-block history при удалении — предотвращает утечку памяти
+  function _dropBlockHistory(block) {
+    if (!block) return;
+    _blockHistory.delete(block.id);
+    if (block.type === 'group' && Array.isArray(block.children)) {
+      block.children.forEach(_dropBlockHistory);
+    }
+  }
+
   function removeBlock(blocks, id) {
     for (let i = 0; i < blocks.length; i++) {
-      if (blocks[i].id === id) { blocks.splice(i, 1); return true; }
+      if (blocks[i].id === id) {
+        _dropBlockHistory(blocks[i]);
+        blocks.splice(i, 1);
+        return true;
+      }
       if (blocks[i].type === 'group' && blocks[i].children) {
         if (removeBlock(blocks[i].children, id)) return true;
       }
@@ -463,7 +489,13 @@ const State = (() => {
 
   const getActive = () => tabs.find(t => t.id === activeTabId) ?? null;
   const getAll    = () => tabs;
-  const setActive = id => { activeTabId = id; emit(); };
+  // [FIX] Проверяем что вкладка существует — предотвращает невалидное состояние
+  const setActive = id => {
+    if (id === activeTabId) return;
+    if (!tabs.some(t => t.id === id)) return;
+    activeTabId = id;
+    emit();
+  };
 
   /* ── history ── */
 
@@ -496,24 +528,39 @@ const State = (() => {
   }
 
   function applySnap(t, snap) {
-    const data  = JSON.parse(snap);
-    t.blocks    = data.blocks;
-    t.separator = data.separator ?? '\n\n';
+    // [FIX] Защита от битых snapshots — предотвращает крэш
+    try {
+      const data  = JSON.parse(snap);
+      t.blocks    = migrate(Array.isArray(data.blocks) ? data.blocks : []);
+      t.separator = data.separator ?? '\n\n';
+      return true;
+    } catch (err) {
+      console.error('[State.applySnap] Failed to apply snapshot.', err);
+      return false;
+    }
   }
 
   function undo() {
     const t = getActive();
     if (!t || t.historyIdx <= 0) return;
+    const prevIdx = t.historyIdx;
     t.historyIdx--;
-    applySnap(t, t.history[t.historyIdx]);
+    if (!applySnap(t, t.history[t.historyIdx])) {
+      t.historyIdx = prevIdx;
+      return;
+    }
     emit();
   }
 
   function redo() {
     const t = getActive();
     if (!t || t.historyIdx >= t.history.length - 1) return;
+    const prevIdx = t.historyIdx;
     t.historyIdx++;
-    applySnap(t, t.history[t.historyIdx]);
+    if (!applySnap(t, t.history[t.historyIdx])) {
+      t.historyIdx = prevIdx;
+      return;
+    }
     emit();
   }
 
@@ -523,6 +570,18 @@ const State = (() => {
   /* ── per-block history ── */
 
   const _blockHistory = new Map();
+
+  // [FIX] Полный сброс runtime-состояния — предотвращает утечку при повторной загрузке
+  function _resetInMemoryState() {
+    for (const timer of snapTimers.values()) clearTimeout(timer);
+    snapTimers.clear();
+    _blockHistory.clear();
+    tabs              = [];
+    activeTabId       = null;
+    defaultTemplateId = null;
+    globalSnippets    = [];
+    layout            = _cloneDeep(DEFAULT_LAYOUT);
+  }
 
   function _bh(blockId) {
     if (!_blockHistory.has(blockId)) _blockHistory.set(blockId, { snaps: [], idx: -1 });
@@ -550,7 +609,8 @@ const State = (() => {
     const tab = getActive();
     if (!tab) return;
     const block = findBlock(tab.blocks, blockId);
-    if (!block) return;
+    // [FIX] Проверяем subtabs — история блоков только для text/todo
+    if (!block || !block.subtabs) return;
     const bh = _bh(blockId);
     if (bh.idx === -1) { blockSnapshot(blockId); }
     // Если стоим на последнем снапе — проверяем, не ушёл ли текст вперёд (несохранённые изменения)
@@ -576,16 +636,26 @@ const State = (() => {
     const tab = getActive();
     if (!tab) return;
     const block = findBlock(tab.blocks, blockId);
-    if (!block) return;
+    // [FIX] Проверяем subtabs — история блоков только для text/todo
+    if (!block || !block.subtabs) return;
     const bh = _bh(blockId);
     if (bh.idx >= bh.snaps.length - 1) return;
     bh.idx++;
-    block.subtabs = JSON.parse(bh.snaps[bh.idx]);
+    const snap = bh.snaps[bh.idx];
+    if (!snap) return;
+    block.subtabs = JSON.parse(snap);
     emitLive();
   }
 
-  const canBlockUndo = blockId => { const bh = _bh(blockId); return bh.idx > 0; };
-  const canBlockRedo = blockId => { const bh = _bh(blockId); return bh.idx < bh.snaps.length - 1; };
+  // [FIX] Только чтение — не создаём записи в _blockHistory для несуществующих блоков
+  const canBlockUndo = blockId => {
+    const bh = _blockHistory.get(blockId);
+    return !!bh && bh.idx > 0;
+  };
+  const canBlockRedo = blockId => {
+    const bh = _blockHistory.get(blockId);
+    return !!bh && bh.idx < bh.snaps.length - 1;
+  };
 
   /* ── named snapshots ── */
 
@@ -608,7 +678,7 @@ const State = (() => {
     if (!t?.namedSnapshots) return;
     const snap = t.namedSnapshots.find(s => s.id === snapId);
     if (!snap) return;
-    applySnap(t, snap.data);
+    if (!applySnap(t, snap.data)) return;
     snapshot(t);
     emit();
   }
@@ -645,15 +715,25 @@ const State = (() => {
   const setDefaultTemplateId = id => { defaultTemplateId = id; };
 
   const getLayout = ()    => layout;
-  const setLayout = patch => Object.assign(layout, patch);
+  // [FIX] Deep merge вместо shallow assign — предотвращает потерю вложенных настроек
+  const setLayout = patch => {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return;
+    layout = deepMerge(layout, patch);
+  };
 
   /* ── persistence ── */
 
   function load(data) {
     // Guard: corrupt / empty save → fresh start
-    if (!data?.tabs?.length) { newTab(); return; }
+    if (!data?.tabs?.length) {
+      _resetInMemoryState();
+      newTab();
+      return;
+    }
 
     try {
+      _resetInMemoryState();
+
       tabs = data.tabs.map(t => ({
         id:             t.id || uid(),
         name:           t.name || 'Project',
@@ -677,7 +757,7 @@ const State = (() => {
 
       layout = data.layout ? deepMerge(DEFAULT_LAYOUT, data.layout) : _cloneDeep(DEFAULT_LAYOUT);
 
-      if (data.defaultTemplateId) defaultTemplateId = data.defaultTemplateId;
+      defaultTemplateId = data.defaultTemplateId || null;
       const savedGlobalSnippets = Array.isArray(data.globalSnippets)
         ? data.globalSnippets
         : (data.layout?.globalSnippets && Array.isArray(data.layout.globalSnippets.items) ? data.layout.globalSnippets.items : []);
@@ -696,8 +776,7 @@ const State = (() => {
     } catch (err) {
       // Corrupt data — reset to clean state rather than crashing
       console.error('[State.load] Failed to restore saved state, starting fresh.', err);
-      tabs = [];
-      layout = _cloneDeep(DEFAULT_LAYOUT);
+      _resetInMemoryState();
       newTab();
       return;
     }
@@ -705,7 +784,20 @@ const State = (() => {
     emit();
   }
 
+  // [FIX] Выносим общую сериализацию global snippets — устраняет дублирование
+  function _serializeGlobalSnippets() {
+    return globalSnippets.map(item => ({
+      id: item.id,
+      title: item.title,
+      value: item.value,
+      global: true,
+      createdAt: item.createdAt || 0,
+      meta: item.meta || {},
+    }));
+  }
+
   function serialize() {
+    const serializedGlobalSnippets = _serializeGlobalSnippets();
     return {
       version: 5,
       defaultTemplateId,
@@ -723,24 +815,10 @@ const State = (() => {
         globalSnippets: {
           schemaVersion: 1,
           updatedAt: Date.now(),
-          items: globalSnippets.map(item => ({
-            id: item.id,
-            title: item.title,
-            value: item.value,
-            global: true,
-            createdAt: item.createdAt || 0,
-            meta: item.meta || {},
-          })),
+          items: serializedGlobalSnippets,
         },
       },
-      globalSnippets: globalSnippets.map(item => ({
-        id: item.id,
-        title: item.title,
-        value: item.value,
-        global: true,
-        createdAt: item.createdAt || 0,
-        meta: item.meta || {},
-      })),
+      globalSnippets: serializedGlobalSnippets,
     };
   }
 
@@ -863,8 +941,9 @@ const State = (() => {
     // [FIX] Поддержка allTabs — замена по всем вкладкам, как в searchAll
     const tabsToReplace = options.allTabs ? tabs : [getActive()].filter(Boolean);
     for (const t of tabsToReplace) {
+      const beforeCount = count;
       replaceBlocks(t.blocks);
-      if (count) snapshot(t);
+      if (count > beforeCount) snapshot(t);
     }
     if (count) emit();
     return count;
