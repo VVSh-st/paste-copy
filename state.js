@@ -333,7 +333,7 @@ const State = (() => {
         if (b.height === undefined) b.height   = null;
       }
 
-      if ((b.type === 'snippets' || b.type === 'commands') && !b.items) {
+      if ((b.type === 'snippets' || b.type === 'commands') && !Array.isArray(b.items)) {
         b.items = b.type === 'snippets' ? defaultSnippets() : defaultCommands();
       }
       if (b.type === 'snippets' && b.showTitles === undefined) b.showTitles = true;
@@ -400,13 +400,13 @@ const State = (() => {
 
   const emit     = () => listeners.forEach(l => _safeListenerCall(l, 'onChange'));
   const emitLive = () => liveListeners.forEach(l => _safeListenerCall(l, 'onLive'));
-  const onChange = fn => listeners.push(fn);
-  const onLive   = fn => liveListeners.push(fn);
+  const onChange = fn => { if (typeof fn !== 'function') return; listeners.push(fn); };
+  const onLive   = fn => { if (typeof fn !== 'function') return; liveListeners.push(fn); };
 
   /* Легковесный автобус — срабатывает когда история реально изменилась (без re-render блоков) */
   const _snapListeners = [];
   const _snapEmit = () => _snapListeners.forEach(l => _safeListenerCall(l, 'onSnapshot'));
-  const onSnapshot = fn => _snapListeners.push(fn);
+  const onSnapshot = fn => { if (typeof fn !== 'function') return; _snapListeners.push(fn); };
 
   /* ── tab management ── */
 
@@ -598,6 +598,8 @@ const State = (() => {
       t.historyIdx = prevIdx;
       return;
     }
+    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
+    _snapEmit();
     emit();
   }
 
@@ -610,6 +612,8 @@ const State = (() => {
       t.historyIdx = prevIdx;
       return;
     }
+    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
+    _snapEmit();
     emit();
   }
 
@@ -710,6 +714,27 @@ const State = (() => {
     const parsed = _parseBlockSubtabsSnap(snap);
     if (!parsed) return;
     block.subtabs = parsed;
+    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
+    _snapEmit();
+    emitLive();
+  }
+
+  function blockRedo(blockId) {
+    const tab = getActive();
+    if (!tab) return;
+    const block = findBlock(tab.blocks, blockId);
+    // Проверяем subtabs — история блоков только для типов с subtabs
+    if (!block || !block.subtabs) return;
+    const bh = _bh(blockId);
+    if (bh.idx >= bh.snaps.length - 1) return;
+    bh.idx++;
+    const snap = bh.snaps[bh.idx];
+    if (!snap) return;
+    const parsed = _parseBlockSubtabsSnap(snap);
+    if (!parsed) return;
+    block.subtabs = parsed;
+    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
+    _snapEmit();
     emitLive();
   }
 
@@ -814,10 +839,13 @@ const State = (() => {
   };
 
   const getLayout = ()    => layout;
-  // [FIX] Deep merge вместо shallow assign — предотвращает потерю вложенных настроек
+  // [FIX] Deep merge + emit — предотвращает потерю вложенных настроек
   const setLayout = patch => {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return;
+    const before = JSON.stringify(layout);
     layout = deepMerge(layout, patch);
+    // [FIX] Вызываем emit() — persistence теряет изменение без него
+    if (JSON.stringify(layout) !== before) emit();
   };
 
   /* ── persistence ── */
@@ -837,8 +865,19 @@ const State = (() => {
       const sourceTabs = data.tabs.filter(t => t && typeof t === 'object' && !Array.isArray(t));
       if (!sourceTabs.length) throw new Error('No valid tabs in saved state');
 
+      // [FIX] Дедупликация tab ID — предотвращает неоднозначные операции
+      const usedTabIds = new Set();
+      const normalizeTabId = id => {
+        const raw = String(id || '').trim();
+        if (raw && !usedTabIds.has(raw)) { usedTabIds.add(raw); return raw; }
+        let next;
+        do { next = uid(); } while (usedTabIds.has(next));
+        usedTabIds.add(next);
+        return next;
+      };
+
       tabs = sourceTabs.map(t => ({
-        id:             t.id || uid(),
+        id:             normalizeTabId(t.id),
         name:           t.name || 'Project',
         separator:      t.separator ?? '\n\n',
         blocks:         migrate(Array.isArray(t.blocks) ? t.blocks : []),
