@@ -257,6 +257,12 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - **TextSkeletonizer fence length** — nested fences разной длины
 - **TextSkeletonizer мёртвый API** — `shouldCompress()` не используется
 
+### Column resize + independent scroll fix (2026-07-03)
+
+1. ✅ **Resizer drag** — `applyLayout(ratios)` принимает параметр, не вызывает `State.setLayout()` в mousemove → нет `fullRender()` → ресайзеры живут → drag плавный. State коммитится на mouseUp.
+2. ✅ **Independent column scrolling** — `.column { overflow-y: auto }`, `#workspace { overflow: hidden }`. Каждая колонка скроллится отдельно.
+3. ✅ **Scrollbar off by default** — `#workspace { scrollbar-width: none }`. `.col-scrollbar` toggle возвращает.
+
 ## Ранее выполнено (архив)
 
 - Prompt Loom Ultra Light, LLM MiniChat, Groom меню, Python Embedded, структура превью, якоря, подсказки с навигацией, Sticky/TODO/Table, Уголёк (Ember), переводчик, мульти-колонки 2-5, drag-and-drop вкладок
