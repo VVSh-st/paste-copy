@@ -188,7 +188,7 @@ const State = (() => {
       enabled: false,
       global: true,
       createdAt: Date.now(),
-      meta: meta || {},
+      meta: meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {},
     };
     globalSnippets.unshift(item);
     emit();
@@ -210,11 +210,12 @@ const State = (() => {
     const seen = new Set(globalSnippets.map(item => normalizeSnippetValue(item.value)));
     let changed = false;
     for (const raw of Array.isArray(items) ? items : []) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
       const clean = normalizeSnippetValue(raw?.value);
       if (!clean || seen.has(clean)) continue;
       seen.add(clean);
       globalSnippets.push({
-        id: raw.id || uid(),
+        id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : uid(),
         title: String(raw.title || '').trim() || clean.slice(0, 40),
         value: clean,
         enabled: false,
@@ -581,7 +582,7 @@ const State = (() => {
     try {
       const data  = JSON.parse(snap);
       t.blocks    = migrate(Array.isArray(data.blocks) ? data.blocks : []);
-      t.separator = data.separator ?? '\n\n';
+      t.separator = typeof data.separator === 'string' ? data.separator : '\n\n';
       return true;
     } catch (err) {
       console.error('[State.applySnap] Failed to apply snapshot.', err);
@@ -738,23 +739,6 @@ const State = (() => {
     emitLive();
   }
 
-  function blockRedo(blockId) {
-    const tab = getActive();
-    if (!tab) return;
-    const block = findBlock(tab.blocks, blockId);
-    // [FIX] Проверяем subtabs — история блоков только для типов с subtabs
-    if (!block || !block.subtabs) return;
-    const bh = _bh(blockId);
-    if (bh.idx >= bh.snaps.length - 1) return;
-    bh.idx++;
-    const snap = bh.snaps[bh.idx];
-    if (!snap) return;
-    const parsed = _parseBlockSubtabsSnap(snap);
-    if (!parsed) return;
-    block.subtabs = parsed;
-    emitLive();
-  }
-
   // [FIX] Только чтение — не создаём записи в _blockHistory для несуществующих блоков
   const canBlockUndo = blockId => {
     const bh = _blockHistory.get(blockId);
@@ -842,9 +826,15 @@ const State = (() => {
   // [FIX] Deep merge + emit — предотвращает потерю вложенных настроек
   const setLayout = patch => {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return;
+    // [FIX] Быстрый shallow-check — избегаем deepMerge для одинаковых значений
+    let shallowSame = true;
+    for (const key of Object.keys(patch)) {
+      if (UNSAFE_MERGE_KEYS.has(key)) continue;
+      if (layout[key] !== patch[key]) { shallowSame = false; break; }
+    }
+    if (shallowSame) return;
     const before = JSON.stringify(layout);
     layout = deepMerge(layout, patch);
-    // [FIX] Вызываем emit() — persistence теряет изменение без него
     if (JSON.stringify(layout) !== before) emit();
   };
 
@@ -878,19 +868,40 @@ const State = (() => {
 
       tabs = sourceTabs.map(t => ({
         id:             normalizeTabId(t.id),
-        name:           t.name || 'Project',
+        name:           typeof t.name === 'string' && t.name.trim() ? t.name : 'Project',
         separator:      t.separator ?? '\n\n',
         blocks:         migrate(Array.isArray(t.blocks) ? t.blocks : []),
         history:        [],
         historyIdx:     -1,
-        namedSnapshots: Array.isArray(t.namedSnapshots) ? t.namedSnapshots : [],
-        anchors:        Array.isArray(t.anchors) ? t.anchors : [],
+        // [FIX] Нормализуем namedSnapshots — фильтруем невалидные элементы
+        namedSnapshots: Array.isArray(t.namedSnapshots)
+          ? t.namedSnapshots
+              .filter(s => s && typeof s === 'object' && !Array.isArray(s) && typeof s.data === 'string')
+              .map(s => ({
+                id:   s.id || uid(),
+                name: String(s.name || ''),
+                date: Number.isFinite(Number(s.date)) ? Number(s.date) : Date.now(),
+                data: s.data,
+              }))
+              .slice(0, 30)
+          : [],
+        // [FIX] Нормализуем anchors — фильтруем невалидные элементы
+        anchors:        Array.isArray(t.anchors)
+          ? t.anchors.filter(a => a && typeof a === 'object' && !Array.isArray(a))
+          : [],
       }));
 
       tabs.forEach(t => {
-        const snap = JSON.stringify({ blocks: t.blocks, separator: t.separator });
-        t.history    = [snap];
-        t.historyIdx = 0;
+        // [FIX] Защита от JSON.stringify крэша — один повреждённый блок не ломает все
+        try {
+          const snap = JSON.stringify({ blocks: t.blocks, separator: t.separator });
+          t.history    = [snap];
+          t.historyIdx = 0;
+        } catch (err) {
+          console.error('[State.load] Failed to create initial history snapshot.', err);
+          t.history    = [];
+          t.historyIdx = -1;
+        }
       });
 
       activeTabId = (data.activeTabId && tabs.find(t => t.id === data.activeTabId))
@@ -904,16 +915,23 @@ const State = (() => {
       const savedGlobalSnippets = Array.isArray(data.globalSnippets)
         ? data.globalSnippets
         : (data.layout?.globalSnippets && Array.isArray(data.layout.globalSnippets.items) ? data.layout.globalSnippets.items : []);
+      // [FIX] Нормализуем globalSnippets — фильтруем невалидные элементы
       globalSnippets = Array.isArray(savedGlobalSnippets)
-        ? savedGlobalSnippets.map(item => ({
-            id: item.id || uid(),
-            title: item.title || normalizeSnippetValue(item.value).slice(0, 40),
-            value: normalizeSnippetValue(item.value),
-            enabled: false,
-            global: true,
-            createdAt: item.createdAt || Date.now(),
-            meta: item.meta || {},
-          })).filter(item => item.value)
+        ? savedGlobalSnippets
+            .filter(item => item && typeof item === 'object' && !Array.isArray(item))
+            .map(item => {
+              const value = normalizeSnippetValue(item.value);
+              return {
+                id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : uid(),
+                title: String(item.title || '').trim() || value.slice(0, 40),
+                value,
+                enabled: false,
+                global: true,
+                createdAt: Number.isFinite(Number(item.createdAt)) ? Number(item.createdAt) : Date.now(),
+                meta: item.meta && typeof item.meta === 'object' && !Array.isArray(item.meta) ? item.meta : {},
+              };
+            })
+            .filter(item => item.value)
         : [];
 
     } catch (err) {
@@ -986,7 +1004,7 @@ const State = (() => {
       matches.push({ index: m.index, length: m[0].length, match: m[0] });
       // [FIX] Лимит совпадений — предотвращает зависание UI на широких regex
       if (matches.length >= MAX_MATCHES_PER_VALUE) break;
-      // =защита поиска=
+      // Защита от zero-length matches
       if (m[0].length === 0) {
         re.lastIndex = m.index + 1;
         if (re.lastIndex > val.length) break;
@@ -1048,6 +1066,7 @@ const State = (() => {
 
   function replaceAll(query, replacement, options = {}) {
     if (!query) return 0;
+    replacement = String(replacement ?? '');
     const flags = options.caseSensitive ? 'g' : 'gi';
     const re    = makeSearchRe(query, options, flags);
     if (!re) return 0;
@@ -1063,9 +1082,11 @@ const State = (() => {
             re.lastIndex = 0;
             const hits = before.match(re);
             if (!hits) continue;
+            // [FIX] Пропускаем no-op замены — не увеличиваем count
+            const next = before.replace(re, replacement);
+            if (next === before) continue;
             count += hits.length;
-            re.lastIndex = 0;
-            st.value = before.replace(re, replacement);
+            st.value = next;
           }
         } else if (b.type === 'snippets') {
           for (const item of (b.items || [])) {
@@ -1074,9 +1095,11 @@ const State = (() => {
             re.lastIndex = 0;
             const hits = before.match(re);
             if (!hits) continue;
+            // [FIX] Пропускаем no-op замены — не увеличиваем count
+            const next = before.replace(re, replacement);
+            if (next === before) continue;
             count      += hits.length;
-            re.lastIndex = 0;
-            item.value   = before.replace(re, replacement);
+            item.value   = next;
           }
         } else if (b.type === 'group' && b.children) {
           replaceBlocks(b.children);
@@ -1098,7 +1121,7 @@ const State = (() => {
   /* ── snippet/command picker ── */
 
   function getAllSnippetsAndCommands() {
-    // Улучшение 5: собираем со ВСЕХ вкладок, дедупликация по value.
+    // Собираем со всех вкладок, дедупликация по value.
     // Глобальные сниппеты идут первыми: они сохраняются в общий Gist и доступны между проектами.
     const seen  = new Set();
     const items = [];
