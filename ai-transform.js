@@ -111,6 +111,10 @@ window.AiTransform = (() => {
       if (rect.top < 10) popup.style.top = (y + 10) + 'px';
       if (rect.right > window.innerWidth - 10) popup.style.left = (window.innerWidth - rect.width - 10) + 'px';
       if (rect.left < 10) popup.style.left = '10px';
+      const nextRect = popup.getBoundingClientRect();
+      if (nextRect.bottom > window.innerHeight - 10) {
+        popup.style.top = Math.max(10, window.innerHeight - nextRect.height - 10) + 'px';
+      }
     });
 
     const input = popup.querySelector('#ai-transform-input');
@@ -185,7 +189,10 @@ window.AiTransform = (() => {
 
   // ── Запрос к LLM ─────────────────────────────────────────
   async function _runTransform(instruction) {
-    if (_isRunning) return;
+    if (_isRunning) {
+      window.Toast?.show('Запрос уже выполняется', 'error');
+      return;
+    }
     if (!instruction?.trim()) {
       window.Toast?.show('Введите инструкцию', 'error');
       return;
@@ -239,14 +246,16 @@ window.AiTransform = (() => {
         if (_diffPanel && !_diffPanel.contains(e.target)) {
           e.preventDefault();
           e.stopPropagation();
-          hidePopup(true);
+          hidePopup(false);
         }
       };
       setTimeout(() => document.addEventListener('contextmenu', _onContextMenu, true), 0);
 
     } catch (e) {
       if (requestId !== _requestSeq || !_ta) return;
-      if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
+      const errName = e && typeof e === 'object' ? e.name : '';
+      const errMessage = e instanceof Error ? e.message : String(e || 'Ошибка LLM-запроса');
+      if (errName !== 'AbortError') window.Toast?.show(errMessage, 'error');
       if (input) { input.disabled = false; input.placeholder = 'Новый запрос...'; }
       if (sendBtn) sendBtn.style.display = '';
     } finally {
@@ -272,9 +281,10 @@ window.AiTransform = (() => {
     if (!_ta) return;
 
     const lay = _State?.getLayout?.();
-    const savedSize = lay?.llm?.diffFontSize || 12;
-    const origWords = origText.split(/(\s+)/);
-    const sugWords = sugText.split(/(\s+)/);
+    const rawSize = Number(lay?.llm?.diffFontSize);
+    const savedSize = Number.isFinite(rawSize) ? Math.max(8, Math.min(32, rawSize)) : 12;
+    const origWords = origText.split(/(\s+)/).filter(Boolean);
+    const sugWords = sugText.split(/(\s+)/).filter(Boolean);
     const isLarge = _isLargeChange(origText.length, sugText.length, origWords.length, sugWords.length);
 
     let diffHtml;
@@ -308,11 +318,10 @@ window.AiTransform = (() => {
     _diffPanel.addEventListener('click', e => e.stopPropagation());
 
     _diffPanel.querySelector('[data-action="accept"]')?.addEventListener('click', () => {
-      _acceptChange();
-      hidePopup(false);
+      if (_acceptChange()) hidePopup(false);
     });
     _diffPanel.querySelector('[data-action="reject"]')?.addEventListener('click', () => {
-      hidePopup(true);
+      hidePopup(false);
     });
     _diffPanel.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
       try {
@@ -332,6 +341,11 @@ window.AiTransform = (() => {
         _diffPanel.style.setProperty('--text-lint-diff-line-height', Math.round(next * 1.65 * 100) / 100 + 'px');
         const val = _diffPanel.querySelector('.text-lint-diff-size-value');
         if (val) val.textContent = next + 'px';
+        const layout = _State?.getLayout?.();
+        if (layout?.llm) {
+          layout.llm.diffFontSize = next;
+          _State?.setLayout?.({ llm: { ...(layout.llm ?? {}), diffFontSize: next } });
+        }
       });
     });
   }
@@ -374,11 +388,11 @@ window.AiTransform = (() => {
       if (_useWholeText) {
         if (_ta.value !== _origText) {
           window.Toast?.show('Текст изменился, применить AI-правку нельзя', 'error');
-          return;
+          return false;
         }
       } else if (_ta.value.slice(_origStart, _origEnd) !== _origText) {
         window.Toast?.show('Выделенный текст изменился, применить AI-правку нельзя', 'error');
-        return;
+        return false;
       }
       try {
         _ta._skipWordComplete = true;
@@ -393,7 +407,9 @@ window.AiTransform = (() => {
       }
       _ta.focus();
       window.Toast?.show('Принято ✓', 'success');
+      return true;
     }
+    return false;
   }
 
   // ── Публичный API ────────────────────────────────────────
