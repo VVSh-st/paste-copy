@@ -1328,7 +1328,7 @@ const Flowchart = (() => {
         : settingLevel;
       let processedText;
       try {
-        processedText = level ? TextSkeletonizer.process(text, { level }) : text;
+        processedText = level ? await TextSkeletonizer.processAsync(text, { level }) : text;
       } catch (skErr) {
         console.warn('[Flowchart] Skeletonizer error:', skErr);
         processedText = text;

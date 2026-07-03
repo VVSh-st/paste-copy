@@ -101,20 +101,20 @@ const TextSkeletonizer = (() => {
 
   // ── Упрощённый стемминг для русского ─────────────────────────
   const RU_SUFFIXES = [
-    'ований', 'еваний', 'ировани',                    // 7-8
-    'ования', 'евания', 'ирова', 'ующих', 'ующем',     // 6-7
-    'овала', 'евала', 'ировал', 'оваться', 'еваться',  // 6
-    'ующие', 'ующее', 'ующий', 'ующей', 'ующую',       // 6
-    'ание', 'ение', 'иться', 'аться', 'яться',         // 5
-    'ний', 'ний', 'тие', 'сть', 'ние', 'ции',         // 4
-    'ый', 'ий', 'ой', 'ей', 'ый', 'ая', 'яя',        // 3-4
-    'ое', 'ые', 'ий', 'ов', 'ев', 'ёв',               // 3-4
-    'ть', 'чь', 'шь', 'щь', 'ать', 'ять', 'еть',     // 3
-    'ить', 'оть', 'уть', 'ить', 'ать', 'ять',         // 3
-    'ет', 'ит', 'ут', 'ют', 'ат', 'ят',               // 2-3
-    'ам', 'ям', 'ом', 'ем', 'ой', 'ей',               // 2
-    'ась', 'ясь', 'ишь', 'ешь', 'щи',                  // 2-3
-    'ся', 'сь',                                        // 2
+    'ований', 'еваний', 'ировани',
+    'ования', 'евания', 'ирова', 'ующих', 'ующем',
+    'овала', 'евала', 'ировал', 'оваться', 'еваться',
+    'ующие', 'ующее', 'ующий', 'ующей', 'ующую',
+    'ание', 'ение', 'иться', 'аться', 'яться',
+    'ний', 'тие', 'сть', 'ние', 'ции',
+    'ый', 'ий', 'ой', 'ей', 'ая', 'яя',
+    'ое', 'ые', 'ов', 'ев', 'ёв',
+    'ть', 'чь', 'шь', 'щь', 'ать', 'ять', 'еть',
+    'ить', 'оть', 'уть',
+    'ет', 'ит', 'ут', 'ют', 'ат', 'ят',
+    'ам', 'ям', 'ом', 'ем',
+    'ась', 'ясь', 'ишь', 'ешь', 'щи',
+    'ся', 'сь',
   ];
 
   function _lemmatize(word) {
@@ -136,9 +136,16 @@ const TextSkeletonizer = (() => {
   function process(text, opts = {}) {
     if (!text || !text.trim()) return '';
     const level = opts.level || 'medium';
+    return _processSync(text, level);
+  }
 
-    const result = _processSync(text, level);
-    return result;
+  function processAsync(text, opts = {}) {
+    if (!text || !text.trim()) return Promise.resolve('');
+    const level = opts.level || 'medium';
+    if (text.length >= WORKER_THRESHOLD) {
+      return _processViaWorker(text, level);
+    }
+    return Promise.resolve(_processSync(text, level));
   }
 
   /**
@@ -261,7 +268,7 @@ const TextSkeletonizer = (() => {
       const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
 
       if (headingMatch) {
-        if (currentSection) sections.push(currentSection);
+    if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
         const level = headingMatch[1].length;
         const heading = headingMatch[2].trim().slice(0, cfg.maxHeadingLength);
         currentSection = { level, heading, preview: '', lines: [] };
@@ -347,7 +354,8 @@ const TextSkeletonizer = (() => {
     const lines = text.split('\n');
     let currentList = null;
 
-    for (const line of lines) {
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
       const bulletMatch = line.match(/^\s*[-*+]\s+(.+)/);
       const numMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
 
@@ -355,7 +363,6 @@ const TextSkeletonizer = (() => {
         const item = (bulletMatch?.[1] || numMatch?.[1]).trim();
         if (!currentList) {
           currentList = { context: '', items: [] };
-          const idx = lines.indexOf(line);
           for (let i = idx - 1; i >= Math.max(0, idx - 3); i--) {
             const prev = lines[i].trim();
             if (prev && !prev.match(/^\s*[-*+]\s/) && !prev.match(/^\s*\d+[.)]\s/)) {
@@ -365,11 +372,9 @@ const TextSkeletonizer = (() => {
           }
         }
         currentList.items.push(item);
-      } else {
-        if (currentList && currentList.items.length) {
-          lists.push(currentList);
-          currentList = null;
-        }
+      } else if (currentList && currentList.items.length) {
+        lists.push(currentList);
+        currentList = null;
       }
     }
     if (currentList && currentList.items.length) lists.push(currentList);
@@ -417,5 +422,5 @@ const TextSkeletonizer = (() => {
 
   // ── Публичный API ──────────────────────────────────────────
 
-  return { process, shouldCompress, recommendLevel, DEFAULTS: { level: 'medium' } };
+  return { process, processAsync, shouldCompress, recommendLevel, DEFAULTS: { level: 'medium' } };
 })();

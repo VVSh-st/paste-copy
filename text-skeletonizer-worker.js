@@ -97,7 +97,7 @@ function _extractSections(text, cfg) {
     const line = lines[i];
     const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
     if (headingMatch) {
-      if (currentSection) sections.push(currentSection);
+  if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
       currentSection = { level: headingMatch[1].length, heading: headingMatch[2].trim().slice(0, cfg.maxHeadingLength), preview: '', lines: [] };
     } else if (currentSection && line.trim()) {
       currentSection.lines.push(line.trim());
@@ -136,14 +136,14 @@ function _extractLists(text) {
   const lists = [];
   const lines = text.split('\n');
   let currentList = null;
-  for (const line of lines) {
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
     const bulletMatch = line.match(/^\s*[-*+]\s+(.+)/);
     const numMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
     if (bulletMatch || numMatch) {
       const item = (bulletMatch?.[1] || numMatch?.[1]).trim();
       if (!currentList) {
         currentList = { context: '', items: [] };
-        const idx = lines.indexOf(line);
         for (let i = idx - 1; i >= Math.max(0, idx - 3); i--) {
           const prev = lines[i].trim();
           if (prev && !prev.match(/^\s*[-*+]\s/) && !prev.match(/^\s*\d+[.)]\s/)) {

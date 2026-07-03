@@ -466,7 +466,7 @@ const MindMap = (() => {
         : settingLevel;
       let processedText;
       try {
-        processedText = level ? TextSkeletonizer.process(text, { level }) : text;
+        processedText = level ? await TextSkeletonizer.processAsync(text, { level }) : text;
       } catch (skErr) {
         console.warn('[Mindmap] Skeletonizer error:', skErr);
         processedText = text;
