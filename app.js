@@ -732,6 +732,13 @@
       const ratios = newWidths.map(w => Math.round((w / total) * 1000));
       State.setLayout({ colRatios: ratios });
       Blocks.applyLayout();
+      // fullRender recreates resizers — re-attach to the new one at the same index
+      const fresh = Array.from(ws.querySelectorAll('.col-resizer'));
+      if (fresh[rIdx]) {
+        if (activeResizer) activeResizer.classList.remove('active');
+        activeResizer = fresh[rIdx];
+        activeResizer.classList.add('active');
+      }
     });
 
     document.addEventListener('mouseup', () => {
