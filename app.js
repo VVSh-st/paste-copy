@@ -828,18 +828,16 @@
         if (!data.tabs || !Array.isArray(data.tabs) || !data.tabs.length) throw new Error('Неверный формат файла');
 
         if (data.tabs.length === 1) {
-          // Single tab — add to existing tabs, keep settings
-          const incoming = data.tabs[0];
+          // Single tab — add to existing tabs, preserve current settings
+          const incoming = JSON.parse(JSON.stringify(data.tabs[0]));
           const existing = State.getAll();
           const dup = existing.find(t => t.name === incoming.name);
           if (dup) incoming.name = incoming.name + ' (импорт)';
-          // Generate new IDs to avoid collisions
           const idMap = {};
-          const newId = () => { const id = State.uid(); return id; };
-          incoming.id = newId();
+          incoming.id = State.uid();
           incoming.blocks = (incoming.blocks || []).map(b => {
             const oldId = b.id;
-            b.id = newId();
+            b.id = State.uid();
             idMap[oldId] = b.id;
             return b;
           });
@@ -850,9 +848,9 @@
             if (a.blockId && idMap[a.blockId]) a.blockId = idMap[a.blockId];
             return a;
           });
-          // Push into state directly
           existing.push(incoming);
-          State.load({ tabs: existing });
+          // Preserve current layout and settings
+          State.load({ tabs: existing, layout: State.getLayout(), activeTabId: incoming.id });
           Storage.save(State.serialize());
           Toast.show('Вкладка «' + (incoming.name || 'Без имени') + '» добавлена ✓', 'success');
         } else {
