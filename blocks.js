@@ -29,7 +29,18 @@ const Blocks = (() => {
     return sticky;
   }
 
+  function _trimCaptureText(text) {
+    // trim leading spaces on first line
+    text = text.replace(/^[ \t]+/, '');
+    // trim trailing empty lines (lines that are empty or whitespace-only)
+    const lines = text.split('\n');
+    while (lines.length > 0 && /^\s*$/.test(lines[lines.length - 1])) lines.pop();
+    return lines.join('\n');
+  }
+
   function _appendCaptureText(sticky, text) {
+    if (!text) return;
+    text = _trimCaptureText(text);
     if (!text) return;
     const val = sticky.value || '';
     sticky.value = val ? val + '\n\n' + text : text;
