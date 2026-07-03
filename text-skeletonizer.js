@@ -45,7 +45,12 @@ const TextSkeletonizer = (() => {
           clearTimeout(cb.timerId);
           _workerCallbacks.delete(id);
           if (error) cb.reject(new Error(error));
-          else cb.resolve(result);
+          else {
+            const cacheKey = cb.level + ':' + _hash(cb.text);
+            _cache.set(cacheKey, result);
+            if (_cache.size > MAX_CACHE) _cache.delete(_cache.keys().next().value);
+            cb.resolve(result);
+          }
         }
       };
       _worker.onerror = () => {
@@ -77,7 +82,7 @@ const TextSkeletonizer = (() => {
           resolve(_processSync(text, level));
         }
       }, 2000);
-      _workerCallbacks.set(id, { resolve, reject, timerId });
+      _workerCallbacks.set(id, { resolve, reject, timerId, text, level });
       try {
         _worker.postMessage({ text, level, id });
       } catch {
@@ -158,6 +163,13 @@ const TextSkeletonizer = (() => {
   function processAsync(text, opts = {}) {
     if (!text || !text.trim()) return Promise.resolve('');
     const level = opts.level || 'medium';
+    const cacheKey = level + ':' + _hash(text);
+    const cached = _cache.get(cacheKey);
+    if (cached !== undefined) {
+      _cache.delete(cacheKey);
+      _cache.set(cacheKey, cached);
+      return Promise.resolve(cached);
+    }
     if (text.length >= WORKER_THRESHOLD) {
       return _processViaWorker(text, level);
     }
@@ -168,6 +180,14 @@ const TextSkeletonizer = (() => {
    * Синхронная обработка (используется для маленьких текстов и как fallback).
    */
   function _processSync(text, level) {
+    const cacheKey = level + ':' + _hash(text);
+    const cached = _cache.get(cacheKey);
+    if (cached !== undefined) {
+      _cache.delete(cacheKey);
+      _cache.set(cacheKey, cached);
+      return cached;
+    }
+
     const cfg = _configForLevel(level);
     const sections = _extractSections(text, cfg);
     const parts = [];
@@ -225,7 +245,14 @@ const TextSkeletonizer = (() => {
       parts.push(`=== СТАТИСТИКА ===\n${stats}`);
     }
 
-    return parts.join('\n');
+    const result = parts.join('\n');
+
+    _cache.set(cacheKey, result);
+    if (_cache.size > MAX_CACHE) {
+      _cache.delete(_cache.keys().next().value);
+    }
+
+    return result;
   }
 
   /**
