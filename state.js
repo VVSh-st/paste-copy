@@ -284,6 +284,12 @@ const State = (() => {
       block.activeSubtab = 0;
       block.subtabs = Array.from({ length: 5 }, (_, i) => defaultItemFactory(i));
     }
+    // [FIX] Нормализуем каждый элемент — null/bad элементы заменяем дефолтами
+    block.subtabs = block.subtabs.map((sub, i) => {
+      const def = defaultItemFactory(i);
+      if (!sub || typeof sub !== 'object' || Array.isArray(sub)) return def;
+      return { ...def, ...sub, label: String(sub.label ?? def.label) };
+    });
     while (block.subtabs.length > 5) block.subtabs.pop();
     while (block.subtabs.length < 5) block.subtabs.push(defaultItemFactory(block.subtabs.length));
     if (
@@ -339,13 +345,31 @@ const State = (() => {
 
       if (b.type === 'todo') {
         _migrateSubtabs(b, i => ({ label: String(i + 1), name: '', items: [] }));
+        // [FIX] Нормализуем todo subtabs — защита от повреждённых данных
+        for (const sub of b.subtabs) {
+          sub.name = String(sub.name ?? '');
+          if (!Array.isArray(sub.items)) sub.items = [];
+        }
       }
 
       if (b.type === 'table') {
         _migrateSubtabs(b, i => ({ label: String(i + 1), name: '', cols: 2, rows: [['', ''], ['', '']] }));
+        // [FIX] Нормализуем table subtabs — защита от повреждённых данных
         for (const sub of b.subtabs) {
-          if (!sub.rows) sub.rows = [['', ''], ['', '']];
-          if (!sub.cols) sub.cols = Math.max(1, Math.min(4, sub.rows[0]?.length || 2));
+          if (!Array.isArray(sub.rows)) sub.rows = [['', ''], ['', '']];
+          const detectedCols = Array.isArray(sub.rows[0]) ? sub.rows[0].length : 2;
+          if (!Number.isInteger(sub.cols)) sub.cols = Math.max(1, Math.min(4, detectedCols || 2));
+          sub.cols = Math.max(1, Math.min(4, sub.cols));
+          sub.rows = sub.rows.map(row => {
+            const cells = Array.isArray(row) ? row : [];
+            return Array.from({ length: sub.cols }, (_, i) => String(cells[i] ?? ''));
+          });
+          if (!sub.rows.length) {
+            sub.rows = [
+              Array.from({ length: sub.cols }, () => ''),
+              Array.from({ length: sub.cols }, () => ''),
+            ];
+          }
         }
       }
 
@@ -355,14 +379,21 @@ const State = (() => {
 
   /* ── event bus ── */
 
-  const emit     = () => listeners.forEach(l => l());
-  const emitLive = () => liveListeners.forEach(l => l());
+  // [FIX] Безопасный вызов listener'ов — исключение в одном не убивает остальные
+  function _safeListenerCall(fn, label) {
+    try { fn(); } catch (err) {
+      console.error(`[State.${label}] listener failed.`, err);
+    }
+  }
+
+  const emit     = () => listeners.forEach(l => _safeListenerCall(l, 'onChange'));
+  const emitLive = () => liveListeners.forEach(l => _safeListenerCall(l, 'onLive'));
   const onChange = fn => listeners.push(fn);
   const onLive   = fn => liveListeners.push(fn);
 
   /* Легковесный автобус — срабатывает когда история реально изменилась (без re-render блоков) */
   const _snapListeners = [];
-  const _snapEmit = () => _snapListeners.forEach(l => l());
+  const _snapEmit = () => _snapListeners.forEach(l => _safeListenerCall(l, 'onSnapshot'));
   const onSnapshot = fn => _snapListeners.push(fn);
 
   /* ── tab management ── */
@@ -503,8 +534,14 @@ const State = (() => {
     tab = tab ?? getActive();
     if (!tab) return;
 
-    // Always serialize with consistent key order to avoid false "changed" detection
-    const snap = JSON.stringify({ blocks: tab.blocks, separator: tab.separator });
+    // [FIX] Защита от JSON.stringify крэша — предотвращает остановку history pipeline
+    let snap;
+    try {
+      snap = JSON.stringify({ blocks: tab.blocks, separator: tab.separator });
+    } catch (err) {
+      console.error('[State.snapshot] Failed to serialize snapshot.', err);
+      return;
+    }
 
     // Trim future branch before comparing tail
     tab.history = tab.history.slice(0, tab.historyIdx + 1);
@@ -571,6 +608,17 @@ const State = (() => {
 
   const _blockHistory = new Map();
 
+  // [FIX] Безопасный парсинг block snapshot — предотвращает JSON.parse крэш
+  function _parseBlockSubtabsSnap(snap) {
+    try {
+      const parsed = JSON.parse(snap);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch (err) {
+      console.error('[State.blockHistory] Failed to parse block snapshot.', err);
+      return null;
+    }
+  }
+
   // [FIX] Полный сброс runtime-состояния — предотвращает утечку при повторной загрузке
   function _resetInMemoryState() {
     for (const timer of snapTimers.values()) clearTimeout(timer);
@@ -593,7 +641,7 @@ const State = (() => {
     if (!tab) return;
     const block = findBlock(tab.blocks, blockId);
     if (!block) return;
-    // [FIX] История блоков поддерживается только для блоков с subtabs (text/todo)
+    // История блоков поддерживается для блоков с subtabs: text/todo/table
     if (!block.subtabs) return;
     const snap = JSON.stringify(block.subtabs);
     const bh   = _bh(blockId);
@@ -609,7 +657,7 @@ const State = (() => {
     const tab = getActive();
     if (!tab) return;
     const block = findBlock(tab.blocks, blockId);
-    // [FIX] Проверяем subtabs — история блоков только для text/todo
+    // Проверяем subtabs — история блоков только для типов с subtabs
     if (!block || !block.subtabs) return;
     const bh = _bh(blockId);
     if (bh.idx === -1) { blockSnapshot(blockId); }
@@ -628,7 +676,9 @@ const State = (() => {
     // [FIX] Защита от undefined snap — предотвращает JSON.parse крэш
     const snap = bh.snaps[bh.idx];
     if (!snap) return;
-    block.subtabs = JSON.parse(snap);
+    const parsed = _parseBlockSubtabsSnap(snap);
+    if (!parsed) return;
+    block.subtabs = parsed;
     emitLive();
   }
 
@@ -636,14 +686,16 @@ const State = (() => {
     const tab = getActive();
     if (!tab) return;
     const block = findBlock(tab.blocks, blockId);
-    // [FIX] Проверяем subtabs — история блоков только для text/todo
+    // [FIX] Проверяем subtabs — история блоков только для типов с subtabs
     if (!block || !block.subtabs) return;
     const bh = _bh(blockId);
     if (bh.idx >= bh.snaps.length - 1) return;
     bh.idx++;
     const snap = bh.snaps[bh.idx];
     if (!snap) return;
-    block.subtabs = JSON.parse(snap);
+    const parsed = _parseBlockSubtabsSnap(snap);
+    if (!parsed) return;
+    block.subtabs = parsed;
     emitLive();
   }
 
@@ -725,7 +777,7 @@ const State = (() => {
 
   function load(data) {
     // Guard: corrupt / empty save → fresh start
-    if (!data?.tabs?.length) {
+    if (!Array.isArray(data?.tabs) || !data.tabs.length) {
       _resetInMemoryState();
       newTab();
       return;
@@ -734,7 +786,11 @@ const State = (() => {
     try {
       _resetInMemoryState();
 
-      tabs = data.tabs.map(t => ({
+      // [FIX] Фильтруем невалидные tab — один bad element не ломает все
+      const sourceTabs = data.tabs.filter(t => t && typeof t === 'object' && !Array.isArray(t));
+      if (!sourceTabs.length) throw new Error('No valid tabs in saved state');
+
+      tabs = sourceTabs.map(t => ({
         id:             t.id || uid(),
         name:           t.name || 'Project',
         separator:      t.separator ?? '\n\n',
@@ -835,11 +891,14 @@ const State = (() => {
   }
 
   function _collectMatches(re, val) {
+    const MAX_MATCHES_PER_VALUE = 1000;
     const matches = [];
     let m;
     re.lastIndex = 0;
     while ((m = re.exec(val)) !== null) {
       matches.push({ index: m.index, length: m[0].length, match: m[0] });
+      // [FIX] Лимит совпадений — предотвращает зависание UI на широких regex
+      if (matches.length >= MAX_MATCHES_PER_VALUE) break;
       // =защита поиска=
       if (m[0].length === 0) {
         re.lastIndex = m.index + 1;
