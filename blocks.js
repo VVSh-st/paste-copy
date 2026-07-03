@@ -1609,7 +1609,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(tools);
 
     ta.className   = 'block-textarea';
-    ta.spellcheck  = b.spellcheck !== false;
+    ta.spellcheck  = false; // browser spellcheck disabled (hidden from settings, CPU-heavy on large text)
     ta.value       = b.subtabs[b.activeSubtab].value || '';
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';
@@ -2124,22 +2124,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const spellcheckBtn = document.createElement('button');
     spellcheckBtn.type = 'button';
     spellcheckBtn.className = 'font-ctrl-btn';
-    spellcheckBtn.title = 'Проверка орфографии';
-    function _syncSpellcheckBtn() {
-      const on = b.spellcheck !== false;
-      spellcheckBtn.innerHTML = on
-        ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>'
-        : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;opacity:0.35"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>';
-      spellcheckBtn.title = on ? 'Орфография: вкл. Нажми чтобы выключить' : 'Орфография: выкл. Нажми чтобы включить';
-      spellcheckBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
-    _syncSpellcheckBtn();
-    spellcheckBtn.onclick = e => {
-      e.stopPropagation();
-      b.spellcheck = b.spellcheck === false ? true : false;
-      ta.spellcheck = b.spellcheck !== false;
-      _syncSpellcheckBtn();
-    };
+    spellcheckBtn.title = 'Проверка орфографии отключена';
+    spellcheckBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;opacity:0.35"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>';
+    spellcheckBtn.setAttribute('aria-pressed', 'false');
+    spellcheckBtn.onclick = e => e.stopPropagation();
 
     function _jumpBlockScroll(toEnd) {
       const pos = toEnd ? ta.value.length : 0;
