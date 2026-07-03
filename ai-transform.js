@@ -107,12 +107,17 @@ window.AiTransform = (() => {
     const popupSeq = _requestSeq;
 
     if (_onClickOutside) document.removeEventListener('click', _onClickOutside, true);
-    _onClickOutside = e => {
+    const clickOutsideHandler = e => {
       if (!popup.contains(e.target) && e.target !== _ta) {
         hidePopup(true);
       }
     };
-    setTimeout(() => document.addEventListener('click', _onClickOutside, true), 0);
+    _onClickOutside = clickOutsideHandler;
+    setTimeout(() => {
+      if (_onClickOutside === clickOutsideHandler && popup === _popup && popup.style.display !== 'none') {
+        document.addEventListener('click', clickOutsideHandler, true);
+      }
+    }, 0);
 
     requestAnimationFrame(() => {
       if (popupSeq !== _requestSeq || popup !== _popup || popup.style.display === 'none') return;
@@ -128,6 +133,7 @@ window.AiTransform = (() => {
 
     const input = popup.querySelector('#ai-transform-input');
     setTimeout(() => {
+      if (popupSeq !== _requestSeq || popup !== _popup || popup.style.display === 'none' || _ta !== ta) return;
       if (!_useWholeText) _ta?.setSelectionRange(_origStart, _origEnd);
       input?.focus();
     }, 50);
@@ -239,7 +245,10 @@ window.AiTransform = (() => {
 
       if (!result?.trim()) {
         window.Toast?.show('LLM не вернул результат', 'error');
-        if (input) { input.disabled = false; input.placeholder = 'Новый запрос...'; }
+        if (input) {
+          input.disabled = false;
+          input.placeholder = _useWholeText ? 'Новый запрос...  ↑↓' : 'Новый запрос...';
+        }
         if (sendBtn) sendBtn.style.display = '';
         return;
       }
@@ -254,26 +263,34 @@ window.AiTransform = (() => {
       }
       _showDiffPanel(_origText, _suggestedText);
 
-      // ПКМ — отмена с возвратом оригинала
+      // ПКМ вне diff-панели — закрыть предпросмотр без применения
       if (_onContextMenu) {
         document.removeEventListener('contextmenu', _onContextMenu, true);
         _onContextMenu = null;
       }
-      _onContextMenu = (e) => {
+      const contextMenuHandler = (e) => {
         if (_diffPanel && !_diffPanel.contains(e.target)) {
           e.preventDefault();
           e.stopPropagation();
           hidePopup(false);
         }
       };
-      setTimeout(() => document.addEventListener('contextmenu', _onContextMenu, true), 0);
+      _onContextMenu = contextMenuHandler;
+      setTimeout(() => {
+        if (_onContextMenu === contextMenuHandler && _diffPanel) {
+          document.addEventListener('contextmenu', contextMenuHandler, true);
+        }
+      }, 0);
 
     } catch (e) {
       if (requestId !== _requestSeq || !_ta) return;
       const errName = e && typeof e === 'object' ? e.name : '';
       const errMessage = e instanceof Error ? e.message : String(e || 'Ошибка LLM-запроса');
       if (errName !== 'AbortError') window.Toast?.show(errMessage, 'error');
-      if (input) { input.disabled = false; input.placeholder = 'Новый запрос...'; }
+      if (input) {
+        input.disabled = false;
+        input.placeholder = _useWholeText ? 'Новый запрос...  ↑↓' : 'Новый запрос...';
+      }
       if (sendBtn) sendBtn.style.display = '';
     } finally {
       if (requestId === _requestSeq) _isRunning = false;
