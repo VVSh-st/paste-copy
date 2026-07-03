@@ -447,16 +447,17 @@ const Blocks = (() => {
     el.title       = 'Всего символов в активных вкладках: ' + total.toLocaleString();
   }
 
-  function applyLayout() {
+  function applyLayout(tempRatios) {
     const cols = getVisibleColumns();
     const n = cols.length;
     if (n === 0) return;
     if (n === 1) {
       cols[0].el.style.flex = '1';
+      cols[0].el.style.width = '';
       return;
     }
     const lay = State.getLayout();
-    const ratios = lay.colRatios;
+    const ratios = tempRatios || lay.colRatios;
     if (ratios && Array.isArray(ratios) && ratios.length === n) {
       const sum = ratios.reduce((a, b) => a + b, 0) || n;
       cols.forEach((c, i) => {
