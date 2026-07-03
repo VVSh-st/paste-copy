@@ -8,6 +8,8 @@ const Anchors = (() => {
 
   let _navIdx = -1;
   let _palette = null;
+  let _paletteOutsideHandler = null;
+  let _paletteOutsideTimer = null;
   let _longPressTimer = null;
   let _longPressTriggered = false;
 
@@ -24,6 +26,14 @@ const Anchors = (() => {
     return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? 'anc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 8)
       : 'anc_' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function _escapeCssIdent(value) {
+    const str = String(value || '');
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+      return CSS.escape(str);
+    }
+    return str.replace(/[^a-zA-Z0-9_-]/g, ch => '\\' + ch.charCodeAt(0).toString(16) + ' ');
   }
 
   /* ---- state access ---- */
@@ -75,10 +85,12 @@ const Anchors = (() => {
       finalSnippet = title ? title.slice(0, 20) : '(пусто)';
     }
 
+    const anchorId = uid();
+
     State.updateLive(t => {
       if (!t.anchors) t.anchors = [];
       t.anchors.push({
-        id: uid(),
+        id: anchorId,
         tabId: tab.id,
         blockId: blockId,
         subtabIdx: subtabIdx,
@@ -87,8 +99,9 @@ const Anchors = (() => {
         snippet: finalSnippet,
         createdAt: Date.now(),
       });
-      _navIdx = t.anchors.length - 1;
     });
+
+    _navIdx = _getAllAnchors().findIndex(a => a.id === anchorId);
     Toast.show(`Якорь #${_getAnchors().length} установлен ✓`, 'success');
     requestAnimationFrame(() => Blocks.refreshAllAnchorCounts());
   }
@@ -106,12 +119,11 @@ const Anchors = (() => {
     if (!allAnchors.length) { Toast.show('Нет якорей', 'info'); return; }
     const count = allAnchors.length;
     _navIdx = -1;
-    State.updateLive(t => { t.anchors = []; });
-    for (const tab of State.getAll()) {
-      if (tab !== State.getActive() && tab.anchors?.length) {
+    State.update(() => {
+      for (const tab of State.getAll()) {
         tab.anchors = [];
       }
-    }
+    });
     Toast.show(`Удалено ${count} якорей ✓`, 'success');
     document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
     Blocks.refreshAllAnchorCounts();
@@ -139,7 +151,7 @@ const Anchors = (() => {
 
     // Ждём 2 кадра чтобы DOM обновился после смены вкладки/субвкладки
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      const blockEl = document.querySelector(`.block[data-id="${CSS.escape(anchor.blockId)}"]`);
+      const blockEl = document.querySelector(`.block[data-id="${_escapeCssIdent(anchor.blockId)}"]`);
       if (!blockEl) return;
       blockEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       blockEl.classList.remove('anchor-flash');
@@ -188,7 +200,9 @@ const Anchors = (() => {
         if (tab === State.getActive()) {
           State.updateLive(t => { t.anchors = t.anchors.filter(a => a.id !== anchorId); });
         } else {
-          tab.anchors = anchors.filter(a => a.id !== anchorId);
+          State.update(() => {
+            tab.anchors = anchors.filter(a => a.id !== anchorId);
+          });
         }
         removed = true;
         break;
@@ -205,6 +219,14 @@ const Anchors = (() => {
   function _closePalette() {
     if (_palette) { _palette.remove(); _palette = null; }
     document.removeEventListener('keydown', _onPaletteKeydown, true);
+    if (_paletteOutsideTimer) {
+      clearTimeout(_paletteOutsideTimer);
+      _paletteOutsideTimer = null;
+    }
+    if (_paletteOutsideHandler) {
+      document.removeEventListener('mousedown', _paletteOutsideHandler, true);
+      _paletteOutsideHandler = null;
+    }
   }
 
   function _onPaletteKeydown(ev) {
@@ -281,11 +303,12 @@ const Anchors = (() => {
       if (pr.right > window.innerWidth - 8) _palette.style.left = Math.max(4, window.innerWidth - pr.width - 8) + 'px';
       if (pr.bottom > window.innerHeight - 8) _palette.style.top = Math.max(4, rect.top - pr.height - 4) + 'px';
     });
-    setTimeout(() => {
-      const handler = ev => {
-        if (_palette && !_palette.contains(ev.target)) { _closePalette(); document.removeEventListener('mousedown', handler, true); }
+    _paletteOutsideTimer = setTimeout(() => {
+      _paletteOutsideTimer = null;
+      _paletteOutsideHandler = ev => {
+        if (_palette && !_palette.contains(ev.target)) _closePalette();
       };
-      document.addEventListener('mousedown', handler, true);
+      document.addEventListener('mousedown', _paletteOutsideHandler, true);
     }, 100);
   }
 
@@ -304,7 +327,7 @@ const Anchors = (() => {
     _mirror.style.lineHeight = cs.lineHeight;
     const pl = parseFloat(cs.paddingLeft) || 0;
     const pr = parseFloat(cs.paddingRight) || 0;
-    _mirror.style.width = (ta.clientWidth - pl - pr) + 'px';
+    _mirror.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
     return _mirror;
   }
 
@@ -397,6 +420,13 @@ const Anchors = (() => {
     return parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
   }
 
+  function _createLineMarker(top, height, color) {
+    const m = document.createElement('div');
+    m.className = 'anchor-marker-line';
+    m.style.cssText = 'position:absolute;left:0;width:3px;height:' + height + 'px;top:' + top + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + color + ';opacity:0.85;box-shadow:0 0 6px ' + color + '44;';
+    return m;
+  }
+
   function _renderMarkers(blockEl, ta) {
     blockEl.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
 
@@ -430,9 +460,7 @@ const Anchors = (() => {
       if (settings.lineMarkers) {
         const mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
         const mHeight = Math.max(2, lineHeight - 12);
-        const m = document.createElement('div');
-        m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + mHeight + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        const m = _createLineMarker(mTop, mHeight, settings.color);
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
@@ -472,12 +500,11 @@ const Anchors = (() => {
       const pos = _measurePos(ta, anchor.start);
       const rawTop = pos.y - scrollY - taPt;
       const wrapH = wrap.clientHeight;
+      if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
       if (settings.lineMarkers) {
         const mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
         const mHeight = Math.max(2, lineHeight - 12);
-        const m = document.createElement('div');
-        m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + mHeight + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        const m = _createLineMarker(mTop, mHeight, settings.color);
         wrap.appendChild(m);
       }
     });
