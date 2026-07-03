@@ -11,15 +11,19 @@ const Anchors = (() => {
   let _longPressTimer = null;
   let _longPressTriggered = false;
 
+  const JUMP_RETRY_LIMIT = 5;
+  const JUMP_RETRY_DELAY = 60;
+  const FLASH_DURATION = 1400;
+  const PALETTE_DELETE_CONFIRM_MS = 1800;
+  const LONG_PRESS_MS = 500;
+  const CLEAR_CONFIRM_MS = 2500;
+  const SCROLL_RENDER_DEBOUNCE_MS = 300;
+
   /* ---- helpers ---- */
   function uid() {
     return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? 'anc_' + crypto.randomUUID().replace(/-/g, '').slice(0, 8)
       : 'anc_' + Math.random().toString(36).slice(2, 10);
-  }
-
-  function escHtml(s) {
-    return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   /* ---- state access ---- */
@@ -53,6 +57,10 @@ const Anchors = (() => {
   function setAnchor(ta, blockId) {
     if (!ta) return;
     const tab = State.getActive();
+    if (!tab) {
+      Toast.show('Активная вкладка не найдена', 'error');
+      return;
+    }
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     const snippet = (ta.value || '').slice(start, Math.min(start + 30, end || start + 30)).replace(/\n/g, ' ');
@@ -99,6 +107,11 @@ const Anchors = (() => {
     const count = allAnchors.length;
     _navIdx = -1;
     State.updateLive(t => { t.anchors = []; });
+    for (const tab of State.getAll()) {
+      if (tab !== State.getActive() && tab.anchors?.length) {
+        tab.anchors = [];
+      }
+    }
     Toast.show(`Удалено ${count} якорей ✓`, 'success');
     document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
     Blocks.refreshAllAnchorCounts();
@@ -106,11 +119,15 @@ const Anchors = (() => {
 
   function _jumpToAnchor(anchor, _depth) {
     _depth = (_depth || 0) + 1;
-    if (_depth > 5) { Toast.show('Не удалось перейти к якорю', 'error'); return; }
+    if (_depth > JUMP_RETRY_LIMIT) { Toast.show('Не удалось перейти к якорю', 'error'); return; }
     const tab = State.getActive();
     if (!tab || anchor.tabId !== tab.id) {
+      if (!_findTabForAnchor(anchor)) {
+        Toast.show('Вкладка якоря не найдена', 'error');
+        return;
+      }
       State.setActive(anchor.tabId);
-      setTimeout(() => _jumpToAnchor(anchor, _depth), 60);
+      setTimeout(() => _jumpToAnchor(anchor, _depth), JUMP_RETRY_DELAY);
       return;
     }
     const blk = _findBlockById(tab.blocks, anchor.blockId);
@@ -122,13 +139,13 @@ const Anchors = (() => {
 
     // Ждём 2 кадра чтобы DOM обновился после смены вкладки/субвкладки
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      const blockEl = document.querySelector(`.block[data-id="${anchor.blockId}"]`);
+      const blockEl = document.querySelector(`.block[data-id="${CSS.escape(anchor.blockId)}"]`);
       if (!blockEl) return;
       blockEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       blockEl.classList.remove('anchor-flash');
       void blockEl.offsetWidth;
       blockEl.classList.add('anchor-flash');
-      setTimeout(() => blockEl.classList.remove('anchor-flash'), 1400);
+      setTimeout(() => blockEl.classList.remove('anchor-flash'), FLASH_DURATION);
 
       const ta = blockEl.querySelector('textarea.block-textarea');
       if (ta) {
@@ -187,6 +204,14 @@ const Anchors = (() => {
   /* ---- palette ---- */
   function _closePalette() {
     if (_palette) { _palette.remove(); _palette = null; }
+    document.removeEventListener('keydown', _onPaletteKeydown, true);
+  }
+
+  function _onPaletteKeydown(ev) {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      _closePalette();
+    }
   }
 
   function _showPalette(btn) {
@@ -199,6 +224,7 @@ const Anchors = (() => {
     _palette._anchorBtn = btn;
     _palette.setAttribute('role', 'listbox');
     document.body.appendChild(_palette);
+    document.addEventListener('keydown', _onPaletteKeydown, true);
 
     anchors.forEach((a, idx) => {
       const row = document.createElement('div');
@@ -232,11 +258,11 @@ const Anchors = (() => {
         }
         del.classList.add('anchor-palette-del-pending');
         clearTimeout(delTimer);
-        delTimer = setTimeout(() => { delClicks = 0; del.classList.remove('anchor-palette-del-pending'); }, 1800);
+        delTimer = setTimeout(() => { delClicks = 0; del.classList.remove('anchor-palette-del-pending'); }, PALETTE_DELETE_CONFIRM_MS);
       });
 
       row.addEventListener('click', ev => {
-        if (ev.target === del) return;
+        if (del.contains(ev.target)) return;
         _navIdx = idx;
         _jumpToAnchor(a);
         _closePalette();
@@ -269,7 +295,7 @@ const Anchors = (() => {
   function _getMirror(ta) {
     if (!_mirror) {
       _mirror = document.createElement('div');
-      _mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;word-break;break-all;overflow:hidden;pointer-events:none;z-index:-1;box-sizing:content-box;border:none;padding:0;margin:0;';
+      _mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-all;overflow:hidden;pointer-events:none;z-index:-1;box-sizing:content-box;border:none;padding:0;margin:0;';
       document.body.appendChild(_mirror);
     }
     const cs = getComputedStyle(ta);
@@ -289,7 +315,8 @@ const Anchors = (() => {
     if (charPos <= 0) return { x: pl, y: pt };
 
     const mirror = _getMirror(ta);
-    mirror.textContent = ta.value;
+    const value = ta.value.substring(0, Math.min(charPos, ta.value.length));
+    mirror.textContent = value;
 
     const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
     let remaining = charPos;
@@ -321,47 +348,40 @@ const Anchors = (() => {
       const mir = mirror.getBoundingClientRect();
       const x = pl + mr.left - mir.left;
       const y = pt + mr.top - mir.top;
-      marker.parentNode.removeChild(marker);
+      if (marker.parentNode) marker.parentNode.removeChild(marker);
       return { x: x, y: y };
     } catch (_) {
+      mirror.querySelectorAll('span').forEach(m => m.remove());
       mirror.textContent = ta.value.substring(0, charPos);
       return { x: pl, y: pt + mirror.scrollHeight };
     }
-  }
-
-  /* ---- char width measurement ---- */
-  let _measureCtx = null;
-  let _cachedFont = '';
-  let _cachedCharW = 0;
-
-  function _charW(ta) {
-    const cs = getComputedStyle(ta);
-    const f = cs.fontSize + ' ' + cs.fontFamily;
-    if (f === _cachedFont && _cachedCharW) return _cachedCharW;
-    if (!_measureCtx) _measureCtx = document.createElement('canvas').getContext('2d');
-    _measureCtx.font = f;
-    _cachedCharW = _measureCtx.measureText('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM').width / 40;
-    _cachedFont = f;
-    return _cachedCharW;
   }
 
   /* ---- marker rendering (DOM overlay inside current-line-wrap) ---- */
   const MARKER_KEY = 'anchor-markers-enabled';
   const MARKER_BG_KEY = 'anchor-bg-enabled';
   const MARKER_COLOR_KEY = 'anchor-marker-color';
+  const DEFAULT_MARKER_COLOR = '#4f8ef7';
+
+  function _sanitizeMarkerColor(value) {
+    const color = String(value || '').trim();
+    if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color)) return color;
+    if (/^rgba?\(\s*(\d{1,3}\s*,\s*){2}\d{1,3}(\s*,\s*(0|1|0?\.\d+))?\s*\)$/i.test(color)) return color;
+    return DEFAULT_MARKER_COLOR;
+  }
 
   function getMarkerSettings() {
     return {
       lineMarkers: localStorage.getItem(MARKER_KEY) !== 'false',
       bgHighlight: localStorage.getItem(MARKER_BG_KEY) !== 'false',
-      color: localStorage.getItem(MARKER_COLOR_KEY) || '#4f8ef7',
+      color: _sanitizeMarkerColor(localStorage.getItem(MARKER_COLOR_KEY) || DEFAULT_MARKER_COLOR),
     };
   }
 
   function setMarkerSetting(key, value) {
     if (key === 'lineMarkers') localStorage.setItem(MARKER_KEY, String(value));
     else if (key === 'bgHighlight') localStorage.setItem(MARKER_BG_KEY, String(value));
-    else if (key === 'color') localStorage.setItem(MARKER_COLOR_KEY, value);
+    else if (key === 'color') localStorage.setItem(MARKER_COLOR_KEY, _sanitizeMarkerColor(value));
     _renderMarkersAll();
   }
 
@@ -373,7 +393,8 @@ const Anchors = (() => {
   }
 
   function _getLineHeight(ta) {
-    return parseFloat(getComputedStyle(ta).lineHeight) || (parseFloat(getComputedStyle(ta).fontSize) || 12) * 1.65;
+    const cs = getComputedStyle(ta);
+    return parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
   }
 
   function _renderMarkers(blockEl, ta) {
@@ -393,7 +414,8 @@ const Anchors = (() => {
 
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
-    const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
+    const taCs = getComputedStyle(ta);
+    const taPt = parseFloat(taCs.paddingTop) || 0;
 
     blockAnchors.forEach((anchor, localIdx) => {
       const pos = _measurePos(ta, anchor.start);
@@ -407,23 +429,25 @@ const Anchors = (() => {
 
       if (settings.lineMarkers) {
         const mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+        const mHeight = Math.max(2, lineHeight - 12);
         const m = document.createElement('div');
         m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 12) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + mHeight + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
 
       if (settings.bgHighlight && anchor.start !== anchor.end) {
         const endPos = _measurePos(ta, anchor.end);
-        const wrapW = wrap.clientWidth || (ta.clientWidth + (parseFloat(getComputedStyle(ta).paddingLeft) || 0));
+        const wrapW = wrap.clientWidth || (ta.clientWidth + (parseFloat(taCs.paddingLeft) || 0));
         let selW = Math.max(2, Math.abs(endPos.x - pos.x));
         const gLeft = Math.min(pos.x, endPos.x);
         if (gLeft + selW > wrapW) selW = Math.max(2, wrapW - gLeft);
         const gTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+        const gHeight = Math.max(2, lineHeight - 9);
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
-        g.style.cssText = 'position:absolute;height:' + (lineHeight - 9) + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
+        g.style.cssText = 'position:absolute;height:' + gHeight + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
         wrap.appendChild(g);
       }
     });
@@ -450,9 +474,10 @@ const Anchors = (() => {
       const wrapH = wrap.clientHeight;
       if (settings.lineMarkers) {
         const mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+        const mHeight = Math.max(2, lineHeight - 12);
         const m = document.createElement('div');
         m.className = 'anchor-marker-line';
-        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + (lineHeight - 12) + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
+        m.style.cssText = 'position:absolute;left:0;width:3px;height:' + mHeight + 'px;top:' + mTop + 'px;border-radius:0 2px 2px 0;pointer-events:none;z-index:4;background:' + settings.color + ';opacity:0.85;box-shadow:0 0 6px ' + settings.color + '44;';
         wrap.appendChild(m);
       }
     });
@@ -479,13 +504,25 @@ const Anchors = (() => {
     navBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a6 6 0 0 1 12 0"/><polyline points="4 10 1 7"/><polyline points="16 10 19 7"/></svg>';
 
     let longPressStarted = false;
-    navBtn.addEventListener('mousedown', e => {
+    const startLongPress = () => {
       longPressStarted = true; _longPressTriggered = false;
-      _longPressTimer = setTimeout(() => { if (longPressStarted) { _longPressTriggered = true; _showPalette(navBtn); } }, 500);
+      clearTimeout(_longPressTimer);
+      _longPressTimer = setTimeout(() => { if (longPressStarted) { _longPressTriggered = true; _showPalette(navBtn); } }, LONG_PRESS_MS);
+    };
+    const stopLongPress = () => { longPressStarted = false; clearTimeout(_longPressTimer); };
+    navBtn.addEventListener('pointerdown', startLongPress);
+    navBtn.addEventListener('pointerup', stopLongPress);
+    navBtn.addEventListener('pointercancel', stopLongPress);
+    navBtn.addEventListener('pointerleave', stopLongPress);
+    navBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (_longPressTriggered) {
+        e.preventDefault();
+        _longPressTriggered = false;
+        return;
+      }
+      navigateAnchor(1);
     });
-    navBtn.addEventListener('mouseup', () => { longPressStarted = false; clearTimeout(_longPressTimer); });
-    navBtn.addEventListener('mouseleave', () => { longPressStarted = false; clearTimeout(_longPressTimer); });
-    navBtn.addEventListener('click', e => { e.stopPropagation(); if (!_longPressTriggered) navigateAnchor(1); });
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
@@ -497,7 +534,7 @@ const Anchors = (() => {
       e.stopPropagation();
       if (!clearPending) {
         clearPending = true; clearBtn.classList.add('anchor-clear-pending');
-        clearTimer = setTimeout(() => { clearPending = false; clearBtn.classList.remove('anchor-clear-pending'); }, 2500);
+        clearTimer = setTimeout(() => { clearPending = false; clearBtn.classList.remove('anchor-clear-pending'); }, CLEAR_CONFIRM_MS);
       } else { clearTimeout(clearTimer); clearBtn.classList.remove('anchor-clear-pending'); clearAnchors(); }
     };
 
@@ -528,20 +565,17 @@ const Anchors = (() => {
     State.onChange(rerender);
     State.onLive(rerender);
     let _scrollTimer = null;
-    let _isScrolling = false;
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
         if (!bel) return;
-        _isScrolling = true;
         // Рендерим маркеры (линии) при каждом скролле — следуют за текстом
         _renderMarkersNoGutter(bel, ta);
         clearTimeout(_scrollTimer);
         _scrollTimer = setTimeout(() => {
-          _isScrolling = false;
           if (bel.isConnected) _renderMarkers(bel, ta);
-        }, 300);
+        }, SCROLL_RENDER_DEBOUNCE_MS);
       }
     }, true);
     document.addEventListener('focusin', e => {
