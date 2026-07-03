@@ -46,6 +46,9 @@ const Blocks = (() => {
     sticky.value = val ? val + '\n\n' + text : text;
     State.updateLive(() => {});
     function _syncTextarea() {
+      // [FIX] Проверяем что sticky-блок ещё существует в state перед обновлением DOM
+      const active = State.getActive();
+      if (!active || !active.blocks.some(x => x.id === sticky.id)) return;
       const stickyEl = document.querySelector(`.block[data-id="${sticky.id}"] .block-textarea`);
       if (stickyEl) {
         stickyEl.value = sticky.value;
@@ -2377,11 +2380,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       });
     };
 
-    document.addEventListener('mousedown', e => {
+    // [FIX] Очищаем document-level обработчики при re-render — предотвращает утечку
+    const _closeTranslateDropdown = e => {
       if (!translateDropdown.contains(e.target) && e.target !== translateBtn) {
         translateDropdown.style.display = 'none';
       }
-    });
+    };
+    document.addEventListener('mousedown', _closeTranslateDropdown);
+    _pendingHoverEffects.add(() => document.removeEventListener('mousedown', _closeTranslateDropdown));
 
     footer.appendChild(fDecBtn);
     footer.appendChild(fIncBtn);
@@ -2469,16 +2475,23 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     };
 
-    document.addEventListener('mousedown', e => {
+    // [FIX] Очищаем document-level обработчики при re-render — предотвращает утечку
+    const _closeThesaurusDropdown = e => {
       if (!thesaurusDropdown.contains(e.target) && e.target !== thesaurusBtn) {
         thesaurusDropdown.style.display = 'none';
       }
-    });
-    document.addEventListener('contextmenu', e => {
+    };
+    const _blockContextMenu = e => {
       if (thesaurusDropdown.style.display !== 'none' && !thesaurusDropdown.contains(e.target) && e.target !== thesaurusBtn) {
         thesaurusDropdown.style.display = 'none';
         e.preventDefault();
       }
+    };
+    document.addEventListener('mousedown', _closeThesaurusDropdown);
+    document.addEventListener('contextmenu', _blockContextMenu);
+    _pendingHoverEffects.add(() => {
+      document.removeEventListener('mousedown', _closeThesaurusDropdown);
+      document.removeEventListener('contextmenu', _blockContextMenu);
     });
 
     footer.appendChild(thesaurusBtn);
@@ -3745,7 +3758,7 @@ document.addEventListener('mindmap:jump-word', e => {
     const lineHeight = parseInt(getComputedStyle(el).lineHeight) || 20;
     el.scrollTop = Math.max(0, linesBefore * lineHeight - el.clientHeight / 3);
     el.classList.add('jump-highlight');
-    setTimeout(() => el.classList.remove('jump-highlight'), 2000);
+    setTimeout(() => { if (el?.isConnected) el.classList.remove('jump-highlight'); }, 2000);
     found = true;
     break;
   }
@@ -3756,7 +3769,7 @@ document.addEventListener('mindmap:jump-word', e => {
       if (el) {
         el.focus();
         el.classList.add('jump-highlight');
-        setTimeout(() => el.classList.remove('jump-highlight'), 2000);
+        setTimeout(() => { if (el?.isConnected) el.classList.remove('jump-highlight'); }, 2000);
       }
     }
     window.Toast?.show(`«${word}» не найдено в блоках`, 'info');
