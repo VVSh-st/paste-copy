@@ -825,11 +825,43 @@
     reader.onload = ev => {
       try {
         const data = JSON.parse(ev.target.result);
-        if (!data.tabs) throw new Error('Неверный формат файла');
-        if (!confirm('Заменить текущие данные импортируемыми?')) return;
-        State.load(data);
-        Storage.save(State.serialize());
-        Toast.show('Импортировано ✓', 'success');
+        if (!data.tabs || !Array.isArray(data.tabs) || !data.tabs.length) throw new Error('Неверный формат файла');
+
+        if (data.tabs.length === 1) {
+          // Single tab — add to existing tabs, keep settings
+          const incoming = data.tabs[0];
+          const existing = State.getAll();
+          const dup = existing.find(t => t.name === incoming.name);
+          if (dup) incoming.name = incoming.name + ' (импорт)';
+          // Generate new IDs to avoid collisions
+          const idMap = {};
+          const newId = () => { const id = State.uid(); return id; };
+          incoming.id = newId();
+          incoming.blocks = (incoming.blocks || []).map(b => {
+            const oldId = b.id;
+            b.id = newId();
+            idMap[oldId] = b.id;
+            return b;
+          });
+          incoming.history = [];
+          incoming.historyIdx = -1;
+          incoming.namedSnapshots = [];
+          incoming.anchors = (incoming.anchors || []).map(a => {
+            if (a.blockId && idMap[a.blockId]) a.blockId = idMap[a.blockId];
+            return a;
+          });
+          // Push into state directly
+          existing.push(incoming);
+          State.load({ tabs: existing });
+          Storage.save(State.serialize());
+          Toast.show('Вкладка «' + (incoming.name || 'Без имени') + '» добавлена ✓', 'success');
+        } else {
+          // Multiple tabs — replace all (with confirm)
+          if (!confirm('Заменить все ' + existingTabsCount() + ' вкладок на ' + data.tabs.length + ' из файла?')) return;
+          State.load(data);
+          Storage.save(State.serialize());
+          Toast.show('Импортировано ' + data.tabs.length + ' вкладок ✓', 'success');
+        }
       } catch (err) {
         Toast.show('Ошибка импорта: ' + err.message, 'error');
         console.error('Import failed:', err);
@@ -837,6 +869,8 @@
     };
     reader.readAsText(file);
   }
+
+  function existingTabsCount() { return State.getAll().length; }
 
   /* ── Default template helper ────────────────────────────────────────────*/
   function applyDefaultTemplate(tab) {
