@@ -104,7 +104,7 @@ function _extractSections(text, cfg) {
     const headingMatch = line.match(/^ {0,3}(#{1,6})\s+(.+)/);
     if (headingMatch) {
       if (currentSection) sections.push(currentSection);
-      currentSection = { level: headingMatch[2].length, heading: headingMatch[3].trim().slice(0, cfg.maxHeadingLength), preview: '', lines: [] };
+      currentSection = { level: headingMatch[1].length, heading: headingMatch[2].trim().slice(0, cfg.maxHeadingLength), preview: '', lines: [] };
     } else if (currentSection && line.trim()) {
       currentSection.lines.push(line.trim());
       if (!currentSection.preview) {
@@ -125,7 +125,7 @@ function _extractSections(text, cfg) {
 
 function _extractKeyTerms(text, cfg) {
   if (!cfg.maxKeyTerms) return [];
-  const clean = text.replace(/^\s*(`{3}|~{3})[\s\S]*?^\s*\1[\s\S]*$/gm, '').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
+  const clean = text.replace(/^\s*(`{3}|~{3})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, '').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
   const freq = new Map();
   const rawWords = clean.match(/[a-zа-яё0-9-]{4,}/g) || [];
   for (let i = 0; i < rawWords.length; i++) {
@@ -173,7 +173,7 @@ function _extractLists(text) {
 
 function _extractCodeBlocks(text) {
   const blocks = [];
-  const regex = /(`{3}|~{3})([^\s`]+)[ \t]*\n?([\s\S]*?)\1/g;
+  const regex = /(`{3}|~{3})([^\s`]*)[ \t]*\n?([\s\S]*?)\1/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
     blocks.push({ lang: match[2] || 'code', preview: match[3].trim().split('\n')[0].trim().slice(0, 100) || '(пусто)' });

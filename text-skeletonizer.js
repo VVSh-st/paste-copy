@@ -315,8 +315,8 @@ const TextSkeletonizer = (() => {
 
       if (headingMatch) {
         if (currentSection) sections.push(currentSection);
-        const level = headingMatch[2].length;
-        const heading = headingMatch[3].trim().slice(0, cfg.maxHeadingLength);
+        const level = headingMatch[1].length;
+        const heading = headingMatch[2].trim().slice(0, cfg.maxHeadingLength);
         currentSection = { level, heading, preview: '', lines: [] };
       } else if (currentSection && line.trim()) {
         currentSection.lines.push(line.trim());
@@ -370,7 +370,7 @@ const TextSkeletonizer = (() => {
     if (!cfg.maxKeyTerms) return [];
 
     const clean = text
-      .replace(/^\s*(`{3}|~{3})[\s\S]*?^\s*\1[\s\S]*$/gm, '')
+      .replace(/^\s*(`{3}|~{3})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, '')
       .replace(/#{1,6}\s/g, '')
       .replace(/[*_`>\[\]()]/g, '')
       .toLowerCase();
@@ -438,7 +438,7 @@ const TextSkeletonizer = (() => {
 
   function _extractCodeBlocks(text) {
     const blocks = [];
-    const regex = /(`{3}|~{3})([^\s`]+)[ \t]*\n?([\s\S]*?)\1/g;
+    const regex = /(`{3}|~{3})([^\s`]*)[ \t]*\n?([\s\S]*?)\1/g;
     let match;
     while ((match = regex.exec(text)) !== null) {
       const lang = match[2] || 'code';
