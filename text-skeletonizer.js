@@ -145,7 +145,7 @@ const TextSkeletonizer = (() => {
    * Синхронная обработка (используется для маленьких текстов и как fallback).
    */
   function _processSync(text, level) {
-
+    const cfg = _configForLevel(level);
     const sections = _extractSections(text, cfg);
     const parts = [];
 

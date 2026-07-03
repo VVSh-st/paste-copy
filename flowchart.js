@@ -851,7 +851,6 @@ const Flowchart = (() => {
       el.removeAttribute('fill-opacity'); el.removeAttribute('filter');
       el.dataset.role = 'backing';
       depthG.appendChild(el);
-      console.log('[FC-BACKING]', node.id, node.shape, el.tagName, el.style.fill, el.getAttribute('points') || el.getAttribute('r') || el.getAttribute('width'));
     }
 
     let shapeEl;
@@ -928,7 +927,6 @@ const Flowchart = (() => {
       }
     }
     depthG.appendChild(shapeEl);
-    console.log('[FC-NODE]', node.id, 'depthG children:', depthG.children.length, 'first child:', depthG.children[0]?.style?.fill, 'second child:', depthG.children[1]?.style?.fill);
 
     lines.forEach((ln, li) => {
       const t = document.createElementNS(SVG_NS, 'text');
