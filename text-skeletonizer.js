@@ -42,12 +42,17 @@ const TextSkeletonizer = (() => {
         const { id, result, error } = e.data;
         const cb = _workerCallbacks.get(id);
         if (cb) {
+          clearTimeout(cb.timerId);
           _workerCallbacks.delete(id);
           if (error) cb.reject(new Error(error));
           else cb.resolve(result);
         }
       };
-      _worker.onerror = () => { _workerReady = false; };
+      _worker.onerror = () => {
+        _workerReady = false;
+        _workerCallbacks.forEach(cb => { clearTimeout(cb.timerId); cb.reject(new Error('worker error')); });
+        _workerCallbacks.clear();
+      };
       _workerReady = true;
     } catch {
       _worker = null;
@@ -61,15 +66,14 @@ const TextSkeletonizer = (() => {
         return;
       }
       const id = ++_workerId;
-      _workerCallbacks.set(id, { resolve, reject });
-      _worker.postMessage({ text, level, id });
-      // Fallback: если Worker не ответил за 2 сек — синхронно
-      setTimeout(() => {
+      const timerId = setTimeout(() => {
         if (_workerCallbacks.has(id)) {
           _workerCallbacks.delete(id);
           resolve(_processSync(text, level));
         }
       }, 2000);
+      _workerCallbacks.set(id, { resolve, reject, timerId });
+      _worker.postMessage({ text, level, id });
     });
   }
 
@@ -307,10 +311,13 @@ const TextSkeletonizer = (() => {
 
   function _extractTitle(text) {
     const lines = text.split('\n');
+    let inFence = false;
     for (const line of lines) {
+      if (line.trimStart().startsWith('```')) { inFence = !inFence; continue; }
+      if (inFence) continue;
       const h1 = line.match(/^#\s+(.+)/);
       if (h1) return h1[1].trim().slice(0, 150);
-      if (line.trim() && !line.startsWith('```')) return line.trim().slice(0, 150);
+      if (line.trim()) return line.trim().slice(0, 150);
     }
     return null;
   }
@@ -328,7 +335,7 @@ const TextSkeletonizer = (() => {
 
     // Частотный анализ с лемматизацией и учётом отрицаний
     const freq = new Map();
-    const rawWords = clean.split(/\s+/);
+    const rawWords = clean.match(/[a-zа-яё0-9-]{4,}/g) || [];
     for (let i = 0; i < rawWords.length; i++) {
       const w = rawWords[i];
       if (w.length <= 3 || STOP_WORDS.has(w)) continue;
@@ -353,9 +360,12 @@ const TextSkeletonizer = (() => {
     const lists = [];
     const lines = text.split('\n');
     let currentList = null;
+    let inFence = false;
 
     for (let idx = 0; idx < lines.length; idx++) {
       const line = lines[idx];
+      if (line.trimStart().startsWith('```')) { inFence = !inFence; if (currentList && currentList.items.length) { lists.push(currentList); currentList = null; } continue; }
+      if (inFence) continue;
       const bulletMatch = line.match(/^\s*[-*+]\s+(.+)/);
       const numMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
 

@@ -81,10 +81,13 @@ function _extractFirstSentence(text) {
 
 function _extractTitle(text) {
   const lines = text.split('\n');
+  let inFence = false;
   for (const line of lines) {
+    if (line.trimStart().startsWith('```')) { inFence = !inFence; continue; }
+    if (inFence) continue;
     const h1 = line.match(/^#\s+(.+)/);
     if (h1) return h1[1].trim().slice(0, 150);
-    if (line.trim() && !line.startsWith('```')) return line.trim().slice(0, 150);
+    if (line.trim()) return line.trim().slice(0, 150);
   }
   return null;
 }
@@ -121,7 +124,7 @@ function _extractKeyTerms(text, cfg) {
   if (!cfg.maxKeyTerms) return [];
   const clean = text.replace(/```[\s\S]*?```/g, '').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
   const freq = new Map();
-  const rawWords = clean.split(/\s+/);
+  const rawWords = clean.match(/[a-zа-яё0-9-]{4,}/g) || [];
   for (let i = 0; i < rawWords.length; i++) {
     const w = rawWords[i];
     if (w.length <= 3 || STOP_WORDS.has(w)) continue;
@@ -136,8 +139,11 @@ function _extractLists(text) {
   const lists = [];
   const lines = text.split('\n');
   let currentList = null;
+  let inFence = false;
   for (let idx = 0; idx < lines.length; idx++) {
     const line = lines[idx];
+    if (line.trimStart().startsWith('```')) { inFence = !inFence; if (currentList && currentList.items.length) { lists.push(currentList); currentList = null; } continue; }
+    if (inFence) continue;
     const bulletMatch = line.match(/^\s*[-*+]\s+(.+)/);
     const numMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
     if (bulletMatch || numMatch) {
