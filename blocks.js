@@ -1791,6 +1791,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       return lineMirror;
     }
 
+    let _hlLogCounter = 0;
     function updateCurrentLineHighlight() {
       const lay = State.getLayout();
       const enabled = lay.currentLineHighlight === true && document.activeElement === ta;
@@ -1809,7 +1810,32 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       mirror.appendChild(before);
       mirror.appendChild(marker);
 
-      const top = marker.offsetTop - ta.scrollTop;
+      const markerRect = marker.getBoundingClientRect();
+      const mirrorRect = mirror.getBoundingClientRect();
+      const taRect = ta.getBoundingClientRect();
+      const wrapRect = lineWrap.getBoundingClientRect();
+      const glyphOffset = Math.max(0, (lineHeight - markerRect.height) / 2) - 1;
+      const top = (taRect.top - wrapRect.top) +
+        (markerRect.top - mirrorRect.top) -
+        glyphOffset -
+        ta.scrollTop;
+
+      // DEBUG: log every 50th call
+      if (++_hlLogCounter % 50 === 1) {
+        const linesBefore = (ta.value.substring(0, ta.selectionStart).match(/\n/g) || []).length;
+        console.log('[HL]', {
+          selStart: ta.selectionStart,
+          linesBefore,
+          scrollTop: ta.scrollTop,
+          lineHeight: +lineHeight.toFixed(2),
+          top: +top.toFixed(2),
+          markerY: +(markerRect.top - mirrorRect.top).toFixed(2),
+          taOffset: +(taRect.top - wrapRect.top).toFixed(2),
+          glyphOffset: +glyphOffset.toFixed(2),
+          contentWidth: +(ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)).toFixed(0),
+          mirrorWidth: +mirror.style.width,
+        });
+      }
 
       lineHighlight.style.top = top + 'px';
       lineHighlight.style.height = lineHeight + 'px';
