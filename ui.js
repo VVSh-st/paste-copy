@@ -419,7 +419,14 @@ const Preview = (() => {
 
     const parts = [];
 
-    (tab.blocks || []).forEach(b => {
+    // Sort blocks by column (left→right) then position (top→bottom) for preview order
+    const sortedBlocks = (tab.blocks || []).slice().sort((a, b) => {
+      const ca = a.column || 0, cb = b.column || 0;
+      if (ca !== cb) return ca - cb;
+      return (tab.blocks || []).indexOf(a) - (tab.blocks || []).indexOf(b);
+    });
+
+    sortedBlocks.forEach(b => {
       if (b.type === 'commands' || b.type === 'variable') return;
       if (b.type === 'sticky') return;
 

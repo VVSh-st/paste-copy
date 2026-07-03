@@ -390,6 +390,12 @@ const Blocks = (() => {
   function buildOrderMap(blocks) {
     const map = {};
     let order = 1;
+    // Sort by column first (left→right), then by position within column (top→bottom)
+    const sorted = blocks.slice().sort((a, b) => {
+      const ca = a.column || 0, cb = b.column || 0;
+      if (ca !== cb) return ca - cb;
+      return blocks.indexOf(a) - blocks.indexOf(b);
+    });
     function walk(list) {
       list.forEach(b => {
         if (b.type === 'text') {
@@ -413,7 +419,7 @@ const Blocks = (() => {
         }
       });
     }
-    walk(blocks);
+    walk(sorted);
     return map;
   }
 
