@@ -1658,6 +1658,27 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
 
 
+    // Debounced badge update — no buildOrderMap per keystroke
+    let _badgeTimer = null;
+    function _scheduleBadgeUpdate() {
+      clearTimeout(_badgeTimer);
+      _badgeTimer = setTimeout(() => {
+        if (b.type !== 'text' && b.type !== 'todo' && b.type !== 'table') return;
+        const tab = State.getActive();
+        if (!tab) return;
+        const orderMap = buildOrderMap(tab.blocks);
+        const badge = document.querySelector(`.block[data-id="${b.id}"] .block-order-btn`);
+        if (!badge) return;
+        const orderNum = orderMap[b.id];
+        const disabled = b.previewDisabled === true;
+        badge.classList.toggle('block-order-disabled', disabled);
+        badge.textContent = disabled ? '✕' : (orderNum != null ? '#' + orderNum : '—');
+        badge.title = disabled
+          ? 'Блок скрыт из превью (нажми чтобы включить)'
+          : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть)' : 'Пустой — в превью не войдёт';
+      }, 300);
+    }
+
     ta.addEventListener('input', () => {
 
       const val = ta.value;
@@ -1666,23 +1687,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       updateBlockCounter(ta, b, body);
 
-      // Обновляем badge превью при изменении текста
-      if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
-        const tab = State.getActive();
-        if (tab) {
-          const orderMap = buildOrderMap(tab.blocks);
-          const badge = document.querySelector(`.block[data-id="${b.id}"] .block-order-btn`);
-          if (badge) {
-            const orderNum = orderMap[b.id];
-            const disabled = b.previewDisabled === true;
-            badge.classList.toggle('block-order-disabled', disabled);
-            badge.textContent = disabled ? '✕' : (orderNum != null ? '#' + orderNum : '—');
-            badge.title = disabled
-              ? 'Блок скрыт из превью (нажми чтобы включить)'
-              : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть)' : 'Пустой — в превью не войдёт';
-          }
-        }
-      }
+      _scheduleBadgeUpdate();
 
       WordDict.scheduleBuild();
 
@@ -1704,8 +1709,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           SpellCheck.checkText(ta.value).then(result => {
             if (!ta.isConnected) return;
             _lastSpellWords = (result?.words || []).filter(w => !_isSpellRejected(w.word));
-            console.log('[spell] input result:', _lastSpellWords.map(w => `${w.word}@${w.pos}(len=${w.len})`).join(', '));
-            console.log('[spell] textarea value length:', ta.value.length, 'first 200 chars:', ta.value.slice(0, 200));
             if (!_lastSpellWords.length) {
               _clearSpellOverlay();
               return;
@@ -1807,42 +1810,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       const cs = getComputedStyle(ta);
       const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
-      const mirror = getLineMirror(cs);
-      mirror.textContent = '';
 
-      const before = document.createElement('span');
-      before.textContent = ta.value.substring(0, ta.selectionStart);
-      const marker = document.createElement('span');
-      marker.textContent = ta.value.substring(ta.selectionStart, ta.selectionStart + 1) || '.';
-      mirror.appendChild(before);
-      mirror.appendChild(marker);
-
-      const markerRect = marker.getBoundingClientRect();
-      const mirrorRect = mirror.getBoundingClientRect();
-      const taRect = ta.getBoundingClientRect();
-      const wrapRect = lineWrap.getBoundingClientRect();
-      const glyphOffset = Math.max(0, (lineHeight - markerRect.height) / 2) - 1;
-      const top = (taRect.top - wrapRect.top) +
-        (markerRect.top - mirrorRect.top) -
-        glyphOffset -
-        ta.scrollTop;
-
-      // DEBUG: log every 50th call
-      if (++_hlLogCounter % 50 === 1) {
-        const linesBefore = (ta.value.substring(0, ta.selectionStart).match(/\n/g) || []).length;
-        console.log('[HL]', {
-          selStart: ta.selectionStart,
-          linesBefore,
-          scrollTop: ta.scrollTop,
-          lineHeight: +lineHeight.toFixed(2),
-          top: +top.toFixed(2),
-          markerY: +(markerRect.top - mirrorRect.top).toFixed(2),
-          taOffset: +(taRect.top - wrapRect.top).toFixed(2),
-          glyphOffset: +glyphOffset.toFixed(2),
-          contentWidth: +(ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)).toFixed(0),
-          mirrorWidth: +mirror.style.width,
-        });
-      }
+      // Calculate line number from text content — no mirror DOM, no getBoundingClientRect
+      const linesBefore = (ta.value.substring(0, ta.selectionStart).match(/\n/g) || []).length;
+      const top = linesBefore * lineHeight - ta.scrollTop;
 
       lineHighlight.style.top = top + 'px';
       lineHighlight.style.height = lineHeight + 'px';

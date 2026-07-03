@@ -618,7 +618,12 @@ const Anchors = (() => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
-        if (bel) _renderMarkers(bel, ta);
+        if (bel) {
+          clearTimeout(ta._anchorInputTimer);
+          ta._anchorInputTimer = setTimeout(() => {
+            if (bel.isConnected) _renderMarkers(bel, ta);
+          }, 150);
+        }
       }
     }, true);
   }
