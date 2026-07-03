@@ -112,6 +112,8 @@
 .flowchart-canvas:active { cursor: grabbing; }
 .flowchart-canvas svg text { pointer-events: none; }
 .flowchart-canvas svg { width: 100%; height: 100%; display: block; }
+.flowchart-canvas svg .fc-shape { fill: rgba(25,28,40,0.92); }
+.flowchart-canvas svg .fc-backing { fill: rgba(16,18,26,0.78); }
 
 .flowchart-resize-handle {
   position: absolute; right: 0; bottom: 0;

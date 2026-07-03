@@ -846,7 +846,7 @@ const Flowchart = (() => {
 
     // Тёмная подложка — рисуется отдельно, гарантированно тёмная
     function addBacking(el) {
-      el.setAttribute('fill', 'rgba(16,18,26,0.78)');
+      el.classList.add('fc-backing');
       el.removeAttribute('stroke'); el.removeAttribute('stroke-width');
       el.removeAttribute('fill-opacity'); el.removeAttribute('filter');
       el.dataset.role = 'backing';
@@ -863,9 +863,8 @@ const Flowchart = (() => {
         addBacking(back);
         shapeEl = document.createElementNS(SVG_NS, 'polygon');
         shapeEl.setAttribute('points', pts);
-        shapeEl.setAttribute('fill', 'rgba(25,28,40,0.92)');
-        shapeEl.setAttribute('stroke', color + '50');
-        shapeEl.setAttribute('stroke-width', '1.25');
+        shapeEl.classList.add('fc-shape');
+        shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
@@ -876,9 +875,8 @@ const Flowchart = (() => {
         addBacking(back);
         shapeEl = document.createElementNS(SVG_NS, 'circle');
         shapeEl.setAttribute('cx', node.x); shapeEl.setAttribute('cy', node.y); shapeEl.setAttribute('r', r);
-        shapeEl.setAttribute('fill', 'rgba(25,28,40,0.92)');
-        shapeEl.setAttribute('stroke', color + '50');
-        shapeEl.setAttribute('stroke-width', '1.25');
+        shapeEl.classList.add('fc-shape');
+        shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
       }
@@ -891,13 +889,14 @@ const Flowchart = (() => {
         const rect = document.createElementNS(SVG_NS, 'rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y + 7); rect.setAttribute('width', w); rect.setAttribute('height', h - 14);
         rect.setAttribute('rx', '6');
-        rect.setAttribute('fill', 'rgba(25,28,40,0.92)');
+        rect.classList.add('fc-shape');
         rect.setAttribute('stroke', color + '50'); rect.setAttribute('stroke-width', '1.25');
         rect.dataset.role = 'shape-body';
         shapeEl.appendChild(rect);
         const top = document.createElementNS(SVG_NS, 'ellipse');
         top.setAttribute('cx', node.x); top.setAttribute('cy', y + 7); top.setAttribute('rx', w / 2); top.setAttribute('ry', 7);
-        top.setAttribute('fill', 'rgba(25,28,40,0.92)'); top.setAttribute('stroke', color + '40');
+        top.classList.add('fc-shape');
+        top.setAttribute('stroke', color + '40');
         top.dataset.role = 'shape-top';
         shapeEl.appendChild(top);
         break;
@@ -910,7 +909,7 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', h / 2);
-        shapeEl.setAttribute('fill', 'rgba(25,28,40,0.92)');
+        shapeEl.classList.add('fc-shape');
         shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
@@ -923,7 +922,7 @@ const Flowchart = (() => {
         shapeEl = document.createElementNS(SVG_NS, 'rect');
         shapeEl.setAttribute('x', x); shapeEl.setAttribute('y', y); shapeEl.setAttribute('width', w); shapeEl.setAttribute('height', h);
         shapeEl.setAttribute('rx', '8');
-        shapeEl.setAttribute('fill', 'rgba(25,28,40,0.92)');
+        shapeEl.classList.add('fc-shape');
         shapeEl.setAttribute('stroke', color + '50'); shapeEl.setAttribute('stroke-width', '1.25');
         shapeEl.dataset.role = 'shape';
         break;
