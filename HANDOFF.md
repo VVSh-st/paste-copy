@@ -22,6 +22,62 @@
 
 ## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-03)
 
+### GPT Code Audit (2026-07-03)
+
+**blocks.js (2 раунда, 8 фиксов)**
+- Кэш при удалении, scroll race guard, timer cleanup, todo blocked state, debounce highlight
+- document.addEventListener leak, _appendCaptureText race, jump-highlight guard
+
+**state.js (7 раундов, 58 фиксов)**
+- load: фильтрация невалидных tabs, нормализация, dedup, safe serialize, _resetInMemoryState
+- migrate: filter invalid blocks, Array.isArray, нормализация, block ID dedup, todo/table
+- History: applySnap try/catch, snapshot try/catch, _parseBlockSubtabsSnap, undo/redo _snapEmit
+- Event bus: _safeListenerCall, listener validation
+- deepMerge: prototype pollution guard, _cloneSavedValue
+- setLayout: deep merge + emit + shallow-check + try/catch
+- replaceAll: allTabs, beforeCount, skip no-op, normalize
+- Удалён дублирующийся blockRedo (критический баг)
+
+**ai-transform.js (6 раундов, 39 фиксов)**
+- Race conditions: _requestSeq + _isRunning guard, accept returns boolean, reject uses hidePopup(false)
+- Safe error handling: non-Error catch guard, requestAnimationFrame guard, setTimeout handlers
+- UX: empty instruction toast, focus return, bottom boundary check, preserve selection, history hint
+- Performance: LCS limit (20K chars + 250K tokens), push+reverse instead of unshift, filter empty tokens
+- Security: marker color sanitization (CSS.escape fallback), prompt boundary <text> tags
+- Readability: HISTORY_LIMIT, MAX_INSTRUCTION_LEN, TRANSFORM_SYSTEM_PROMPT constants, _State usage
+
+**anchors.js (2 раунда, 25 фиксов)**
+- State consistency: clearAnchors/updateAll tabs, removeAnchorById via State.update
+- Security: marker color sanitization, CSS.escape fallback for blockId
+- Race conditions: setTimeout guards for click/focus/contextmenu handlers, palette mousedown leak fix
+- UX: pointer events for long press, suppress click after long press, Escape closes palette, del.contains() guard
+- Performance: mirror text optimization, dedup getComputedStyle, _createLineMarker helper
+- Readability: magic numbers → constants, remove unused code (escHtml, _charW, _isScrolling)
+
+**Коммиты:**
+```
+0aaa687 anchors: GPT audit round 2 — 8 fixes (navIdx, CSS.escape, palette leak, State consistency, visibility, mirror width, line marker helper)
+3b02fc2 anchors: GPT audit round 1 — 17 fixes (clearAnchors, color sanitize, blockId escape, setAnchor guard, _jumpToAnchor, marker cleanup, word-break, negative height, pointer events, long press, Escape, del.contains, mirror optimize, getComputedStyle, unused code, constants)
+9e88d90 ai-transform: GPT audit round 6 — 5 fixes (setTimeout guards, contextmenu guard, comment fix, history hint)
+b652248 ai-transform: GPT audit round 5 — 8 fixes (contextmenu cleanup, rAF guard, null input, preserve selection, history cache, instruction limit, constants)
+0faaa17 ai-transform: GPT audit round 4 — 7 fixes (accept boolean, reject hidePopup, error handling, bottom boundary, toast, filter tokens, save diffFontSize, normalize size)
+ff2870e ai-transform: GPT audit round 3 — 3 fixes (_isRunning, empty toast, absolute LCS limit)
+805055c ai-transform: GPT audit round 2 — 9 fixes (raw selection, textarea changed guard, accept guard, click handler removal, focus return, split arrays, push+reverse, getBoundingClientRect, try/finally)
+741e497 ai-transform: GPT audit round 1 — 7 fixes (accept cleanup, requestSeq, LCS limit, history validation, clipboard error, prompt boundary, _State usage)
+2a33a87 blocks: GPT audit round 2 — document.addEventListener leak, _appendCaptureText race, jump-highlight guard
+59d8017 blocks: GPT audit round 1 — cache cleanup, scroll race, timer cleanup, todo blocked, line highlight debounce
+```
+
+**Итого: 130 фиксов за 17 раундов аудита**
+
+**Текущий статус:**
+- ✅ blocks.js: аудит завершён
+- ✅ state.js: аудит завершён
+- ✅ ai-transform.js: аудит завершён
+- ✅ anchors.js: аудит завершён
+- ❌ **ТЕКУЩИЙ БАГ:** подсветка текущей строки смещается вниз к 400-й строке ( drift накапливается)
+- ⏳ app.js: ожидает аудит (969 строк)
+
 ### Flowchart — Query menu
 
 1. ✅ **Query menu** — левый верхний угол, proximity reveal (ratio 0.25), 5 пресетов + custom input + история (FIFO, localStorage)
@@ -43,21 +99,40 @@
 14. ✅ **Edge labels** — прямоугольник-фон + текст посередине ребра, стоят на месте (не сдвигаются), визуально отличаются от карточек
 15. ✅ **LAYER_GAP** — 90, **NODE_GAP** — 40
 
-### TextSkeletonizer (v3 — 2026-07-03)
+### TextSkeletonizer (v4 — 2026-07-03, итерации 1-5)
 
 16. ✅ **TextSkeletonizer** — клиентское сжатие текста для LLM
 17. ✅ **Compression levels** — light (заголовки+статистика), medium (+термины), aggressive (+списки+код+ссылки)
 18. ✅ **Адаптивный порог** — `recommendLevel()` определяет уровень по размеру текста
-19. ✅ **Защита от отрицаний** — "не React" не становится ключевым термином
-20. ✅ **LRU кэш** — hash(text):level → skeleton, до 50 записей
-21. ✅ **Web Worker** — файл создан (`text-skeletonizer-worker.js`), sync-only из-за Promise-бага
-22. ✅ **Лемматизация** — упрощённый стемминг для русского (suffix stripping)
-23. ✅ **Интеграция** — flowchart.js + mindmap.js, настройки в LLM → Разное (off/light/medium/aggressive/auto)
-24. ⏸ **Аудит** — тикет `TICKET-text-skeletonizer.md`, 4 ответа в `Bigbrat_govorit/`
+19. ✅ **Защита от отрицаний** — regex `[a-zа-яё0-9-]+` ловит короткие `не`/`ни`/`без`, `NEGATIONS.has()` работает
+20. ✅ **LRU кэш** — hash(text):level → skeleton, до 50 записей. Активен в `_processSync`, `processAsync` и `onmessage`
+21. ✅ **Web Worker** — `processAsync` синхронно для <20K, через Worker для ≥20K. Fallback при error/timeout/postMessage throw
+22. ✅ **Лемматизация** — упрощённый стемминг для русского (suffix stripping), RU_SUFFIXES без дублей
+23. ✅ **Интеграция** — flowchart.js + mindmap.js переключены на `await processAsync()`
+24. ✅ **processAsync** — Worker при ≥20K, `_processViaWorker` с try/catch, clearTimeout, fallback
+25. ✅ **Worker lifecycle** — `_fallbackWorkerCallbacks` + `_resetWorker` helpers. onerror/timeout/postMessage catch — все fallback в sync. Worker terminate при ошибке/timeout
+26. ✅ **Code fences** — `inFence` в `_extractSections`, `_extractTitle`, `_extractLists`. Поддержка ``` и ~~~. Направленные spaces перед `#` (`^ {0,3}`)
+27. ✅ **_extractKeyTerms** — чистка пунктуации через regex, удаление fenced blocks + inline code spans перед анализом
+28. ✅ **_extractCodeBlocks** — `([^\s`]*)` для блоков без языка, backref `\1` для закрытия
+29. ✅ **_extractFirstSentence** — char-by-char scanner, `ABBREVIATIONS` Set (т.е., prof., dr., inc.), digits-between-dots check
+30. ✅ **_computeStats** — вынесена в worker (паритет с main)
+31. ✅ **Нет паритета sync/worker** — worker инлайнит статистику → вынесено в `_computeStats`
+32. ⏸ **Fence length tracking** — nested fences разной длины (`````...```...`````) не поддерживаются. Edge case, deferred
+33. ⏸ **Аудит** — тикет `TICKET-text-skeletonizer.md`, ответы в `Bigbrat_govorit/`
 
 ### Flowchart — Известные баги (ЗАБЛОКИРОВАНО)
 
 25. ❌ **Белые карточки** — backing и shape имеют правильный computed fill (`rgba(16,18,26,0.78)` и `rgba(25,28,40,0.92)`), но рендерятся белыми. Пробовали: `style.fill`, `setAttribute('fill')`, CSS-классы `.fc-shape`/`.fc-backing` в flowchart.css. DevTools подтверждает правильный computed fill. Причина не найдена.
+
+### "Ща как напишу" — capture mode (2026-07-03)
+
+1. ✅ **Кнопка** — SVG-иконка в футере текстового блока перед «Перевести». `font-ctrl-btn capture-btn`
+2. ✅ **Режим захвата** — глобальный: выделение текста в любом текстовом блоке → mouseup → текст добавляется в sticky-блок
+3. ✅ **Автосоздание заметки** — если sticky нет, создаётся через `State.addBlock('sticky')`
+4. ✅ **Привязка к заметке** — `_captureStickyId` фиксирует целевой sticky при включении режима. Несколько sticky → всегда один
+5. ✅ **Тримминг** —.leading spaces + trailing empty lines. `\n\n` между выделениями
+6. ✅ **Пульсация** — `@keyframes capturePulse` 2.5s, `box-shadow` glow, класс `.capture-active`
+7. ✅ **Кнопка «Копировать заметку»** — SVG `copy` на заголовке sticky-блока рядом с «Цвет заметки». Clipboard API + fallback
 
 ### Spell-check (итог)
 
@@ -118,33 +193,39 @@
 ### Git коммиты (эта сессия)
 
 ```
+c8c9f40 fix: abbreviation check uses full prefix, strip inline code from key terms
+15e3f9d fix: _fallbackWorkerCallbacks helper, timeout terminates worker, _computeStats in worker, abbreviation-aware first sentence
+906386c fix: negation filter now sees short words, worker errors fallback to sync instead of reject
+fe9f8eb fix: heading group indices, keyTerms regex eating text after code fence, code blocks without language tag
+463de80 feat: enable LRU cache in TextSkeletonizer — lookup in _processSync/processAsync, store on worker resolve
+c2a3d4d fix: skeletonizer iteration 2 — inFence in sections, postMessage try/catch, worker recovery, first sentence EOF, ~~~ fences, leading spaces in headings
+e21b84a fix: worker lifecycle (onerror reject + clearTimeout), punctuation in key terms, code fences in title/lists
+4fac1b8 fix: _extractSections — guard on post-loop push only, not inside loop
+316e7b3 feat: TextSkeletonizer — processAsync with Worker, fix _extractLists index, off-by-one in _extractSections, dedup RU_SUFFIXES
+c8914a5 fix: capture mode text trim (leading spaces + trailing empty lines) + sticky binding
+a864086 feat: 'Ща как напишу' — capture mode for quick text collection + copy note button
 31034c8 feat: Sugiyama layout engine — 6 phases: cycle removal, layer assignment, dummy nodes, crossing minimization, coordinate assignment, waypoint edge routing
 e8792e9 fix: flowchart BFS infinite loop on cycles — add MAX_ROWS=50 guard
 f4e892d fix: narrower query menu (220px), history only stores manual queries
 eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIFO, proximity reveal
-de089ad hide spell-check toggle from settings — needs further work before release
-2bfa28c docs: clean up HANDOFF — remove duplicates, organize spell-check/ticket/archive sections
-e55cf02 debug: add position tracking logs for spell-check overlay drift investigation
-65b4ac1 feat: spell-check skips code fences (```/~~~)
-9d3135f feat: spell-check rejection tracking — 3 reverts per-block or globally hides word
-84dadbf fix: spell-check position offset — leadingTrim compensation
-9de8b16 fix: spell-check blur handler — add _spellApplying guard
-392f666 fix: spell-check click handler — e.target !== ta guard
-3b3be8a feat: spell-check click-to-accept with toggle, commit/revert, visual debounce
-7984255 fix: MiniChat featureKey → 'chat' in error handler
-1a54a8a fix: stale index protection for LLM async operations
 ```
 
 ### Ключевые файлы
 
-- `flowchart.js` (~1300 строк) — блок-схема: Sugiyama v2 layout (20 iters, dummy nodes, orthogonal routing), query menu, node drag
-- `flowchart.css` (~250 строк) — стили блок-схемы, query menu CSS
-- `spell-check.js` (~250 строк) — Yandex Speller API, code fence masking, placeholder masking, position offset compensation
-- `blocks.js` (~3640 строк) — spell-check integration: click-to-accept, toggle, rejection tracking
+- `flowchart.js` (~1300 строк) — блок-схема: Sugiyama v2 layout, query menu, node drag
+- `flowchart.css` (~250 строк) — стили блок-схемы
+- `spell-check.js` (~250 строк) — Yandex Speller API, code fence masking
+- `blocks.js` (~3780 строк) — spell-check, "Ща как напишу" capture mode, sticky copy button, GPT audit fixes
 - `llm-features.js` (~4510 строк) — stale index protection, MiniChat featureKey fix
-- `styles.css` (~6100 строк) — blocked subtab CSS, spell-check overlay/popup
-- `ui.js` (~2073 строк) — structure menu, _fixUnclosedBackticks fence-aware, _closeOpenFences per-block
-- `Bigbrat_govorit/` — ответы аудиторов (4 файла) + INDEX.md с описаниями
+- `styles.css` (~6100 строк) — blocked subtab CSS, capturePulse animation
+- `ui.js` (~2073 строк) — structure menu, fence-aware backticks
+- `text-skeletonizer.js` (~510 строк) — LRU cache, processAsync, Worker lifecycle, fence-aware extractors
+- `state.js` (~1230 строк) — State, Events, persistence, history, search, GPT audit fixes (58 fixes)
+- `ai-transform.js` (~450 строк) — AI transform module, GPT audit fixes (39 fixes)
+- `anchors.js` (~600 строк) — anchor navigation, markers, palette, GPT audit fixes (25 fixes)
+- `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
+- `flowchart.js` и `mindmap.js` — `_fetchWithQuery` используют `await processAsync()`
+- `prompt-blocks-review.md` / `prompt-state-review.md` / `prompt-aitransform-review.md` / `prompt-anchors-review.md` — GPT audit prompts
 
 ## Architecture Decisions
 
@@ -163,11 +244,18 @@ e55cf02 debug: add position tracking logs for spell-check overlay drift investig
 - **Spell-check position fix** — `leadingTrim = text.length - text.trimStart().length` компенсирует сдвиг API
 - **Flowchart fill cascade** — `style.fill` решает проблему приоритета CSS над SVG атрибутами
 - **Code fences per-block** — `_closeOpenFences` применяется per-block, fence-aware `_fixUnclosedBackticks`
+- **TextSkeletonizer Worker** — `processAsync` синхронно для <20K, Worker для ≥20K. `_fallbackWorkerCallbacks` + `_resetWorker` — единый helper для onerror/timeout/catch
+- **TextSkeletonizer cache** — LRU по `level + ':' + _hash(text)`, 50 записей. Lookup в processSync/processAsync/onmessage
+- **Capture mode** — глобальный `_captureMode` + `_captureStickyId`. mouseup listener в каждом renderTextBody. Тримминг: leading spaces + trailing empty lines
+- **TextSkeletonizer fences** — `inFence` toggle в sections/title/lists. Fence length tracking deferred (rare edge case)
 
 ## Ожидают решения
 
-- **Structure menu scrollbar** — баг с `|` в тексте последнего блока. Нужна живая отладка
-- **Spell-check overlay drift** — после ~10 строк фон сдвигается вправо на 1-2 символа. Debug-логи на месте, требует investigation
+- **ТЕКУЩИЙ БАГ: подсветка строки** — drift вниз к 400-й строке. updateCurrentLineHighlight() в blocks.js. Mirror-based расчёт позиции накапливает ошибку. Возможно несовпадение ширины mirror/textarea из-за scrollbar. Исправить ДО继续 аудита app.js
+- **Structure menu scrollbar** — баг с `|` в тексте последнего блока
+- **Spell-check overlay drift** — после ~10 строк фон сдвигается вправо
+- **TextSkeletonizer fence length** — nested fences разной длины
+- **TextSkeletonizer мёртвый API** — `shouldCompress()` не используется
 
 ## Ранее выполнено (архив)
 
