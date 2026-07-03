@@ -22,11 +22,44 @@
 
 ## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-03)
 
-### GPT Code Audit (2026-07-03)
+### Column resize + independent scroll fix (2026-07-03)
 
-**blocks.js (2 раунда, 8 фиксов)**
-- Кэш при удалении, scroll race guard, timer cleanup, todo blocked state, debounce highlight
-- document.addEventListener leak, _appendCaptureText race, jump-highlight guard
+1. ✅ **Resizer drag** — `applyLayout(ratios)` принимает параметр, не вызывает `State.setLayout()` в mousemove → нет `fullRender()` → ресайзеры живут → drag плавный. State коммитится на mouseUp.
+2. ✅ **Independent column scrolling** — `.column { overflow: auto }`, `#workspace { overflow: hidden }`. Каждая колонка скроллится отдельно.
+3. ✅ **Scrollbar off by default** — `#workspace { scrollbar-width: none }`. `.col-scrollbar` toggle возвращает.
+
+### Block order fix (2026-07-03)
+
+4. ✅ **Block order numbers** — `buildOrderMap()` и `build()` в preview сортируют блоки по колонке (лево→право, верх→низ). Badge #N и preview следуют порядку колонок.
+
+### CPU optimization (2026-07-03)
+
+5. ✅ **Anchor markers debounce** — `State.onLive(rerender)` → debounce 150ms вместо каждого keystroke.
+6. ✅ **Debug console.log удалены** — из blocks.js (spell-click, spell-overlay) и spell-check.js (chunk logging).
+
+### Export current tab (2026-07-03)
+
+7. ✅ **Export tab button** — `#btn-export-tab` рядом с основным экспортом. Экспортирует текущую вкладку в JSON.
+8. ✅ **Import single tab** — при импорте 1 вкладки добавляется к существующим (не заменяет). Настройки сохраняются через `State.getLayout()`. Новые ID без коллизий.
+
+### Known issues (текущие)
+
+- **CPU 50W** — подозрение на браузерный spellcheck (`ta.spellcheck`) + anchors `_renderMarkersAll` на каждом keystroke. Дебаунс anchors добавлен. Полное выяснение причины отложено.
+- **Spell-check Yandex API** — `SpellCheck.isEnabled()` по умолчанию `false`, не должен работать. Кнопка-переключатель на блоках работает.
+
+### Git коммиты (эта сессия)
+
+```
+1d0915c fix: single-tab import preserves current layout/settings
+d558a8c fix: single-tab import adds to existing tabs
+1589670 feat: export current tab button
+0f4631d perf: debounce anchors onLive rerender 150ms
+f092595 perf: disable browser spellcheck on all textareas
+e67217a fix: block order numbers by column
+ba8cf3d fix: columns scroll independently
+69d3bb8 fix: resizer drag with applyLayout parameter
+4dd0e3c fix: resizer drag apply flex directly
+```
 
 **state.js (7 раундов, 58 фиксов)**
 - load: фильтрация невалидных tabs, нормализация, dedup, safe serialize, _resetInMemoryState
