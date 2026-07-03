@@ -202,16 +202,7 @@ const TextSkeletonizer = (() => {
       parts.push(`=== СТАТИСТИКА ===\n${stats}`);
     }
 
-    const result = parts.join('\n');
-
-    // Сохраняем в кэш
-    if (_cache.size >= MAX_CACHE) {
-      const firstKey = _cache.keys().next().value;
-      _cache.delete(firstKey);
-    }
-    _cache.set(key, result);
-
-    return result;
+    return parts.join('\n');
   }
 
   /**

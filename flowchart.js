@@ -846,7 +846,7 @@ const Flowchart = (() => {
 
     // Тёмная подложка — рисуется отдельно, гарантированно тёмная
     function addBacking(el) {
-      el.style.fill = 'rgba(16,18,26,0.78)';
+      el.setAttribute('fill', 'rgba(16,18,26,0.78)');
       el.removeAttribute('stroke'); el.removeAttribute('stroke-width');
       el.removeAttribute('fill-opacity'); el.removeAttribute('filter');
       el.dataset.role = 'backing';
