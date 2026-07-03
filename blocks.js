@@ -1896,7 +1896,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!_lastSpellWords?.length) return;
       const hit = _lastSpellWords.find(w => idx >= w.pos && idx <= w.pos + w.len);
       if (!hit) {
-        console.log('[spell] click at', idx, '— no hit. nearby words:', _lastSpellWords.filter(w => Math.abs(w.pos - idx) < 20).map(w => `${w.word}@${w.pos}`).join(', '));
         return;
       }
       if (_spellActiveError && _spellActiveError.pos === hit.pos && _spellActiveError.len === hit.len) {
@@ -2049,7 +2048,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       // Строим innerHTML: текст с подчёркиваниями
       const text = taEl.value;
       const sorted = [...filtered].sort((a, b) => a.pos - b.pos);
-      console.log('[spell] overlay render:', sorted.map(w => `${w.word}@${w.pos}:${text.slice(w.pos, w.pos + w.len)}`).join(' | '));
       let html = '';
       let lastEnd = 0;
       for (const w of sorted) {
@@ -2124,10 +2122,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const spellcheckBtn = document.createElement('button');
     spellcheckBtn.type = 'button';
     spellcheckBtn.className = 'font-ctrl-btn';
-    spellcheckBtn.title = 'Проверка орфографии отключена';
-    spellcheckBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;opacity:0.35"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>';
-    spellcheckBtn.setAttribute('aria-pressed', 'false');
-    spellcheckBtn.onclick = e => e.stopPropagation();
+    spellcheckBtn.title = 'Проверка орфографии';
+    function _syncSpellcheckBtn() {
+      const on = b.spellcheck !== false;
+      spellcheckBtn.innerHTML = on
+        ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>'
+        : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;opacity:0.35"><path d="M2.5 8.5l3 3 5-6"/><path d="M10.5 3l2 2 3-3"/></svg>';
+      spellcheckBtn.title = on ? 'Орфография: вкл. Нажми чтобы выключить' : 'Орфография: выкл. Нажми чтобы включить';
+      spellcheckBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    _syncSpellcheckBtn();
+    spellcheckBtn.onclick = e => {
+      e.stopPropagation();
+      b.spellcheck = b.spellcheck === false ? true : false;
+      ta.spellcheck = b.spellcheck !== false;
+      _syncSpellcheckBtn();
+    };
 
     function _jumpBlockScroll(toEnd) {
       const pos = toEnd ? ta.value.length : 0;

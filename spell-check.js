@@ -203,8 +203,6 @@ window.SpellCheck = (() => {
         const words = await _fetchChunk(masked, controller.signal);
         const filtered = _filterExcludedErrors(words, phRanges);
 
-        console.log(`[spell] chunk ${i}: offset=${offset}, chunkLen=${chunk.length}, words=${filtered.length}, firstWord=${filtered[0] ? `${filtered[0].word}@${filtered[0].pos}` : 'none'}`);
-
         // Смещаем позиции: API считает от trimmed, а нужен offset от полного текста
         for (const w of filtered) {
           allWords.push({
@@ -224,12 +222,6 @@ window.SpellCheck = (() => {
       }
 
       clearTimeout(timer);
-      console.log(`[spell] total: ${allWords.length} words, chunks: ${chunks.length}, textLen: ${trimmed.length}`);
-      if (allWords.length > 0) {
-        console.log(`[spell] first: ${allWords[0].word}@${allWords[0].pos}, last: ${allWords[allWords.length-1].word}@${allWords[allWords.length-1].pos}`);
-        // Check for position drift: compare word positions with expected positions from textarea
-        console.log(`[spell] words:`, allWords.map(w => `${w.word}@${w.pos}`).join(', '));
-      }
       const result = { ok: true, words: allWords, source: 'network' };
       _cacheSet(cacheKey, result);
       return result;

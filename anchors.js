@@ -588,9 +588,11 @@ const Anchors = (() => {
   /* ---- init ---- */
   function init() {
     _setupHotkeys();
+    let _liveTimer = null;
     const rerender = () => _renderMarkersAll();
+    const debouncedRerender = () => { clearTimeout(_liveTimer); _liveTimer = setTimeout(rerender, 150); };
     State.onChange(rerender);
-    State.onLive(rerender);
+    State.onLive(debouncedRerender);
     let _scrollTimer = null;
     document.addEventListener('scroll', e => {
       const ta = e.target;
