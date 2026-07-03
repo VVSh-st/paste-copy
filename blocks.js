@@ -453,7 +453,6 @@ const Blocks = (() => {
     if (n === 0) return;
     if (n === 1) {
       cols[0].el.style.flex = '1';
-      cols[0].el.style.width = '';
       return;
     }
     const lay = State.getLayout();
@@ -461,8 +460,8 @@ const Blocks = (() => {
     if (ratios && Array.isArray(ratios) && ratios.length === n) {
       const sum = ratios.reduce((a, b) => a + b, 0) || n;
       cols.forEach((c, i) => {
-        c.el.style.flex = 'none';
-        c.el.style.width = (ratios[i] / sum * 100) + '%';
+        c.el.style.flex = (ratios[i] / sum).toFixed(4);
+        c.el.style.width = '';
       });
     } else {
       const flexVal = (1 / n).toFixed(4);

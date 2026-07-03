@@ -730,26 +730,16 @@
       });
       const total = newWidths.reduce((a, b) => a + b, 0);
       const ratios = newWidths.map(w => Math.round((w / total) * 1000));
-      // Set explicit width + flex-basis so overflow-y:auto columns resize correctly
-      const sum = ratios.reduce((a, b) => a + b, 0) || ratios.length;
-      cols.forEach((c, i) => {
-        const pct = (ratios[i] / sum * 100) + '%';
-        c.el.style.flex = 'none';
-        c.el.style.width = pct;
-      });
-      activeResizer._pendingRatios = ratios;
+      State.setLayout({ colRatios: ratios });
+      Blocks.applyLayout();
     });
 
     document.addEventListener('mouseup', () => {
       if (!activeResizer) return;
       activeResizer.classList.remove('active');
-      const ratios = activeResizer._pendingRatios;
       activeResizer = null;
       document.body.style.cursor = '';
-      if (ratios) {
-        State.setLayout({ colRatios: ratios });
-        scheduleSave();
-      }
+      scheduleSave();
     });
   })();
 
