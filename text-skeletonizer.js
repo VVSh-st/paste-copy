@@ -44,8 +44,10 @@ const TextSkeletonizer = (() => {
         if (cb) {
           clearTimeout(cb.timerId);
           _workerCallbacks.delete(id);
-          if (error) cb.reject(new Error(error));
-          else {
+          if (error) {
+            try { cb.resolve(_processSync(cb.text, cb.level)); }
+            catch (err) { cb.reject(err); }
+          } else {
             const cacheKey = cb.level + ':' + _hash(cb.text);
             _cache.set(cacheKey, result);
             if (_cache.size > MAX_CACHE) _cache.delete(_cache.keys().next().value);
@@ -55,7 +57,11 @@ const TextSkeletonizer = (() => {
       };
       _worker.onerror = () => {
         _workerReady = false;
-        _workerCallbacks.forEach(cb => { clearTimeout(cb.timerId); cb.reject(new Error('worker error')); });
+        _workerCallbacks.forEach(cb => {
+          clearTimeout(cb.timerId);
+          try { cb.resolve(_processSync(cb.text, cb.level)); }
+          catch (err) { cb.reject(err); }
+        });
         _workerCallbacks.clear();
         try { _worker.terminate(); } catch {}
         _worker = null;
@@ -377,7 +383,7 @@ const TextSkeletonizer = (() => {
 
     // Частотный анализ с лемматизацией и учётом отрицаний
     const freq = new Map();
-    const rawWords = clean.match(/[a-zа-яё0-9-]{4,}/g) || [];
+    const rawWords = clean.match(/[a-zа-яё0-9-]+/g) || [];
     for (let i = 0; i < rawWords.length; i++) {
       const w = rawWords[i];
       if (w.length <= 3 || STOP_WORDS.has(w)) continue;

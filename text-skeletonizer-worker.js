@@ -127,7 +127,7 @@ function _extractKeyTerms(text, cfg) {
   if (!cfg.maxKeyTerms) return [];
   const clean = text.replace(/^\s*(`{3}|~{3})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, '').replace(/#{1,6}\s/g, '').replace(/[*_`>\[\]()]/g, '').toLowerCase();
   const freq = new Map();
-  const rawWords = clean.match(/[a-zа-яё0-9-]{4,}/g) || [];
+  const rawWords = clean.match(/[a-zа-яё0-9-]+/g) || [];
   for (let i = 0; i < rawWords.length; i++) {
     const w = rawWords[i];
     if (w.length <= 3 || STOP_WORDS.has(w)) continue;
