@@ -68,6 +68,7 @@
   let saveTimer = null;
   let lastSnapshotAt = 0;
   let lastSnapshotHash = '';
+  let lastStructureHash = '';
 
   function now() { return Date.now(); }
 
@@ -171,9 +172,18 @@
     };
   }
 
+  function migrateGraph(raw) {
+    const input = isPlainObject(raw) ? { ...raw } : {};
+    const version = Number(input.schemaVersion || 0);
+    if (!version || version === SCHEMA_VERSION) return input;
+    const migrated = { ...input };
+    migrated.schemaVersion = SCHEMA_VERSION;
+    return migrated;
+  }
+
   function normalizeGraph(raw) {
     const base = createDefaultGraph();
-    const g = isPlainObject(raw) ? raw : {};
+    const g = migrateGraph(isPlainObject(raw) ? raw : {});
     const ret = normalizeRetention(g.retention || {});
     return {
       ...base,
@@ -389,14 +399,23 @@
     });
   }
 
-  function trimObjectByLastSeen(obj, max) {
+  function trimObjectByLastSeen(obj, max, preserve = null) {
     const entries = Object.entries(obj || {});
     if (entries.length <= max) return obj;
-    return Object.fromEntries(
-      entries
-        .sort((a, b) => Number(b[1]?.lastSeenAt || 0) - Number(a[1]?.lastSeenAt || 0))
-        .slice(0, max)
-    );
+    const protectedEntries = [];
+    const regularEntries = [];
+    entries.forEach(entry => {
+      if (typeof preserve === 'function' && preserve(entry[0], entry[1])) protectedEntries.push(entry);
+      else regularEntries.push(entry);
+    });
+    const keptProtected = protectedEntries
+      .sort((a, b) => Number(b[1]?.lastSeenAt || 0) - Number(a[1]?.lastSeenAt || 0))
+      .slice(0, max);
+    const room = Math.max(0, max - keptProtected.length);
+    const keptRegular = regularEntries
+      .sort((a, b) => Number(b[1]?.lastSeenAt || 0) - Number(a[1]?.lastSeenAt || 0))
+      .slice(0, room);
+    return Object.fromEntries([...keptProtected, ...keptRegular]);
   }
 
   function getPinnedSnapshotIds() {
@@ -475,9 +494,34 @@
       retention.preserveBaselines
     );
 
-    graph.blockNodes = trimObjectByLastSeen(graph.blockNodes, retention.maxBlockNodes);
-    graph.relations.oftenWith = trimObjectByLastSeen(graph.relations.oftenWith, retention.maxRelations);
-    graph.relations.derivedFrom = trimObjectByLastSeen(graph.relations.derivedFrom, retention.maxRelations);
+    const protectedSnapshotIds = getPinnedSnapshotIds();
+    const protectedTextHashes = new Set(
+      graph.promptSnapshots
+        .filter(snapshot => protectedSnapshotIds.has(snapshot.id) || String(snapshot.name || '').trim())
+        .map(snapshot => snapshot.textHash)
+        .filter(Boolean)
+    );
+    const protectedBlockHashes = new Set(
+      graph.promptSnapshots
+        .filter(snapshot => protectedSnapshotIds.has(snapshot.id) || String(snapshot.name || '').trim())
+        .flatMap(snapshot => snapshot.blockHashes || [])
+    );
+
+    graph.blockNodes = trimObjectByLastSeen(
+      graph.blockNodes,
+      retention.maxBlockNodes,
+      hash => protectedBlockHashes.has(hash)
+    );
+    graph.relations.oftenWith = trimObjectByLastSeen(
+      graph.relations.oftenWith,
+      retention.maxRelations,
+      key => key.split('::').some(hash => protectedBlockHashes.has(hash))
+    );
+    graph.relations.derivedFrom = trimObjectByLastSeen(
+      graph.relations.derivedFrom,
+      retention.maxRelations,
+      (_key, value) => protectedTextHashes.has(value?.fromTextHash) || protectedTextHashes.has(value?.toTextHash)
+    );
     if (retention.pruneUnreferencedBlocks) pruneUnreferencedBlockNodes();
     updateCounters();
   }
@@ -485,6 +529,7 @@
   function setRetention(next = {}) {
     graph.retention = normalizeRetention({ ...getRetention(), ...(next || {}) });
     trimGraph(graph.retention);
+    _simCache.clear();
     saveNow();
     return getRetention();
   }
@@ -494,6 +539,7 @@
     const retention = normalizeRetention({ ...getRetention(), ...(options.retention || {}) });
     if (options.pruneUnreferencedBlocks === true) retention.pruneUnreferencedBlocks = true;
     trimGraph(retention);
+    _simCache.clear();
     saveNow();
     const after = getDiagnostics();
     return {
@@ -518,13 +564,18 @@
 
     const textHash = hashText(text);
     const ts = now();
-    if (!options.force && textHash === lastSnapshotHash && ts - lastSnapshotAt < SNAPSHOT_COOLDOWN) return null;
-
     const structureSignature = makeStructureSignature(blocks);
     const roleSignature = makeRoleSignature(blocks);
     const structureHash = hashText(structureSignature);
+    if (
+      !options.force
+      && textHash === lastSnapshotHash
+      && structureHash === lastStructureHash
+      && ts - lastSnapshotAt < SNAPSHOT_COOLDOWN
+    ) return null;
 
     lastSnapshotHash = textHash;
+    lastStructureHash = structureHash;
     lastSnapshotAt = ts;
 
     const snapshot = {
@@ -596,6 +647,7 @@
     }
 
     graph.promptSnapshots.push(snapshot);
+    _simCache.clear();
     const ret = normalizeRetention(graph.retention || {});
     if (
       graph.promptSnapshots.length > ret.maxSnapshots
@@ -685,10 +737,14 @@
       .filter(s => s.textHash !== current.textHash)
       .filter(s => options.includeSameTab || s.tabId !== current.tabId)
       .map(s => ({ snapshot: s, score: structureSimilarity(current, s), roleScore: roleSimilarity(current, s) }))
-      .filter(x => x.score >= (options.threshold || SIMILAR_STRUCTURE_THRESHOLD))
-      .sort((a, b) => b.score - a.score || Number(b.snapshot.ts || 0) - Number(a.snapshot.ts || 0));
-
-    return candidates[0] || null;
+      .filter(x => x.score >= (options.threshold || SIMILAR_STRUCTURE_THRESHOLD));
+    let best = null;
+    candidates.forEach(item => {
+      if (!best || item.score > best.score || (item.score === best.score && Number(item.snapshot.ts || 0) > Number(best.snapshot.ts || 0))) {
+        best = item;
+      }
+    });
+    return best || null;
   }
 
   function getFrequentCompanions(blockHash, limit = 5) {
@@ -887,6 +943,7 @@
     const candidates = [...graph.promptSnapshots]
       .filter(snapshot => snapshot.tabId === current.tabId)
       .filter(snapshot => snapshot.textHash !== current.textHash)
+      .filter(snapshot => Number(snapshot.ts || 0) < current.ts)
       .map(snapshot => ({
         snapshot,
         diff: buildSnapshotDiff(snapshot, current),
@@ -894,7 +951,10 @@
         ageMs: Math.max(0, current.ts - Number(snapshot.ts || 0))
       }))
       .filter(item => item.score >= (options.threshold || 0.58))
-      .sort((a, b) => b.score - a.score || Number(b.snapshot.ts || 0) - Number(a.snapshot.ts || 0));
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.ageMs - b.ageMs;
+      });
 
     const best = candidates[0];
     if (!best) return null;
@@ -935,7 +995,9 @@
       }))
       .filter(match => Math.max(match.roleScore, match.structureScore * 0.82) >= minScore)
       .forEach(match => {
-        const roles = String(match.snapshot.roleSignature || '').split(' > ').filter(Boolean);
+        const roles = Array.isArray(match.snapshot.blockRoles) && match.snapshot.blockRoles.length
+          ? match.snapshot.blockRoles
+          : String(match.snapshot.roleSignature || '').split(' > ').filter(Boolean);
         roles.forEach((role, roleIndex) => {
           if (!role || String(role).startsWith('custom:') || currentRoles.has(role)) return;
           const anchor = findNearestAnchor(currentBlocks, role, roles);
@@ -1019,7 +1081,7 @@
     return key ? (graph.blockNodes[key] || null) : null;
   }
 
-  function normalizeTimelineSnapshot(snapshot = {}) {
+  function snapshotView(snapshot = {}) {
     const roles = Array.isArray(snapshot.blockRoles) ? snapshot.blockRoles : [];
     const titles = Array.isArray(snapshot.blockTitles) ? snapshot.blockTitles : [];
     return {
@@ -1038,8 +1100,15 @@
       tokens: Number(snapshot.tokens || 0),
       blockTitles: titles.slice(0, MAX_SNAPSHOT_BLOCK_META),
       blockRoles: roles.slice(0, MAX_SNAPSHOT_BLOCK_META),
-      blockHashes: Array.isArray(snapshot.blockHashes) ? snapshot.blockHashes.slice(0, 64) : [],
-      roleLabels: roles.slice(0, MAX_SNAPSHOT_BLOCK_META).map(role => roleLabel(role, role))
+      blockHashes: Array.isArray(snapshot.blockHashes) ? snapshot.blockHashes.slice(0, 64) : []
+    };
+  }
+
+  function normalizeTimelineSnapshot(snapshot = {}) {
+    const base = snapshotView(snapshot);
+    return {
+      ...base,
+      roleLabels: base.blockRoles.map(role => roleLabel(role, role))
     };
   }
 
@@ -1057,7 +1126,9 @@
     const deduped = [];
     snapshots.forEach(snapshot => {
       const previous = deduped[deduped.length - 1];
-      if (previous && previous.textHash === snapshot.textHash) return;
+      const prevNamed = Boolean(String(previous?.name || '').trim());
+      const currNamed = Boolean(String(snapshot?.name || '').trim());
+      if (previous && previous.textHash === snapshot.textHash && !prevNamed && !currNamed) return;
       deduped.push(snapshot);
     });
 
@@ -1145,15 +1216,17 @@
     return snapshot ? normalizeTimelineSnapshot(snapshot) : null;
   }
 
-  function getPinnedBaseline(tabId = '') {
+  function getPinnedBaseline(tabId = '', options = {}) {
     const targetTabId = String(tabId || window.State?.getActive?.()?.id || '');
     if (!targetTabId) return null;
     const ref = graph.baselines?.byTabId?.[targetTabId];
     if (!ref?.snapshotId) return null;
     const version = getNamedVersionById(ref.snapshotId);
     if (!version) {
-      delete graph.baselines.byTabId[targetTabId];
-      saveSoon();
+      if (options.cleanupMissing !== false) {
+        delete graph.baselines.byTabId[targetTabId];
+        saveSoon();
+      }
       return null;
     }
     return {
@@ -1249,7 +1322,18 @@
   function compareNamedVersionToCurrent(versionId = '', tab = window.State?.getActive?.(), text = window.Preview?.getText?.() || '') {
     const from = getNamedVersionById(versionId);
     const to = makeCurrentSnapshot(tab, text);
-    if (!from || !to || from.textHash === to.textHash) return null;
+    if (!from || !to) return null;
+    if (from.textHash === to.textHash) {
+      return {
+        from, to,
+        diff: buildSnapshotDiff(from, to),
+        score: 1,
+        sameTab: Boolean(from.tabId && from.tabId === to.tabId),
+        tabName: to.tabName || from.tabName || '',
+        confidence: 0.98,
+        unchanged: true
+      };
+    }
     return compareSnapshots(from, to);
   }
 
@@ -1310,7 +1394,7 @@
       blockNodes: Object.keys(graph.blockNodes || {}).length,
       namedSnapshots: graph.promptSnapshots.filter(snapshot => String(snapshot.name || '').trim()).length,
       pinnedBaselines: Object.keys(graph.baselines?.byTabId || {}).length,
-      activeBaseline: getPinnedBaseline(window.State?.getActive?.()?.id || ''),
+      activeBaseline: getPinnedBaseline(window.State?.getActive?.()?.id || '', { cleanupMissing: false }),
       retention: getRetention(),
       estimatedBytes: (() => { try { return JSON.stringify(graph).length; } catch (_) { return 0; } })(),
       oftenWith: Object.keys(graph.relations?.oftenWith || {}).length,
@@ -1333,6 +1417,7 @@
     graph = createDefaultGraph();
     lastSnapshotAt = 0;
     lastSnapshotHash = '';
+    lastStructureHash = '';
     _simCache.clear();
     saveNow();
     return graph;
@@ -1364,6 +1449,7 @@
       graph = nextGraph;
       lastSnapshotAt = 0;
       lastSnapshotHash = '';
+      lastStructureHash = '';
       _simCache.clear();
       return graph;
     } catch (err) {
