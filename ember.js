@@ -1720,28 +1720,58 @@ const Ember = (() => {
 
   function describe() {
     const h = Math.floor(hoursWithoutActivity());
+    const rem = remainingSegments();
+    if (rem <= 0 || intensity <= 0.03) return 'Проект остыл — уголёк почти потух';
     if (isSleeping()) return 'Проект спит — давно не было правок';
     if (h < 1) return 'Проект активен, уголёк горит ярко';
-    return `Без активности ~${h} ч; осталось ${remainingSegments()}/12 делений`;
+    return `Без активности ~${h} ч; осталось ${rem}/12 делений`;
   }
 
   let tooltipEl = null;
+  let lastAriaLabel = '';
+
+  function syncAccessibleLabel(force = false) {
+    if (!root) return;
+    const label = describe();
+    if (!force && label === lastAriaLabel) return;
+    lastAriaLabel = label;
+    root.setAttribute('aria-label', label);
+    root.title = label;
+  }
 
   function showTooltip() {
     if (!root) return;
-    if (tooltipEl) tooltipEl.remove();
+    if (tooltipEl) {
+      tooltipEl.remove();
+      tooltipEl = null;
+    }
     const h = Math.floor(hoursWithoutActivity());
     const rem = remainingSegments();
+    const cold = rem <= 0 || intensity <= 0.03;
+    const sleeping = !cold && isSleeping();
 
     const hoursAgo = h < 1 ? '< 1 ч' : `${h} ч`;
-    const hoursToNextSeg = 2 - (hoursWithoutActivity() % 2);
+    const segProgress = hoursWithoutActivity() % 2;
+    const hoursToNextSeg = segProgress === 0 ? 0 : 2 - segProgress;
     const minsToNext = Math.round(hoursToNextSeg * 60);
 
-    const lines = [
-      `⏱ ${hoursAgo} назад`,
-      `🔥 ${rem}/12`,
-    ];
-    if (rem > 0 && rem < 12) lines.push(`⏳ ~${minsToNext} мин`);
+    const lines = cold
+      ? [
+        `Уголёк остыл`,
+        `⏱ ${hoursAgo} назад`,
+        `🔥 ${rem}/12`,
+      ]
+      : sleeping
+        ? [
+          `Проект спит`,
+          `⏱ ${hoursAgo} назад`,
+          `🔥 ${rem}/12`,
+        ]
+        : [
+          `⏱ ${hoursAgo} назад`,
+          `🔥 ${rem}/12`,
+        ];
+    if (!cold && rem > 0 && rem < 12 && minsToNext > 0) lines.push(`⏳ ~${minsToNext} мин`);
     if (statusState === 'saving') lines.push('💾 сохранение...');
     else if (statusState === 'saved') lines.push('✓ сохранено');
     else if (statusState === 'error') lines.push('✗ ошибка');
@@ -3190,20 +3220,19 @@ const Ember = (() => {
     }
 
     if (!nextAriaUpdate || now > nextAriaUpdate) {
-      const label = describe();
-      root.setAttribute('aria-label', label);
-      root.title = label;
+      syncAccessibleLabel();
       nextAriaUpdate = now + 60000;
     }
   }
 
   let reduceMotionFrameSkip = 0;
   let reducedMotionTimer = null;
+  let destroyed = false;
   const fpsHistory = [];
   let lowFpsMode = false;
 
   function animate(timestamp) {
-    if (!root) return;
+    if (destroyed || !root) return;
     if (lastFrame === 0) lastFrame = timestamp;
     const dt = Math.min(timestamp - lastFrame, 50);
     if (!browserFocused && focusState === 'active' && dt < 250) {
@@ -3222,7 +3251,7 @@ const Ember = (() => {
     if (reduceMotion) {
       reducedMotionTimer = setTimeout(() => {
         reducedMotionTimer = null;
-        animate(performance.now());
+        if (!destroyed && root) animate(performance.now());
       }, 100);
     } else {
       rafId = requestAnimationFrame(animate);
@@ -3255,9 +3284,9 @@ const Ember = (() => {
   }
 
   function setupEventListeners() {
-    handlers.mouseenter = () => { hover = true; };
+    handlers.mouseenter = () => { hover = true; syncAccessibleLabel(true); showTooltip(); };
     handlers.mouseleave = () => { hover = false; };
-    handlers.rootFocus = () => { hover = true; };
+    handlers.rootFocus = () => { hover = true; syncAccessibleLabel(true); showTooltip(); };
     handlers.rootBlur = () => { hover = false; };
     handlers.contextmenu = (e) => {
       if (!allowTestMode) return;
@@ -3384,6 +3413,7 @@ const Ember = (() => {
   // ---------- инициализация ----------
 
   function init(mountEl, tabId) {
+    destroyed = false;
     if (root) destroy();
     resetDomRefs();
     currentTabId = tabId || null;
@@ -3394,6 +3424,8 @@ const Ember = (() => {
       saveState();
     }
     createDOM();
+    lastAriaLabel = '';
+    syncAccessibleLabel(true);
     setupBroadcast();
     setupEventListeners();
 
@@ -3439,6 +3471,7 @@ const Ember = (() => {
   }
 
   function destroy() {
+    destroyed = true;
     stopLoop();
     if (io) { io.disconnect(); io = null; }
     if (channel) { try { channel.close(); } catch {} channel = null; }
