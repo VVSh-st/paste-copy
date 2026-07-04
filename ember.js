@@ -87,6 +87,7 @@ const Ember = (() => {
 
   let segmentEffects = [];
   let nextSegDue = {};
+  const dirtySegments = new Set();
 
   let particles = [];
   let nextAshSpawn = 0;
@@ -145,6 +146,8 @@ const Ember = (() => {
   let testQueue = [];
   let testIndex = 0;
   let testLabel = null;
+  let allowTestMode = false;
+  let testModeTimer = null;
 
   // пасхалка
   const egg = {
@@ -171,6 +174,28 @@ const Ember = (() => {
   let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let handlers = {};
   let onClickCallback = null;
+  const timers = new Set();
+
+  function defer(fn, delay) {
+    const id = setTimeout(() => {
+      timers.delete(id);
+      if (!root) return;
+      fn();
+    }, delay);
+    timers.add(id);
+    return id;
+  }
+
+  function clearDeferred(id) {
+    if (!id) return;
+    clearTimeout(id);
+    timers.delete(id);
+  }
+
+  function clearAllDeferred() {
+    timers.forEach(id => clearTimeout(id));
+    timers.clear();
+  }
 
   // ---------- утилиты ----------
 
@@ -201,15 +226,15 @@ const Ember = (() => {
     const mul = rand(ev.mult[0], ev.mult[1]);
     switch (type) {
       case 'sparkStorm':
-        for (let i = 0; i < Math.floor(rand(8, 12)); i++) setTimeout(spawnSpark, i * 50);
-        for (let i = 0; i < 2; i++) setTimeout(spawnShootingSpark, 100 + i * 150);
+        for (let i = 0; i < Math.floor(rand(8, 12)); i++) defer(spawnSpark, i * 50);
+        for (let i = 0; i < 2; i++) defer(spawnShootingSpark, 100 + i * 150);
         igniteCrackSide(Math.random() < 0.5 ? -1 : 1);
         heatBoost = Math.max(heatBoost, 0.3 * mul);
         ringImpulse = rand(4, 8) * (Math.random() < 0.5 ? 1 : -1);
         break;
       case 'deformationBurst':
         heatBoost = Math.max(heatBoost, 0.25 * mul);
-        for (let i = 0; i < 4; i++) setTimeout(spawnAshParticle, i * 80);
+        for (let i = 0; i < 4; i++) defer(spawnAshParticle, i * 80);
         igniteCrackSide(-1);
         igniteCrackSide(1);
         break;
@@ -219,11 +244,11 @@ const Ember = (() => {
         break;
       case 'heatBubble':
         heatBoost = Math.max(heatBoost, 0.2 * mul);
-        for (let i = 0; i < 3; i++) setTimeout(spawnSpark, i * 100);
+        for (let i = 0; i < 3; i++) defer(spawnSpark, i * 100);
         break;
       case 'coalSigh':
         heatBoost = Math.max(heatBoost, 0.15 * mul);
-        for (let i = 0; i < 5; i++) setTimeout(spawnAshParticle, i * 120);
+        for (let i = 0; i < 5; i++) defer(spawnAshParticle, i * 120);
         break;
       case 'hotVein': {
         const side = Math.random() < 0.5 ? -1 : 1;
@@ -232,7 +257,7 @@ const Ember = (() => {
         break;
       }
       case 'ashDump':
-        for (let i = 0; i < Math.floor(rand(6, 8)); i++) setTimeout(spawnAshParticle, i * 60);
+        for (let i = 0; i < Math.floor(rand(6, 8)); i++) defer(spawnAshParticle, i * 60);
         break;
     }
   }
@@ -251,7 +276,23 @@ const Ember = (() => {
         if (parsed && typeof parsed.lastEditTime === 'number') return parsed;
       }
     } catch {}
-    return { lastEditTime: Date.now() };
+    const now = Date.now();
+    return { lastEditTime: now, lastInitTime: 0, updatedAt: now };
+  }
+
+  function normalizeState(s) {
+    if (!s || typeof s.lastEditTime !== 'number') return null;
+    return {
+      ...s,
+      updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : s.lastEditTime,
+    };
+  }
+
+  function applyRemoteState(next) {
+    const normalized = normalizeState(next);
+    if (!normalized) return;
+    const currentUpdatedAt = typeof state?.updatedAt === 'number' ? state.updatedAt : state?.lastEditTime || 0;
+    if (normalized.updatedAt >= currentUpdatedAt) state = normalized;
   }
 
   function saveState() {
@@ -267,7 +308,7 @@ const Ember = (() => {
       channel = new BroadcastChannel(BROADCAST_KEY);
       channel.onmessage = (e) => {
         if (e.data?.type === 'update' && e.data?.tabId === currentTabId && e.data?.state) {
-          state = e.data.state;
+          applyRemoteState(e.data.state);
         }
       };
     } catch {}
@@ -275,7 +316,7 @@ const Ember = (() => {
       if (e.key === getStorageKey(currentTabId) && e.newValue) {
         try {
           const s = JSON.parse(e.newValue);
-          if (s && typeof s.lastEditTime === 'number') state = s;
+          applyRemoteState(s);
         } catch {}
       }
     };
@@ -283,21 +324,23 @@ const Ember = (() => {
   }
 
   function notifyEdit() {
-    state.lastEditTime = Date.now();
-    state.lastInitTime = Date.now();
+    const now = Date.now();
+    state.lastEditTime = now;
+    state.lastInitTime = now;
+    state.updatedAt = now;
     saveState();
     broadcast();
   }
 
   function setStatus(type) {
-    clearTimeout(statusTimer);
+    clearDeferred(statusTimer);
     statusState = type;
     statusSince = performance.now();
     statusBurstDone = false;
     if (type === 'saving' || type === 'saved' || type === 'error') {
       const dur = type === 'error' ? 2500 : 1500;
       statusUntil = performance.now() + dur;
-      statusTimer = setTimeout(() => { statusState = null; statusUntil = 0; }, dur);
+      statusTimer = defer(() => { statusState = null; statusUntil = 0; }, dur);
     } else {
       statusUntil = 0;
     }
@@ -319,7 +362,7 @@ const Ember = (() => {
         if (!statusBurstDone) {
           statusBurstDone = true;
           heatBoost = Math.max(heatBoost, 0.3);
-          for (let i = 0; i < 4; i++) setTimeout(spawnSpark, i * 80);
+          for (let i = 0; i < 4; i++) defer(spawnSpark, i * 80);
         }
         break;
       }
@@ -642,7 +685,7 @@ const Ember = (() => {
     pose.lowerSag += exhale * 0.6;
     if (p > 0.5 && p < 0.55 && !eff.ashDone) {
       eff.ashDone = true;
-      for (let i = 0; i < 3; i++) setTimeout(spawnAshParticle, i * 80);
+      for (let i = 0; i < 3; i++) defer(spawnAshParticle, i * 80);
     }
   }
 
@@ -725,9 +768,9 @@ const Ember = (() => {
     if (!eff.crackFired && p > 0.1 && p < 0.15) {
       eff.crackFired = true;
       igniteCrackSide(side);
-      setTimeout(() => spawnSpark(side > 0 ? 0.7 : 0.3), 40);
-      setTimeout(() => spawnAshParticle(), 50);
-      setTimeout(() => spawnAshParticle(), 140);
+      defer(() => spawnSpark(side > 0 ? 0.7 : 0.3), 40);
+      defer(() => spawnAshParticle(), 50);
+      defer(() => spawnAshParticle(), 140);
       residualHeat += 0.2;
       pose.crustX += rand(-1.5, 1.5) * mag;
       pose.crustRot += rand(-2, 2) * mag;
@@ -973,18 +1016,12 @@ const Ember = (() => {
     }
   }
 
-  function applySegmentWave(center, radius, fn) {
-    segments.forEach((seg, i) => {
-      const dist = Math.abs(i - center);
-      const circularDist = Math.min(dist, 12 - dist);
-      if (circularDist <= radius) {
-        fn(seg, 1 - circularDist / (radius + 1), circularDist);
-      }
-    });
+  function markSegmentDirty(seg) {
+    if (seg) dirtySegments.add(seg);
   }
 
-  function applySegEffects() {
-    segments.forEach(seg => {
+  function clearDirtySegments() {
+    dirtySegments.forEach(seg => {
       seg.style.removeProperty('--seg-tilt');
       seg.style.removeProperty('--seg-flash');
       seg.style.removeProperty('--seg-dim');
@@ -993,6 +1030,23 @@ const Ember = (() => {
       seg.style.removeProperty('--seg-scaleX');
       seg.style.removeProperty('--seg-scaleY');
     });
+    dirtySegments.clear();
+  }
+
+  function applySegmentWave(center, radius, fn) {
+    segments.forEach((seg, i) => {
+      const dist = Math.abs(i - center);
+      const circularDist = Math.min(dist, 12 - dist);
+      if (circularDist <= radius) {
+        markSegmentDirty(seg);
+        fn(seg, 1 - circularDist / (radius + 1), circularDist);
+      }
+    });
+  }
+
+  function applySegEffects() {
+    clearDirtySegments();
+    if (!segmentEffects.length) return;
     for (const e of segmentEffects) {
       const m = e.mag ?? 1;
       switch (e.type) {
@@ -1009,12 +1063,14 @@ const Ember = (() => {
           const flash = e.phase < 0.3 ? easeOutQuad(e.phase / 0.3) : 1 - easeInQuad((e.phase - 0.3) / 0.7);
           const seg = segments[e.segIdx];
           if (seg) {
+            markSegmentDirty(seg);
             seg.style.setProperty('--seg-flash', flash.toFixed(3));
             seg.style.setProperty('--seg-scaleX', (1 - flash * 0.35).toFixed(3));
             seg.style.setProperty('--seg-scaleY', (1 + flash * 0.2).toFixed(3));
           }
           const neighbor = segments[e.segIdx - 1] || segments[e.segIdx + 1];
           if (neighbor && flash > 0.3) {
+            markSegmentDirty(neighbor);
             neighbor.style.setProperty('--seg-flash', (flash * 0.3).toFixed(3));
           }
           break;
@@ -1034,6 +1090,7 @@ const Ember = (() => {
           const blink = Math.sin(e.phase * Math.PI * 6) * (1 - e.phase);
           const seg = segments[e.segIdx];
           if (seg) {
+            markSegmentDirty(seg);
             seg.style.setProperty('--seg-dim', (0.7 + 0.7 * blink).toFixed(3));
             seg.style.setProperty('--seg-scaleX', (1 - Math.abs(blink) * 0.3).toFixed(3));
             seg.style.setProperty('--seg-scaleY', (1 + Math.abs(blink) * 0.15).toFixed(3));
@@ -1072,10 +1129,12 @@ const Ember = (() => {
   }
 
   function acquireEl(className) {
+    if (!particleLayer) return null;
     for (const slot of particlePool) {
       if (slot.free) {
         slot.free = false;
         slot.el.className = className;
+        slot.el.classList.add('active-particle');
         slot.el.style.display = '';
         slot.el.style.opacity = '0';
         slot.el.style.boxShadow = '';
@@ -1086,11 +1145,7 @@ const Ember = (() => {
         return slot.el;
       }
     }
-    const el = document.createElement('div');
-    el.className = className;
-    particleLayer.appendChild(el);
-    particlePool.push({ el, free: false });
-    return el;
+    return null;
   }
 
   function releaseEl(el) {
@@ -1103,6 +1158,7 @@ const Ember = (() => {
           particlePool[i].free = true;
           el.style.display = 'none';
           el.className = 'ember-ash';
+          el.classList.remove('active-particle');
         }
         return;
       }
@@ -1116,6 +1172,7 @@ const Ember = (() => {
     const roll = Math.random();
     const cls = 'ember-ash' + (roll < 0.33 ? ' dark' : roll > 0.8 ? ' bright' : '');
     const el = acquireEl(cls);
+    if (!el) return;
     let size = rand(2.2, 4.8);
     if (Math.random() < 0.06) size *= 2.2;
     el.style.width = size.toFixed(1) + 'px';
@@ -1144,6 +1201,7 @@ const Ember = (() => {
     const typeIdx = Math.floor(Math.random() * sparkTypes.length);
     const sparkType = sparkTypes[typeIdx];
     const el = acquireEl('ember-spark ' + sparkType);
+    if (!el) return;
     let w, h;
     if (sparkType === 'spark-point') {
       w = rand(1.6, 2.4); h = w;
@@ -1177,6 +1235,7 @@ const Ember = (() => {
     if (activeSparks >= 7) return;
     if (focusState !== 'active') return;
     const el = acquireEl('ember-spark ember-spark-shoot');
+    if (!el) return;
     const size = rand(1.4, 2.2);
     el.style.width = size.toFixed(1) + 'px';
     el.style.height = (size * rand(2, 3)).toFixed(1) + 'px';
@@ -1204,6 +1263,7 @@ const Ember = (() => {
     if (particles.length > 40) return;
     if (focusState !== 'active') return;
     const el = acquireEl('ember-ash bright');
+    if (!el) return;
     const size = rand(2, 3.5);
     el.style.width = size.toFixed(1) + 'px';
     el.style.height = size.toFixed(1) + 'px';
@@ -1231,7 +1291,7 @@ const Ember = (() => {
     el.style.left = x + '%';
     el.style.top = y + '%';
     particleLayer.appendChild(el);
-    setTimeout(() => el.remove(), 250);
+    defer(() => el.remove(), 250);
   }
 
   function updateParticles(now, dt) {
@@ -1452,6 +1512,7 @@ const Ember = (() => {
   let tooltipEl = null;
 
   function showTooltip() {
+    if (!root) return;
     if (tooltipEl) tooltipEl.remove();
     const h = Math.floor(hoursWithoutActivity());
     const rem = remainingSegments();
@@ -1473,7 +1534,7 @@ const Ember = (() => {
     tooltipEl.className = 'ember-tooltip';
     tooltipEl.textContent = lines.join('\n');
     root.appendChild(tooltipEl);
-    setTimeout(() => { if (tooltipEl) { tooltipEl.style.opacity = '0'; setTimeout(() => tooltipEl?.remove(), 300); } }, 3000);
+    defer(() => { if (tooltipEl) { tooltipEl.style.opacity = '0'; defer(() => tooltipEl?.remove(), 300); } }, 3000);
   }
 
   function updateCursorLean(now, dt) {
@@ -1685,7 +1746,7 @@ const Ember = (() => {
     if ((peek.state === 'noticing' || peek.state === 'peeking') && mouse.speed > 80 && mDist < FAR) {
       peek.state = 'startled';
       peek.timer = 0;
-      for (let i = 0; i < 3; i++) setTimeout(spawnSpark, i * 50);
+      for (let i = 0; i < 3; i++) defer(spawnSpark, i * 50);
       ringImpulse = rand(3, 6) * (Math.random() < 0.5 ? 1 : -1);
     }
 
@@ -1892,9 +1953,9 @@ const Ember = (() => {
         if (!egg._burstDone && p > 0.08) {
           egg._burstDone = true;
           const burstDir = Math.random() < 0.5 ? -1 : 1;
-          for (let i = 0; i < 18; i++) setTimeout(spawnAshParticle, i * 18 + rand(0, 10));
-          for (let i = 0; i < 8; i++) setTimeout(spawnSpark, 30 + i * 30);
-          setTimeout(() => { egg.tiltY -= burstDir * 7; }, 200);
+          for (let i = 0; i < 18; i++) defer(spawnAshParticle, i * 18 + rand(0, 10));
+          for (let i = 0; i < 8; i++) defer(spawnSpark, 30 + i * 30);
+          defer(() => { egg.tiltY -= burstDir * 7; }, 200);
         }
         if (p >= 1) { egg.phase = 6.5; egg.phaseStart = now; egg._burstDone = false; }
         break;
@@ -2085,7 +2146,7 @@ const Ember = (() => {
         cursorLean.squish += rand(0.05, 0.12);
         cursorLean.tiltY += dir * rand(-3, 3);
         heatBoost = Math.max(heatBoost, 0.12);
-        setTimeout(() => spawnAshParticle(), 80);
+        defer(() => spawnAshParticle(), 80);
         break;
       }
 
@@ -2102,9 +2163,9 @@ const Ember = (() => {
         cursorLean.tiltY += -rx * 0.25;
         heatBoost = Math.max(heatBoost, 0.25);
         ringImpulse = rand(5, 10) * (Math.random() < 0.5 ? 1 : -1);
-        for (let i = 0; i < 8; i++) setTimeout(() => spawnSpark(), i * 60);
-        for (let i = 0; i < 4; i++) setTimeout(() => spawnAshParticle(), i * 100);
-        setTimeout(() => spawnShootingSpark(), 100);
+        for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
+        for (let i = 0; i < 4; i++) defer(() => spawnAshParticle(), i * 100);
+        defer(() => spawnShootingSpark(), 100);
         break;
       }
 
@@ -2125,9 +2186,9 @@ const Ember = (() => {
         cursorLean.scale *= 1.06;
         cursorLean.squish += rand(-0.06, -0.02);
         heatBoost = Math.max(heatBoost, 0.18);
-        setTimeout(() => spawnSpark(), 120);
-        setTimeout(() => spawnSpark(), 250);
-        setTimeout(() => spawnAshParticle(), 200);
+        defer(() => spawnSpark(), 120);
+        defer(() => spawnSpark(), 250);
+        defer(() => spawnAshParticle(), 200);
         break;
       }
 
@@ -2136,7 +2197,7 @@ const Ember = (() => {
         cursorLean.y += rand(-12, -6);
         cursorLean.squish += rand(0.04, 0.1);
         heatBoost = Math.max(heatBoost, 0.15);
-        for (let i = 0; i < 5; i++) setTimeout(() => spawnSpark(), i * 70);
+        for (let i = 0; i < 5; i++) defer(() => spawnSpark(), i * 70);
         break;
       }
 
@@ -2148,7 +2209,7 @@ const Ember = (() => {
         cursorLean.squish += rand(0.06, 0.12);
         cursorLean.scale *= 0.94;
         heatBoost = Math.max(heatBoost - 0.05, 0);
-        for (let i = 0; i < 6; i++) setTimeout(() => spawnAshParticle(), i * 80);
+        for (let i = 0; i < 6; i++) defer(() => spawnAshParticle(), i * 80);
         break;
       }
 
@@ -2169,7 +2230,7 @@ const Ember = (() => {
         cursorLean.squish += rand(-0.04, -0.01);
         heatBoost = Math.max(heatBoost, 0.1);
         residualHeat += 0.15;
-        for (let i = 0; i < 3; i++) setTimeout(() => spawnSpark(), i * 100);
+        for (let i = 0; i < 3; i++) defer(() => spawnSpark(), i * 100);
         break;
       }
 
@@ -2179,7 +2240,7 @@ const Ember = (() => {
         cursorLean.squish += rand(0.04, 0.09);
         cursorLean.tiltY += rand(-4, 4);
         heatBoost = Math.max(heatBoost, 0.1);
-        setTimeout(() => spawnAshParticle(), 150);
+        defer(() => spawnAshParticle(), 150);
         break;
       }
     }
@@ -2199,16 +2260,29 @@ const Ember = (() => {
   ];
 
   function startTestMode() {
+    if (!allowTestMode) return;
     testMode = true;
     testQueue = [...TEST_EFFECTS];
     testIndex = 0;
+    clearDeferred(testModeTimer);
+    testModeTimer = defer(stopTestMode, TEST_EFFECTS.length * 3600 + 1000);
     runNextTest();
+  }
+
+  function stopTestMode() {
+    testMode = false;
+    testQueue = [];
+    testIndex = 0;
+    active.clear();
+    segmentEffects = [];
+    if (testLabel) { testLabel.remove(); testLabel = null; }
+    clearDeferred(testModeTimer);
+    testModeTimer = null;
   }
 
   function runNextTest() {
     if (!testMode || testIndex >= testQueue.length) {
-      testMode = false;
-      if (testLabel) { testLabel.remove(); testLabel = null; }
+      stopTestMode();
       return;
     }
     const type = testQueue[testIndex];
@@ -2221,7 +2295,7 @@ const Ember = (() => {
     }
     testLabel.textContent = type;
     testLabel.style.opacity = '1';
-    setTimeout(() => { if (testLabel) testLabel.style.opacity = '0.7'; }, 800);
+    defer(() => { if (testLabel) testLabel.style.opacity = '0.7'; }, 800);
 
     const durRanges = {
       sigh: [4000, 5000], calmBurn: [2000, 3000], wiggle: [700, 1000],
@@ -2268,14 +2342,14 @@ const Ember = (() => {
     }
 
     if (['crackle', 'glowPulse', 'calmBurn', 'gust'].includes(type)) {
-      for (let i = 0; i < 6; i++) setTimeout(() => spawnSpark(), i * 130);
+      for (let i = 0; i < 6; i++) defer(() => spawnSpark(), i * 130);
     }
     if (type === 'gust') {
-      for (let i = 0; i < 3; i++) setTimeout(() => spawnShootingSpark(), i * 200);
-      for (let i = 0; i < 4; i++) setTimeout(() => spawnCrumb(), i * 250);
+      for (let i = 0; i < 3; i++) defer(() => spawnShootingSpark(), i * 200);
+      for (let i = 0; i < 4; i++) defer(() => spawnCrumb(), i * 250);
     }
     if (['ashDrift', 'smolder', 'sigh'].includes(type)) {
-      for (let i = 0; i < 10; i++) setTimeout(() => spawnAshParticle(), i * 160);
+      for (let i = 0; i < 10; i++) defer(() => spawnAshParticle(), i * 160);
     }
 
     if (type === 'typingApproach') {
@@ -2283,25 +2357,25 @@ const Ember = (() => {
       caret.active = true;
       caret.x = getEmberCenter().x + rand(-100, 100);
       caret.y = getEmberCenter().y + rand(-50, 50);
-      setTimeout(() => { caret.typing = false; }, 2200);
+      defer(() => { caret.typing = false; }, 2200);
     }
     if (type === 'eggFly') {
       const savedFlag = egg.triggeredToday;
       egg.triggeredToday = false;
       startEgg();
-      setTimeout(() => { egg.triggeredToday = savedFlag; }, 5000);
+      defer(() => { egg.triggeredToday = savedFlag; }, 5000);
     }
     if (type === 'previewScare') {
       startPreviewScare();
     }
     if (type === 'shootingSpark') {
-      for (let i = 0; i < 5; i++) setTimeout(() => spawnShootingSpark(), i * 200);
+      for (let i = 0; i < 5; i++) defer(() => spawnShootingSpark(), i * 200);
     }
     if (type === 'crumb') {
-      for (let i = 0; i < 6; i++) setTimeout(() => spawnCrumb(), i * 200);
+      for (let i = 0; i < 6; i++) defer(() => spawnCrumb(), i * 200);
     }
 
-    setTimeout(runNextTest, 3300);
+    defer(runNextTest, 3300);
   }
 
   // ---------- основной кадр ----------
@@ -2421,7 +2495,7 @@ const Ember = (() => {
     const curRem = remainingSegments();
     if (curRem <= 2 && curRem < lastWarnRemaining && curRem > 0 && !egg.active) {
       heatBoost = Math.max(heatBoost, 0.5);
-      for (let i = 0; i < 6; i++) setTimeout(spawnSpark, i * 50);
+      for (let i = 0; i < 6; i++) defer(spawnSpark, i * 50);
       ringImpulse = rand(4, 7) * (Math.random() < 0.5 ? 1 : -1);
     }
     lastWarnRemaining = curRem;
@@ -2743,6 +2817,7 @@ const Ember = (() => {
   }
 
   let reduceMotionFrameSkip = 0;
+  let reducedMotionTimer = null;
   const fpsHistory = [];
   let lowFpsMode = false;
 
@@ -2756,8 +2831,11 @@ const Ember = (() => {
     }
     lastFrame = timestamp;
     if (reduceMotion) {
-      reduceMotionFrameSkip++;
-      if (reduceMotionFrameSkip % 6 !== 0) { rafId = requestAnimationFrame(animate); return; }
+      if (reducedMotionTimer) return;
+      reducedMotionTimer = setTimeout(() => {
+        reducedMotionTimer = null;
+        rafId = requestAnimationFrame(animate);
+      }, 100);
     }
     fpsHistory.push(dt);
     if (fpsHistory.length > 30) fpsHistory.shift();
@@ -2766,7 +2844,7 @@ const Ember = (() => {
       lowFpsMode = avgDt > 33;
     }
     try { update(timestamp, dt * (reduceMotion ? 6 : 1)); } catch (e) { console.error('Ember update error:', e); }
-    rafId = requestAnimationFrame(animate);
+    if (!reduceMotion) rafId = requestAnimationFrame(animate);
   }
 
   function startLoop() {
@@ -2776,6 +2854,7 @@ const Ember = (() => {
   }
   function stopLoop() {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    if (reducedMotionTimer) { clearTimeout(reducedMotionTimer); reducedMotionTimer = null; }
   }
 
   // ---------- реакция на печать ----------
@@ -2784,8 +2863,8 @@ const Ember = (() => {
     typedChars++;
     heatBoost = Math.min(typedChars / 150, 0.25);
     notifyEdit();
-    clearTimeout(resetTimer);
-    resetTimer = setTimeout(() => { typedChars = 0; }, 2000);
+    clearDeferred(resetTimer);
+    resetTimer = defer(() => { typedChars = 0; }, 2000);
 
     if (!egg.triggeredToday) {
       eggCharCount++;
@@ -2798,14 +2877,18 @@ const Ember = (() => {
     handlers.mouseleave = () => { hover = false; };
     handlers.rootFocus = () => { hover = true; };
     handlers.rootBlur = () => { hover = false; };
-    handlers.contextmenu = (e) => { e.preventDefault(); if (!testMode) startTestMode(); };
+    handlers.contextmenu = (e) => {
+      if (!allowTestMode) return;
+      e.preventDefault();
+      if (!testMode) startTestMode();
+    };
     let _clickTimer = null;
     handlers.click = () => {
-      clearTimeout(_clickTimer);
-      _clickTimer = setTimeout(() => {
+      clearDeferred(_clickTimer);
+      _clickTimer = defer(() => {
         heatBoost = 0.4;
-        for (let i = 0; i < 8; i++) setTimeout(() => spawnSpark(), i * 60);
-        for (let i = 0; i < 3; i++) setTimeout(() => spawnShootingSpark(), i * 120);
+        for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
+        for (let i = 0; i < 3; i++) defer(() => spawnShootingSpark(), i * 120);
         showTooltip();
         if (typeof onClickCallback === 'function') onClickCallback();
       }, 200);
@@ -2813,7 +2896,7 @@ const Ember = (() => {
     handlers.dblclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      clearTimeout(_clickTimer);
+      clearDeferred(_clickTimer);
       reduceMotion = !reduceMotion;
       reduceMotionFrameSkip = 0;
       if (reduceMotion) {
@@ -2821,9 +2904,10 @@ const Ember = (() => {
         particles = [];
         activeSparks = 0;
         segmentEffects = [];
-        if (tooltipEl) { tooltipEl.style.opacity = '0'; setTimeout(() => tooltipEl?.remove(), 300); }
+        if (tooltipEl) { tooltipEl.style.opacity = '0'; defer(() => tooltipEl?.remove(), 300); }
       }
       const label = reduceMotion ? 'Economy ON ⚡' : 'Economy OFF 🔥';
+      if (!root) return;
       const existing = root.querySelector('.ember-eco-toast');
       if (existing) existing.remove();
       const toast = document.createElement('div');
@@ -2831,7 +2915,7 @@ const Ember = (() => {
       toast.textContent = label;
       root.appendChild(toast);
       requestAnimationFrame(() => toast.classList.add('show'));
-      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 1500);
+      defer(() => { toast.classList.remove('show'); defer(() => toast.remove(), 300); }, 1500);
     };
     handlers.keydown = (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlers.click(); }
@@ -2853,8 +2937,8 @@ const Ember = (() => {
       if (isEditable(e.target)) {
         handleInput();
         caret.typing = true;
-        clearTimeout(caret._typingTimer);
-        caret._typingTimer = setTimeout(() => { caret.typing = false; }, 1500);
+        clearDeferred(caret._typingTimer);
+        caret._typingTimer = defer(() => { caret.typing = false; }, 1500);
       }
     };
     handlers.mousemove = (e) => {
@@ -2968,9 +3052,10 @@ const Ember = (() => {
     if (io) { io.disconnect(); io = null; }
     if (channel) { try { channel.close(); } catch {} }
     window.removeEventListener('storage', handlers.storageSync);
-    clearTimeout(resetTimer);
-    clearTimeout(caret._typingTimer);
-    clearTimeout(statusTimer);
+    clearDeferred(resetTimer);
+    clearDeferred(caret._typingTimer);
+    clearDeferred(statusTimer);
+    clearAllDeferred();
     particles.forEach(p => releaseEl(p.el));
     particles = [];
     particlePool.forEach(s => s.el.remove());
@@ -2993,6 +3078,7 @@ const Ember = (() => {
     root.removeEventListener('blur', handlers.rootBlur);
     root.removeEventListener('contextmenu', handlers.contextmenu);
     root.removeEventListener('click', handlers.click);
+    root.removeEventListener('dblclick', handlers.dblclick);
     root.removeEventListener('keydown', handlers.keydown);
     document.removeEventListener('input', handlers.input);
     document.removeEventListener('mousemove', handlers.mousemove);
@@ -3012,5 +3098,11 @@ const Ember = (() => {
     Object.keys(nextSegDue).forEach(k => delete nextSegDue[k]);
   }
 
-  return { init, destroy, notifyEdit, switchTab, setStatus, onPreviewOpen: startPreviewScare, onClick(fn) { onClickCallback = fn; }, triggerReaction(type, data) { queueReaction(type, data); } };
+  return {
+    init, destroy, notifyEdit, switchTab, setStatus,
+    onPreviewOpen: startPreviewScare,
+    onClick(fn) { onClickCallback = fn; },
+    triggerReaction(type, data) { queueReaction(type, data); },
+    enableTestMode(value = true) { allowTestMode = !!value; },
+  };
 })();
