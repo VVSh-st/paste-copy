@@ -242,6 +242,16 @@ const Ember = (() => {
       Math.sin(breathPhase * 11.1 + 4.2) * 0.2;
     return { breathAmp, flicker };
   }
+
+  function setStyle(el, prop, value) {
+    if (!el) return;
+    const key = 'style:' + prop;
+    let map = styleCache.get(el);
+    if (!map) { map = new Map(); styleCache.set(el, map); }
+    if (map.get(key) === value) return;
+    map.set(key, value);
+    el.style[prop] = value;
+  }
   function easeInQuad(t) { return t * t; }
   function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
   function bump(t, riseEnd, holdEnd) {
@@ -382,12 +392,12 @@ const Ember = (() => {
       };
     } catch {}
     handlers.storageSync = (e) => {
-      if (e.key === getStorageKey(currentTabId) && e.newValue) {
-        try {
-          const s = JSON.parse(e.newValue);
-          applyRemoteState(s);
-        } catch {}
-      }
+      if (!e.key || !e.newValue) return;
+      if (!e.key.startsWith(STORAGE_KEY_PREFIX)) return;
+      try {
+        const s = JSON.parse(e.newValue);
+        applyRemoteState(s);
+      } catch {}
     };
     window.addEventListener('storage', handlers.storageSync);
   }
@@ -446,6 +456,7 @@ const Ember = (() => {
     if (currentTabId) saveState();
     currentTabId = newTabId;
     state = loadState(currentTabId);
+    setupBroadcast();
     spawnStart = performance.now();
     prevRemaining = remainingSegments();
     lastWarnRemaining = remainingSegments();
@@ -1137,9 +1148,9 @@ const Ember = (() => {
     const totalHue = pose.hue;
     const totalSat = pose.saturation;
     if (totalHue || totalSat) {
-      coreEl.style.filter = `brightness(var(--brightness)) hue-rotate(${totalHue.toFixed(1)}deg) saturate(${(1 + totalSat).toFixed(3)})`;
+      setStyle(coreEl, 'filter', `brightness(var(--brightness)) hue-rotate(${totalHue.toFixed(1)}deg) saturate(${(1 + totalSat).toFixed(3)})`);
     } else {
-      coreEl.style.filter = 'brightness(var(--brightness))';
+      setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
     }
   }
 
@@ -1183,13 +1194,13 @@ const Ember = (() => {
 
   function clearDirtySegments() {
     dirtySegments.forEach(seg => {
-      seg.style.removeProperty('--seg-tilt');
-      seg.style.removeProperty('--seg-flash');
-      seg.style.removeProperty('--seg-dim');
-      seg.style.removeProperty('--seg-brightness');
-      seg.style.removeProperty('--seg-push');
-      seg.style.removeProperty('--seg-scaleX');
-      seg.style.removeProperty('--seg-scaleY');
+      setVar(seg, '--seg-tilt', '');
+      setVar(seg, '--seg-flash', '');
+      setVar(seg, '--seg-dim', '');
+      setVar(seg, '--seg-brightness', '');
+      setVar(seg, '--seg-push', '');
+      setVar(seg, '--seg-scaleX', '');
+      setVar(seg, '--seg-scaleY', '');
     });
     dirtySegments.clear();
   }
@@ -1215,8 +1226,8 @@ const Ember = (() => {
           const intensity = Math.sin(e.phase * Math.PI * 3) * 6 * m * (1 - e.phase);
           const push = Math.sin(e.phase * Math.PI) * 1.2 * m;
           applySegmentWave(e.segIdx, 2, (seg, falloff) => {
-            seg.style.setProperty('--seg-tilt', (intensity * falloff).toFixed(2) + 'deg');
-            seg.style.setProperty('--seg-push', (push * falloff).toFixed(2) + 'px');
+            setVar(seg, '--seg-tilt', (intensity * falloff).toFixed(2) + 'deg');
+            setVar(seg, '--seg-push', (push * falloff).toFixed(2) + 'px');
           });
           break;
         }
@@ -1225,14 +1236,14 @@ const Ember = (() => {
           const seg = segments[e.segIdx];
           if (seg) {
             markSegmentDirty(seg);
-            seg.style.setProperty('--seg-flash', flash.toFixed(3));
-            seg.style.setProperty('--seg-scaleX', (1 - flash * 0.35).toFixed(3));
-            seg.style.setProperty('--seg-scaleY', (1 + flash * 0.2).toFixed(3));
+            setVar(seg, '--seg-flash', flash.toFixed(3));
+            setVar(seg, '--seg-scaleX', (1 - flash * 0.35).toFixed(3));
+            setVar(seg, '--seg-scaleY', (1 + flash * 0.2).toFixed(3));
           }
           const neighbor = segments[e.segIdx - 1] || segments[e.segIdx + 1];
           if (neighbor && flash > 0.3) {
             markSegmentDirty(neighbor);
-            neighbor.style.setProperty('--seg-flash', (flash * 0.3).toFixed(3));
+            setVar(neighbor, '--seg-flash', (flash * 0.3).toFixed(3));
           }
           break;
         }
@@ -1242,8 +1253,8 @@ const Ember = (() => {
           const localFrac = wavePos - center;
           const wave = Math.sin(localFrac * Math.PI);
           applySegmentWave(center, 2, (seg, falloff) => {
-            seg.style.setProperty('--seg-brightness', (wave * falloff * 1.2 * m).toFixed(3));
-            seg.style.setProperty('--seg-push', (wave * falloff * 0.8 * m).toFixed(2) + 'px');
+            setVar(seg, '--seg-brightness', (wave * falloff * 1.2 * m).toFixed(3));
+            setVar(seg, '--seg-push', (wave * falloff * 0.8 * m).toFixed(2) + 'px');
           });
           break;
         }
@@ -1252,9 +1263,9 @@ const Ember = (() => {
           const seg = segments[e.segIdx];
           if (seg) {
             markSegmentDirty(seg);
-            seg.style.setProperty('--seg-dim', (0.7 + 0.7 * blink).toFixed(3));
-            seg.style.setProperty('--seg-scaleX', (1 - Math.abs(blink) * 0.3).toFixed(3));
-            seg.style.setProperty('--seg-scaleY', (1 + Math.abs(blink) * 0.15).toFixed(3));
+            setVar(seg, '--seg-dim', (0.7 + 0.7 * blink).toFixed(3));
+            setVar(seg, '--seg-scaleX', (1 - Math.abs(blink) * 0.3).toFixed(3));
+            setVar(seg, '--seg-scaleY', (1 + Math.abs(blink) * 0.15).toFixed(3));
           }
           break;
         }
@@ -1266,8 +1277,8 @@ const Ember = (() => {
           const localFrac = pos - ci;
           const wave = Math.sin(localFrac * Math.PI);
           applySegmentWave(activeIdx[ci] ?? 0, 1, (seg, falloff) => {
-            seg.style.setProperty('--seg-brightness', (wave * falloff * 0.8 * m).toFixed(3));
-            seg.style.setProperty('--seg-push', (wave * falloff * 0.6 * m).toFixed(2) + 'px');
+            setVar(seg, '--seg-brightness', (wave * falloff * 0.8 * m).toFixed(3));
+            setVar(seg, '--seg-push', (wave * falloff * 0.6 * m).toFixed(2) + 'px');
           });
           break;
         }
@@ -1344,6 +1355,7 @@ const Ember = (() => {
 
     particles.push({
       el, born: performance.now(),
+      startX, startY,
       dur: rand(3000, 5600),
       rise: rand(-16, -8),
       drift: rand(-10, 10) + windGust * 3,
@@ -1386,6 +1398,7 @@ const Ember = (() => {
 
     particles.push({
       el, born: performance.now(),
+      startX, startY,
       dur: rand(380, 820),
       rise: rand(-36, -20),
       drift: rand(-10, 10) + windGust * 15,
@@ -1418,6 +1431,7 @@ const Ember = (() => {
     const speed = rand(40, 70);
     particles.push({
       el, born: performance.now(),
+      startX, startY,
       dur: rand(420, 720),
       rise: Math.cos(angle) * -speed,
       drift: Math.sin(angle) * speed * 0.6 + windGust * 12,
@@ -1447,6 +1461,7 @@ const Ember = (() => {
 
     particles.push({
       el, born: performance.now(),
+      startX, startY,
       dur: rand(1200, 2200),
       rise: rand(-10, -4),
       drift: rand(-4, 4) + windGust * 2,
@@ -1479,9 +1494,7 @@ const Ember = (() => {
       const t = clamp((now - p.born) / p.dur, 0, 1);
       if (t >= 1) {
         if (p.type === 'shooting' || p.type === 'crumb' || p.isSpark) {
-          const px = parseFloat(p.el.style.left);
-          const py = parseFloat(p.el.style.top);
-          if (!isNaN(px) && !isNaN(py)) spawnLandingGlow(px, py);
+          spawnLandingGlow(p.startX, p.startY);
         }
         if (p.isSpark && !p.ashSpawned && Math.random() < 0.5) {
           p.ashSpawned = true;
@@ -1788,8 +1801,8 @@ const Ember = (() => {
         const seg = segments[i];
         if (!seg) return;
         markSegmentDirty(seg);
-        seg.style.setProperty('--seg-dim', (sleepyBias * 0.35).toFixed(3));
-        seg.style.setProperty('--seg-push', (sleepyBias * -0.8).toFixed(2) + 'px');
+        setVar(seg, '--seg-dim', (sleepyBias * 0.35).toFixed(3));
+        setVar(seg, '--seg-push', (sleepyBias * -0.8).toFixed(2) + 'px');
       });
     }
     if (temperament.curiosity > 0.3) {
@@ -1798,7 +1811,7 @@ const Ember = (() => {
         const seg = segments[i];
         if (!seg) return;
         markSegmentDirty(seg);
-        seg.style.setProperty('--seg-brightness', (bias * 0.6).toFixed(3));
+        setVar(seg, '--seg-brightness', (bias * 0.6).toFixed(3));
       });
     }
   }
@@ -2734,18 +2747,18 @@ const Ember = (() => {
   }
 
   function applyEggVars() {
-    coreEl.style.setProperty('--cursorLeanX', '0');
-    coreEl.style.setProperty('--cursorLeanY', '0');
-    coreEl.style.setProperty('--cursorSquish', '0');
-    coreEl.style.setProperty('--cursorScale', '1');
-    coreEl.style.setProperty('--cursorTiltX', '0');
-    coreEl.style.setProperty('--cursorTiltY', '0');
-    coreEl.style.setProperty('--eggX', egg.x.toFixed(1) + 'px');
-    coreEl.style.setProperty('--eggY', egg.y.toFixed(1) + 'px');
-    coreEl.style.setProperty('--eggScale', clamp(egg.scale, 0.02, 2).toFixed(3));
-    coreEl.style.setProperty('--eggSquish', egg.squish.toFixed(3));
-    coreEl.style.setProperty('--eggTiltX', egg.tiltX.toFixed(1) + 'deg');
-    coreEl.style.setProperty('--eggTiltY', egg.tiltY.toFixed(1) + 'deg');
+    setVar(coreEl, '--cursorLeanX', '0');
+    setVar(coreEl, '--cursorLeanY', '0');
+    setVar(coreEl, '--cursorSquish', '0');
+    setVar(coreEl, '--cursorScale', '1');
+    setVar(coreEl, '--cursorTiltX', '0');
+    setVar(coreEl, '--cursorTiltY', '0');
+    setVar(coreEl, '--eggX', egg.x.toFixed(1) + 'px');
+    setVar(coreEl, '--eggY', egg.y.toFixed(1) + 'px');
+    setVar(coreEl, '--eggScale', clamp(egg.scale, 0.02, 2).toFixed(3));
+    setVar(coreEl, '--eggSquish', egg.squish.toFixed(3));
+    setVar(coreEl, '--eggTiltX', egg.tiltX.toFixed(1) + 'deg');
+    setVar(coreEl, '--eggTiltY', egg.tiltY.toFixed(1) + 'deg');
   }
 
   function update(now, dt) {
@@ -2754,18 +2767,33 @@ const Ember = (() => {
     sampleMousePosition(now);
     if (!reduceMotion) sampleCaretPosition(now);
 
+    if (reduceMotion) {
+      heat = clamp(intensity + heatBoost * 0.15, 0, 1);
+      const ashRaw = clamp(1 - intensity, 0, 1);
+      ashCoverage = ashRaw * ashRaw * (3 - 2 * ashRaw);
+      setVar(root, '--heat', heat.toFixed(3));
+      setVar(root, '--glow', intensity.toFixed(3));
+      setVar(root, '--intensity', intensity.toFixed(3));
+      setVar(root, '--brightness', (0.75 + intensity * 0.25).toFixed(3));
+      setVar(root, '--coreHue', (15 + intensity * 35).toFixed(1));
+      setVar(root, '--coreLight', (35 + intensity * 35).toFixed(1) + '%');
+      setVar(root, '--ashCoverage', ashCoverage.toFixed(3));
+      applySegments();
+      return;
+    }
+
     // вращение кольца — медленное, только при наведении + импульс от втягивания
     ringAngle += dt * 0.0003 * hoverVal / sleepSlowdown();
     ringAngle += dt * 0.008 * ringImpulse / sleepSlowdown();
-    ringEl.style.setProperty('--ringRot', (ringAngle * 57.2958 % 360).toFixed(2) + 'deg');
+    setVar(ringEl, '--ringRot', (ringAngle * 57.2958 % 360).toFixed(2) + 'deg');
 
     // parallax: кольцо отстаёт от курсора (инерция 0.04 vs 0.08 у glow)
     const ringTargetX = cursorLean.x * 0.3;
     const ringTargetY = cursorLean.y * 0.25;
     ringTrackX += (ringTargetX - ringTrackX) * 0.04;
     ringTrackY += (ringTargetY - ringTrackY) * 0.04;
-    ringEl.style.setProperty('--ringParallaxX', ringTrackX.toFixed(2) + 'px');
-    ringEl.style.setProperty('--ringParallaxY', ringTrackY.toFixed(2) + 'px');
+    setVar(ringEl, '--ringParallaxX', ringTrackX.toFixed(2) + 'px');
+    setVar(ringEl, '--ringParallaxY', ringTrackY.toFixed(2) + 'px');
 
     if (egg.active) {
       updateEgg(now);
@@ -2803,7 +2831,7 @@ const Ember = (() => {
       root.style.setProperty('--glowScale', (1 + heatBoost * 0.1).toFixed(3));
       root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
       updateCrackLayers(now, crackGlow);
-      coreEl.style.filter = 'brightness(var(--brightness))';
+      setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
 
     applySegments();
 
@@ -2892,13 +2920,13 @@ const Ember = (() => {
       root.style.setProperty('--coreHue', (15 + intensity * 35).toFixed(1));
       root.style.setProperty('--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
 
-      coreEl.style.filter = 'brightness(var(--brightness))';
-      coreEl.style.setProperty('--cursorLeanX', '0');
-      coreEl.style.setProperty('--cursorLeanY', '0');
-      coreEl.style.setProperty('--cursorSquish', '0');
-      coreEl.style.setProperty('--cursorScale', '1');
-      coreEl.style.setProperty('--cursorTiltX', '0');
-      coreEl.style.setProperty('--cursorTiltY', '0');
+      setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
+      setVar(coreEl, '--cursorLeanX', '0');
+      setVar(coreEl, '--cursorLeanY', '0');
+      setVar(coreEl, '--cursorSquish', '0');
+      setVar(coreEl, '--cursorScale', '1');
+      setVar(coreEl, '--cursorTiltX', '0');
+      setVar(coreEl, '--cursorTiltY', '0');
       return;
     }
 
@@ -3366,7 +3394,6 @@ const Ember = (() => {
       saveState();
     }
     createDOM();
-    initParticlePool();
     setupBroadcast();
     setupEventListeners();
 
@@ -3378,6 +3405,8 @@ const Ember = (() => {
     const container = mountEl || document.getElementById('ember-slot');
     if (container) container.appendChild(root);
     else document.body.appendChild(root);
+
+    initParticlePool();
 
     if ('IntersectionObserver' in window) {
       io = new IntersectionObserver(([e]) => {
