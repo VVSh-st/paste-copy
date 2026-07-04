@@ -130,9 +130,10 @@ a51c6c8 notepad: GPT audit round 3 — 19 fixes (disconnected DOM cleanup, Shift
 5578f24 notepad: GPT audit round 2 — 21 fixes (loadSaved tabs safety, async paste/translate race, history flush order, per-tab undo, tabOffset persist, position after size, resize viewport bounds, translate original per-tab, commitTitle reset, Escape rename, Tab metaKey, undo caret, persist skip identical, _updateCount KB approx, renderTabs fragment, strip _history from persist, activeTab Math.max, cssPx validation, addEventListener, minimize persist)
 59ece03 notepad: GPT audit round 1 — 22 fixes (click timer cleanup, drag/resize abort, singleton guard, cut clipboard safety, history flush, per-tab undo, transfer all-full, translate race/selection, loadSaved validation, position clamp, notepad-container fallback, commitRename guard, filename sanitize, renderTabs optimization, persist error toast, Ctrl+S, toast safety, TextEncoder fallback, line count, Tab accessibility, translate handler, magic numbers)
 f2b78f1 notepad: GPT audit round 4 — 13 fixes (closeNotepad pushHistory, MAX_HISTORY histIdx, paste textarea ref, translate sourceValue, tabOffset normalize, title/rename editing guards, Escape restore, cut cancel, translate btn disable, undo/redo conditional render, create cleanup, save Ctrl+S tooltip)
+aaef441 notepad: GPT audit round 5 — 8 fixes (_openRenameOnTab sync, ondblclick simplify, undo/redo/input clears translateOriginal, restore pushHistory, minimize flush, clearBtn input event, _syncActiveTabValue helper, viewport margin, keydown early returns)
 ```
 
-**Итого: 283 фикса за 26 раундов аудита**
+**Итого: 291 фикс за 27 раундов аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
@@ -291,7 +292,7 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `ai-transform.js` (~450 строк) — AI transform module, GPT audit fixes (39 fixes)
 - `anchors.js` (~600 строк) — anchor navigation, markers, palette, GPT audit fixes (25 fixes)
 - `translator.js` (~763 строк) — Google/MS/Legacy translate, GPT audit fixes (78 fixes, 5 раундов)
-- `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (75 fixes, 4 раунда)
+- `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (83 fixes, 5 раундов)
 - `intelligence-core.js` (~1339 строк) — ядро интеллектуальных подсказок, scoring, prediction
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
 - `prompt-translator-review.md` — GPT audit prompt для translator.js
