@@ -143,7 +143,7 @@ f4fffe3 intelligence-core: GPT audit round 6 (final) — 10 fixes (deep clone su
 f64d37a project-graph: GPT audit round 4 — 3 fixes (rememberBlockNodes, cacheId skip 'current', importData counters recalc)
 ```
 
-**Итого: 378 фиксов за 37 раундов аудита**
+**Итого: 388 фиксов за 38 раундов аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
@@ -156,6 +156,7 @@ f64d37a project-graph: GPT audit round 4 — 3 fixes (rememberBlockNodes, cacheI
 - ⏳ app.js: ожидает аудит (969 строк)
 - ✅ **intelligence-core.js: аудит завершён** (6 раундов, 69 фиксов)
 - ✅ **project-graph.js: аудит завершён** (4 раунда, 18 фиксов)
+- 🔄 **ember.js + ember-styles.css: раунд 1** (10 фиксов, ожидает следующий раунд)
 
 ### Flowchart — Query menu
 
@@ -306,7 +307,7 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (83 fixes, 5 раундов)
 - `intelligence-core.js` (~1699 строк) — ядро интеллектуальных подсказок, scoring, prediction, GPT audit fixes (69 fixes, 6 раундов)
 - `project-graph.js` (~1363 строк) — граф проекта для Intelligence Layer, snapshot capture, similarity, GPT audit fixes (18 fixes, 4 раунда)
-- `ember.js` (~3016 строк) — "Уголёк", живой индикатор состояния проекта, rAF + particle system + peek state machine
+- `ember.js` (~3102 строк) — "Уголёк", живой индикатор состояния проекта, rAF + particle system + peek state machine, GPT audit fixes (10 fixes, 1 раунд)
 - `ember-styles.css` (~607 строк) — стили уголька, CSS custom properties, keyframe animations
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
 - `prompt-translator-review.md` — GPT audit prompt для translator.js
