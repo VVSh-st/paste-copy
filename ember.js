@@ -685,7 +685,7 @@ const Ember = (() => {
       zone.style.setProperty('--cx', clamp(zone._curX, 10, 90).toFixed(1) + '%');
       zone.style.setProperty('--cy', clamp(zone._curY, 10, 90).toFixed(1) + '%');
       zone.style.setProperty('--zoneHeat', clamp(zone._curHeat, 0, 1.5).toFixed(3));
-    }).filter(Boolean);
+    });
     const avgHeat = zones.reduce((s, z) => s + (z._curHeat || 0.6), 0) / Math.max(zones.length, 1);
     if (crustEl) crustEl.style.opacity = (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3);
     zones = zones.filter(z => z.isConnected);
