@@ -11,6 +11,7 @@
   const MAX_SNAPSHOTS = 80;
   const MAX_BLOCK_NODES = 240;
   const MAX_RELATIONS = 300;
+  const MAX_SNAPSHOT_BLOCK_META = 64;
   const SNAPSHOT_COOLDOWN = 20_000;
   const SIMILAR_STRUCTURE_THRESHOLD = 0.72;
 
@@ -99,8 +100,8 @@
       tokens:         Math.max(0, Number(s.tokens || 0)),
       blockCount:     Math.max(0, Number(s.blockCount || blockHashes.length)),
       blockHashes,
-      blockTitles:    Array.isArray(s.blockTitles) ? s.blockTitles.map(x => safeStr(x, 80)).slice(0, 16) : [],
-      blockRoles:     Array.isArray(s.blockRoles) ? s.blockRoles.map(x => safeStr(x, 80)).slice(0, 16) : []
+      blockTitles:    Array.isArray(s.blockTitles) ? s.blockTitles.map(x => safeStr(x, 80)).slice(0, MAX_SNAPSHOT_BLOCK_META) : [],
+      blockRoles:     Array.isArray(s.blockRoles) ? s.blockRoles.map(x => safeStr(x, 80)).slice(0, MAX_SNAPSHOT_BLOCK_META) : []
     };
   }
 
@@ -257,6 +258,16 @@
     return String(title || 'Блок').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 80);
   }
 
+  function titleMatchesAlias(key, alias) {
+    const normalizedAlias = normalizeTitle(alias)
+      .replace(/[«»"'`.,:;!?()[\]{}]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!normalizedAlias) return false;
+    if (normalizedAlias.includes(' ')) return key.includes(normalizedAlias);
+    return key.split(' ').includes(normalizedAlias);
+  }
+
   function titleRole(title) {
     const key = normalizeTitle(title)
       .replace(/[«»"'`.,:;!?()[\]{}]/g, ' ')
@@ -266,7 +277,7 @@
     if (!key) return 'block';
 
     for (const [role, aliases] of Object.entries(TITLE_ROLE_ALIASES)) {
-      if (aliases.some(alias => key === alias || key.includes(alias))) return role;
+      if (aliases.some(alias => titleMatchesAlias(key, alias))) return role;
     }
 
     return 'custom:' + key.slice(0, 48);
@@ -371,19 +382,22 @@
     if (list.length <= limit) return list.sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0));
 
     const pinnedIds = preserveBaselines ? getPinnedSnapshotIds() : new Set();
-    const keep = [];
+    const protectedSnapshots = [];
     const removable = [];
     list.forEach(snapshot => {
       const protectedSnapshot = (preserveNamed && String(snapshot.name || '').trim()) || pinnedIds.has(snapshot.id);
-      (protectedSnapshot ? keep : removable).push(snapshot);
+      (protectedSnapshot ? protectedSnapshots : removable).push(snapshot);
     });
 
-    const roomForRemovable = Math.max(0, limit - keep.length);
+    const protectedKept = protectedSnapshots
+      .sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0))
+      .slice(0, limit);
+    const roomForRemovable = Math.max(0, limit - protectedKept.length);
     const keptRemovable = removable
       .sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0))
       .slice(0, roomForRemovable);
 
-    return [...keep, ...keptRemovable]
+    return [...protectedKept, ...keptRemovable]
       .sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0));
   }
 
@@ -493,40 +507,9 @@
       tokens: estimateTokens(text),
       blockCount: blocks.length,
       blockHashes: blocks.map(b => b.hash),
-      blockTitles: blocks.map(b => b.title).slice(0, 16),
-      blockRoles: blocks.map(b => b.role || titleRole(b.title)).slice(0, 16)
+      blockTitles: blocks.map(b => b.title).slice(0, MAX_SNAPSHOT_BLOCK_META),
+      blockRoles: blocks.map(b => b.role || titleRole(b.title)).slice(0, MAX_SNAPSHOT_BLOCK_META)
     };
-
-    blocks.forEach(block => {
-      if (!block.hash) return;
-      const node = graph.blockNodes[block.hash] || {
-        hash: block.hash,
-        title: block.title,
-        titleKey: block.titleKey,
-        role: block.role,
-        kind: block.kind,
-        chars: block.chars,
-        tokens: block.tokens,
-        seen: 0,
-        usedInFinal: 0,
-        firstSeenAt: ts,
-        lastSeenAt: 0,
-        tabs: {}
-      };
-      node.title = block.title || node.title;
-      node.titleKey = block.titleKey || node.titleKey;
-      node.role = block.role || node.role || titleRole(node.title);
-      node.kind = block.kind || node.kind;
-      node.chars = block.chars || node.chars;
-      node.tokens = block.tokens || node.tokens;
-      node.seen = (node.seen || 0) + 1;
-      node.lastSeenAt = ts;
-      node.tabs[tab.id || 'unknown'] = String(tab.name || '').slice(0, 80);
-      if (/preview\.(copy|download|exportAll)|file\.export|successful/i.test(source)) {
-        node.usedInFinal = (node.usedInFinal || 0) + 1;
-      }
-      graph.blockNodes[block.hash] = node;
-    });
 
     const relationBlocks = [];
     const seenHashes = new Set();
@@ -857,8 +840,8 @@
       tokens: estimateTokens(currentText),
       blockCount: currentBlocks.length,
       blockHashes: currentBlocks.map(b => b.hash),
-      blockTitles: currentBlocks.map(b => b.title).slice(0, 16),
-      blockRoles: currentBlocks.map(b => b.role || titleRole(b.title)).slice(0, 16)
+      blockTitles: currentBlocks.map(b => b.title).slice(0, MAX_SNAPSHOT_BLOCK_META),
+      blockRoles: currentBlocks.map(b => b.role || titleRole(b.title)).slice(0, MAX_SNAPSHOT_BLOCK_META)
     };
 
     if (!current.tabId || !current.blockCount || !currentText.trim()) return null;
@@ -1015,10 +998,10 @@
       blockCount: Number(snapshot.blockCount || 0),
       chars: Number(snapshot.chars || 0),
       tokens: Number(snapshot.tokens || 0),
-      blockTitles: titles.slice(0, 16),
-      blockRoles: roles.slice(0, 16),
+      blockTitles: titles.slice(0, MAX_SNAPSHOT_BLOCK_META),
+      blockRoles: roles.slice(0, MAX_SNAPSHOT_BLOCK_META),
       blockHashes: Array.isArray(snapshot.blockHashes) ? snapshot.blockHashes.slice(0, 64) : [],
-      roleLabels: roles.slice(0, 16).map(role => roleLabel(role, role))
+      roleLabels: roles.slice(0, MAX_SNAPSHOT_BLOCK_META).map(role => roleLabel(role, role))
     };
   }
 
@@ -1205,8 +1188,8 @@
       tokens: estimateTokens(currentText),
       blockCount: blocks.length,
       blockHashes: blocks.map(b => b.hash),
-      blockTitles: blocks.map(b => b.title).slice(0, 16),
-      blockRoles: blocks.map(b => b.role || titleRole(b.title)).slice(0, 16)
+      blockTitles: blocks.map(b => b.title).slice(0, MAX_SNAPSHOT_BLOCK_META),
+      blockRoles: blocks.map(b => b.role || titleRole(b.title)).slice(0, MAX_SNAPSHOT_BLOCK_META)
     });
   }
 
