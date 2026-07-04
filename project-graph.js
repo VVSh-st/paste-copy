@@ -70,6 +70,52 @@
 
   function now() { return Date.now(); }
 
+  /* ---- Import helpers ------------------------------------------------- */
+  function isPlainObject(v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;
+  }
+
+  function safeStr(v, max = 160) {
+    return String(v == null ? '' : v).slice(0, max);
+  }
+
+  function sanitizeSnapshot(s) {
+    if (!isPlainObject(s)) return null;
+    const blockHashes = Array.isArray(s.blockHashes)
+      ? s.blockHashes.map(x => safeStr(x, 80)).filter(Boolean).slice(0, 64)
+      : [];
+    return {
+      id:             safeStr(s.id, 80),
+      ts:             Number(s.ts || 0),
+      source:         safeStr(s.source, 80),
+      name:           safeStr(s.name, 80),
+      tabId:          safeStr(s.tabId, 80),
+      tabName:        safeStr(s.tabName, 80),
+      textHash:       safeStr(s.textHash, 80),
+      structureHash:  safeStr(s.structureHash, 80),
+      structureSignature: safeStr(s.structureSignature, 4000),
+      roleSignature:  safeStr(s.roleSignature, 4000),
+      chars:          Math.max(0, Number(s.chars || 0)),
+      tokens:         Math.max(0, Number(s.tokens || 0)),
+      blockCount:     Math.max(0, Number(s.blockCount || blockHashes.length)),
+      blockHashes,
+      blockTitles:    Array.isArray(s.blockTitles) ? s.blockTitles.map(x => safeStr(x, 80)).slice(0, 16) : [],
+      blockRoles:     Array.isArray(s.blockRoles) ? s.blockRoles.map(x => safeStr(x, 80)).slice(0, 16) : []
+    };
+  }
+
+  function limitedEntriesObject(raw, max) {
+    if (!isPlainObject(raw)) return {};
+    return Object.fromEntries(
+      Object.entries(raw)
+        .filter(([k, v]) => k && isPlainObject(v))
+        .sort((a, b) => Number(b[1]?.lastSeenAt || 0) - Number(a[1]?.lastSeenAt || 0))
+        .slice(0, max)
+    );
+  }
+
+  let _simCache = new Map();
+
   function loadGraph() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -107,22 +153,25 @@
 
   function normalizeGraph(raw) {
     const base = createDefaultGraph();
-    const g = raw && typeof raw === 'object' ? raw : {};
+    const g = isPlainObject(raw) ? raw : {};
+    const ret = normalizeRetention(g.retention || {});
     return {
       ...base,
       ...g,
       schemaVersion: SCHEMA_VERSION,
       counters: { ...base.counters, ...(g.counters || {}) },
-      blockNodes: { ...(g.blockNodes || {}) },
-      promptSnapshots: Array.isArray(g.promptSnapshots) ? g.promptSnapshots.slice(-MAX_SNAPSHOTS) : [],
+      blockNodes: limitedEntriesObject(g.blockNodes, ret.maxBlockNodes),
+      promptSnapshots: Array.isArray(g.promptSnapshots)
+        ? g.promptSnapshots.map(sanitizeSnapshot).filter(Boolean).slice(-ret.maxSnapshots)
+        : [],
       relations: {
-        oftenWith: { ...(g.relations?.oftenWith || {}) },
-        derivedFrom: { ...(g.relations?.derivedFrom || {}) }
+        oftenWith:   limitedEntriesObject(g.relations?.oftenWith, ret.maxRelations),
+        derivedFrom: limitedEntriesObject(g.relations?.derivedFrom, ret.maxRelations)
       },
       baselines: {
         byTabId: { ...(g.baselines?.byTabId || {}) }
       },
-      retention: normalizeRetention(g.retention || {})
+      retention: ret
     };
   }
 
@@ -157,10 +206,15 @@
     clearTimeout(saveTimer);
     saveTimer = null;
     try {
-      graph.updatedAt = now();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(graph));
+      const nextUpdatedAt = now();
+      const serialized = JSON.stringify({ ...graph, updatedAt: nextUpdatedAt });
+      localStorage.setItem(STORAGE_KEY, serialized);
+      graph.updatedAt = nextUpdatedAt;
     } catch (err) {
       console.warn('[ProjectGraph] save failed:', err);
+      if (err?.name !== 'QuotaExceededError') {
+        saveTimer = setTimeout(saveNow, 5000);
+      }
     }
   }
 
@@ -454,15 +508,26 @@
       graph.blockNodes[block.hash] = node;
     });
 
-    for (let i = 0; i < blocks.length; i += 1) {
-      for (let j = i + 1; j < blocks.length; j += 1) {
-        const key = makePairKey(blocks[i].hash, blocks[j].hash);
+    const relationBlocks = [];
+    const seenHashes = new Set();
+    blocks.forEach(b => {
+      if (!b.hash || seenHashes.has(b.hash)) return;
+      seenHashes.add(b.hash);
+      relationBlocks.push(b);
+    });
+    const pairLimit = Math.max(80, Math.min(1200, (graph.retention?.maxRelations || MAX_RELATIONS) * 2));
+    let pairCount = 0;
+    for (let i = 0; i < relationBlocks.length && pairCount < pairLimit; i += 1) {
+      for (let j = i + 1; j < relationBlocks.length && pairCount < pairLimit; j += 1) {
+        const key = makePairKey(relationBlocks[i].hash, relationBlocks[j].hash);
+        if (!key) continue;
+        pairCount += 1;
         bumpRelation(graph.relations.oftenWith, key, {
-          aTitle: blocks[i].title,
-          bTitle: blocks[j].title,
+          aTitle: relationBlocks[i].title,
+          bTitle: relationBlocks[j].title,
           tabName: snapshot.tabName,
-          aRole: blocks[i].role,
-          bRole: blocks[j].role
+          aRole: relationBlocks[i].role,
+          bRole: relationBlocks[j].role
         });
       }
     }
@@ -492,7 +557,18 @@
 
     graph.promptSnapshots.push(snapshot);
     graph.counters.snapshots += 1;
-    trimGraph(); // updateCounters() здесь же пересчитает namedSnapshots/blockFingerprints/relations
+    const ret = normalizeRetention(graph.retention || {});
+    if (
+      graph.promptSnapshots.length > ret.maxSnapshots
+      || Object.keys(graph.blockNodes).length > ret.maxBlockNodes
+      || Object.keys(graph.relations.oftenWith).length > ret.maxRelations
+      || Object.keys(graph.relations.derivedFrom).length > ret.maxRelations
+      || ret.maxAgeDays > 0
+    ) {
+      trimGraph(ret);
+    } else {
+      updateCounters();
+    }
     saveSoon();
     return snapshot;
   }
@@ -516,6 +592,11 @@
   }
 
   function structureSimilarity(a, b) {
+    const aId = a?.id || a?.textHash || '';
+    const bId = b?.id || b?.textHash || '';
+    const ck = aId < bId ? aId + '::' + bId : bId + '::' + aId;
+    if (_simCache.has(ck)) return _simCache.get(ck);
+
     const titleA = String(a?.structureSignature || '').split(' > ').filter(Boolean);
     const titleB = String(b?.structureSignature || '').split(' > ').filter(Boolean);
     const titleScore = similarityFromSets(titleA, titleB);
@@ -526,7 +607,10 @@
     const denom = Math.max(countA, countB) || 1;
     const countScore = 1 - Math.min(1, Math.abs(countA - countB) / denom);
     const semanticScore = Math.max(titleScore, roleScore * 0.94);
-    return Number(Math.max(semanticScore * 0.48 + blockScore * 0.34 + countScore * 0.18, blockScore, roleScore * 0.82).toFixed(2));
+    const score = Number(Math.max(semanticScore * 0.48 + blockScore * 0.34 + countScore * 0.18, blockScore, roleScore * 0.82).toFixed(2));
+    if (_simCache.size > 1000) _simCache.clear();
+    _simCache.set(ck, score);
+    return score;
   }
 
   function findSimilarPrompt(tab, text, options = {}) {
@@ -1194,12 +1278,18 @@
     graph = createDefaultGraph();
     lastSnapshotAt = 0;
     lastSnapshotHash = '';
+    _simCache.clear();
     saveNow();
     return graph;
   }
 
   function exportData() {
-    return JSON.parse(JSON.stringify(graph));
+    try {
+      return JSON.parse(JSON.stringify(graph));
+    } catch (err) {
+      console.warn('[ProjectGraph] export failed:', err);
+      return normalizeGraph({});
+    }
   }
 
   function importData(raw) {
@@ -1207,6 +1297,7 @@
     graph.updatedAt = now();
     lastSnapshotAt = 0;
     lastSnapshotHash = '';
+    _simCache.clear();
     saveNow();
     return graph;
   }
