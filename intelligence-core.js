@@ -34,7 +34,28 @@
   let lastMenuSuggestions = [];
   let lastContext = null;
   let refreshTimer = null;
+  let lastRefreshAt = 0;
   const editSessions = new Map();
+  const MAX_EDIT_SESSIONS = 200;
+
+  function safeCall(fn, fallback = null, label = 'call') {
+    try {
+      return typeof fn === 'function' ? fn() : fallback;
+    } catch (err) {
+      console.warn(`[Intelligence] ${label} failed:`, err);
+      return fallback;
+    }
+  }
+
+  function cleanupEditSessions(force = false) {
+    const ts = now();
+    for (const [key, session] of editSessions) {
+      if (force || ts - Number(session?.startedAt || 0) > 5 * 60 * 1000) {
+        clearTimeout(session?.timer);
+        editSessions.delete(key);
+      }
+    }
+  }
 
   function now() { return Date.now(); }
 
@@ -67,6 +88,14 @@
     return first.length > 48 ? first.slice(0, 45).trim() + '…' : first;
   }
 
+  function sanitizeUserTitle(value, fallback = '') {
+    const clean = String(value || fallback || '')
+      .replace(/[\u0000-\u001F\u007F]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return clean.slice(0, 80);
+  }
+
   function isExistingGlobalSnippet(value) {
     const needle = normalizeSnippetText(value).toLowerCase();
     if (!needle) return true;
@@ -75,30 +104,44 @@
 
   function findSnippetCandidate() {
     const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
-    const lastSuccess = [...recent].reverse().find(e => e?.type && e?.ts && /preview\.(copy|download|exportAll)|file\.export/.test(e.type));
+    let lastSuccess = null;
+    let lastExport = null;
+    for (let i = recent.length - 1; i >= 0 && (!lastSuccess || !lastExport); i -= 1) {
+      const e = recent[i];
+      if (!lastSuccess && e?.type && e?.ts && /preview\.(copy|download|exportAll)|file\.export/.test(e.type)) lastSuccess = e;
+    }
     if (!lastSuccess || now() - lastSuccess.ts > 15 * 60 * 1000) return null;
+
+    const existingSnippetSet = new Set(
+      (window.State?.getGlobalSnippets?.() || [])
+        .map(item => normalizeSnippetText(item?.value).toLowerCase())
+        .filter(Boolean)
+    );
 
     const items = window.PromptLoom?.getItems?.() || [];
     const candidates = items
       .map(item => ({
         item,
         text: normalizeSnippetText(item?.text),
-        // Робастная конвертация: NaN || 0 → 0
         uses: Math.max(0, Number(item?.uses) || 0),
         seen: Math.max(1, Number(item?.seen) || 1),
         updatedAt: Math.max(Number(item?.usedAt) || 0, Number(item?.updatedAt) || 0, Number(item?.createdAt) || 0),
         kind: item?.kind || window.PromptLoom?.classify?.(item?.text) || 'text'
       }))
       .filter(x => x.text.length >= 40 && x.text.length <= 1400)
-      .filter(x => !isExistingGlobalSnippet(x.text))
-      .filter(x => x.uses >= 2 || x.seen >= 3 || /instruction|markdown|text/.test(x.kind))
-      .sort((a, b) => {
-        const scoreA = a.uses * 5 + a.seen * 2 + (a.updatedAt > lastSuccess.ts - 30 * 60 * 1000 ? 4 : 0);
-        const scoreB = b.uses * 5 + b.seen * 2 + (b.updatedAt > lastSuccess.ts - 30 * 60 * 1000 ? 4 : 0);
-        return scoreB - scoreA;
-      });
+      .filter(x => !existingSnippetSet.has(x.text.toLowerCase()))
+      .filter(x => x.uses >= 2 || x.seen >= 3 || /instruction|markdown|text/.test(x.kind));
 
-    const best = candidates[0];
+    const scoreCandidate = x => x.uses * 5 + x.seen * 2 + (x.updatedAt > lastSuccess.ts - 30 * 60 * 1000 ? 4 : 0);
+    let best = null;
+    let bestScore = -Infinity;
+    for (const candidate of candidates) {
+      const score = scoreCandidate(candidate);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
     if (!best) return null;
     const confidence = Math.min(0.92, 0.72 + Math.min(best.uses, 5) * 0.04 + Math.min(best.seen, 5) * 0.025);
     if (confidence < 0.78) return null;
@@ -147,25 +190,29 @@
   }
 
   function trackEdit(payload = {}) {
+    cleanupEditSessions(false);
+    if (editSessions.size > MAX_EDIT_SESSIONS) {
+      const oldestKey = editSessions.keys().next().value;
+      const oldest = editSessions.get(oldestKey);
+      clearTimeout(oldest?.timer);
+      editSessions.delete(oldestKey);
+    }
     const key = String(payload.blockId || 'active');
     const chars = Math.max(0, Number(payload.chars) || 0);
-    const current = editSessions.get(key);
+    let session = editSessions.get(key);
 
-    if (!current) {
-      const session = { startedAt: now(), lastChars: chars, timer: null, payload: { ...payload } };
+    if (!session) {
+      session = { startedAt: now(), lastChars: chars, timer: null, payload: { ...payload } };
       editSessions.set(key, session);
       track('block.edit.started', { ...payload, chars });
-    } else if (Math.abs(chars - current.lastChars) >= LARGE_CHANGE_CHARS) {
-      track('block.edit.large-change', { ...payload, chars, delta: chars - current.lastChars });
-      current.lastChars = chars;
-      current.payload = { ...payload };
+    } else if (Math.abs(chars - session.lastChars) >= LARGE_CHANGE_CHARS) {
+      track('block.edit.large-change', { ...payload, chars, delta: chars - session.lastChars });
+      session.lastChars = chars;
+      session.payload = { ...payload };
     } else {
-      current.lastChars = chars;
-      current.payload = { ...payload };
+      session.lastChars = chars;
+      session.payload = { ...payload };
     }
-
-    const session = editSessions.get(key);
-    if (!session) return;
     clearTimeout(session.timer);
     session.timer = setTimeout(() => {
       const latest = editSessions.get(key);
@@ -182,8 +229,15 @@
   function computeFinality(tab, text, analysis) {
     const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
     const ts = now();
-    const lastCopy = [...recent].reverse().find(e => e.type === 'preview.copy');
-    const lastExport = [...recent].reverse().find(e => e.type === 'preview.download' || e.type === 'preview.exportAll' || e.type === 'file.export');
+    let lastCopy = null;
+    let lastExport = null;
+    for (let i = recent.length - 1; i >= 0 && (!lastCopy || !lastExport); i -= 1) {
+      const e = recent[i];
+      if (!lastCopy && e?.type === 'preview.copy') lastCopy = e;
+      if (!lastExport && (e?.type === 'preview.download' || e?.type === 'preview.exportAll' || e?.type === 'file.export')) {
+        lastExport = e;
+      }
+    }
     const editsAfterCopy = lastCopy ? recent.filter(e => e.ts > lastCopy.ts && (e.type === 'block.edit.large-change' || e.type === 'block.paste')).length : null;
 
     const copySignal = lastCopy && editsAfterCopy !== null && editsAfterCopy === 0 && ts - lastCopy.ts > 25_000 && ts - lastCopy.ts < 12 * 60 * 1000 ? 1 : 0;
@@ -207,8 +261,8 @@
   function getContext() {
     const tab = window.State?.getActive?.();
     const text = safePreviewText();
-    const analysis = window.QualityDetectors?.analyzePreview?.(text, tab) || null;
-    const lastEvent = window.UserMemory?.getLastEvent?.() || null;
+    const analysis = safeCall(() => window.QualityDetectors?.analyzePreview?.(text, tab), null, 'QualityDetectors.analyzePreview');
+    const lastEvent = safeCall(() => window.UserMemory?.getLastEvent?.(), null, 'UserMemory.getLastEvent');
     const textHash = hashText(text);
 
     lastContext = {
@@ -221,15 +275,15 @@
       textHash,
       lastEvent,
       finalityScore: computeFinality(tab, text, analysis),
-      structureCandidate: window.QualityDetectors?.findStructureCandidate?.(tab, lastEvent) || null,
-      snippetCandidate: findSnippetCandidate(),
-      similarPrompt: window.ProjectGraph?.findSimilarPrompt?.(tab, text, { threshold: 0.72 }) || null,
-      oftenWith: window.ProjectGraph?.findOftenWith?.(tab, { minCount: 2, limit: 5 }) || null,
-      derivedFrom: window.ProjectGraph?.findDerivedFrom?.(tab, { text, threshold: 0.58, limit: 3 }) || null,
-      versionTimeline: window.ProjectGraph?.findVersionTimeline?.(tab, { limit: 6 }) || null,
-      namedVersionDrift: window.ProjectGraph?.findNamedVersionDrift?.(tab, { text, minConfidence: 0.64, limit: 4 }) || null,
-      pinnedBaselineDrift: window.ProjectGraph?.comparePinnedBaselineToCurrent?.(tab, text) || null,
-      roleGaps: window.ProjectGraph?.findRoleGaps?.(tab, { minScore: 0.58, limit: 4 }) || null,
+      structureCandidate: safeCall(() => window.QualityDetectors?.findStructureCandidate?.(tab, lastEvent), null, 'findStructureCandidate'),
+      snippetCandidate: safeCall(() => findSnippetCandidate(), null, 'findSnippetCandidate'),
+      similarPrompt: safeCall(() => window.ProjectGraph?.findSimilarPrompt?.(tab, text, { threshold: 0.72 }), null, 'ProjectGraph.findSimilarPrompt'),
+      oftenWith: safeCall(() => window.ProjectGraph?.findOftenWith?.(tab, { minCount: 2, limit: 5 }), null, 'ProjectGraph.findOftenWith'),
+      derivedFrom: safeCall(() => window.ProjectGraph?.findDerivedFrom?.(tab, { text, threshold: 0.58, limit: 3 }), null, 'ProjectGraph.findDerivedFrom'),
+      versionTimeline: safeCall(() => window.ProjectGraph?.findVersionTimeline?.(tab, { limit: 6 }), null, 'ProjectGraph.findVersionTimeline'),
+      namedVersionDrift: safeCall(() => window.ProjectGraph?.findNamedVersionDrift?.(tab, { text, minConfidence: 0.64, limit: 4 }), null, 'ProjectGraph.findNamedVersionDrift'),
+      pinnedBaselineDrift: safeCall(() => window.ProjectGraph?.comparePinnedBaselineToCurrent?.(tab, text), null, 'ProjectGraph.comparePinnedBaselineToCurrent'),
+      roleGaps: safeCall(() => window.ProjectGraph?.findRoleGaps?.(tab, { minScore: 0.58, limit: 4 }), null, 'ProjectGraph.findRoleGaps'),
       analysis
     };
 
@@ -243,11 +297,15 @@
     return `${ev?.type || 'none'}:${size}:${kind.split('.')[0]} -> ${suggestion.type}`;
   }
 
-  function stableStringify(value) {
+  function stableStringify(value, seen = new WeakSet()) {
     if (value === undefined) return '"__undefined__"';
     if (value === null || typeof value !== 'object') return JSON.stringify(value);
-    if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
-    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableStringify(value[key])).join(',') + '}';
+    if (seen.has(value)) return '"__cycle__"';
+    seen.add(value);
+    if (Array.isArray(value)) return '[' + value.map(item => stableStringify(item, seen)).join(',') + ']';
+    return '{' + Object.keys(value).sort().map(key => {
+      return JSON.stringify(key) + ':' + stableStringify(value[key], seen);
+    }).join(',') + '}';
   }
 
   function makePreparedHash(suggestion, ctx) {
@@ -293,7 +351,7 @@
     const diff = drift?.comparison?.diff || derived?.diff || timeline?.totalDiff || null;
 
     if (type === 'version-timeline') return (timeline?.versionCount || 0) >= 3 && (timeline?.changedCount || 0) >= 1;
-    if (!diff) return true;
+    if (!diff) return type === 'similar-prompt-found' || type === 'often-with-found' || type === 'title-role-gap';
 
     const titleChanges = (diff.titleDiff?.added?.length || 0) + (diff.titleDiff?.removed?.length || 0);
     const roleChanges = (diff.roleDiff?.added?.length || 0) + (diff.roleDiff?.removed?.length || 0);
@@ -346,15 +404,21 @@
   function prepareSuggestions(items, profile, ctx) {
     const ts = now();
     const previousSuggestions = [...lastSuggestions, ...lastMenuSuggestions];
+    const previousKeys = new Set(previousSuggestions.map(prev =>
+      `${prev.type}\x00${prev.contextKey || ''}\x00${prev.preparedHash || ''}`
+    ));
+    const previousVisibleKeys = new Set(previousSuggestions
+      .filter(prev => !prev.menuOnly)
+      .map(prev => `${prev.type}\x00${prev.contextKey || ''}\x00${prev.preparedHash || ''}`)
+    );
     const allowed = applyProjectGraphPriorityPolicy(items)
       .filter(s => s && s.type && window.UserMemory?.isSuggestionAllowed?.(s.type) !== false)
       .map(s => personalizeConfidence(s, ctx, profile))
       .map(s => s.menuOnly ? { ...s, confidence: Math.max(0.55, Math.min(s.confidence, 0.69)) } : s)
       .filter(s => {
         const stats = profile?.suggestions?.byType?.[s.type];
-        const isSamePreparedAction = previousSuggestions.some(prev =>
-          prev.type === s.type && prev.contextKey === s.contextKey && prev.preparedHash === s.preparedHash
-        );
+        const key = `${s.type}\x00${s.contextKey || ''}\x00${s.preparedHash || ''}`;
+        const isSamePreparedAction = previousKeys.has(key);
         // Не прячем уже показанную подсказку при обычном refresh того же контекста.
         if (!isSamePreparedAction && stats?.lastShownAt && ts - stats.lastShownAt < SAME_SUGGESTION_COOLDOWN) return false;
         return s.confidence >= 0.55;
@@ -366,9 +430,8 @@
     const visible = allowed
       .filter(s => {
         if (s.menuOnly) return false;
-        const isAlreadyVisible = previousSuggestions.some(prev =>
-          prev.type === s.type && prev.contextKey === s.contextKey && prev.preparedHash === s.preparedHash && !prev.menuOnly
-        );
+        const key = `${s.type}\x00${s.contextKey || ''}\x00${s.preparedHash || ''}`;
+        const isAlreadyVisible = previousVisibleKeys.has(key);
         if (isAlreadyVisible) return true;
         if (s.confidence >= 0.88) return true;
         if (s.confidence >= 0.72 && !lastSuggestions.length) return true;
@@ -558,41 +621,38 @@
   }
 
   function refresh() {
-    clearTimeout(refreshTimer);
-    refreshTimer = null;
-    const profile = window.UserMemory?.getProfile?.() || null;
-    const ctx = getContext();
-    if (ctx.previewChars > 0) {
-      window.ProjectGraph?.captureSnapshot?.('intelligence.refresh');
-      const activeTab = window.State?.getActive?.();
-      // Кэшируем текст один раз — избегаем рассинхронизации между вызовами
-      const currentText = safePreviewText();
-      ctx.similarPrompt = window.ProjectGraph?.findSimilarPrompt?.(activeTab, currentText, { threshold: 0.72 }) || ctx.similarPrompt;
-      ctx.oftenWith = window.ProjectGraph?.findOftenWith?.(activeTab, { minCount: 2, limit: 5 }) || ctx.oftenWith;
-      ctx.derivedFrom = window.ProjectGraph?.findDerivedFrom?.(activeTab, { text: currentText, threshold: 0.58, limit: 3 }) || ctx.derivedFrom;
-      ctx.versionTimeline = window.ProjectGraph?.findVersionTimeline?.(activeTab, { limit: 6 }) || ctx.versionTimeline;
-      ctx.namedVersionDrift = window.ProjectGraph?.findNamedVersionDrift?.(activeTab, { text: currentText, minConfidence: 0.64, limit: 4 }) || ctx.namedVersionDrift;
-      ctx.pinnedBaselineDrift = window.ProjectGraph?.comparePinnedBaselineToCurrent?.(activeTab, currentText) || ctx.pinnedBaselineDrift;
-      ctx.roleGaps = window.ProjectGraph?.findRoleGaps?.(activeTab, { minScore: 0.58, limit: 4 }) || ctx.roleGaps;
+    try {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+      lastRefreshAt = now();
+      const profile = window.UserMemory?.getProfile?.() || null;
+      const ctx = getContext();
+      if (ctx.previewChars > 0) {
+        safeCall(() => window.ProjectGraph?.captureSnapshot?.('intelligence.refresh'), null, 'ProjectGraph.captureSnapshot');
+      }
+      const prepared = predict(ctx, profile);
+      lastSuggestions = prepared.visible || [];
+      lastMenuSuggestions = prepared.menu || [];
+      window.SmartSuggestions?.render?.(lastSuggestions, ctx);
+      window.SmartSuggestions?.updateMenu?.(lastMenuSuggestions, ctx);
+    } catch (err) {
+      console.error('[Intelligence] refresh failed:', err);
     }
-    const prepared = predict(ctx, profile);
-    lastSuggestions = prepared.visible || [];
-    lastMenuSuggestions = prepared.menu || [];
-    window.SmartSuggestions?.render?.(lastSuggestions, ctx);
-    window.SmartSuggestions?.updateMenu?.(lastMenuSuggestions, ctx);
   }
 
   function scheduleRefresh(delay = RENDER_DEBOUNCE) {
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(refresh, delay);
+    const elapsed = now() - lastRefreshAt;
+    const minDelay = elapsed < 250 ? 250 - elapsed : 0;
+    refreshTimer = setTimeout(refresh, Math.max(delay, minDelay));
   }
 
   function getSuggestions() {
-    return lastSuggestions.slice();
+    return lastSuggestions.map(s => ({ ...s }));
   }
 
   function getMenuSuggestions() {
-    return lastMenuSuggestions.slice();
+    return lastMenuSuggestions.map(s => ({ ...s }));
   }
 
   function findSuggestion(idOrType) {
@@ -604,9 +664,14 @@
   function acceptSuggestion(idOrType) {
     const suggestion = findSuggestion(idOrType);
     if (!suggestion) return false;
-    window.UserMemory?.updateFeatureScore?.(suggestion.type, 'accepted', suggestion.contextKey);
-    track('suggestion.accepted', { action: suggestion.type });
-    return runSuggestionAction(suggestion);
+    const ok = runSuggestionAction(suggestion);
+    if (ok) {
+      window.UserMemory?.updateFeatureScore?.(suggestion.type, 'accepted', suggestion.contextKey);
+      track('suggestion.accepted', { action: suggestion.type });
+    } else {
+      track('suggestion.failed', { action: suggestion.type });
+    }
+    return ok;
   }
 
   function dismissSuggestion(idOrType, temporary = false) {
@@ -618,8 +683,13 @@
       window.UserMemory?.dismiss?.(suggestion.type, 24 * 60 * 60 * 1000);
     }
     track(temporary ? 'suggestion.hidden' : 'suggestion.dismissed', { action: suggestion.type });
-    lastSuggestions = lastSuggestions.filter(s => s.type !== suggestion.type);
-    lastMenuSuggestions = lastMenuSuggestions.filter(s => s.type !== suggestion.type);
+    const sameSuggestion = s => {
+      if (suggestion.id && s.id === suggestion.id) return true;
+      if (suggestion.preparedHash) return s.type === suggestion.type && s.preparedHash === suggestion.preparedHash;
+      return s.type === suggestion.type;
+    };
+    lastSuggestions = lastSuggestions.filter(s => !sameSuggestion(s));
+    lastMenuSuggestions = lastMenuSuggestions.filter(s => !sameSuggestion(s));
     window.SmartSuggestions?.render?.(lastSuggestions, lastContext);
     window.SmartSuggestions?.updateMenu?.(lastMenuSuggestions, lastContext);
   }
@@ -803,11 +873,11 @@
       return true;
     }
 
-    const title = prompt('Название сниппета:', candidate.title || makeSnippetTitle(value));
-    if (!title || !title.trim()) return false;
+    const title = sanitizeUserTitle(prompt('Название сниппета:', candidate.title || makeSnippetTitle(value)));
+    if (!title) return false;
 
     try {
-      const snippet = window.State?.addGlobalSnippet?.(title.trim(), value, {
+      const snippet = window.State?.addGlobalSnippet?.(title, value, {
         source: 'intelligence',
         score: suggestion.confidence || candidate.confidence || 0,
         createdFrom: 'successful-prompt',
@@ -822,12 +892,12 @@
       }
 
       track('snippet.saved', {
-        title: snippet.title || title.trim(),
+        title: snippet.title || title,
         chars: value.length,
         textHash: candidate.textHash || hashText(value),
         via: 'intelligence'
       });
-      window.Toast?.show?.(`Сниппет «${snippet.title || title.trim()}» сохранён ✓`, 'success');
+      window.Toast?.show?.(`Сниппет «${snippet.title || title}» сохранён ✓`, 'success');
       return true;
     } catch (err) {
       console.error('[Intelligence] save snippet failed:', err);
@@ -839,21 +909,28 @@
   function saveTemplateFromSuggestion() {
     const tab = window.State?.getActive?.();
     if (!tab) return false;
-    const name = prompt('Название шаблона:', tab.name || 'Новый шаблон');
-    if (!name || !name.trim()) return false;
+    const name = sanitizeUserTitle(prompt('Название шаблона:', tab.name || 'Новый шаблон'), 'Новый шаблон');
+    if (!name) return false;
 
     try {
       const storageApi = window.Storage || (typeof Storage !== 'undefined' ? Storage : null);
       const saved = storageApi?.loadTemplates?.() || [];
       saved.push({
         id: 'user-intel-' + Date.now().toString(36),
-        name: name.trim(),
+        name,
         blocks: JSON.parse(JSON.stringify(tab.blocks || [])),
         source: 'intelligence'
       });
       storageApi?.saveTemplates?.(saved);
       window.Templates?.renderDropdown?.();
-      window.Toast?.show?.(`Шаблон «${name.trim()}» сохранён ✓`, 'success');
+      track('template.saved', {
+        title: name,
+        tabId: tab.id || '',
+        tabName: tab.name || '',
+        blockCount: tab.blocks?.length || 0,
+        via: 'intelligence'
+      });
+      window.Toast?.show?.(`Шаблон «${name}» сохранён ✓`, 'success');
       return true;
     } catch (err) {
       console.error('[Intelligence] save template failed:', err);
@@ -882,7 +959,6 @@
         return;
       }
       const sourceIdx = source.activeSubtab ?? 0;
-      if (source.subtabs?.[sourceIdx]) source.subtabs[sourceIdx].value = '';
 
       const sourceColumn = Number.isFinite(Number(source.column)) ? source.column : 0;
       const newBlocks = sections.map(section => {
@@ -904,7 +980,9 @@
         return false;
       };
 
-      if (!insertAfter(activeTab.blocks)) activeTab.blocks.push(...newBlocks);
+      const inserted = insertAfter(activeTab.blocks);
+      if (!inserted) activeTab.blocks.push(...newBlocks);
+      if (source.subtabs?.[sourceIdx]) source.subtabs[sourceIdx].value = '';
     });
 
     track('block.structure.applied', { blockId: candidate.blockId, chars: candidate.chars || 0, sectionCount: sections.length });
@@ -978,9 +1056,17 @@
   }
 
   function preferredColumnForNewBlock(tab) {
-    const blocks = tab?.blocks || [];
-    const left = blocks.filter(block => Number(block?.column || 0) === 0).length;
-    const right = blocks.filter(block => Number(block?.column || 0) === 1).length;
+    let left = 0;
+    let right = 0;
+    const walk = blocks => {
+      (blocks || []).forEach(block => {
+        if (!block) return;
+        if (Number(block.column || 0) === 0) left += 1;
+        if (Number(block.column || 0) === 1) right += 1;
+        if (block.type === 'group' && Array.isArray(block.children)) walk(block.children);
+      });
+    };
+    walk(tab?.blocks || []);
     return left <= right ? 0 : 1;
   }
 
@@ -1266,7 +1352,7 @@
       },
       actions: [
         {
-          label: `Вставить каркас «${escapeHtml(top.companion?.title || 'Блок')}»`,
+          label: `Вставить каркас «${String(top.companion?.title || 'Блок')}»`,
           className: 'primary',
           onClick: () => insertCompanionSkeleton(top)
         },
@@ -1314,7 +1400,10 @@
     if (initialized) return;
     initialized = true;
     scheduleRefresh(800);
-    window.addEventListener('beforeunload', () => window.UserMemory?.save?.());
+    window.addEventListener('beforeunload', () => {
+      cleanupEditSessions(true);
+      window.UserMemory?.save?.();
+    });
   }
 
   window.Intelligence = {
