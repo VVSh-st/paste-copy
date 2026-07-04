@@ -463,6 +463,7 @@ const Ember = (() => {
     spawnStart = performance.now();
     prevRemaining = remainingSegments();
     lastWarnRemaining = remainingSegments();
+    prevAppliedRemaining = -1;
   }
 
   // ---------- расчёт жизни угля ----------
@@ -2829,6 +2830,15 @@ const Ember = (() => {
       setVar(root, '--coreHue', (15 + intensity * 35).toFixed(1));
       setVar(root, '--coreLight', (35 + intensity * 35).toFixed(1) + '%');
       setVar(root, '--ashCoverage', ashCoverage.toFixed(3));
+      setVar(root, '--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
+      setVar(root, '--breathScale', breathScale.toFixed(4));
+      setVar(root, '--shiftX', '0px');
+      setVar(root, '--shiftY', '0px');
+      setVar(root, '--scaleX', breathScale.toFixed(4));
+      setVar(root, '--scaleY', breathScale.toFixed(4));
+      setVar(root, '--rotation', '0deg');
+      setVar(root, '--shadowScale', '1');
+      setVar(root, '--shadowAlpha', '0.45');
       applySegments();
       return;
     }
@@ -2931,6 +2941,7 @@ const Ember = (() => {
       root.style.setProperty('--rotation', '0deg');
       root.style.setProperty('--glow', (intensity * 0.6).toFixed(3));
       root.style.setProperty('--brightness', (0.6 + intensity * 0.2).toFixed(3));
+      root.style.setProperty('--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
 
       if (sp >= 1) {
         focusState = 'idle';
