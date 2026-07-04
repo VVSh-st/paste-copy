@@ -303,10 +303,14 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (83 fixes, 5 раундов)
 - `intelligence-core.js` (~1699 строк) — ядро интеллектуальных подсказок, scoring, prediction, GPT audit fixes (69 fixes, 6 раундов)
 - `project-graph.js` (~1340 строк) — граф проекта для Intelligence Layer, snapshot capture, similarity, GPT audit fixes (7 fixes, 1 раунд)
+- `ember.js` (~3016 строк) — "Уголёк", живой индикатор состояния проекта, rAF + particle system + peek state machine
+- `ember-styles.css` (~607 строк) — стили уголька, CSS custom properties, keyframe animations
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
 - `prompt-translator-review.md` — GPT audit prompt для translator.js
 - `prompt-notepad-review.md` — GPT audit prompt для notepad.js
 - `prompt-intelligence-core-review.md` — GPT audit prompt для intelligence-core.js
+- `prompt-project-graph-review.md` — GPT audit prompt для project-graph.js
+- `prompt-ember-review.md` — GPT audit prompt для ember.js + ember-styles.css
 - `flowchart.js` и `mindmap.js` — `_fetchWithQuery` используют `await processAsync()`
 - `prompt-blocks-review.md` / `prompt-state-review.md` / `prompt-aitransform-review.md` / `prompt-anchors-review.md` — GPT audit prompts
 
