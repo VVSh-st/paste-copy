@@ -93,6 +93,7 @@ const Ember = (() => {
   let nextAshSpawn = 0;
   let nextSparkCheck = 0;
   let activeSparks = 0;
+  let nextAnomalySparkAt = 0;
 
   const POOL_SIZE = 40;
   let particlePool = [];
@@ -1477,6 +1478,100 @@ const Ember = (() => {
     });
   }
 
+  function spawnAnomalySpark() {
+    if (activeSparks >= 7) return;
+    if (focusState !== 'active') return;
+    if (!root || !particleLayer) return;
+
+    const el = acquireEl('ember-spark ember-spark-anomaly');
+    if (!el) return;
+
+    const size = Math.random() < 0.68 ? rand(1.4, 2.2) : rand(2.3, 3.4);
+    el.style.width = size.toFixed(1) + 'px';
+    el.style.height = (size * rand(1.2, 2.2)).toFixed(1) + 'px';
+
+    const startX = rand(60, 74);
+    const startY = rand(16, 32);
+    el.style.left = startX + '%';
+    el.style.top = startY + '%';
+    activeSparks++;
+
+    const travel = rand(100, 250);
+    const angle = rand(Math.PI * 0.58, Math.PI * 0.88);
+    const drift = Math.cos(angle) * travel;
+    const rise = Math.sin(angle) * travel;
+
+    particles.push({
+      el, born: performance.now(),
+      startX, startY,
+      dur: rand(850, 1650),
+      rise, drift,
+      sway: rand(1, 8),
+      isSpark: true,
+      type: 'anomaly',
+      trail: size > 2.25 ? Math.random() < 0.22 : Math.random() < 0.1,
+      gravity: rand(0.003, 0.014),
+      windInfluence: 0.18,
+      rot: rand(-35, 20),
+      rotSpeed: rand(20, 120) * (Math.random() < 0.5 ? -1 : 1),
+      arcX: rand(-18, 18),
+      arcY: rand(-10, 12),
+      jitterFreq: rand(1.4, 2.6),
+      jitterAmp: rand(2, 6),
+      brightPulse: rand(0.85, 1.15),
+      shedAt: Math.random() < 0.45 ? rand(0.22, 0.58) : null,
+      shedDone: false,
+    });
+  }
+
+  function spawnAnomalyDustFrom(p) {
+    if (!p || activeSparks >= 7) return;
+    if (focusState !== 'active') return;
+
+    const el = acquireEl('ember-spark ember-spark-anomaly ember-spark-anomaly-dust');
+    if (!el) return;
+
+    const size = rand(1.1, 1.8);
+    el.style.width = size.toFixed(1) + 'px';
+    el.style.height = size.toFixed(1) + 'px';
+    el.style.left = p.startX + '%';
+    el.style.top = p.startY + '%';
+    activeSparks++;
+
+    particles.push({
+      el, born: performance.now(),
+      startX: p.startX,
+      startY: p.startY,
+      dur: rand(420, 760),
+      rise: p.rise * rand(0.18, 0.34) + rand(-16, 8),
+      drift: p.drift * rand(0.18, 0.32) + rand(-18, 12),
+      sway: rand(0.6, 2.4),
+      isSpark: true,
+      type: 'anomaly-dust',
+      trail: false,
+      gravity: rand(0.01, 0.02),
+      windInfluence: 0.1,
+      rot: rand(-20, 20),
+      rotSpeed: rand(-60, 60),
+      alphaBias: rand(0.6, 0.9),
+    });
+  }
+
+  function maybeSpawnAnomalySpark(now) {
+    if (reduceMotion || lowFpsMode) return;
+    if (egg.active || previewScare.active || testMode) return;
+    if (focusState !== 'active') return;
+    if (now < nextAnomalySparkAt) return;
+
+    nextAnomalySparkAt = now + rand(12000, 32000);
+    if (Math.random() > 0.32) return;
+
+    const count = Math.random() < 0.78 ? 1 : 2;
+    for (let i = 0; i < count; i++) {
+      defer(() => spawnAnomalySpark(), i === 0 ? 0 : rand(120, 380));
+    }
+  }
+
   function spawnCrumb() {
     if (particles.length > 40) return;
     if (focusState !== 'active') return;
@@ -1530,6 +1625,12 @@ const Ember = (() => {
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
       const t = clamp((now - p.born) / p.dur, 0, 1);
+
+      if (p.type === 'anomaly' && p.shedAt != null && !p.shedDone && t >= p.shedAt) {
+        p.shedDone = true;
+        if (Math.random() < 0.7) spawnAnomalyDustFrom(p);
+      }
+
       if (t >= 1) {
         if (p.type === 'shooting' || p.type === 'crumb' || p.isSpark) {
           spawnLandingGlow(p.startX, p.startY);
@@ -1551,10 +1652,25 @@ const Ember = (() => {
 
       if (p.isSpark) {
         const grav = (p.gravity || 0.03) * t * t * 55;
-        rise = p.rise * easeOutQuad(t) + grav;
-        drift = p.drift * t + windGust * (p.windInfluence || 0.8) * t * 8 + Math.sin(t * Math.PI * 5) * (p.sway || 0);
-        scale = 1 - t * 0.78;
-        opacity = t < 0.14 ? t / 0.14 : 1 - (t - 0.14) / 0.86;
+        if (p.type === 'anomaly') {
+          const e = easeOutQuad(t);
+          const arc = Math.sin(t * Math.PI);
+          const jitter = Math.sin(t * Math.PI * (p.jitterFreq || 2)) * (p.jitterAmp || 0);
+          rise = p.rise * e + grav + (p.arcY || 0) * arc;
+          drift = p.drift * t + windGust * (p.windInfluence || 0.8) * t * 8 + (p.arcX || 0) * arc + jitter;
+          scale = 1 + Math.sin(t * Math.PI) * 0.22 - t * 0.46;
+          opacity = (t < 0.06 ? t / 0.06 : t < 0.76 ? 1 : 1 - (t - 0.76) / 0.24) * (p.brightPulse || 1);
+        } else if (p.type === 'anomaly-dust') {
+          rise = p.rise * easeOutQuad(t) + grav;
+          drift = p.drift * t + Math.sin(t * Math.PI * 4) * (p.sway || 0);
+          scale = 1 - t * 0.55;
+          opacity = (t < 0.12 ? t / 0.12 : 1 - (t - 0.12) / 0.88) * (p.alphaBias || 0.8);
+        } else {
+          rise = p.rise * easeOutQuad(t) + grav;
+          drift = p.drift * t + windGust * (p.windInfluence || 0.8) * t * 8 + Math.sin(t * Math.PI * 5) * (p.sway || 0);
+          scale = 1 - t * 0.78;
+          opacity = t < 0.14 ? t / 0.14 : 1 - (t - 0.14) / 0.86;
+        }
       } else if (p.type === 'crumb') {
         p.vy += (p.gravity || 0.03) * dt;
         rise = p.rise * t + p.vy * dt * 0.1;
@@ -1578,14 +1694,16 @@ const Ember = (() => {
         opacity = (t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78) * (p.alphaBias || 0.92);
       }
 
-      const wobble = p.type === 'spark-broken' ? Math.sin(t * Math.PI * 7) * 12 : 0;
+      const wobble = p.type === 'spark-broken' ? Math.sin(t * Math.PI * 7) * 12
+        : p.type === 'anomaly' ? Math.sin(t * Math.PI * (p.jitterFreq || 2.2) * 1.7) * 6
+        : 0;
       let shadow = '';
 
       if (p.trail && p.isSpark) {
-        const trailLen = (1 - t) * (p.type === 'shooting' ? 14 : 9);
+        const trailLen = (1 - t) * (p.type === 'shooting' ? 14 : p.type === 'anomaly' ? 7 : 9);
         const trailX = (drift * 0.18).toFixed(1);
         shadow =
-          `${trailX}px ${trailLen.toFixed(1)}px 4px rgba(255,150,50,${(0.65 * (1 - t)).toFixed(2)})`;
+          `${trailX}px ${trailLen.toFixed(1)}px 4px rgba(255,150,50,${((p.type === 'anomaly' ? 0.4 : 0.65) * (1 - t)).toFixed(2)})`;
       }
 
       p.el.style.transform =
@@ -3125,6 +3243,7 @@ const Ember = (() => {
       updateHotspots(now, dt);
       updateWind(now, dt);
       updateAttention(now, dt);
+      maybeSpawnAnomalySpark(now);
     }
     updateMood(now);
 
