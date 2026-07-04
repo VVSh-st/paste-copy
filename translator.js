@@ -45,7 +45,13 @@ const Translator = (() => {
 
   // ── Helpers ────────────────────────────────────────────────
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+  const withTimeout = (p, ms) => {
+    let timer;
+    const timeout = new Promise((_, rej) => {
+      timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })), ms);
+    });
+    return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+  };
   const retry = async (fn, canRetry, m = 2, d = 700) => {
     for (let i = 0; i < m; i++) {
       try { return await fn(); }
@@ -71,8 +77,9 @@ const Translator = (() => {
   function protectTemplates(text) {
     const tokens = [];
     let i = 0;
+    const prefix = `__TRPL${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_`;
     const protected_ = text.replace(TMPL_RE, m => {
-      const token = `__TRPL${i++}__`;
+      const token = `${prefix}${i++}`;
       tokens.push({ token, original: m });
       return token;
     });
@@ -104,7 +111,8 @@ const Translator = (() => {
 
   function detectLangHint(text) {
     if (!text) return null;
-    if (/[\u3400-\u9FFF\u3040-\u30FF]/.test(text)) return { code: 'zh', name: 'Chinese/Japanese' };
+    if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return { code: 'ja', name: 'Japanese' };
+    if (/[\u3400-\u9FFF]/.test(text)) return { code: 'zh', name: 'Chinese' };
     if (/[\uAC00-\uD7A3]/.test(text)) return { code: 'ko', name: 'Korean' };
     if (/[\u0600-\u06FF]/.test(text)) return { code: 'ar', name: 'Arabic' };
     const letters = text.replace(/[\s\d\p{P}]/gu, '');
@@ -121,8 +129,7 @@ const Translator = (() => {
     const c = norm(text);
     if (c.length < 2) return false;
     const lang = detectLangHint(c);
-    if (targetLang === 'ru' && lang?.code === 'ru') return false;
-    if (targetLang === 'en' && lang?.code === 'en') return false;
+    if (lang?.code && lang.code !== 'mixed' && lang.code === targetLang) return false;
     return true;
   }
 
@@ -144,11 +151,13 @@ const Translator = (() => {
 
   function flushCache() {
     if (!_cacheDirty) return;
-    _cacheDirty = false;
     try {
       const arr = [...cache.entries()].slice(-MAX_CACHE);
       localStorage.setItem(CACHE_KEY, JSON.stringify(arr));
-    } catch {}
+      _cacheDirty = false;
+    } catch {
+      // dirty flag stays true so we retry on next flush
+    }
   }
 
   function scheduleCacheSave() {
@@ -161,7 +170,12 @@ const Translator = (() => {
     const key = JSON.stringify([lang, text]);
     const v = cache.get(key);
     if (v !== undefined) {
-      if (v.ts && Date.now() - v.ts > CACHE_TTL) { cache.delete(key); _stats.cacheMisses++; return undefined; }
+      if (typeof v === 'string' || !v.ts || Date.now() - v.ts > CACHE_TTL) {
+        cache.delete(key);
+        scheduleCacheSave();
+        _stats.cacheMisses++;
+        return undefined;
+      }
       cache.delete(key);
       cache.set(key, v);
       _stats.cacheHits++;
@@ -236,9 +250,10 @@ const Translator = (() => {
         fetch('https://translate.googleapis.com/_/translate_http/_/js/k=translate_http.tr.en_US.YusFYy3P_ro.O/am=AAg/d=1/exm=el_conf/ed=1/rs=AN8SPfq1Hb8iJRleQqQc8zhdzXmF9E56eQ/m=el_main'),
         8000
       );
+      if (!r.ok) return null;
       const text = await r.text();
       const m = text.match(/x-goog-api-key['"]\s*:\s*['"]([^'"]+)/i);
-      if (m) {
+      if (m && /^AIza[0-9A-Za-z_-]{20,}$/.test(m[1])) {
         googleKey = m[1];
         googleKeyTs = Date.now();
         return googleKey;
@@ -265,6 +280,7 @@ const Translator = (() => {
         GOOGLE_TIMEOUT
       );
       if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
+      if (!r.ok) throw Object.assign(new Error(`google http ${r.status}`), { status: r.status });
       try {
         const data = await r.json();
         results.push(...(data?.[0] || []).map(v => decodeHtmlEntities((v || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())));
@@ -315,6 +331,7 @@ const Translator = (() => {
         throw Object.assign(new Error('ms auth'), { status: r.status });
       }
       if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
+      if (!r.ok) throw Object.assign(new Error(`ms http ${r.status}`), { status: r.status });
       try {
         const data = await r.json();
         results.push(...(Array.isArray(data) ? data : []).map(y => decodeHtmlEntities(y?.translations?.[0]?.text || null)));
@@ -332,6 +349,7 @@ const Translator = (() => {
       LEGACY_TIMEOUT
     );
     if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
+    if (!r.ok) throw Object.assign(new Error(`legacy http ${r.status}`), { status: r.status });
     const data = await r.json();
     let out = '';
     data[0].forEach(y => { if (y[0]) out += y[0]; });
@@ -378,7 +396,6 @@ const Translator = (() => {
 
     const engine = settings.engine;
     let rem = todo.map((t, i) => ({ t, i }));
-    const failCount = new Map();
 
     const accept = (src, tr) => {
       if (!tr || !tr.trim()) return false;
@@ -389,7 +406,6 @@ const Translator = (() => {
       for (let j = 0; j < src.length; j++) {
         const tr = arr[j];
         if (accept(src[j].t, tr)) {
-          failCount.delete(src[j].t);
           cacheSet(src[j].t, toLang, tr);
           out[idx[src[j].i]] = tr;
         }
@@ -397,10 +413,7 @@ const Translator = (() => {
     };
 
     const filterRem = (arr, src) => src.filter((x, j) => {
-      const ok = accept(x.t, arr[j]);
-      if (ok) { failCount.delete(x.t); return false; }
-      failCount.set(x.t, (failCount.get(x.t) || 0) + 1);
-      return true;
+      return !accept(x.t, arr[j]);
     });
 
     // Google
@@ -413,7 +426,6 @@ const Translator = (() => {
         } catch (e) {
           gFail++;
           if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
-          rem.forEach(x => failCount.set(x.t, (failCount.get(x.t) || 0) + 1));
         }
       }
       if (engine === 'google') return out;
@@ -428,7 +440,6 @@ const Translator = (() => {
       } catch (e) {
         mFail++;
         if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
-        rem.forEach(x => failCount.set(x.t, (failCount.get(x.t) || 0) + 1));
       }
       if (engine === 'microsoft') return out;
     }
@@ -493,7 +504,10 @@ const Translator = (() => {
     restoreTemplates,
     addHistory,
 
-    clearCache() { cache.clear(); flushCache(); },
+    clearCache() {
+      cache.clear();
+      try { localStorage.removeItem(CACHE_KEY); } catch {}
+    },
     clearHistory() { history = []; saveHistory(); },
 
     getCacheSize() { return cache.size; },
