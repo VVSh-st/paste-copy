@@ -65,7 +65,10 @@ const Notepad = (() => {
       const now = Date.now();
       if (now - _lastPersistErrorAt > 5000) {
         _lastPersistErrorAt = now;
-        _toast('Не удалось сохранить блокнот: localStorage переполнен', 'error');
+        const reason = err?.name === 'QuotaExceededError'
+          ? 'localStorage переполнен'
+          : 'localStorage недоступен';
+        _toast('Не удалось сохранить блокнот: ' + reason, 'error');
       }
     }
   }
@@ -89,7 +92,7 @@ const Notepad = (() => {
       const cssPx = value => {
         if (typeof value !== 'string') return null;
         const n = parseFloat(value);
-        return Number.isFinite(n) ? n + 'px' : null;
+        return Number.isFinite(n) && n >= 0 ? n + 'px' : null;
       };
       const posLeft = cssPx(saved.pos?.left);
       const posTop = cssPx(saved.pos?.top);
@@ -162,7 +165,7 @@ const Notepad = (() => {
     const useApi = window._clipboardApiEnabled !== false;
     if (useApi && navigator.clipboard?.readText) {
       navigator.clipboard.readText()
-        .then(text => onText(text))
+        .then(text => onText(typeof text === 'string' ? text : String(text ?? '')))
         .catch(() => _toast('Нажмите Ctrl+V для вставки', 'info'));
     } else {
       _toast('Нажмите Ctrl+V для вставки', 'info');
@@ -179,9 +182,18 @@ const Notepad = (() => {
         _instance.el.classList.remove('notepad-minimized');
         const chevron = _instance.el.querySelector('.notepad-min-btn svg');
         if (chevron) chevron.style.transform = '';
+        _persist(_instance);
       }
       _instance.el.querySelector('.notepad-body textarea')?.focus();
       return;
+    }
+
+    if (_instance && !_instance.el?.isConnected) {
+      clearTimeout(_instance.histTimer);
+      _persist(_instance);
+      _instance.dragAbort?.abort();
+      _instance.resizeAbort?.abort();
+      _instance = null;
     }
 
     const saved = _loadSaved();
@@ -214,7 +226,6 @@ const Notepad = (() => {
       _translateOriginal: null,
       _translateOriginalTab: null,
       _saveToFile:  null,
-      _lastFilled:  null,
       el:           null,
       _tabsRow:     null,
       _countSpan:   null,
@@ -246,8 +257,12 @@ const Notepad = (() => {
       win.style.transform = 'none';
     }
     win.classList.toggle('notepad-minimized', state.minimized);
+    const chevron = win.querySelector('.notepad-min-btn svg');
+    if (chevron) chevron.style.transform = state.minimized ? 'rotate(-90deg)' : '';
 
-    requestAnimationFrame(() => win.querySelector('.notepad-body textarea')?.focus());
+    if (!state.minimized) {
+      requestAnimationFrame(() => win.querySelector('.notepad-body textarea')?.focus());
+    }
   }
 
   /* ================================================================
@@ -293,8 +308,6 @@ const Notepad = (() => {
 
   /* ================================================================
      Header
-     FIX: minBtn and closeBtn are now <button type="button"> elements
-     instead of <span> — proper keyboard focus and activation support.
   ================================================================ */
   function _buildHeader(state, win) {
     const header = document.createElement('div');
@@ -344,7 +357,7 @@ const Notepad = (() => {
 
     titleWrap.append(titleLabel, titleInput);
 
-    // FIX: was <span> — now proper <button> for keyboard accessibility
+    // minBtn and closeBtn are proper <button> elements for keyboard accessibility
     const minBtn = document.createElement('button');
     minBtn.className = 'notepad-min-btn';
     minBtn.type      = 'button';
@@ -404,6 +417,7 @@ const Notepad = (() => {
       ta.selectionStart = ta.selectionEnd = ta.value.length;
       state.tabs[state.activeTab].value = ta.value;
       _updateCount(ta, countSpan);
+      _renderTabs(state);
       _persist(state);
     };
 
@@ -415,6 +429,7 @@ const Notepad = (() => {
       ta.selectionStart = ta.selectionEnd = ta.value.length;
       state.tabs[state.activeTab].value = ta.value;
       _updateCount(ta, countSpan);
+      _renderTabs(state);
       _persist(state);
     };
 
@@ -437,7 +452,8 @@ const Notepad = (() => {
           .then(removeSelection)
           .catch(() => _toast('Не удалось вырезать: буфер недоступен', 'error'));
       } else {
-        _toast('Буфер обмена недоступен', 'error');
+        _toast('Буфер обмена недоступен, выделение удалено', 'info');
+        removeSelection();
       }
     });
 
@@ -478,9 +494,9 @@ const Notepad = (() => {
         ta.dispatchEvent(new Event('input'));
       } else if (ta.value) {
         pushHistory(ta.value);
-        pushHistory('');
         ta.value = '';
         state.tabs[state.activeTab].value = '';
+        pushHistory('');
         _updateCount(ta, countSpan);
         _renderTabs(state);
         _persist(state);
@@ -581,7 +597,10 @@ const Notepad = (() => {
       _toast('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
       state._translateBusy = true;
       Translator.translateProtected(text, Translator.targetLang).then(result => {
-        if (state.activeTab !== tabAtStart || !state.el?.isConnected) return;
+        if (state.activeTab !== tabAtStart || !state.el?.isConnected) {
+          _toast('Перевод отменён: вкладка изменена', 'info');
+          return;
+        }
         if (!result || result === text) { _toast('Не удалось перевести'); return; }
         pushHistory(ta.value);
         state._translateOriginal = ta.value;
@@ -622,6 +641,7 @@ const Notepad = (() => {
   function _renderTabs(state) {
     const row = state._tabsRow;
     if (!row) return;
+    clearTimeout(state.tabClickTimer);
     const frag = document.createDocumentFragment();
 
     let off = state.tabOffset || 0;
@@ -644,10 +664,10 @@ const Notepad = (() => {
       const renameInput = document.createElement('input');
       renameInput.className  = 'notepad-tab-rename';
       renameInput.value      = state.tabs[i].label;
-      renameInput.maxLength  = 6;
+      renameInput.maxLength  = 12;
       renameInput.spellcheck = false;
       renameInput.style.cssText =
-        'display:none;width:40px;background:var(--bg0);border:1px solid var(--accent);' +
+        'display:none;width:70px;background:var(--bg0);border:1px solid var(--accent);' +
         'color:var(--text0);border-radius:4px;padding:0 3px;font-size:10px;' +
         'font-family:inherit;font-weight:600;outline:none;text-align:center;';
 
@@ -680,6 +700,7 @@ const Notepad = (() => {
       btn.onclick = e => {
         e.stopPropagation();
         clearTimeout(state.tabClickTimer);
+        if (e.detail > 1) return;
         state.tabClickTimer = setTimeout(() => {
           if (!state.el?.isConnected) return;
           _switchTab(state, idx, state.el);
@@ -784,10 +805,10 @@ const Notepad = (() => {
 
       // Tab / Shift+Tab: indent / de-indent (no focus change)
       if (e.key === 'Tab' && !ctrl && !e.altKey && !e.metaKey) {
-        if (e.shiftKey && ta.selectionStart === ta.selectionEnd) return;
         e.preventDefault();
         const start = ta.selectionStart;
         const end   = ta.selectionEnd;
+        state._pushHistory?.(ta.value);
 
         if (!e.shiftKey) {
           // Indent: insert 2 spaces or prepend each selected line
@@ -803,18 +824,18 @@ const Notepad = (() => {
             ta.selectionEnd   = start + indented.length;
           }
         } else {
-          // FIX: Shift+Tab — de-indent: remove up to 2 leading spaces per line
+          // Shift+Tab: remove up to 2 leading spaces per line.
           const before   = ta.value.slice(0, start);
           const selected = ta.value.slice(start, end || start);
           const after    = ta.value.slice(end || start);
 
           if (start === end) {
-            // No selection: remove up to 2 spaces before cursor on same line
+            // No selection: remove up to 2 trailing spaces before cursor on same line
             const lineStart = before.lastIndexOf('\n') + 1;
             const linePrefix = before.slice(lineStart);
-            const remove = linePrefix.match(/^ {1,2}/)?.[0]?.length ?? 0;
+            const remove = linePrefix.endsWith('  ') ? 2 : linePrefix.endsWith(' ') ? 1 : 0;
             if (remove) {
-              ta.value = before.slice(0, lineStart) + before.slice(lineStart + remove) + after;
+              ta.value = before.slice(0, start - remove) + after;
               ta.selectionStart = ta.selectionEnd = start - remove;
             }
           } else {
@@ -860,7 +881,9 @@ const Notepad = (() => {
     for (let i = 0; i < value.length; i++) {
       if (value.charCodeAt(i) === 10) lines++;
     }
-    const bytes = value.length > 50000 ? value.length * 2 : _byteLen(value);
+    const bytes = value.length > 10000
+      ? Math.ceil(value.length * 1.5)
+      : _byteLen(value);
     const kb = (bytes / 1024).toFixed(1);
     countSpan.textContent = `${chars}/${lines}/${kb}KB`;
   }
