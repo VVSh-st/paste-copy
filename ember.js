@@ -191,7 +191,8 @@ const Ember = (() => {
   let channel = null;
   let rafId = null;
   let lastFrame = 0;
-  let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduceMotionMql = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let reduceMotion = reduceMotionMql.matches;
   let handlers = {};
   let listenersBound = false;
   let onClickCallback = null;
@@ -424,6 +425,7 @@ const Ember = (() => {
   }
 
   function notifyEdit() {
+    if (!state) return;
     const now = Date.now();
     state.lastEditTime = now;
     state.updatedAt = now;
@@ -434,6 +436,7 @@ const Ember = (() => {
   }
 
   function setStatus(type) {
+    if (!root) return;
     clearDeferred(statusTimer);
     statusState = type;
     statusSince = performance.now();
@@ -704,13 +707,13 @@ const Ember = (() => {
       zone._curHeat += (zone._targetHeat - zone._curHeat) * clamp(lerpSpeed, 0, 1);
       zone._curX += (zone._targetX - zone._curX) * clamp(lerpSpeed * 0.8, 0, 1);
       zone._curY += (zone._targetY - zone._curY) * clamp(lerpSpeed * 0.8, 0, 1);
-      zone.style.setProperty('--cx', clamp(zone._curX, 10, 90).toFixed(1) + '%');
-      zone.style.setProperty('--cy', clamp(zone._curY, 10, 90).toFixed(1) + '%');
-      zone.style.setProperty('--zoneHeat', clamp(zone._curHeat, 0, 1.5).toFixed(3));
+      setVar(zone, '--cx', clamp(zone._curX, 10, 90).toFixed(1) + '%');
+      setVar(zone, '--cy', clamp(zone._curY, 10, 90).toFixed(1) + '%');
+      setVar(zone, '--zoneHeat', clamp(zone._curHeat, 0, 1.5).toFixed(3));
       if (zone.isConnected) nextZones.push(zone);
     });
     const avgHeat = nextZones.reduce((s, z) => s + (z._curHeat || 0.6), 0) / Math.max(nextZones.length, 1);
-    if (crustEl) crustEl.style.opacity = (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3);
+    if (crustEl) setStyle(crustEl, 'opacity', (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3));
     zones = nextZones;
   }
 
@@ -3631,6 +3634,24 @@ const Ember = (() => {
     window.addEventListener('focus', handlers.windowFocus);
     window.addEventListener('blur', handlers.windowBlur);
     document.addEventListener('visibilitychange', handlers.visibilitychange);
+
+    handlers.reduceMotionChange = (e) => {
+      reduceMotion = e.matches;
+      if (reduceMotion) {
+        particles.forEach(p => releaseEl(p.el));
+        particles = [];
+        activeSparks = 0;
+        segmentEffects = [];
+      }
+      stopLoop();
+      if (!document.hidden && onScreen) startLoop();
+    };
+    if (reduceMotionMql.addEventListener) {
+      reduceMotionMql.addEventListener('change', handlers.reduceMotionChange);
+    } else if (reduceMotionMql.addListener) {
+      reduceMotionMql.addListener(handlers.reduceMotionChange);
+    }
+
     listenersBound = true;
   }
 
@@ -3638,7 +3659,12 @@ const Ember = (() => {
 
   function init(mountEl, tabId) {
     destroyed = false;
-    if (root) destroy();
+    if (root) {
+      destroy();
+      // destroy() marks the previous instance as destroyed;
+      // this init() continues with a fresh instance, so reset the flag.
+      destroyed = false;
+    }
     resetDomRefs();
     currentTabId = tabId || null;
     state = loadState(currentTabId);
@@ -3664,7 +3690,11 @@ const Ember = (() => {
 
     initParticlePool();
 
+    browserFocused = !document.hidden;
+    onScreen = true;
+
     if ('IntersectionObserver' in window) {
+      onScreen = false;
       io = new IntersectionObserver(([e]) => {
         onScreen = e.isIntersecting;
         if (onScreen && browserFocused && !document.hidden) startLoop();
@@ -3673,6 +3703,9 @@ const Ember = (() => {
       io.observe(root);
     } else {
       onScreen = true;
+    }
+
+    if (!io && browserFocused && !document.hidden) {
       startLoop();
     }
 
@@ -3690,8 +3723,6 @@ const Ember = (() => {
     Object.keys(PRIORITY).forEach(t => {
       nextDue[t] = Date.now() + rand(2000, 15000);
     });
-
-    startLoop();
   }
 
   function destroy() {
@@ -3762,6 +3793,13 @@ const Ember = (() => {
     if (handlers.windowFocus) window.removeEventListener('focus', handlers.windowFocus);
     if (handlers.windowBlur) window.removeEventListener('blur', handlers.windowBlur);
     if (handlers.visibilitychange) document.removeEventListener('visibilitychange', handlers.visibilitychange);
+    if (handlers.reduceMotionChange) {
+      if (reduceMotionMql.removeEventListener) {
+        reduceMotionMql.removeEventListener('change', handlers.reduceMotionChange);
+      } else if (reduceMotionMql.removeListener) {
+        reduceMotionMql.removeListener(handlers.reduceMotionChange);
+      }
+    }
     handlers = {};
     listenersBound = false;
 

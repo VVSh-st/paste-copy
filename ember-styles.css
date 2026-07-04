@@ -384,10 +384,18 @@
 }
 
 @keyframes glowFlicker {
-  0%, 100% { filter: blur(var(--glowBlur)) brightness(1); }
-  25% { filter: blur(calc(var(--glowBlur) + 1px)) brightness(0.88); }
-  50% { filter: blur(var(--glowBlur)) brightness(1.15); }
-  75% { filter: blur(calc(var(--glowBlur) - 0.5px)) brightness(1.05); }
+  0%, 100% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 0.96);
+  }
+  25% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 0.88);
+  }
+  50% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 1.04);
+  }
+  75% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 1.00);
+  }
 }
 
 .ember:focus-visible {
