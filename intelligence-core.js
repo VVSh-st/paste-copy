@@ -38,6 +38,7 @@
   let lastRefreshAt = 0;
   const editSessions = new Map();
   const MAX_EDIT_SESSIONS = 200;
+  const runningSuggestionActions = new Set();
 
   function safeCall(fn, fallback = null, label = 'call') {
     try {
@@ -699,14 +700,26 @@
   function acceptSuggestion(idOrType) {
     const suggestion = findSuggestion(idOrType);
     if (!suggestion) return false;
-    const ok = runSuggestionAction(suggestion);
-    if (ok) {
-      window.UserMemory?.updateFeatureScore?.(suggestion.type, 'accepted', suggestion.contextKey);
-      track('suggestion.accepted', { action: suggestion.type });
-    } else {
-      track('suggestion.failed', { action: suggestion.type });
+    const actionKey = suggestion.preparedHash || suggestion.id || suggestion.type;
+    if (runningSuggestionActions.has(actionKey)) return false;
+    runningSuggestionActions.add(actionKey);
+
+    try {
+      const ok = runSuggestionAction(suggestion);
+      if (ok === 'preview') {
+        track('suggestion.previewed', { action: suggestion.type });
+        return true;
+      }
+      if (ok) {
+        window.UserMemory?.updateFeatureScore?.(suggestion.type, 'accepted', suggestion.contextKey);
+        track('suggestion.accepted', { action: suggestion.type });
+      } else {
+        track('suggestion.failed', { action: suggestion.type });
+      }
+      return ok;
+    } finally {
+      runningSuggestionActions.delete(actionKey);
     }
-    return ok;
   }
 
   function dismissSuggestion(idOrType, temporary = false) {
@@ -805,26 +818,30 @@
       const timeline = suggestion.prepared?.versionTimeline || {};
       const snapshots = Array.isArray(timeline.snapshots) ? timeline.snapshots : [];
       const transitions = Array.isArray(timeline.transitions) ? timeline.transitions : [];
+      const visibleSnapshots = snapshots.slice(-50);
+      const skipped = snapshots.length - visibleSnapshots.length;
       renderReportLines(
         'Timeline версий вкладки',
         'Мини-история структуры без хранения полного текста: только названия, роли, размеры и fingerprints.',
         [
           `Вкладка: «${timeline.tabName || 'без имени'}»`,
           `Версий: ${timeline.versionCount || snapshots.length} · изменений: ${timeline.changedCount || 0}`,
+          skipped > 0 ? `Показаны последние ${visibleSnapshots.length} из ${snapshots.length} версий.` : '',
           `Итог: блоков ${timeline.first?.blockCount || 0} → ${timeline.last?.blockCount || 0} (${timeline.totalDiff?.blockDelta > 0 ? '+' : ''}${timeline.totalDiff?.blockDelta || 0})`,
           `Итог: токенов ~${timeline.first?.tokens || 0} → ~${timeline.last?.tokens || 0} (${timeline.totalDiff?.tokensDelta > 0 ? '+' : ''}${timeline.totalDiff?.tokensDelta || 0})`,
           '',
-          ...snapshots.map((snapshot, index) => {
-            const transition = index > 0 ? transitions[index - 1] : null;
+          ...visibleSnapshots.map((snapshot, index) => {
+            const sourceIndex = snapshots.length - visibleSnapshots.length + index;
+            const transition = sourceIndex > 0 ? transitions[sourceIndex - 1] : null;
             const diff = transition?.diff || null;
             const marker = diff
               ? ` · ${diff.blockDelta ? (diff.blockDelta > 0 ? '+' : '') + diff.blockDelta + ' блоков' : 'структура'}${diff.tokensDelta ? ' · ' + (diff.tokensDelta > 0 ? '+' : '') + diff.tokensDelta + ' токенов' : ''}`
               : '';
             const name = snapshot.name ? ` · "${snapshot.name}"` : '';
             const source = snapshot.source ? ` · ${snapshot.source}` : '';
-            return `${index + 1}. ${snapshot.ts ? new Date(snapshot.ts).toLocaleString() : '—'}${name}${source}${marker}\n   ${snapshot.blockTitles?.join(' → ') || snapshot.structureSignature || '—'}`;
+            return `${sourceIndex + 1}. ${snapshot.ts ? new Date(snapshot.ts).toLocaleString() : '—'}${name}${source}${marker}\n   ${snapshot.blockTitles?.join(' → ') || snapshot.structureSignature || '—'}`;
           })
-        ]
+        ].filter(Boolean)
       );
       track('projectGraph.versionTimeline.report.opened', {
         chars: 0,
@@ -921,6 +938,11 @@
       return false;
     }
 
+    if (isExistingGlobalSnippet(value)) {
+      window.Toast?.show?.('Такой сниппет уже сохранён', 'info');
+      return true;
+    }
+
     try {
       const snippet = window.State?.addGlobalSnippet?.(title, value, {
         source: 'intelligence',
@@ -956,7 +978,7 @@
     if (!tab) return false;
     const rawName = prompt('Название шаблона:', tab.name || 'Новый шаблон');
     if (rawName === null) return false;
-    const name = sanitizeUserTitle(rawName, 'Новый шаблон');
+    const name = sanitizeUserTitle(rawName);
     if (!name) {
       window.Toast?.show?.('Название шаблона не может быть пустым', 'info');
       return false;
@@ -969,10 +991,13 @@
         return false;
       }
       const saved = storageApi.loadTemplates() || [];
+      const blocks = typeof structuredClone === 'function'
+        ? structuredClone(tab.blocks || [])
+        : JSON.parse(JSON.stringify(tab.blocks || []));
       saved.push({
         id: 'user-intel-' + Date.now().toString(36),
         name,
-        blocks: JSON.parse(JSON.stringify(tab.blocks || [])),
+        blocks,
         source: 'intelligence'
       });
       storageApi.saveTemplates(saved);
@@ -1093,7 +1118,7 @@
         }
       ]
     });
-    return true;
+    return 'preview';
   }
 
   function escapeHtml(s) {
@@ -1210,10 +1235,12 @@
     return inserted;
   }
 
-  function getInsertionTargets(tab) {
+  function getInsertionTargets(tab, limit = 30) {
     const targets = [];
     const walk = (blocks, depth = 0) => {
+      if (targets.length >= limit) return;
       (blocks || []).forEach(block => {
+        if (targets.length >= limit) return;
         if (!block) return;
         if (block.type === 'text') {
           targets.push({
@@ -1357,25 +1384,31 @@
         if (targets.length) {
           const placementBox = document.createElement('div');
           placementBox.className = 'intelligence-placement-box';
-          const options = targets.slice(0, 30).map(target => {
+          const label = document.createElement('label');
+          const caption = document.createElement('span');
+          caption.textContent = 'Место вставки';
+          const select = document.createElement('select');
+          select.className = 'intelligence-placement-select';
+
+          const addOption = (value, text) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = text;
+            select.appendChild(option);
+          };
+
+          addOption('auto', 'Автоматически по semantic anchor');
+          addOption('append', 'В конец активной вкладки');
+          targets.forEach(target => {
             const prefix = target.depth ? '↳ '.repeat(Math.min(2, target.depth)) : '';
             const title = `${prefix}${target.title}${target.column ? ' · колонка ' + (target.column + 1) : ''}`;
-            return `
-              <option value="after:${escapeHtml(target.id)}">После: ${escapeHtml(title)}</option>
-              <option value="before:${escapeHtml(target.id)}">Перед: ${escapeHtml(title)}</option>
-            `;
-          }).join('');
-          placementBox.innerHTML = `
-            <label>
-              <span>Место вставки</span>
-              <select class="intelligence-placement-select">
-                <option value="auto">Автоматически по semantic anchor</option>
-                <option value="append">В конец активной вкладки</option>
-                ${options}
-              </select>
-            </label>
-          `;
-          placementSelect = placementBox.querySelector('.intelligence-placement-select');
+            addOption(`after:${target.id}`, `После: ${title}`);
+            addOption(`before:${target.id}`, `Перед: ${title}`);
+          });
+
+          label.append(caption, select);
+          placementBox.appendChild(label);
+          placementSelect = select;
           body.appendChild(placementBox);
         }
       },
@@ -1387,7 +1420,7 @@
         }
       ]
     });
-    return true;
+    return 'preview';
   }
 
   function previewCompanionBlock(suggestion) {
@@ -1431,7 +1464,7 @@
         }
       ]
     });
-    return true;
+    return 'preview';
   }
 
   function runSuggestionAction(suggestion) {
