@@ -10,6 +10,7 @@
   const RENDER_DEBOUNCE = 450;
   const EDIT_SETTLE_MS = 1300;
   const LARGE_CHANGE_CHARS = 900;
+  const FINALITY_SIGNAL_WINDOW_MS = 12 * 60 * 1000;
   const PROJECT_GRAPH_PRIORITY = {
     'pinned-baseline-compare': 100,
     'named-version-compare': 90,
@@ -36,6 +37,8 @@
   let lastContextKey = '';
   let refreshTimer = null;
   let lastRefreshAt = 0;
+  let lastRefreshSnapshotKey = '';
+  let lastRefreshSnapshotAt = 0;
   const editSessions = new Map();
   const MAX_EDIT_SESSIONS = 200;
   const runningSuggestionActions = new Set();
@@ -203,8 +206,14 @@
       }
     }
 
-    scheduleRefresh(shouldRefreshImmediately(type) ? 60 : RENDER_DEBOUNCE);
+    if (shouldScheduleRefreshForEvent(type)) {
+      scheduleRefresh(shouldRefreshImmediately(type) ? 60 : RENDER_DEBOUNCE);
+    }
     return event;
+  }
+
+  function shouldScheduleRefreshForEvent(type) {
+    return !/^projectGraph\..*\.report\.opened$/.test(String(type || ''));
   }
 
   function shouldRefreshImmediately(type) {
@@ -271,8 +280,8 @@
       ).length
       : null;
 
-    const copySignal = lastCopy && editsAfterCopy !== null && editsAfterCopy === 0 && ts - lastCopy.ts > 25_000 && ts - lastCopy.ts < 12 * 60 * 1000 ? 1 : 0;
-    const exportSignal = lastExport && ts - lastExport.ts < 12 * 60 * 1000 ? 1 : 0;
+    const copySignal = lastCopy && editsAfterCopy !== null && editsAfterCopy === 0 && ts - lastCopy.ts > 25000 && ts - lastCopy.ts < FINALITY_SIGNAL_WINDOW_MS ? 1 : 0;
+    const exportSignal = lastExport && ts - lastExport.ts < FINALITY_SIGNAL_WINDOW_MS ? 1 : 0;
     const stabilitySignal = lastCopy && editsAfterCopy !== null && editsAfterCopy === 0 ? 0.8 : 0.35;
     const structureSignal = analysis?.structure?.disciplineScore || 0;
     const lowConflictSignal = (analysis?.conflicts?.length || analysis?.duplicates?.length || analysis?.placeholders?.length) ? 0.25 : 1;
@@ -332,7 +341,7 @@
   function makeContextKey(ctx, suggestion) {
     const ev = ctx.lastEvent;
     const size = ev?.chars > 2500 ? 'huge' : ev?.chars > 1200 ? 'large' : ev?.chars > 300 ? 'medium' : 'small';
-    const kind = ev?.kind || 'any';
+    const kind = String(ev?.kind || 'any');
     return `${ev?.type || 'none'}:${size}:${kind.split('.')[0]} -> ${suggestion.type}`;
   }
 
@@ -366,12 +375,15 @@
     const ctxBoost = typeof ctxScore === 'number' ? (ctxScore - 0.5) * 0.24 : 0;
     const featureBoost = (featureScore - 0.5) * 0.18;
     const ignoredPenalty = stats?.ignored >= 5 ? 0.18 : 0;
+    const baseConfidence = Number.isFinite(Number(suggestion.confidence))
+      ? Number(suggestion.confidence)
+      : 0.5;
 
     return {
       ...suggestion,
       contextKey,
       preparedHash: suggestion.preparedHash || makePreparedHash(suggestion, ctx),
-      confidence: Number(Math.max(0, Math.min(0.99, suggestion.confidence + featureBoost + ctxBoost - ignoredPenalty)).toFixed(2))
+      confidence: Number(Math.max(0, Math.min(0.99, baseConfidence + featureBoost + ctxBoost - ignoredPenalty)).toFixed(2))
     };
   }
 
@@ -479,7 +491,11 @@
 
     allowed = allowed
       // id нужен для идентификации; primary назначается позже отдельно для visible и menu
-      .map((s, idx) => ({ ...s, id: s.id || `sug_${s.type}_${ctx.textHash}_${idx}` }));
+      .map((s, idx) => ({
+        ...s,
+        id: s.id || `sug_${s.type}_${ctx.textHash}_${idx}`,
+        contextTabId: ctx.tabId || ''
+      }));
 
     const visible = allowed
       .filter(s => {
@@ -681,8 +697,14 @@
       lastRefreshAt = now();
       const profile = window.UserMemory?.getProfile?.() || null;
       const ctx = getContext();
-      if (ctx.previewChars > 0) {
+      const snapshotKey = `${ctx.tabId || ''}\x00${ctx.textHash || ''}\x00${ctx.blockCount || 0}`;
+      if (
+        ctx.previewChars > 0
+        && (snapshotKey !== lastRefreshSnapshotKey || now() - lastRefreshSnapshotAt > 60 * 1000)
+      ) {
         safeCall(() => window.ProjectGraph?.captureSnapshot?.('intelligence.refresh'), null, 'ProjectGraph.captureSnapshot');
+        lastRefreshSnapshotKey = snapshotKey;
+        lastRefreshSnapshotAt = now();
       }
       const prepared = predict(ctx, profile);
       lastSuggestions = prepared.visible || [];
@@ -718,6 +740,12 @@
   function acceptSuggestion(idOrType) {
     const suggestion = findSuggestion(idOrType);
     if (!suggestion) return false;
+    const activeTab = window.State?.getActive?.();
+    if (suggestion.contextTabId && activeTab?.id && suggestion.contextTabId !== activeTab.id) {
+      window.Toast?.show?.('Подсказка устарела для текущей вкладки', 'info');
+      refresh();
+      return false;
+    }
     const actionKey = suggestion.preparedHash || suggestion.id || suggestion.type;
     if (runningSuggestionActions.has(actionKey)) return false;
     runningSuggestionActions.add(actionKey);
@@ -765,17 +793,35 @@
     window.SmartSuggestions?.updateMenu?.(lastMenuSuggestions, lastContext);
   }
 
+  function sanitizeReportText(value) {
+    return escapeHtml(String(value || '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+      .trim());
+  }
+
   function renderReportLines(title, subtitle, lines) {
+    const cleanTitle = sanitizeReportText(title);
+    const cleanSubtitle = sanitizeReportText(subtitle);
+    const cleanLines = (Array.isArray(lines) ? lines : []).map(sanitizeReportText);
+
     if (window.SmartSuggestions?.openReport) {
-      window.SmartSuggestions.openReport({ title, subtitle, lines });
+      window.SmartSuggestions.openReport({
+        title: cleanTitle,
+        subtitle: cleanSubtitle,
+        lines: cleanLines
+      });
       return;
     }
-    alert([title, subtitle, '', ...(lines || [])].filter(Boolean).join('\n'));
+    alert([cleanTitle, cleanSubtitle, '', ...cleanLines].filter(Boolean).join('\n'));
   }
 
   function openPreparedReport(report, prepared = {}) {
     const reportType = String(report || '').trim();
     if (!reportType) return false;
+    if (!prepared || typeof prepared !== 'object') {
+      window.Toast?.show?.('Данные отчёта недоступны', 'info');
+      return false;
+    }
 
     return openReport({
       type: reportType,
@@ -821,7 +867,7 @@
           `Вкладка: «${snap.tabName || 'без имени'}»`,
           `Сходство структуры: ${Math.round((match?.score || 0) * 100)}%${match?.roleScore ? ' · роли: ' + Math.round(match.roleScore * 100) + '%' : ''}`,
           `Блоков: ${snap.blockCount || 0} · ~${snap.tokens || 0} токенов · ${snap.chars || 0} симв`,
-          `Когда: ${snap.ts ? new Date(snap.ts).toLocaleString() : '—'}`,
+          `Когда: ${formatLocalDate(snap.ts)}`,
           `Структура: ${snap.blockTitles?.join(' → ') || snap.structureSignature || '—'}`
         ]
       );
@@ -865,7 +911,7 @@
               : '';
             const name = snapshot.name ? ` · "${snapshot.name}"` : '';
             const source = snapshot.source ? ` · ${snapshot.source}` : '';
-            return `${sourceIndex + 1}. ${snapshot.ts ? new Date(snapshot.ts).toLocaleString() : '—'}${name}${source}${marker}\n   ${snapshot.blockTitles?.join(' → ') || snapshot.structureSignature || '—'}`;
+            return `${sourceIndex + 1}. ${formatLocalDate(snapshot.ts)}${name}${source}${marker}\n   ${snapshot.blockTitles?.join(' → ') || snapshot.structureSignature || '—'}`;
           })
         ].filter(Boolean)
       );
@@ -890,7 +936,7 @@
         isPinned ? 'Изменение относительно закреплённого baseline' : 'Изменение после именованной версии',
         'Сравнение privacy-safe: используются только названия, роли, размеры и fingerprints. Полный текст не хранится и не показывается.',
         [
-          `Версия: «${from.name || 'без имени'}» · ${from.ts ? new Date(from.ts).toLocaleString() : '—'}`,
+          `Версия: «${from.name || 'без имени'}» · ${formatLocalDate(from.ts)}`,
           `Сходство структуры: ${Math.round((comparison.score || diff.structureScore || 0) * 100)}%`,
           `Блоков: ${from.blockCount || 0} → ${to.blockCount || 0} (${diff.blockDelta > 0 ? '+' : ''}${diff.blockDelta || 0})`,
           `Токенов: ~${from.tokens || 0} → ~${to.tokens || 0} (${diff.tokensDelta > 0 ? '+' : ''}${diff.tokensDelta || 0})`,
@@ -923,7 +969,7 @@
         'Изменения версии структуры',
         'Это privacy-safe отчёт: сравниваются только fingerprints, названия блоков, роли и размеры. Полный текст не хранится.',
         [
-          `База: «${from.tabName || 'без имени'}» · ${from.ts ? new Date(from.ts).toLocaleString() : '—'}`,
+          `База: «${from.tabName || 'без имени'}» · ${formatLocalDate(from.ts)}`,
           `Сходство структуры: ${Math.round((version.score || diff.structureScore || 0) * 100)}%`,
           `Блоков: ${from.blockCount || 0} → ${to.blockCount || 0} (${diff.blockDelta > 0 ? '+' : ''}${diff.blockDelta || 0})`,
           `Токенов: ~${from.tokens || 0} → ~${to.tokens || 0} (${diff.tokensDelta > 0 ? '+' : ''}${diff.tokensDelta || 0})`,
@@ -1147,6 +1193,11 @@
     return 'preview';
   }
 
+  function formatLocalDate(ts) {
+    const date = new Date(Number(ts));
+    return Number.isFinite(date.getTime()) ? date.toLocaleString() : '—';
+  }
+
   function escapeHtml(s) {
     return String(s || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
@@ -1159,9 +1210,11 @@
       for (const block of blocks || []) {
         if (!block) continue;
         if (block.type === 'text') {
-          const idx = block.activeSubtab ?? 0;
-          const value = String(block.subtabs?.[idx]?.value || '');
-          if (hashText(value) === target) return block;
+          const subtabs = Array.isArray(block.subtabs) ? block.subtabs : [];
+          for (const subtab of subtabs) {
+            const value = String(subtab?.value || '');
+            if (hashText(value) === target) return block;
+          }
         }
         if (block.type === 'group') {
           const found = walk(block.children || []);
