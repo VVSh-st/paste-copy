@@ -22,8 +22,23 @@ const Notepad = (() => {
   const MAX_HISTORY  = 100;
   const VISIBLE_TABS = 5;
   const TAB_COUNT    = 10;
+  const HISTORY_DEBOUNCE_MS = 600;
+  const TAB_CLICK_DELAY_MS  = 220;
+  const MIN_WIDTH  = 260;
+  const MIN_HEIGHT = 180;
+  const MIN_FONT_SIZE = 9;
+  const MAX_FONT_SIZE = 22;
 
   let _instance = null;
+  let _lastPersistErrorAt = 0;
+
+  function _toast(msg, type) {
+    if (typeof Toast !== 'undefined' && Toast?.show) {
+      Toast.show(msg, type);
+    } else {
+      console[type === 'error' ? 'error' : 'log']('[Notepad]', msg);
+    }
+  }
 
   /* ---- localStorage helpers ----------------------------------------- */
 
@@ -37,13 +52,45 @@ const Notepad = (() => {
         pos:       state.pos,
         size:      state.size,
       }));
-    } catch (_) {}
+    } catch (err) {
+      const now = Date.now();
+      if (now - _lastPersistErrorAt > 5000) {
+        _lastPersistErrorAt = now;
+        _toast('Не удалось сохранить блокнот: localStorage переполнен', 'error');
+      }
+    }
   }
 
   function _loadSaved() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) return null;
+      const saved = JSON.parse(raw);
+      if (!saved || typeof saved !== 'object') return null;
+      const tabs = Array.isArray(saved.tabs) ? saved.tabs.slice(0, TAB_COUNT) : null;
+      return {
+        title: typeof saved.title === 'string' && saved.title.trim()
+          ? saved.title.slice(0, 80)
+          : 'Блокнот',
+        tabs: tabs?.map((t, i) => ({
+          label: typeof t?.label === 'string' && t.label.trim()
+            ? t.label.slice(0, 12)
+            : String(i + 1),
+          value: typeof t?.value === 'string' ? t.value : '',
+        })),
+        activeTab: Number.isInteger(saved.activeTab)
+          ? Math.max(0, Math.min(TAB_COUNT - 1, saved.activeTab))
+          : 0,
+        fontSize: Number.isFinite(saved.fontSize)
+          ? Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, saved.fontSize))
+          : 12,
+        pos: saved.pos && typeof saved.pos.left === 'string' && typeof saved.pos.top === 'string'
+          ? saved.pos
+          : null,
+        size: saved.size && typeof saved.size.w === 'string' && typeof saved.size.h === 'string'
+          ? saved.size
+          : null,
+      };
     } catch (_) { return null; }
   }
 
@@ -89,10 +136,9 @@ const Notepad = (() => {
     if (useApi && navigator.clipboard?.readText) {
       navigator.clipboard.readText()
         .then(text => onText(text))
-        .catch(() => Toast.show('Нажмите Ctrl+V для вставки', 'info'));
+        .catch(() => _toast('Нажмите Ctrl+V для вставки', 'info'));
     } else {
-      // Clipboard API disabled — user must press Ctrl+V manually
-      Toast.show('Нажмите Ctrl+V для вставки', 'info');
+      _toast('Нажмите Ctrl+V для вставки', 'info');
     }
   }
 
@@ -134,29 +180,40 @@ const Notepad = (() => {
       history:      [initVal],
       histIdx:      0,
       histTimer:    null,
+      tabClickTimer:null,
+      dragAbort:    null,
+      resizeAbort:  null,
+      _translateBusy: false,
+      _translateOriginal: null,
+      _saveToFile:  null,
+      _lastFilled:  null,
       el:           null,
       _tabsRow:     null,
       _countSpan:   null,
       _doUndo:      null,
       _doRedo:      null,
       _pushHistory: null,
-      _translateOriginal: null,
     };
 
     const win = _buildWindow(state);
     state.el  = win;
     _instance = state;
 
-    document.getElementById('notepad-container').appendChild(win);
+    const container = document.getElementById('notepad-container') || document.body;
+    container.appendChild(win);
 
     if (state.pos) {
-      win.style.left      = state.pos.left;
-      win.style.top       = state.pos.top;
+      const left = parseFloat(state.pos.left);
+      const top  = parseFloat(state.pos.top);
+      win.style.left      = Math.max(0, Math.min(window.innerWidth - 80, Number.isFinite(left) ? left : 0)) + 'px';
+      win.style.top       = Math.max(0, Math.min(window.innerHeight - 40, Number.isFinite(top) ? top : 0)) + 'px';
       win.style.transform = 'none';
     }
     if (state.size) {
-      win.style.width  = state.size.w;
-      win.style.height = state.size.h;
+      const w = parseFloat(state.size.w);
+      const h = parseFloat(state.size.h);
+      win.style.width  = Math.max(MIN_WIDTH, Math.min(window.innerWidth,  Number.isFinite(w) ? w : 420)) + 'px';
+      win.style.height = Math.max(MIN_HEIGHT, Math.min(window.innerHeight, Number.isFinite(h) ? h : 320)) + 'px';
     }
 
     requestAnimationFrame(() => win.querySelector('.notepad-body textarea')?.focus());
@@ -166,10 +223,21 @@ const Notepad = (() => {
      Close
   ================================================================ */
   function _closeNotepad(state) {
+    if (_instance !== state) return;
+
     const ta = state.el?.querySelector('.notepad-body textarea');
-    if (ta) state.tabs[state.activeTab].value = ta.value;
+    if (ta) {
+      state.tabs[state.activeTab].value = ta.value;
+      state._pushHistory?.(ta.value);
+    }
 
     clearTimeout(state.histTimer);
+    clearTimeout(state.tabClickTimer);
+    state.dragAbort?.abort();
+    state.resizeAbort?.abort();
+    state.dragAbort = null;
+    state.resizeAbort = null;
+    document.body.style.userSelect = '';
     _persist(state);
     state.el?.remove();
     state.el  = null;
@@ -227,6 +295,7 @@ const Notepad = (() => {
       titleInput.select();
     };
     const commitTitle = () => {
+      if (titleInput.style.display === 'none') return;
       const v = titleInput.value.trim();
       if (v) state.title = v;
       titleLabel.textContent   = state.title;
@@ -322,20 +391,35 @@ const Notepad = (() => {
       const ta = getTa(); if (!ta) return;
       const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd);
       if (!sel) return;
-      navigator.clipboard.writeText(sel).catch(() => {});
-      pushHistory(ta.value);
-      ta.setRangeText('', ta.selectionStart, ta.selectionEnd, 'end');
-      ta.dispatchEvent(new Event('input'));
+      const removeSelection = () => {
+        pushHistory(ta.value);
+        ta.setRangeText('', ta.selectionStart, ta.selectionEnd, 'end');
+        ta.dispatchEvent(new Event('input'));
+      };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(sel)
+          .then(removeSelection)
+          .catch(() => _toast('Не удалось вырезать: буфер недоступен', 'error'));
+      } else {
+        _toast('Буфер обмена недоступен', 'error');
+      }
     });
 
     const copyBtn = _mkBtn(SVG.copy, 'Копировать (выделение или всё)', () => {
       const ta = getTa(); if (!ta) return;
+      if (!navigator.clipboard?.writeText) {
+        _toast('Буфер обмена недоступен', 'error');
+        return;
+      }
       const text = ta.selectionStart !== ta.selectionEnd
         ? ta.value.slice(ta.selectionStart, ta.selectionEnd)
         : ta.value;
       navigator.clipboard.writeText(text)
-        .then(() => Toast.show('Скопировано ✓', 'success'))
-        .catch(() => Toast.show('Ошибка копирования', 'error'));
+        .then(() => _toast(
+          ta.selectionStart !== ta.selectionEnd ? 'Выделение скопировано ✓' : 'Вся вкладка скопирована ✓',
+          'success'
+        ))
+        .catch(() => _toast('Ошибка копирования', 'error'));
     });
 
     const pasteBtn = _mkBtn(SVG.paste, 'Вставить из буфера (или Ctrl+V)', () => {
@@ -365,40 +449,50 @@ const Notepad = (() => {
       }
     });
 
-    const saveBtn = _mkBtn(SVG.save, 'Сохранить в .txt', () => {
+    const saveToFile = () => {
       const ta = getTa(); if (!ta) return;
       const url = URL.createObjectURL(new Blob([ta.value], { type: 'text/plain;charset=utf-8' }));
+      const safeName = (state.title || 'notepad')
+        .replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_')
+        .trim()
+        .slice(0, 80) || 'notepad';
       Object.assign(document.createElement('a'), {
-        href:     url,
-        download: (state.title || 'notepad') + '.txt',
+        href: url,
+        download: safeName + '.txt',
       }).click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      Toast.show('Файл скачан ✓', 'success');
-    });
+      _toast('Файл скачан ✓', 'success');
+    };
+    state._saveToFile = saveToFile;
+    const saveBtn = _mkBtn(SVG.save, 'Сохранить в .txt', saveToFile);
 
     const transferBtn = _mkBtn(SVG.transfer, 'Скопировать на следующую свободную вкладку', () => {
       const ta = getTa(); if (!ta || !ta.value.trim()) return;
 
-      let target = (state.activeTab + 1) % TAB_COUNT;
+      let target = -1;
       for (let i = 1; i < TAB_COUNT; i++) {
         const idx = (state.activeTab + i) % TAB_COUNT;
         if (!state.tabs[idx].value.trim()) { target = idx; break; }
       }
+      if (target === -1) {
+        _toast('Нет свободных вкладок', 'info');
+        return;
+      }
 
       clearTimeout(state.histTimer);
-      state.tabs[target].value += (state.tabs[target].value ? '\n' : '') + ta.value;
+      state.tabs[target].value = ta.value;
       _persist(state);
       _switchTab(state, target, win);
-      Toast.show('Скопировано ✓', 'success');
+      _toast('Скопировано ✓', 'success');
     });
 
     const fDecBtn = _mkBtn('A−', 'Шрифт меньше', () => {
-      state.fontSize = Math.max(9, state.fontSize - 1);
+      state.fontSize = Math.max(MIN_FONT_SIZE, state.fontSize - 1);
       const ta = getTa(); if (ta) ta.style.fontSize = state.fontSize + 'px';
       _persist(state);
     });
     const fIncBtn = _mkBtn('A+', 'Шрифт больше', () => {
-      state.fontSize = Math.min(22, state.fontSize + 1);
+      state.fontSize = Math.min(MAX_FONT_SIZE, state.fontSize + 1);
       const ta = getTa(); if (ta) ta.style.fontSize = state.fontSize + 'px';
       _persist(state);
     });
@@ -420,6 +514,48 @@ const Notepad = (() => {
 
     _renderTabs(state);
 
+    const handleTranslate = () => {
+      if (typeof Translator === 'undefined') { _toast('Модуль переводчика не загружен', 'error'); return; }
+      const ta = getTa(); if (!ta) return;
+      if (state._translateBusy) {
+        _toast('Перевод уже выполняется...', 'info');
+        return;
+      }
+
+      if (state._translateOriginal !== null) {
+        ta.value = state._translateOriginal;
+        state.tabs[state.activeTab].value = state._translateOriginal;
+        state._translateOriginal = null;
+        ta.dispatchEvent(new Event('input'));
+        _toast('↩ Оригинал восстановлен');
+        return;
+      }
+
+      const selStart = ta.selectionStart;
+      const selEnd   = ta.selectionEnd;
+      const hasSel   = selStart !== selEnd;
+      const sel      = ta.value.substring(selStart, selEnd);
+      const text     = hasSel ? sel : ta.value;
+      if (!text.trim()) return;
+      const lang = Translator.LANG_BY_CODE[Translator.targetLang];
+      _toast('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
+      state._translateBusy = true;
+      Translator.translateProtected(text, Translator.targetLang).then(result => {
+        if (!result || result === text) { _toast('Не удалось перевести'); return; }
+        pushHistory(ta.value);
+        state._translateOriginal = ta.value;
+        if (hasSel) {
+          ta.setRangeText(result, selStart, selEnd, 'select');
+        } else {
+          ta.value = result;
+        }
+        state.tabs[state.activeTab].value = ta.value;
+        ta.dispatchEvent(new Event('input'));
+        _toast('✓ Переведено → ' + (lang?.name || Translator.targetLang) + ' (клик ↩ — вернуть)');
+      }).catch(err => _toast('Ошибка: ' + err.message))
+        .finally(() => { state._translateBusy = false; });
+    };
+
     toolbar.append(
       _mkBtn(SVG.undo, 'Отменить (Ctrl+Z)',  doUndo),
       _mkBtn(SVG.redo, 'Повторить (Ctrl+Y)', doRedo),
@@ -429,35 +565,7 @@ const Notepad = (() => {
       _mkDiv(),
       fDecBtn, fIncBtn,
       _mkDiv(),
-      _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст', () => {
-        if (typeof Translator === 'undefined') { Toast.show('Модуль переводчика не загружен', 'error'); return; }
-        const ta = getTa(); if (!ta) return;
-
-        // Возврат оригинала
-        if (state._translateOriginal !== null) {
-          ta.value = state._translateOriginal;
-          state.tabs[state.activeTab].value = state._translateOriginal;
-          state._translateOriginal = null;
-          ta.dispatchEvent(new Event('input'));
-          Toast.show('↩ Оригинал восстановлен');
-          return;
-        }
-
-        const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
-        const text = sel.trim() || ta.value;
-        if (!text.trim()) return;
-        const lang = Translator.LANG_BY_CODE[Translator.targetLang];
-        Toast.show('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
-        Translator.translateProtected(text, Translator.targetLang).then(result => {
-          if (!result || result === text) { Toast.show('Не удалось перевести'); return; }
-          pushHistory(ta.value);
-          state._translateOriginal = text;
-          ta.value = result;
-          state.tabs[state.activeTab].value = result;
-          ta.dispatchEvent(new Event('input'));
-          Toast.show('✓ Переведено → ' + (lang?.name || Translator.targetLang) + ' (клик ↩ — вернуть)');
-        }).catch(err => Toast.show('Ошибка: ' + err.message));
-      }),
+      _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст', handleTranslate),
       _mkDiv(),
       prevTabBtn, tabsWrap, nextTabBtn,
       _mkDiv(),
@@ -502,6 +610,7 @@ const Notepad = (() => {
         'font-family:inherit;font-weight:600;outline:none;text-align:center;';
 
       const commitRename = () => {
+        if (renameInput.style.display === 'none') return;
         const v = renameInput.value.trim();
         if (v) state.tabs[i].label = v;
         renameInput.style.display = 'none';
@@ -521,17 +630,19 @@ const Notepad = (() => {
       btn.appendChild(renameInput);
 
       const idx = i;
-      let _clickTimer = null;
 
       btn.onclick = e => {
         e.stopPropagation();
-        clearTimeout(_clickTimer);
-        _clickTimer = setTimeout(() => _switchTab(state, idx, state.el), 220);
+        clearTimeout(state.tabClickTimer);
+        state.tabClickTimer = setTimeout(() => {
+          if (!state.el?.isConnected) return;
+          _switchTab(state, idx, state.el);
+        }, TAB_CLICK_DELAY_MS);
       };
 
       btn.ondblclick = e => {
         e.stopPropagation();
-        clearTimeout(_clickTimer);
+        clearTimeout(state.tabClickTimer);
         if (state.activeTab !== idx) {
           _switchTab(state, idx, state.el);
           _openRenameOnTab(state, idx);
@@ -568,15 +679,21 @@ const Notepad = (() => {
 
   function _switchTab(state, idx, win) {
     const ta = win?.querySelector('.notepad-body textarea');
-    if (ta) state.tabs[state.activeTab].value = ta.value;
+    if (ta) {
+      clearTimeout(state.histTimer);
+      state.tabs[state.activeTab].value = ta.value;
+      state.tabs[state.activeTab]._history = state.history;
+      state.tabs[state.activeTab]._histIdx = state.histIdx;
+      state._pushHistory?.(ta.value);
+    }
 
     state.activeTab = idx;
 
     if (ta) {
       const newVal = state.tabs[idx].value ?? '';
       ta.value = newVal;
-      state.history = [newVal];
-      state.histIdx = 0;
+      state.history = state.tabs[idx]._history || [newVal];
+      state.histIdx = state.tabs[idx]._histIdx ?? state.history.length - 1;
       _updateCount(ta, state._countSpan);
       ta.focus();
     }
@@ -601,21 +718,23 @@ const Notepad = (() => {
     _updateCount(ta, state._countSpan);
 
     ta.addEventListener('input', () => {
+      const wasFilled = !!state.tabs[state.activeTab].value;
       state.tabs[state.activeTab].value = ta.value;
+      const isFilled = !!ta.value;
       _updateCount(ta, state._countSpan);
-      _renderTabs(state);
+      if (wasFilled !== isFilled) _renderTabs(state);
       clearTimeout(state.histTimer);
       state.histTimer = setTimeout(() => {
         state._pushHistory?.(ta.value);
         _persist(state);
-      }, 600);
+      }, HISTORY_DEBOUNCE_MS);
     });
 
     ta.addEventListener('keydown', e => {
       const ctrl = e.ctrlKey || e.metaKey;
 
       // Tab / Shift+Tab: indent / de-indent (no focus change)
-      if (e.key === 'Tab' && !ctrl) {
+      if (e.key === 'Tab' && !ctrl && !e.altKey) {
         e.preventDefault();
         const start = ta.selectionStart;
         const end   = ta.selectionEnd;
@@ -666,6 +785,9 @@ const Notepad = (() => {
       } else if (ctrl && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
         e.preventDefault();
         state._doRedo?.();
+      } else if (ctrl && !e.shiftKey && e.code === 'KeyS') {
+        e.preventDefault();
+        state._saveToFile?.();
       }
     });
 
@@ -673,15 +795,22 @@ const Notepad = (() => {
     return body;
   }
 
-  const _byteEnc = new TextEncoder();
+  const _byteEnc = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
-  function _byteLen(s) { return _byteEnc.encode(s).length; }
+  function _byteLen(s) {
+    if (_byteEnc) return _byteEnc.encode(s).length;
+    try { return unescape(encodeURIComponent(s)).length; } catch (_) { return s.length; }
+  }
 
   function _updateCount(ta, countSpan) {
     if (!countSpan || !ta) return;
-    const chars = ta.value.length;
-    const lines = ta.value ? ta.value.split('\n').length : 0;
-    const kb    = (_byteLen(ta.value) / 1024).toFixed(1);
+    const value = ta.value;
+    const chars = value.length;
+    let lines = value ? 1 : 0;
+    for (let i = 0; i < value.length; i++) {
+      if (value.charCodeAt(i) === 10) lines++;
+    }
+    const kb = (_byteLen(value) / 1024).toFixed(1);
     countSpan.textContent = `${chars}/${lines}/${kb}KB`;
   }
 
@@ -701,14 +830,17 @@ const Notepad = (() => {
       const startW = win.offsetWidth, startH = win.offsetHeight;
       document.body.style.userSelect = 'none';
 
+      state.resizeAbort?.abort();
       const ac = new AbortController();
+      state.resizeAbort = ac;
       document.addEventListener('mousemove', mv => {
-        win.style.width  = Math.max(260, startW + (mv.clientX - startX)) + 'px';
-        win.style.height = Math.max(180, startH + (mv.clientY - startY)) + 'px';
+        win.style.width  = Math.max(MIN_WIDTH, startW + (mv.clientX - startX)) + 'px';
+        win.style.height = Math.max(MIN_HEIGHT, startH + (mv.clientY - startY)) + 'px';
       }, { signal: ac.signal });
       document.addEventListener('mouseup', () => {
         document.body.style.userSelect = '';
         state.size = { w: win.style.width, h: win.style.height };
+        state.resizeAbort = null;
         _persist(state);
         ac.abort();
       }, { signal: ac.signal, once: true });
@@ -737,14 +869,19 @@ const Notepad = (() => {
       document.body.style.userSelect = 'none';
       e.preventDefault();
 
+      state.dragAbort?.abort();
       const ac = new AbortController();
+      state.dragAbort = ac;
       document.addEventListener('mousemove', mv => {
-        el.style.left = Math.max(0, Math.min(window.innerWidth  - 80, startL + (mv.clientX - startX))) + 'px';
-        el.style.top  = Math.max(0, Math.min(window.innerHeight - 40, startT + (mv.clientY - startY))) + 'px';
+        const maxLeft = Math.max(0, window.innerWidth  - el.offsetWidth);
+        const maxTop  = Math.max(0, window.innerHeight - el.offsetHeight);
+        el.style.left = Math.max(0, Math.min(maxLeft, startL + (mv.clientX - startX))) + 'px';
+        el.style.top  = Math.max(0, Math.min(maxTop,  startT + (mv.clientY - startY))) + 'px';
       }, { signal: ac.signal });
       document.addEventListener('mouseup', () => {
         document.body.style.userSelect = '';
         state.pos = { left: el.style.left, top: el.style.top };
+        state.dragAbort = null;
         _persist(state);
         ac.abort();
       }, { signal: ac.signal, once: true });
