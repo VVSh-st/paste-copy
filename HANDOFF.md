@@ -141,9 +141,10 @@ f4fffe3 intelligence-core: GPT audit round 6 (final) — 10 fixes (deep clone su
 7f23bf9 project-graph: GPT audit round 2 — 5 fixes (cache collision, safe import, counters sync, baselines sanitize, blockHashes 64)
 3b514c2 project-graph: GPT audit round 3 — 3 fixes (trimSnapshotsByLimit cap protected, MAX_SNAPSHOT_BLOCK_META=64, titleRole word-boundary)
 f64d37a project-graph: GPT audit round 4 — 3 fixes (rememberBlockNodes, cacheId skip 'current', importData counters recalc)
+2d4a4cc project-graph: GPT audit round 5 — 11 fixes (simCache invalidation, findDerivedFrom earlier-only, trimObjectByLastSeen preserve, findRoleGaps blockRoles, findSimilarPrompt linear scan, cooldown+structureHash, timeline named dedup, snapshotView helper, compareNamedVersionToCurrent unchanged, migrateGraph, getPinnedBaseline read-only)
 ```
 
-**Итого: 388 фиксов за 38 раундов аудита**
+**Итого: 399 фиксов за 39 раундов аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
@@ -155,7 +156,7 @@ f64d37a project-graph: GPT audit round 4 — 3 fixes (rememberBlockNodes, cacheI
 - ❌ **ТЕКУЩИЙ БАГ:** подсветка текущей строки смещается вниз к 400-й строке ( drift накапливается)
 - ⏳ app.js: ожидает аудит (969 строк)
 - ✅ **intelligence-core.js: аудит завершён** (6 раундов, 69 фиксов)
-- ✅ **project-graph.js: аудит завершён** (4 раунда, 18 фиксов)
+- ✅ **project-graph.js: аудит завершён** (5 раундов, 29 фиксов)
 - 🔄 **ember.js + ember-styles.css: раунд 1** (10 фиксов, ожидает следующий раунд)
 
 ### Flowchart — Query menu
@@ -306,7 +307,7 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `translator.js` (~763 строк) — Google/MS/Legacy translate, GPT audit fixes (78 fixes, 5 раундов)
 - `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (83 fixes, 5 раундов)
 - `intelligence-core.js` (~1699 строк) — ядро интеллектуальных подсказок, scoring, prediction, GPT audit fixes (69 fixes, 6 раундов)
-- `project-graph.js` (~1363 строк) — граф проекта для Intelligence Layer, snapshot capture, similarity, GPT audit fixes (18 fixes, 4 раунда)
+- `project-graph.js` (~1494 строк) — граф проекта для Intelligence Layer, snapshot capture, similarity, GPT audit fixes (29 fixes, 5 раундов)
 - `ember.js` (~3102 строк) — "Уголёк", живой индикатор состояния проекта, rAF + particle system + peek state machine, GPT audit fixes (10 fixes, 1 раунд)
 - `ember-styles.css` (~607 строк) — стили уголька, CSS custom properties, keyframe animations
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой

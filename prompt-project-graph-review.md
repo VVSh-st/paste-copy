@@ -1,4 +1,4 @@
-# Prompt: project-graph.js — GPT audit round 4
+# Prompt: project-graph.js — GPT audit round 6
 
 Ты — GPT-5, coding agent. Проведи аудит файла `project-graph.js`.
 
@@ -9,30 +9,28 @@
 
 ## Исключить (уже исправлено в предыдущих раундах)
 - Sanitize import: sanitizeSnapshot, isPlainObject, safeStr, limitedEntriesObject, sanitizeImportedGraph, sanitizeBaselines
-- Safe save: copy→JSON.stringify→assign updatedAt on success, retry on non-quota error
-- Safe export: try/catch fallback to empty normalizeGraph({})
-- Safe import: serialize→save→assign to graph on success (importData)
-- Pair dedup: dedup blocks by hash before O(n²) loop, pair limit (2×maxRelations), skip self-pairs
-- trimGraph guard: only call when limits actually exceeded, else just updateCounters()
-- structureSimilarity cache: Map keyed by cacheId (hash of signature+roleSignature+blockHashes+blockCount fallback), cleared on reset/import
-- normalizeGraph: blockNodes/relations use limitedEntriesObject with retention limits
-- baselines.byTabId: sanitizeBaselines (isPlainObject, pinnedAt sort, field validation, max 200)
-- counters.snapshots: set to promptSnapshots.length in updateCounters(), removed +=1 from captureSnapshot
-- blockHashes in normalizeTimelineSnapshot: limit 64 (was 16)
-- trimSnapshotsByLimit: protected snapshots capped at limit (not unlimited)
-- MAX_SNAPSHOT_BLOCK_META = 64: blockTitles/blockRoles limit 64 (was 16) everywhere
-- titleRole: word-boundary match via titleMatchesAlias (no more substring false positives)
+- Safe save/export/import: serialize→save→assign, try/catch fallback
+- Pair dedup + trimGraph guard + structureSimilarity cache (cacheId with 'current' exclusion)
+- normalizeGraph: limitedEntriesObject, sanitizeBaselines, migrateGraph
+- counters: updateCounters sets snapshots to promptSnapshots.length
+- trimSnapshotsByLimit: protected capped at limit
+- MAX_SNAPSHOT_BLOCK_META=64, blockHashes limit 64, titleRole word-boundary
+- rememberBlockNodes: blockNodes populated during captureSnapshot
+- simCache: cleared in captureSnapshot, setRetention, cleanup, importData, reset
+- findDerivedFrom: only earlier snapshots, tie-break by closest time
+- trimObjectByLastSeen: preserve function for protected blockNodes/relations
+- findRoleGaps: uses blockRoles directly instead of re-parsing roleSignature
+- findSimilarPrompt: linear scan (no full sort for top-1)
+- captureSnapshot cooldown: checks both textHash AND structureHash
+- findVersionTimeline: named snapshots preserved in dedup
+- snapshotView: shared helper for snapshot shape, normalizeTimelineSnapshot uses it
+- compareNamedVersionToCurrent: returns { unchanged: true } when textHash matches
+- getPinnedBaseline: options.cleanupMissing for read-only use in getDiagnostics
 
-## Что искать (НОВЫЕ проблемы, не из списка выше)
+## Что искать (НОВЫЕ проблемы)
 1. **Критично**: data loss, race conditions, silent corruption
-2. **Производительность**: O(n²) без лимитов, лишние пересчёты, memory leaks
-3. **UX**: невидимые ошибки, потеря данных при экспорте/импорте
+2. **Производительность**: O(n²) без лимитов, лишние пересчёты
+3. **UX**: невидимые ошибки, потеря данных
 4. **Читаемость**: сложная логика, неочевидные зависимости
 
-Если предыдущий раунд уже исправил проблему — НЕ предлагай её снова.
-
-**Формат вывода:**
-- Номер, тип (Критично/Перф/UX/Чит), краткое описание проблемы
-- Строки (номера или ~номера)
-- Влияние (1-2 предложения)
-- Патч (diff)
+**Формат:** Номер, тип, описание, строки, влияние, патч (diff).
