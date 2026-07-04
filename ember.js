@@ -242,38 +242,51 @@ const Ember = (() => {
     const mul = rand(ev.mult[0], ev.mult[1]);
     switch (type) {
       case 'sparkStorm':
-        for (let i = 0; i < Math.floor(rand(8, 12)); i++) defer(spawnSpark, i * 50);
-        for (let i = 0; i < 2; i++) defer(spawnShootingSpark, 100 + i * 150);
+        for (let i = 0; i < Math.floor(rand(10, 16)); i++) defer(() => spawnSpark(Math.random()), i * 35);
+        for (let i = 0; i < 3; i++) defer(spawnShootingSpark, 80 + i * 110);
         igniteCrackSide(Math.random() < 0.5 ? -1 : 1);
-        heatBoost = Math.max(heatBoost, 0.3 * mul);
-        ringImpulse = rand(4, 8) * (Math.random() < 0.5 ? 1 : -1);
+        heatBoost = Math.max(heatBoost, 0.34 * mul);
+        ringImpulse = rand(7, 12) * (Math.random() < 0.5 ? 1 : -1);
         break;
       case 'deformationBurst':
-        heatBoost = Math.max(heatBoost, 0.25 * mul);
-        for (let i = 0; i < 4; i++) defer(spawnAshParticle, i * 80);
+        heatBoost = Math.max(heatBoost, 0.3 * mul);
+        residualHeat += 0.25;
+        for (let i = 0; i < 6; i++) defer(spawnAshParticle, i * 70);
         igniteCrackSide(-1);
         igniteCrackSide(1);
+        active.set('stretch', { phase: 0, durMs: rand(900, 1400), amp: 1.2, mag: 1.1, _geomWeight: 1 });
         break;
       case 'ringPulseBig':
-        heatBoost = Math.max(heatBoost, 0.15 * mul);
-        ringImpulse = rand(5, 10) * (Math.random() < 0.5 ? 1 : -1);
+        heatBoost = Math.max(heatBoost, 0.2 * mul);
+        ringImpulse = rand(10, 16) * (Math.random() < 0.5 ? 1 : -1);
+        for (let i = 0; i < 6; i++) {
+          defer(() => {
+            const idx = i % 12;
+            const seg = segments[idx];
+            if (seg) seg.style.setProperty('--seg-flash', '1');
+          }, i * 45);
+        }
         break;
       case 'heatBubble':
-        heatBoost = Math.max(heatBoost, 0.2 * mul);
-        for (let i = 0; i < 3; i++) defer(spawnSpark, i * 100);
+        heatBoost = Math.max(heatBoost, 0.24 * mul);
+        flashHeat = Math.max(flashHeat, 0.18);
+        for (let i = 0; i < 3; i++) defer(spawnSpark, i * 90);
+        active.set('glowPulse', { phase: 0, durMs: rand(1000, 1500), mag: 1.2 });
         break;
       case 'coalSigh':
-        heatBoost = Math.max(heatBoost, 0.15 * mul);
-        for (let i = 0; i < 5; i++) defer(spawnAshParticle, i * 120);
+        heatBoost = Math.max(heatBoost, 0.12 * mul);
+        for (let i = 0; i < 6; i++) defer(spawnAshParticle, i * 100);
+        active.set('sigh', { phase: 0, durMs: rand(3200, 4200), mag: 1.1, glow: 0.2, _geomWeight: 1 });
         break;
       case 'hotVein': {
         const side = Math.random() < 0.5 ? -1 : 1;
         igniteCrackSide(side);
-        heatBoost = Math.max(heatBoost, 0.1 * mul);
+        heatBoost = Math.max(heatBoost, 0.12 * mul);
+        crackGlowMod += 0.7;
         break;
       }
       case 'ashDump':
-        for (let i = 0; i < Math.floor(rand(6, 8)); i++) defer(spawnAshParticle, i * 60);
+        for (let i = 0; i < Math.floor(rand(8, 12)); i++) defer(spawnAshParticle, i * 45);
         break;
     }
   }
@@ -687,49 +700,86 @@ const Ember = (() => {
       glintOpacity: 0, glintX: 58, glintY: 32, glintRot: -18, glintScale: 1,
       massShiftX: 0, massShiftY: 0,
       upperBulge: 0, lowerSag: 0, sideBulge: 0,
+      z: 0,
+      coreLift: 0,
+      glowLift: 0,
+      ringDepth: 0,
+      lightX: 0,
+      lightY: 0,
+      shadowTighten: 0,
     };
   }
 
   function applySighPose(pose, eff) {
     const p = eff.phase;
-    const inhale = p < 0.35 ? easeOutQuad(p / 0.35) : 0;
-    const exhale = p > 0.45 ? easeOutQuad((p - 0.45) / 0.55) : 0;
+    const inhale = p < 0.22 ? easeOutQuad(p / 0.22) * 0.9 : 0;
+    const exhale = p > 0.26 ? Math.pow((p - 0.26) / 0.74, 0.62) : 0;
+    const drop = p > 0.52 ? Math.sin((p - 0.52) * Math.PI * 2.6) * (1 - p) * 0.18 : 0;
     const w = eff._geomWeight ?? 1;
-    pose.squash += (-inhale * 0.2 + exhale * 0.18) * w;
-    pose.y += (-inhale * 2.4 + exhale * 2.8) * w;
-    pose.massShiftY += exhale * 0.8;
-    pose.lowerSag += exhale * 0.6;
-    if (p > 0.5 && p < 0.55 && !eff.ashDone) {
+
+    pose.squash += (-inhale * 0.10 + exhale * 0.24 + drop * 0.5) * w;
+    pose.y += (-inhale * 1.6 + exhale * 3.4 + drop * 2.2) * w;
+    pose.massShiftY += exhale * 1.1;
+    pose.lowerSag += exhale * 0.9;
+    pose.glow -= exhale * 0.08;
+    pose.coreLift += inhale * 1.2 - exhale * 1.8;
+    pose.shadowTighten += exhale * 0.15;
+
+    if (p > 0.56 && p < 0.62 && !eff.ashDone) {
       eff.ashDone = true;
-      for (let i = 0; i < 3; i++) defer(spawnAshParticle, i * 80);
+      for (let i = 0; i < 3; i++) defer(spawnAshParticle, i * 90);
     }
   }
 
   function applyCalmBurnPose(pose, eff) {
-    const k = bump(eff.phase, 0.25, 0.75);
+    const p = eff.phase;
+    const base = bump(p, 0.18, 0.82);
+    const flick = Math.sin(p * Math.PI * 5.7) * 0.06 + Math.sin(p * Math.PI * 13.2) * 0.03;
+    const micro = p > 0.25 && p < 0.75 ? Math.sin(p * Math.PI * 29) * 0.015 : 0;
     const w = eff._geomWeight ?? 1;
-    pose.glow += k * 0.25 * w;
-    pose.brightness += k * 0.2 * w;
-    pose.hue += k * (eff.hue ?? 0);
+
+    pose.glow += (base * 0.18 + flick + micro) * w;
+    pose.brightness += (base * 0.14 + flick * 0.5) * w;
+    pose.hue += base * (eff.hue ?? 0);
+    pose.lightX += flick * 18;
+    pose.lightY -= base * 8;
   }
 
   function applyWigglePose(pose, eff) {
     const p = eff.phase;
-    const decay = 1 - p;
-    const shake = Math.sin(p * Math.PI * 8) * decay;
     const amp = eff.amp ?? 1;
     const w = eff._geomWeight ?? 1;
-    pose.x += shake * 2.8 * amp * w;
-    pose.rotate += shake * 10 * amp * w;
+
+    const burst = p < 0.14 ? easeOutQuad(p / 0.14) * 1.4 : 0;
+    const jitter = p >= 0.14 && p < 0.55
+      ? Math.sin(p * Math.PI * 18) * Math.exp(-(p - 0.14) * 4.8)
+      : 0;
+    const settle = p >= 0.55
+      ? Math.sin((p - 0.55) * Math.PI * 6) * (1 - p) * 0.35
+      : 0;
+
+    const shake = burst + jitter + settle;
+
+    pose.x += shake * 2.2 * amp * w;
+    pose.rotate += shake * 7.5 * amp * w;
+    pose.tiltY += shake * 1.6 * amp;
+    pose.sideBulge += Math.abs(jitter) * 0.12;
   }
 
   function applyTiltPose(pose, eff) {
     const p = eff.phase;
-    const k = Math.sin(p * Math.PI);
     const dir = Math.sign(eff.target || 1);
-    pose.rotate += dir * k * 5;
-    pose.x += dir * k * 1.2;
-    pose.squash += -k * 0.06;
+
+    const leanIn = p < 0.68 ? 1 - Math.pow(1 - p / 0.68, 2.2) : 1;
+    const hang = p > 0.68 ? 1 - ((p - 0.68) / 0.32) * 0.35 : 1;
+    const k = leanIn * hang;
+    const settle = p > 0.78 ? Math.sin((p - 0.78) * Math.PI * 5) * (1 - p) * 0.12 : 0;
+
+    pose.rotate += dir * (k * 5.8 + settle * 2.5);
+    pose.x += dir * k * 1.8;
+    pose.squash += -k * 0.04;
+    pose.massShiftX += dir * k * 0.5;
+    pose.tiltY += dir * k * 1.2;
   }
 
   function applyMicroShiftPose(pose, eff) {
@@ -797,14 +847,18 @@ const Ember = (() => {
   function applyStretchPose(pose, eff) {
     const p = eff.phase;
     const amp = eff.amp ?? 1;
-    const reach = p > 0.15 && p < 0.6 ? Math.sin((p - 0.15) / 0.45 * Math.PI) : 0;
-    const k = bump(p, 0.15, 0.65);
-
     const w = eff._geomWeight ?? 1;
-    pose.scaleY *= 1 + reach * 0.12 * amp * w;
-    pose.glow += k * 0.15 * w;
-    pose.glowY -= reach * 3;
-    pose.glintX += reach * 10;
+
+    const extend = p > 0.10 && p < 0.52 ? Math.sin((p - 0.10) / 0.42 * Math.PI) : 0;
+    const rebound = p >= 0.52 ? Math.sin((p - 0.52) * Math.PI * 4.2) * (1 - p) * 0.18 : 0;
+    const total = extend + rebound;
+
+    pose.scaleY *= 1 + total * 0.13 * amp * w;
+    pose.scaleX *= 1 - total * 0.035 * amp * w;
+    pose.glow += extend * 0.14 * w;
+    pose.glowY -= extend * 3.2;
+    pose.glintX += extend * 10;
+    pose.coreLift += extend * 1.6;
   }
 
   function applyGlintPose(pose, eff) {
@@ -820,22 +874,30 @@ const Ember = (() => {
 
   function applySleepySagPose(pose, eff) {
     const p = eff.phase;
-    const sag = bump(p, 0.35, 0.8);
+    const melt = p < 0.82 ? Math.pow(p / 0.82, 1.6) : 1;
+    const drift = Math.sin(p * Math.PI * 1.5) * 0.2;
     const w = eff._geomWeight ?? 1;
-    pose.y += sag * 3.2 * w;
-    pose.squash += sag * 0.35 * w;
-    pose.massShiftY += sag * 1.0;
-    pose.lowerSag += sag * 0.7;
+
+    pose.y += (melt * 3.8 + drift) * w;
+    pose.squash += melt * 0.38 * w;
+    pose.massShiftY += melt * 1.25;
+    pose.lowerSag += melt * 0.95;
+    pose.glow -= melt * 0.06;
+    pose.shadowTighten += melt * 0.22;
   }
 
   function applySmolderPose(pose, eff) {
-    const k = bump(eff.phase, 0.25, 0.85);
-    const inner = Math.sin(eff.phase * Math.PI * 2.5) * 0.5 + 0.5;
-    pose.hue += k * (eff.hue ?? 20);
-    pose.saturation += k * (eff.sat ?? 0.25);
-    pose.glow += k * inner * 0.3;
-    pose.brightness += k * inner * 0.15;
-    crackGlowMod += k * inner * 0.8;
+    const p = eff.phase;
+    const base = bump(p, 0.22, 0.86);
+    const emberNoise = Math.sin(p * Math.PI * 4.1) * 0.18 + Math.sin(p * Math.PI * 11.3) * 0.08;
+    const flare = Math.exp(-Math.pow((p - 0.64) / 0.06, 2)) * 0.8;
+
+    pose.hue += base * (eff.hue ?? 20) + flare * 6;
+    pose.saturation += base * (eff.sat ?? 0.25) + flare * 0.12;
+    pose.glow += base * 0.18 + emberNoise * 0.08 + flare * 0.24;
+    pose.brightness += base * 0.08 + flare * 0.12;
+    pose.lightX += emberNoise * 24;
+    crackGlowMod += base * 0.45 + flare * 0.9;
   }
 
   function applyHeatRadiancePose(pose, eff) {
@@ -877,11 +939,20 @@ const Ember = (() => {
   }
 
   function applyGustPose(pose, eff) {
-    const k = bump(eff.phase, 0.15, 0.6);
+    const p = eff.phase;
     const dir = eff.dir ?? 1;
     const w = eff._geomWeight ?? 1;
-    pose.x += dir * k * 4.4 * w;
-    pose.rotate += dir * k * 16 * w;
+
+    const blast = p < 0.18 ? easeOutQuad(p / 0.18) : 1;
+    const carry = p >= 0.18 && p < 0.58 ? 1 - ((p - 0.18) / 0.40) * 0.25 : 0.75;
+    const snapBack = p >= 0.58 ? Math.sin((p - 0.58) * Math.PI * 3.5) * (1 - p) * 0.22 : 0;
+    const k = (blast * carry) + snapBack;
+
+    pose.x += dir * k * 5.4 * w;
+    pose.rotate += dir * k * 13 * w;
+    pose.tiltY += dir * k * 1.8;
+    pose.ashShiftX += dir * k * 1.6;
+    pose.glowSkewX += dir * k * 8;
   }
 
   function commitPose(pose, now, dt) {
@@ -892,20 +963,37 @@ const Ember = (() => {
     hazeTrackX += (pose.x * 0.1 - hazeTrackX) * 0.015;
     pose.glow += residualHeat + flashHeat * 0.9 + coreHeatReserve * 0.45;
 
+    // depth bias — glow поднимается, ring уходит
+    pose.z += hoverVal * 0.8 + Math.abs(cursorLean.x) * 0.02;
+    pose.glowLift += pose.glow * 1.6;
+    pose.ringDepth += ringImpulse * 0.18;
+
     // floating bob — медленное парение, отдельное от дыхания
     bobPhase += 0.0008;
     const bobY = Math.sin(bobPhase * 2 * Math.PI / 9) * 1.2;
 
-    // contact shadow — масштаб зависит от высоты
-    const shadowBase = 1 + Math.abs(pose.y) * 0.02 + Math.abs(bobY) * 0.05;
-    const shadowAlpha = clamp(0.45 - Math.abs(pose.y + bobY) * 0.01, 0.15, 0.55);
+    // 3D depth calculations
+    const depthTiltX = clamp((pose.tiltX + cursorLean.tiltX) * 1.15, -18, 18);
+    const depthTiltY = clamp((tiltCurrent * 0.6 + pose.tiltY + cursorLean.tiltY) * 1.2, -18, 18);
+    const depthZ = pose.z + pose.coreLift + hoverVal * 1.5 + gaze.strength * 1.2;
+    const glowDepth = pose.glowLift + hoverVal * 2.2 + windGust * 1.5;
+    const ringDepthVal = pose.ringDepth - hoverVal * 0.8;
+
+    // contact shadow — масштаб зависит от высоты + shadowTighten
+    const shadowBase = 1 + Math.abs(pose.y) * 0.02 + Math.abs(bobY) * 0.05 - pose.shadowTighten * 0.08;
+    const shadowAlpha = clamp(0.45 - Math.abs(pose.y + bobY) * 0.01 + pose.shadowTighten * 0.06, 0.15, 0.62);
     root.style.setProperty('--shadowScale', shadowBase.toFixed(3));
+    root.style.setProperty('--shadowAlpha', shadowAlpha.toFixed(3));
 
     const shiftX = heatOffsetX * 0.6 + pose.x * 0.35 + ashTrackX * 0.3;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.35 + bobY;
 
     root.style.setProperty('--shiftX', shiftX.toFixed(2) + 'px');
     root.style.setProperty('--shiftY', shiftY.toFixed(2) + 'px');
+
+    root.style.setProperty('--depthZ', depthZ.toFixed(2) + 'px');
+    root.style.setProperty('--glowDepth', glowDepth.toFixed(2) + 'px');
+    root.style.setProperty('--ringDepth', ringDepthVal.toFixed(2) + 'px');
 
     const sq = clamp(pose.squash, -1, 1);
     const absSq = Math.abs(sq);
@@ -937,6 +1025,8 @@ const Ember = (() => {
     const gazeGlowY = gaze.y * 0.12 * gaze.strength;
     root.style.setProperty('--glowX', (glowTrackX + gazeGlowX).toFixed(2) + 'px');
     root.style.setProperty('--glowY', (glowTrackY + gazeGlowY).toFixed(2) + 'px');
+    root.style.setProperty('--lightX', (pose.lightX + gaze.x * 0.45).toFixed(2) + '%');
+    root.style.setProperty('--lightY', (pose.lightY + gaze.y * 0.35).toFixed(2) + '%');
 
     root.style.setProperty('--crustX', pose.crustX.toFixed(2) + 'px');
     root.style.setProperty('--crustY', pose.crustY.toFixed(2) + 'px');
@@ -1203,12 +1293,17 @@ const Ember = (() => {
 
     particles.push({
       el, born: performance.now(),
-      dur: rand(2600, 5200),
-      rise: rand(-20, -10),
-      drift: rand(-12, 12),
-      sway: rand(2, 6),
+      dur: rand(3000, 5600),
+      rise: rand(-16, -8),
+      drift: rand(-10, 10) + windGust * 3,
+      sway: rand(4, 10),
       isSpark: false,
       scalePulse: true,
+      swirlFactor: rand(0.6, 1.6),
+      heatLift: rand(0.6, 1.2),
+      rot: rand(-25, 25),
+      rotSpeed: rand(-18, 18),
+      alphaBias: rand(0.75, 1),
     });
   }
 
@@ -1240,12 +1335,17 @@ const Ember = (() => {
 
     particles.push({
       el, born: performance.now(),
-      dur: rand(650, 1300),
-      rise: rand(-30, -16),
-      drift: rand(-8, 8),
-      sway: rand(1, 3),
+      dur: rand(380, 820),
+      rise: rand(-36, -20),
+      drift: rand(-10, 10) + windGust * 15,
+      sway: rand(0.4, 1.8),
       isSpark: true,
       type: sparkType,
+      gravity: 0.038,
+      trail: true,
+      windInfluence: 0.85,
+      rot: rand(-35, 35),
+      rotSpeed: rand(80, 180) * (Math.random() < 0.5 ? -1 : 1),
     });
   }
 
@@ -1267,13 +1367,17 @@ const Ember = (() => {
     const speed = rand(40, 70);
     particles.push({
       el, born: performance.now(),
-      dur: rand(400, 700),
+      dur: rand(420, 720),
       rise: Math.cos(angle) * -speed,
-      drift: Math.sin(angle) * speed * 0.6,
+      drift: Math.sin(angle) * speed * 0.6 + windGust * 12,
       sway: 0,
       isSpark: true,
       type: 'shooting',
       trail: true,
+      gravity: 0.02,
+      windInfluence: 1.1,
+      rot: angle * 60,
+      rotSpeed: rand(120, 220) * (Math.random() < 0.5 ? -1 : 1),
     });
   }
 
@@ -1293,13 +1397,17 @@ const Ember = (() => {
     particles.push({
       el, born: performance.now(),
       dur: rand(1200, 2200),
-      rise: rand(-12, -5),
-      drift: rand(-6, 6),
+      rise: rand(-10, -4),
+      drift: rand(-4, 4) + windGust * 2,
       sway: 0,
       isSpark: false,
       type: 'crumb',
       vy: 0,
-      gravity: 0.025,
+      gravity: 0.034,
+      bounce: rand(0.25, 0.45),
+      rot: rand(-20, 20),
+      rotSpeed: rand(-90, 90),
+      groundHit: false,
     });
   }
 
@@ -1317,12 +1425,12 @@ const Ember = (() => {
       const p = particles[i];
       const t = clamp((now - p.born) / p.dur, 0, 1);
       if (t >= 1) {
-        if (p.type === 'shooting' || (p.isSpark && p.type === 'spark') || p.type === 'crumb') {
+        if (p.type === 'shooting' || p.type === 'crumb' || p.isSpark) {
           const px = parseFloat(p.el.style.left);
           const py = parseFloat(p.el.style.top);
           if (!isNaN(px) && !isNaN(py)) spawnLandingGlow(px, py);
         }
-        if (p.isSpark && t > 0.8 && !p.ashSpawned) {
+        if (p.isSpark && !p.ashSpawned && Math.random() < 0.5) {
           p.ashSpawned = true;
           spawnAshParticle();
         }
@@ -1332,35 +1440,54 @@ const Ember = (() => {
         continue;
       }
 
-      let rise, drift;
-      if (p.type === 'crumb') {
-        p.vy += p.gravity * dt;
+      let rise = 0;
+      let drift = 0;
+      let rot = (p.rot || 0) + (p.rotSpeed || 0) * t;
+      let scale = 1;
+      let opacity = 1;
+
+      if (p.isSpark) {
+        const grav = (p.gravity || 0.03) * t * t * 55;
+        rise = p.rise * easeOutQuad(t) + grav;
+        drift = p.drift * t + windGust * (p.windInfluence || 0.8) * t * 8 + Math.sin(t * Math.PI * 5) * (p.sway || 0);
+        scale = 1 - t * 0.78;
+        opacity = t < 0.14 ? t / 0.14 : 1 - (t - 0.14) / 0.86;
+      } else if (p.type === 'crumb') {
+        p.vy += (p.gravity || 0.03) * dt;
         rise = p.rise * t + p.vy * dt * 0.1;
-        drift = p.drift * t;
-      } else if (p.type === 'shooting') {
-        rise = p.rise * easeOutQuad(t) * 1.5;
-        drift = p.drift * t * 1.5;
+        drift = p.drift * t + windGust * 1.5 * t;
+        scale = 1 - t * 0.45;
+        opacity = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
+
+        if (t > 0.68 && !p.groundHit) {
+          p.groundHit = true;
+          p.vy *= -(p.bounce || 0.35);
+          rot += (Math.random() < 0.5 ? -1 : 1) * 35;
+        }
       } else {
-        rise = p.rise * easeOutQuad(t);
-        drift = p.drift * t + Math.sin(t * Math.PI * 3) * (p.sway || 0);
+        const swirl = Math.sin(t * Math.PI * 2 * (p.swirlFactor || 1)) * (p.sway || 0);
+        const heatLift = (p.heatLift || 0) * intensity * 6 * t * (1 - t * 0.6);
+        rise = p.rise * easeOutQuad(t) - heatLift;
+        drift = p.drift * t + swirl + windGust * 3.5 * t;
+        scale = p.scalePulse && t < 0.55
+          ? (1 - t * 0.28) * (1 + Math.sin(t * Math.PI) * 0.14)
+          : (1 - t * 0.32);
+        opacity = (t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78) * (p.alphaBias || 0.92);
       }
 
-      const opacity = p.type === 'shooting'
-        ? (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85)
-        : (t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78);
-      const scale = p.isSpark ? (1 - t * 0.75) : (p.type === 'crumb' ? (1 - t * 0.5) : (1 - t * 0.3));
-      const finalScale = (p.scalePulse && t < 0.5) ? scale * (1 + Math.sin(t * Math.PI) * 0.2) : scale;
-      const rot = p.isSpark ? t * 50 : 0;
-      const wobble = (p.type === 'spark-broken') ? Math.sin(t * Math.PI * 6) * 15 : 0;
-
+      const wobble = p.type === 'spark-broken' ? Math.sin(t * Math.PI * 7) * 12 : 0;
       let shadow = '';
-      if (p.trail && p.type === 'shooting') {
-        const trailLen = (1 - t) * 12;
-        shadow = `0 ${trailLen.toFixed(0)}px 3px rgba(255,150,50,${(0.6 * (1 - t)).toFixed(2)})`;
+
+      if (p.trail && p.isSpark) {
+        const trailLen = (1 - t) * (p.type === 'shooting' ? 14 : 9);
+        const trailX = (drift * 0.18).toFixed(1);
+        shadow =
+          `${trailX}px ${trailLen.toFixed(1)}px 4px rgba(255,150,50,${(0.65 * (1 - t)).toFixed(2)})`;
       }
 
-      p.el.style.transform = `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${(rot + wobble).toFixed(1)}deg) scale(${finalScale.toFixed(2)})`;
-      p.el.style.opacity = (opacity * (p.isSpark ? 1 : 0.92)).toFixed(3);
+      p.el.style.transform =
+        `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${(rot + wobble).toFixed(1)}deg) scale(${scale.toFixed(2)})`;
+      p.el.style.opacity = clamp(opacity, 0, 1).toFixed(3);
       if (shadow) p.el.style.boxShadow = shadow;
     }
   }
@@ -2782,6 +2909,14 @@ const Ember = (() => {
     updateWind(now, dt);
     updateAttention(now, dt);
     updateMood(now);
+
+    // haze — динамическое обновление с cursor/wind
+    if (hazeEl) {
+      const hazeIntensity = clamp(intensity * 0.45 + coreHeatReserve * 0.22 + heatBoost * 0.35 + windGust * 0.12, 0, 1);
+      hazeEl.style.opacity = hazeIntensity.toFixed(3);
+      hazeEl.style.setProperty('--hazeShiftX', (gaze.x * 0.08 + windGust * 6).toFixed(2) + 'px');
+    }
+
     applyStatus();
     if (heatBoost > 0 && statusState !== 'error') heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
     flashHeat = Math.max(0, flashHeat - dt * 0.0012);

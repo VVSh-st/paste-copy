@@ -11,9 +11,9 @@
   position: absolute;
   left: 50%; bottom: -4px;
   width: 20px; height: 6px;
-  background: radial-gradient(ellipse, rgba(255, 130, 45, 0.45), rgba(200, 70, 15, 0.2) 50%, transparent 75%);
+  background: radial-gradient(ellipse, rgba(255, 130, 45, var(--shadowAlpha, 0.45)), rgba(200, 70, 15, 0.18) 52%, transparent 76%);
   transform: translateX(-50%) scale(var(--shadowScale, 1));
-  filter: blur(2.5px);
+  filter: blur(3px);
   z-index: 0;
   transition: transform 0.3s ease;
 }
@@ -62,6 +62,13 @@
   --ashShiftX: 0px;
   --ashShiftY: 0px;
   --ashRot: 0deg;
+  --depthZ: 0px;
+  --glowDepth: 0px;
+  --ringDepth: 0px;
+  --lightX: 0%;
+  --lightY: 0%;
+  --shadowAlpha: 0.45;
+  --hazeShiftX: 0px;
 
   position: relative;
   width: 38px;
@@ -69,11 +76,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  perspective: 220px;
+  perspective: 320px;
+  transform-style: preserve-3d;
   cursor: default;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  will-change: transform;
   z-index: 2;
   overflow: visible;
 }
@@ -84,7 +91,15 @@
   left: 50%;
   width: 30px;
   height: 30px;
-  transform: translate(calc(-50% + var(--ringParallaxX, 0px)), calc(-50% + var(--ringParallaxY, 0px))) rotate(var(--ringRot, 0deg)) scale(var(--ringPulse, 1));
+  transform:
+    translate(calc(-50% + var(--ringParallaxX, 0px)), calc(-50% + var(--ringParallaxY, 0px)))
+    translateZ(var(--ringDepth, 0px))
+    rotateX(calc(var(--tiltX) * 0.35))
+    rotateY(calc(var(--tiltY) * 0.35))
+    rotate(var(--ringRot, 0deg))
+    scale(var(--ringPulse, 1));
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
   opacity: calc(0.14 + var(--ringOpacity) * 0.82 * var(--spawnRing));
   transition: opacity 0.4s ease;
   pointer-events: none;
@@ -102,6 +117,7 @@
   background: rgba(80, 40, 20, 0.4);
   transform:
     rotate(calc(var(--i, 0) * 30deg + var(--seg-tilt, 0deg)))
+    translateZ(calc(var(--ringDepth, 0px) * 0.6))
     translateX(calc(var(--ringExpandX, 0px) * 0.3))
     translateY(calc(-14px - var(--seg-push, 0px) - var(--ringExpand, 0px)))
     scaleX(var(--seg-scaleX, 1))
@@ -131,26 +147,31 @@
   height: 20px;
   border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%;
   background:
+    radial-gradient(circle at calc(50% + var(--lightX, 0%)) calc(38% + var(--lightY, 0%)),
+      rgba(255, 245, 190, 0.28) 0%,
+      rgba(255, 210, 120, 0.14) 12%,
+      transparent 28%),
     radial-gradient(circle at 50% 45%, hsl(var(--coreHue, 35), 60%, var(--coreLight, 50%)) 0%, #190a04 60%, #0c0402 100%);
   transform:
     translate(var(--shiftX), var(--shiftY))
+    translateZ(var(--depthZ, 0px))
     translate(var(--eggX, 0px), var(--eggY, 0px))
     translate(calc(var(--cursorLeanX, 0) * 1px), calc(var(--cursorLeanY, 0) * 1px))
     scale(
       calc((var(--breathScale) - var(--cursorSquish, 0) * 0.3 - var(--eggSquish, 0) * 0.3) * var(--scaleX) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1)),
       calc((var(--breathScale) + var(--cursorSquish, 0) * 0.15 + var(--eggSquish, 0) * 0.15) * var(--scaleY) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1))
     )
-    rotate(calc(var(--rotation) * 0.4))
-    rotateX(calc(var(--cursorTiltX, 0) * 0.6deg))
-    rotateY(calc(var(--cursorTiltY, 0) * 0.6deg))
-    rotateX(var(--eggTiltX, 0deg))
-    rotateY(var(--eggTiltY, 0deg));
+    rotateZ(calc(var(--rotation) * 0.4))
+    rotateX(calc(var(--cursorTiltX, 0) * 0.9deg + var(--eggTiltX, 0deg) + var(--tiltX) * 0.55))
+    rotateY(calc(var(--cursorTiltY, 0) * 0.9deg + var(--eggTiltY, 0deg) + var(--tiltY) * 0.7));
+  transform-style: preserve-3d;
   filter: brightness(var(--brightness));
   opacity: var(--spawnCore);
   box-shadow:
-    inset 0 0 5px rgba(20, 6, 0, 0.8),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.6),
-    inset 0 -3px 7px rgba(140, 50, 12, 0.3),
+    inset 0 1px 3px rgba(255, 220, 150, 0.12),
+    inset -2px -3px 6px rgba(0, 0, 0, 0.55),
+    inset 3px 0 7px rgba(255, 130, 40, 0.12),
+    0 2px 4px rgba(40, 12, 4, 0.35),
     0 0 4px rgba(100, 35, 0, 0.6),
     0 0 10px rgba(255, 140, 50, 0.25);
   animation: emberDeform 4s ease-in-out infinite;
@@ -209,9 +230,11 @@
   mix-blend-mode: multiply;
   pointer-events: none;
   transform:
+    translateZ(1px)
     translate(var(--crustX, 0px), var(--crustY, 0px))
     rotate(var(--crustRot, 0deg))
     scale(var(--crustScale, 1));
+  opacity: 0.92;
   background:
     radial-gradient(circle at 24% 28%, rgba(15, 6, 2, 0.95) 0%, transparent 30%),
     radial-gradient(circle at 72% 34%, rgba(12, 5, 2, 0.9) 0%, transparent 26%),
@@ -315,15 +338,16 @@
     rgba(150, 40, 10, 0.12) 70%,
     transparent 90%
   );
-  filter: blur(calc(var(--glowBlur) + 2px));
+  filter: blur(calc(var(--glowBlur) + 2px)) saturate(1.08);
   opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
   transform:
     translate(var(--glowX, 0px), var(--glowY, 0px))
+    translateZ(var(--glowDepth, 0px))
     scale(calc(var(--glowScale) + 0.05))
     skewX(var(--glowSkewX, 0deg))
     skewY(var(--glowSkewY, 0deg))
-    rotateX(var(--tiltX))
-    rotateY(var(--tiltY));
+    rotateX(calc(var(--tiltX) * 0.45))
+    rotateY(calc(var(--tiltY) * 0.45));
   z-index: -1;
   pointer-events: none;
   animation: glowFlicker 3s ease-in-out infinite;
@@ -337,14 +361,18 @@
   left: 50%;
   width: 10px;
   height: 22px;
-  transform: translateX(-50%);
+  transform:
+    translateX(calc(-50% + var(--hazeShiftX, 0px)))
+    translateZ(-8px)
+    rotateX(calc(var(--tiltX) * -0.15))
+    rotateY(calc(var(--tiltY) * -0.15));
   background: linear-gradient(to top,
     rgba(255, 180, 90, 0.15),
     rgba(255, 150, 60, 0.08) 40%,
     transparent 100%
   );
   filter: blur(3px);
-  opacity: calc(var(--intensity, 1) * 0.6);
+  opacity: calc(var(--intensity, 1) * 0.55 + var(--glow, 1) * 0.08);
   mask: linear-gradient(to top, white 0%, transparent 100%);
   -webkit-mask: linear-gradient(to top, white 0%, transparent 100%);
   animation: hazeDrift 4s ease-in-out infinite;
@@ -383,30 +411,32 @@
   position: absolute;
   width: 2px;
   height: 2px;
-  border-radius: 50%;
-  background: rgba(180, 170, 165, 0.95);
-  box-shadow: 0 0 4px rgba(200, 180, 170, 0.6), 0 0 8px rgba(180, 140, 100, 0.3);
+  border-radius: 40% 60% 50% 50%;
+  background: rgba(140, 130, 125, 0.72);
+  box-shadow: none;
+  filter: blur(0.2px);
   opacity: 0;
 }
 
 .ember-ash.dark {
-  background: rgba(90, 55, 30, 0.85);
-  box-shadow: 0 0 3px rgba(160, 90, 40, 0.35);
+  background: rgba(62, 40, 24, 0.82);
+  box-shadow: none;
 }
 
 .ember-ash.bright {
-  background: rgba(255, 200, 130, 1);
-  box-shadow: 0 0 5px rgba(255, 170, 80, 0.8), 0 0 11px rgba(255, 120, 40, 0.4);
+  background: rgba(220, 180, 120, 0.88);
+  box-shadow: 0 0 3px rgba(255, 170, 80, 0.35);
 }
 
 .ember-spark {
   position: absolute;
   border-radius: 50%;
-  background: linear-gradient(to top, rgba(255, 170, 70, 1), rgba(255, 235, 170, 1));
+  background: radial-gradient(circle, rgba(255,240,180,1) 0%, rgba(255,160,50,1) 60%, transparent 100%);
   box-shadow:
-    0 0 6px rgba(255, 200, 100, 1),
-    0 0 14px rgba(255, 150, 50, 0.8),
-    0 0 24px rgba(255, 100, 20, 0.4);
+    0 0 4px rgba(255, 200, 100, 1),
+    0 0 10px rgba(255, 130, 40, 0.9),
+    0 0 20px rgba(255, 80, 20, 0.5);
+  filter: saturate(1.1);
   opacity: 0;
 }
 
