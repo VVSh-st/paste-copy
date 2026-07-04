@@ -354,6 +354,41 @@
     };
   }
 
+  function rememberBlockNodes(blocks = [], snapshot = {}) {
+    const ts = Number(snapshot.ts || now());
+    const tabId = String(snapshot.tabId || '');
+    const tabName = String(snapshot.tabName || '').slice(0, 80);
+
+    blocks.forEach(block => {
+      const hash = String(block?.hash || '');
+      if (!hash) return;
+
+      const current = graph.blockNodes[hash] || {
+        hash,
+        firstSeenAt: ts,
+        seen: 0,
+        tabs: {}
+      };
+
+      graph.blockNodes[hash] = {
+        ...current,
+        hash,
+        title: String(block.title || current.title || 'Блок').slice(0, 80),
+        titleKey: block.titleKey || normalizeTitle(block.title || current.title),
+        role: block.role || current.role || titleRole(block.title),
+        chars: Math.max(0, Number(block.chars || 0)),
+        tokens: Math.max(0, Number(block.tokens || 0)),
+        column: Number.isFinite(Number(block.column)) ? Number(block.column) : 0,
+        kind: block.kind || current.kind || 'text',
+        seen: (Number(current.seen) || 0) + 1,
+        usedInFinal: Number(current.usedInFinal) || 0,
+        firstSeenAt: Number(current.firstSeenAt || ts),
+        lastSeenAt: ts,
+        tabs: { ...(isPlainObject(current.tabs) ? current.tabs : {}), [tabId || 'unknown']: tabName }
+      };
+    });
+  }
+
   function trimObjectByLastSeen(obj, max) {
     const entries = Object.entries(obj || {});
     if (entries.length <= max) return obj;
@@ -511,6 +546,8 @@
       blockRoles: blocks.map(b => b.role || titleRole(b.title)).slice(0, MAX_SNAPSHOT_BLOCK_META)
     };
 
+    rememberBlockNodes(blocks, snapshot);
+
     const relationBlocks = [];
     const seenHashes = new Set();
     blocks.forEach(b => {
@@ -595,9 +632,10 @@
 
   function structureSimilarity(a, b) {
     const cacheId = item => {
-      const stableId = item?.id || item?.textHash || '';
-      if (stableId) return stableId;
       const signature = [
+        item?.id && item.id !== 'current' ? item.id : '',
+        item?.textHash || '',
+        item?.structureHash || '',
         item?.structureSignature || '',
         item?.roleSignature || '',
         Array.isArray(item?.blockHashes) ? item.blockHashes.join('|') : '',
@@ -1312,6 +1350,15 @@
   function importData(raw) {
     try {
       const nextGraph = normalizeGraph(raw);
+      nextGraph.counters = {
+        snapshots: Array.isArray(nextGraph.promptSnapshots) ? nextGraph.promptSnapshots.length : 0,
+        namedSnapshots: Array.isArray(nextGraph.promptSnapshots)
+          ? nextGraph.promptSnapshots.filter(s => String(s.name || '').trim()).length
+          : 0,
+        blockFingerprints: Object.keys(nextGraph.blockNodes || {}).length,
+        relations: Object.keys(nextGraph.relations?.oftenWith || {}).length
+          + Object.keys(nextGraph.relations?.derivedFrom || {}).length
+      };
       nextGraph.updatedAt = now();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextGraph));
       graph = nextGraph;
