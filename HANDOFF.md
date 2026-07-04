@@ -137,9 +137,10 @@ aaef441 notepad: GPT audit round 5 — 8 fixes (_openRenameOnTab sync, ondblclic
 5391c60 intelligence-core: GPT audit round 4 — 9 fixes (acceptSuggestion catch, normalizePayload strip content, Array.isArray safety, computeFinality settled, trackEdit tabId key, getContext skip empty, openReport array validation, template ID random, previewCompanionBlock selectable)
 1653646 intelligence-core: GPT audit round 5 — 10 fixes (makeContextKey String guard, personalizeConfidence NaN, findCurrentBlockByHash subtabs, formatLocalDate, sanitizeReportText, snapshot throttle, acceptSuggestion tab check, FINALITY_SIGNAL_WINDOW_MS, openPreparedReport validation, track skip report events)
 f4fffe3 intelligence-core: GPT audit round 6 (final) — 10 fixes (deep clone suggestions, contextTextHash stale check, stableStringify seen.delete, getStructureSections idx+hash, loadTemplates Array.isArray, structuredClone fallback, renderReportLines limits, getContext blockStructureKey, recentEvents Array.isArray, insertBlockNear dedup)
+368b76e project-graph: GPT audit round 1 — 7 fixes (import sanitization, safe save/export, pair dedup+limit, trimGraph guard, similarity cache)
 ```
 
-**Итого: 360 фиксов за 33 раунда аудита**
+**Итого: 367 фиксов за 34 раунда аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
@@ -151,6 +152,7 @@ f4fffe3 intelligence-core: GPT audit round 6 (final) — 10 fixes (deep clone su
 - ❌ **ТЕКУЩИЙ БАГ:** подсветка текущей строки смещается вниз к 400-й строке ( drift накапливается)
 - ⏳ app.js: ожидает аудит (969 строк)
 - ✅ **intelligence-core.js: аудит завершён** (6 раундов, 69 фиксов)
+- 🔄 **project-graph.js: раунд 1/2+** (7 фиксов, ожидает следующий раунд)
 
 ### Flowchart — Query menu
 
@@ -300,6 +302,7 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `translator.js` (~763 строк) — Google/MS/Legacy translate, GPT audit fixes (78 fixes, 5 раундов)
 - `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (83 fixes, 5 раундов)
 - `intelligence-core.js` (~1699 строк) — ядро интеллектуальных подсказок, scoring, prediction, GPT audit fixes (69 fixes, 6 раундов)
+- `project-graph.js` (~1340 строк) — граф проекта для Intelligence Layer, snapshot capture, similarity, GPT audit fixes (7 fixes, 1 раунд)
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
 - `prompt-translator-review.md` — GPT audit prompt для translator.js
 - `prompt-notepad-review.md` — GPT audit prompt для notepad.js
