@@ -97,6 +97,8 @@ const Ember = (() => {
   const POOL_SIZE = 40;
   let particlePool = [];
   let freeParticleIndices = [];
+  let glowPool = [];
+  let freeGlowEls = [];
   let poolInited = false;
 
   let shimmerActive = false;
@@ -190,6 +192,7 @@ const Ember = (() => {
   let lastFrame = 0;
   let reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let handlers = {};
+  let listenersBound = false;
   let onClickCallback = null;
   const timers = new Set();
 
@@ -426,6 +429,7 @@ const Ember = (() => {
     state.sourceTabId = currentTabId;
     saveState();
     broadcast();
+    if (tooltipEl) showTooltip();
   }
 
   function setStatus(type) {
@@ -440,6 +444,7 @@ const Ember = (() => {
     } else {
       statusUntil = 0;
     }
+    if (tooltipEl) showTooltip();
   }
 
   function applyStatus() {
@@ -1317,6 +1322,14 @@ const Ember = (() => {
       particlePool.push({ el, free: true });
       freeParticleIndices.push(i);
     }
+    for (let i = 0; i < 8; i++) {
+      const el = document.createElement('div');
+      el.className = 'ember-landing-glow';
+      el.style.display = 'none';
+      particleLayer.appendChild(el);
+      glowPool.push(el);
+      freeGlowEls.push(el);
+    }
     poolInited = true;
   }
 
@@ -1497,14 +1510,18 @@ const Ember = (() => {
 
   function spawnLandingGlow(x, y) {
     if (!particleLayer || reduceMotion || lowFpsMode) return;
-    const el = document.createElement('div');
-    el.className = 'ember-landing-glow';
+    const el = freeGlowEls.pop();
+    if (!el) return;
+    el.style.display = '';
     el.style.left = x + '%';
     el.style.top = y + '%';
-    particleLayer.appendChild(el);
+    void el.offsetWidth;
+    el.style.animation = 'none';
+    el.style.animation = '';
     defer(() => {
       styleCache.delete(el);
-      el.remove();
+      el.style.display = 'none';
+      freeGlowEls.push(el);
     }, 250);
   }
 
@@ -2820,6 +2837,7 @@ const Ember = (() => {
   }
 
   function updateRingSegments(now) {
+    if (segmentEffects.length) return;
     if (Math.random() < 0.02) {
       const start = Math.floor(rand(0, 12));
       const len = Math.floor(rand(2, 5));
@@ -2846,6 +2864,16 @@ const Ember = (() => {
     setVar(coreEl, '--eggSquish', egg.squish.toFixed(3));
     setVar(coreEl, '--eggTiltX', egg.tiltX.toFixed(1) + 'deg');
     setVar(coreEl, '--eggTiltY', egg.tiltY.toFixed(1) + 'deg');
+  }
+
+  function clearEggVars() {
+    if (!coreEl) return;
+    ['--eggX', '--eggY', '--eggScale', '--eggSquish', '--eggTiltX', '--eggTiltY']
+      .forEach(name => {
+        const map = styleCache.get(coreEl);
+        if (map) map.delete(name);
+        coreEl.style.removeProperty(name);
+      });
   }
 
   function update(now, dt) {
@@ -2945,12 +2973,7 @@ const Ember = (() => {
       updateParticles(now, dt);
       return;
     }
-    coreEl.style.removeProperty('--eggX');
-    coreEl.style.removeProperty('--eggY');
-    coreEl.style.removeProperty('--eggScale');
-    coreEl.style.removeProperty('--eggSquish');
-    coreEl.style.removeProperty('--eggTiltX');
-    coreEl.style.removeProperty('--eggTiltY');
+    clearEggVars();
 
     // --- settling → idle → wakeUp ---
     if (focusState === 'settling') {
@@ -2970,15 +2993,15 @@ const Ember = (() => {
       breathScale += (1 + Math.sin(now * 0.0015) * 0.015 - breathScale) * 0.06;
       peek.state = 'idle';
 
-      root.style.setProperty('--breathScale', breathScale.toFixed(4));
-      root.style.setProperty('--shiftX', '0px');
-      root.style.setProperty('--shiftY', '0px');
-      root.style.setProperty('--scaleX', (breathScale * breathScale).toFixed(4));
-      root.style.setProperty('--scaleY', (breathScale * breathScale).toFixed(4));
-      root.style.setProperty('--rotation', '0deg');
-      root.style.setProperty('--glow', (intensity * 0.6).toFixed(3));
-      root.style.setProperty('--brightness', (0.6 + intensity * 0.2).toFixed(3));
-      root.style.setProperty('--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
+      setVar(root, '--breathScale', breathScale.toFixed(4));
+      setVar(root, '--shiftX', '0px');
+      setVar(root, '--shiftY', '0px');
+      setVar(root, '--scaleX', (breathScale * breathScale).toFixed(4));
+      setVar(root, '--scaleY', (breathScale * breathScale).toFixed(4));
+      setVar(root, '--rotation', '0deg');
+      setVar(root, '--glow', (intensity * 0.6).toFixed(3));
+      setVar(root, '--brightness', (0.6 + intensity * 0.2).toFixed(3));
+      setVar(root, '--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
 
       if (sp >= 1) {
         focusState = 'idle';
@@ -3008,16 +3031,16 @@ const Ember = (() => {
       const idleGlow = intensity * 0.6 + heatBoost * 0.25;
       const idleBright = 0.55 + intensity * 0.25;
 
-      root.style.setProperty('--breathScale', breathScale.toFixed(4));
-      root.style.setProperty('--shiftX', '0px');
-      root.style.setProperty('--shiftY', '0px');
-      root.style.setProperty('--scaleX', (idleBreath).toFixed(4));
-      root.style.setProperty('--scaleY', (idleBreath).toFixed(4));
-      root.style.setProperty('--rotation', '0deg');
-      root.style.setProperty('--glow', idleGlow.toFixed(3));
-      root.style.setProperty('--brightness', idleBright.toFixed(3));
-      root.style.setProperty('--coreHue', (15 + intensity * 35).toFixed(1));
-      root.style.setProperty('--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
+      setVar(root, '--breathScale', breathScale.toFixed(4));
+      setVar(root, '--shiftX', '0px');
+      setVar(root, '--shiftY', '0px');
+      setVar(root, '--scaleX', (idleBreath).toFixed(4));
+      setVar(root, '--scaleY', (idleBreath).toFixed(4));
+      setVar(root, '--rotation', '0deg');
+      setVar(root, '--glow', idleGlow.toFixed(3));
+      setVar(root, '--brightness', idleBright.toFixed(3));
+      setVar(root, '--coreHue', (15 + intensity * 35).toFixed(1));
+      setVar(root, '--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
 
       setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
       setVar(coreEl, '--cursorLeanX', '0');
@@ -3355,6 +3378,7 @@ const Ember = (() => {
   }
 
   function setupEventListeners() {
+    if (listenersBound || !root) return;
     handlers.mouseenter = () => { hover = true; syncAccessibleLabel(true); };
     handlers.mouseleave = () => { hover = false; hideTooltip(); };
     handlers.rootFocus = () => { hover = true; syncAccessibleLabel(true); };
@@ -3400,7 +3424,14 @@ const Ember = (() => {
       defer(() => { toast.classList.remove('show'); defer(() => toast.remove(), 300); }, 1500);
     };
     handlers.keydown = (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlers.click(); }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        heatBoost = 0.4;
+        for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
+        for (let i = 0; i < 3; i++) defer(() => spawnShootingSpark(), i * 120);
+        showTooltip();
+        if (typeof onClickCallback === 'function') onClickCallback();
+      }
     };
 
     root.addEventListener('mouseenter', handlers.mouseenter);
@@ -3481,6 +3512,7 @@ const Ember = (() => {
     window.addEventListener('focus', handlers.windowFocus);
     window.addEventListener('blur', handlers.windowBlur);
     document.addEventListener('visibilitychange', handlers.visibilitychange);
+    listenersBound = true;
   }
 
   // ---------- инициализация ----------
@@ -3566,7 +3598,10 @@ const Ember = (() => {
     }
     particlePool.forEach(s => s.el.remove());
     particlePool = [];
+    glowPool.forEach(el => el.remove());
+    glowPool = [];
     freeParticleIndices = [];
+    freeGlowEls = [];
     poolInited = false;
     activeSparks = 0;
     glowTrackX = 0; glowTrackY = 0;
@@ -3609,6 +3644,7 @@ const Ember = (() => {
     if (handlers.windowBlur) window.removeEventListener('blur', handlers.windowBlur);
     if (handlers.visibilitychange) document.removeEventListener('visibilitychange', handlers.visibilitychange);
     handlers = {};
+    listenersBound = false;
 
     if (root) { root.remove(); root = null; }
     segments = [];
