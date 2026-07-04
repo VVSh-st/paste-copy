@@ -1,4 +1,4 @@
-# Prompt: project-graph.js — GPT audit round 2
+# Prompt: project-graph.js — GPT audit round 3
 
 Ты — GPT-5, coding agent. Проведи аудит файла `project-graph.js`.
 
@@ -8,14 +8,17 @@
 - Используется Intelligence-core.js для подсказок, сравнений, таймлайнов
 
 ## Исключить (уже исправлено в предыдущих раундах)
-- Sanitize import: sanitizeSnapshot, isPlainObject, safeStr, limitedEntriesObject, sanitizeImportedGraph
+- Sanitize import: sanitizeSnapshot, isPlainObject, safeStr, limitedEntriesObject, sanitizeImportedGraph, sanitizeBaselines
 - Safe save: copy→JSON.stringify→assign updatedAt on success, retry on non-quota error
 - Safe export: try/catch fallback to empty normalizeGraph({})
+- Safe import: serialize→save→assign to graph on success (importData)
 - Pair dedup: dedup blocks by hash before O(n²) loop, pair limit (2×maxRelations), skip self-pairs
 - trimGraph guard: only call when limits actually exceeded, else just updateCounters()
-- structureSimilarity cache: Map keyed by sorted id/textHash pairs, cleared on reset/import
+- structureSimilarity cache: Map keyed by cacheId (hash of signature+roleSignature+blockHashes+blockCount fallback), cleared on reset/import
 - normalizeGraph: blockNodes/relations use limitedEntriesObject with retention limits
-- exportData/importData: try/catch on serialization
+- baselines.byTabId: sanitizeBaselines (isPlainObject, pinnedAt sort, field validation, max 200)
+- counters.snapshots: set to promptSnapshots.length in updateCounters(), removed +=1 from captureSnapshot
+- blockHashes in normalizeTimelineSnapshot: limit 64 (was 16)
 
 ## Что искать (НОВЫЕ проблемы, не из списка выше)
 1. **Критично**: data loss, race conditions, silent corruption
