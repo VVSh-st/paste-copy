@@ -114,6 +114,25 @@
     );
   }
 
+  function sanitizeBaselines(raw, max = 200) {
+    if (!isPlainObject(raw)) return {};
+    return Object.fromEntries(
+      Object.entries(raw)
+        .filter(([tabId, ref]) => tabId && isPlainObject(ref))
+        .sort((a, b) => Number(b[1]?.pinnedAt || 0) - Number(a[1]?.pinnedAt || 0))
+        .slice(0, max)
+        .map(([tabId, ref]) => [safeStr(tabId, 80), {
+          snapshotId: safeStr(ref.snapshotId, 80),
+          tabId: safeStr(ref.tabId || tabId, 80),
+          name: safeStr(ref.name, 80),
+          textHash: safeStr(ref.textHash, 80),
+          structureHash: safeStr(ref.structureHash, 80),
+          pinnedAt: Number(ref.pinnedAt || 0)
+        }])
+        .filter(([, ref]) => ref.snapshotId && ref.tabId)
+    );
+  }
+
   let _simCache = new Map();
 
   function loadGraph() {
@@ -169,7 +188,7 @@
         derivedFrom: limitedEntriesObject(g.relations?.derivedFrom, ret.maxRelations)
       },
       baselines: {
-        byTabId: { ...(g.baselines?.byTabId || {}) }
+        byTabId: sanitizeBaselines(g.baselines?.byTabId)
       },
       retention: ret
     };
@@ -341,6 +360,7 @@
   }
 
   function updateCounters() {
+    graph.counters.snapshots = Array.isArray(graph.promptSnapshots) ? graph.promptSnapshots.length : 0;
     graph.counters.blockFingerprints = Object.keys(graph.blockNodes || {}).length;
     graph.counters.relations = Object.keys(graph.relations?.oftenWith || {}).length + Object.keys(graph.relations?.derivedFrom || {}).length;
     graph.counters.namedSnapshots = graph.promptSnapshots.filter(snapshot => String(snapshot.name || '').trim()).length;
@@ -556,7 +576,6 @@
     }
 
     graph.promptSnapshots.push(snapshot);
-    graph.counters.snapshots += 1;
     const ret = normalizeRetention(graph.retention || {});
     if (
       graph.promptSnapshots.length > ret.maxSnapshots
@@ -592,10 +611,23 @@
   }
 
   function structureSimilarity(a, b) {
-    const aId = a?.id || a?.textHash || '';
-    const bId = b?.id || b?.textHash || '';
-    const ck = aId < bId ? aId + '::' + bId : bId + '::' + aId;
-    if (_simCache.has(ck)) return _simCache.get(ck);
+    const cacheId = item => {
+      const stableId = item?.id || item?.textHash || '';
+      if (stableId) return stableId;
+      const signature = [
+        item?.structureSignature || '',
+        item?.roleSignature || '',
+        Array.isArray(item?.blockHashes) ? item.blockHashes.join('|') : '',
+        Number(item?.blockCount || 0)
+      ].join('~');
+      return signature.trim() ? hashText(signature) : '';
+    };
+    const aId = cacheId(a);
+    const bId = cacheId(b);
+    const ck = aId && bId
+      ? (aId < bId ? aId + '::' + bId : bId + '::' + aId)
+      : '';
+    if (ck && _simCache.has(ck)) return _simCache.get(ck);
 
     const titleA = String(a?.structureSignature || '').split(' > ').filter(Boolean);
     const titleB = String(b?.structureSignature || '').split(' > ').filter(Boolean);
@@ -608,8 +640,10 @@
     const countScore = 1 - Math.min(1, Math.abs(countA - countB) / denom);
     const semanticScore = Math.max(titleScore, roleScore * 0.94);
     const score = Number(Math.max(semanticScore * 0.48 + blockScore * 0.34 + countScore * 0.18, blockScore, roleScore * 0.82).toFixed(2));
-    if (_simCache.size > 1000) _simCache.clear();
-    _simCache.set(ck, score);
+    if (ck) {
+      if (_simCache.size > 1000) _simCache.clear();
+      _simCache.set(ck, score);
+    }
     return score;
   }
 
@@ -983,7 +1017,7 @@
       tokens: Number(snapshot.tokens || 0),
       blockTitles: titles.slice(0, 16),
       blockRoles: roles.slice(0, 16),
-      blockHashes: Array.isArray(snapshot.blockHashes) ? snapshot.blockHashes.slice(0, 16) : [],
+      blockHashes: Array.isArray(snapshot.blockHashes) ? snapshot.blockHashes.slice(0, 64) : [],
       roleLabels: roles.slice(0, 16).map(role => roleLabel(role, role))
     };
   }
@@ -1293,13 +1327,19 @@
   }
 
   function importData(raw) {
-    graph = normalizeGraph(raw);
-    graph.updatedAt = now();
-    lastSnapshotAt = 0;
-    lastSnapshotHash = '';
-    _simCache.clear();
-    saveNow();
-    return graph;
+    try {
+      const nextGraph = normalizeGraph(raw);
+      nextGraph.updatedAt = now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextGraph));
+      graph = nextGraph;
+      lastSnapshotAt = 0;
+      lastSnapshotHash = '';
+      _simCache.clear();
+      return graph;
+    } catch (err) {
+      console.warn('[ProjectGraph] import failed:', err);
+      return null;
+    }
   }
 
   window.ProjectGraph = {
