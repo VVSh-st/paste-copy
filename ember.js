@@ -3355,9 +3355,9 @@ const Ember = (() => {
   }
 
   function setupEventListeners() {
-    handlers.mouseenter = () => { hover = true; syncAccessibleLabel(true); showTooltip(); };
+    handlers.mouseenter = () => { hover = true; syncAccessibleLabel(true); };
     handlers.mouseleave = () => { hover = false; hideTooltip(); };
-    handlers.rootFocus = () => { hover = true; syncAccessibleLabel(true); showTooltip(); };
+    handlers.rootFocus = () => { hover = true; syncAccessibleLabel(true); };
     handlers.rootBlur = () => { hover = false; hideTooltip(); };
     handlers.contextmenu = (e) => {
       if (!allowTestMode) return;
