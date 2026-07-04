@@ -20,7 +20,115 @@
 - **дропдаун** = dropdown
 - **блок** = block (элемент UI)
 
-## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-03)
+## Status — ТЕКУЩАЯ СЕССИЯ (2026-07-04)
+
+### Ember.js + ember-styles.css — GPT аудит завершён (2026-07-04)
+
+15 раундов аудита, ~180 фиксов. Ключевые изменения:
+
+**Критичные:**
+- BroadcastChannel: tabId !== currentTabId (принимал от СЕБЯ, не от других вкладок)
+- storage sync: слушает по STORAGE_KEY_PREFIX (не точный tabId key)
+- switchTab(): setupBroadcast() + prevAppliedRemaining reset
+- initParticlePool(): после DOM mount
+- enableTestMode: !!value вместо !value
+- setupEventListeners: listenersBound guard от дублей
+- zone cleanup: isExtraZone race condition fix
+
+**3D-рендеринг:**
+- createPose: z, coreLift, glowLift, ringDepth, lightX, lightY, shadowTighten
+- commitPose: depthTiltX/Y, depthZ, glowDepth, ringDepthVal, gaze-driven lighting
+- CSS: perspective 320px, preserve-3d на .ember, .ember-core, .ember-ring
+- translateZ на core, glow, ring, crust, haze, segments
+- coreEl background: light gradient с --lightX/--lightY
+
+**Motion signatures (8 функций):**
+- applySighPose: тяжёлый вздох с coreLift, shadowTighten
+- applyCalmBurnPose: микро-glitch, lightX/lightY flicker
+- applyWigglePose: burst/jitter/settle, sideBulge
+- applyTiltPose: асимметричный lean, massShiftX
+- applyStretchPose: extend+rebound, scaleX compression
+- applySleepySagPose: drift, glow dimming
+- applySmolderPose: emberNoise, flare spikes
+- applyGustPose: blast/carry/snapBack, ashShiftX
+
+**Per-type частицы:**
+- ash: swirlFactor, heatLift, rotSpeed, alphaBias
+- spark: gravity, windInfluence, trail, rotSpeed
+- shootingSpark: gravity, windInfluence, rotSpeed
+- crumb: bounce, rotSpeed, groundHit
+- anomaly: редкие искры из правого верхнего угла в центр экрана
+- anomaly-dust: микро-пыль от anomaly
+
+**Performance:**
+- setVar() style cache: все hot path → cache Map
+- setStyle(): cache для direct style property writes
+- acquireEl: free-list O(1) через freeParticleIndices stack
+- releaseEl: push back to free-list
+- updateParticles: in-place filter (без нового массива)
+- applySegments: skip при неизменном remaining
+- sampleCaretPosition: skip при не typing
+- spawnLandingGlow: пул из 8 элементов
+- spawnLandingGlow: skip в reduced/low-fps
+- updateHeatZones: cleanup excess zones >3
+- updateRingSegments: skip при segmentEffects active
+- CSS will-change: conditional на low-fps class
+- CSS shimmer: disabled в low-fps
+
+**Reduced motion:**
+- Early return с полным набором CSS vars
+- rAF в setTimeout callback
+- Skip mouse/caret sampling
+- Skip hotspots/wind/attention/particles/shimmer
+
+**Tooltip:**
+- hideTooltip(): centralized lifecycle
+- Click-only (не по hover)
+- Refresh при status/edit
+- mouseleave/rootBlur: hideTooltip()
+- Reuse DOM element
+
+**State sync:**
+- normalizeState: sourceTabId
+- applyRemoteState: deterministic tie-break (updatedAt > lastEditTime > sourceTabId)
+- notifyEdit: sourceTabId
+
+**Safety:**
+- destroyed flag: guard setTimeout после destroy
+- animate: destroyed || !root guard
+- Test mode: auto-stop на blur/hidden
+
+### Git коммиты (ember.js)
+
+```
+501aa2d ember.js: anomaly sparks — rare living particles from upper-right
+a40aabd ember.js R10: listenersBound, glow pool, tooltip refresh, keyboard UX, CSS perf
+fb56266 ember.js: tooltip only on click — remove showTooltip from mouseenter/rootFocus
+a048985 ember.js R9: tooltip lifecycle, reduced motion scheduler, state merge, perf
+865856d ember.js R8-fix: ring/segments/sparks regression fix
+17b633c ember.js: fix updateHeatZones .filter(Boolean) on undefined
+9cb2fe9 ember.js R8: memory leaks, state sync, free-list, tooltip guard, shimmer
+574320d ember.js R7: UX tooltip fixes, destroyed flag, syncAccessibleLabel
+09be34b ember.js R5: BroadcastChannel fix, setVar hot path, reduced motion pipeline, perf
+dd0d240 ember.js R4: safe destroy, idempotent broadcast, style cache, perf fixes
+5ff4b80 ember.js R3: 3D depth, differentiated motion signatures, per-type particle physics
+c62df60 ember.js feel-alive pass: temperament, gaze, anticipation, split heat, breathing
+4e0c9fe ember.js R2: defer timers, dblclick cleanup, state versioning, pool limit
+```
+
+**Итого ember.js: ~180 фиксов за 15 раундов аудита + feel-alive pass**
+
+### Текущий статус аудитов
+
+- ✅ blocks.js: аудит завершён
+- ✅ state.js: аудит завершён
+- ✅ ai-transform.js: аудит завершён
+- ✅ anchors.js: аудит завершён
+- ✅ translator.js: аудит завершён (5 раундов, 78 фиксов)
+- ✅ notepad.js: аудит завершён (5 раундов, 83 фикса)
+- ✅ intelligence-core.js: аудит завершён (6 раундов, 69 фиксов)
+- ✅ project-graph.js: аудит завершён (5 раундов, 29 фиксов)
+- ✅ **ember.js + ember-styles.css: аудит завершён** (15 раундов, ~180 фиксов)
 
 ### Column resize + independent scroll fix (2026-07-03)
 
@@ -144,7 +252,7 @@ f64d37a project-graph: GPT audit round 4 — 3 fixes (rememberBlockNodes, cacheI
 2d4a4cc project-graph: GPT audit round 5 — 11 fixes (simCache invalidation, findDerivedFrom earlier-only, trimObjectByLastSeen preserve, findRoleGaps blockRoles, findSimilarPrompt linear scan, cooldown+structureHash, timeline named dedup, snapshotView helper, compareNamedVersionToCurrent unchanged, migrateGraph, getPinnedBaseline read-only)
 ```
 
-**Итого: 399 фиксов за 39 раундов аудита**
+**Итого: ~579 фиксов за 54 раунда аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
@@ -308,8 +416,8 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (83 fixes, 5 раундов)
 - `intelligence-core.js` (~1699 строк) — ядро интеллектуальных подсказок, scoring, prediction, GPT audit fixes (69 fixes, 6 раундов)
 - `project-graph.js` (~1494 строк) — граф проекта для Intelligence Layer, snapshot capture, similarity, GPT audit fixes (29 fixes, 5 раундов)
-- `ember.js` (~3102 строк) — "Уголёк", живой индикатор состояния проекта, rAF + particle system + peek state machine, GPT audit fixes (10 fixes, 1 раунд)
-- `ember-styles.css` (~607 строк) — стили уголька, CSS custom properties, keyframe animations
+- `ember.js` (~3800 строк) — "Уголёк", живой индикатор состояния проекта, rAF + particle system + peek state machine, 3D depth, per-type particles, anomaly sparks, GPT audit fixes (~180 fixes, 15 rounds)
+- `ember-styles.css` (~650 строк) — стили уголька, CSS custom properties, 3D depth, keyframe animations, anomaly spark CSS
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
 - `prompt-translator-review.md` — GPT audit prompt для translator.js
 - `prompt-notepad-review.md` — GPT audit prompt для notepad.js
@@ -340,20 +448,23 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - **TextSkeletonizer cache** — LRU по `level + ':' + _hash(text)`, 50 записей. Lookup в processSync/processAsync/onmessage
 - **Capture mode** — глобальный `_captureMode` + `_captureStickyId`. mouseup listener в каждом renderTextBody. Тримминг: leading spaces + trailing empty lines
 - **TextSkeletonizer fences** — `inFence` toggle в sections/title/lists. Fence length tracking deferred (rare edge case)
+- **Ember 3D depth** — perspective 320px + preserve-3d на .ember. translateZ на core (z), glow (glowDepth), ring (ringDepth), crust (+1px), haze (-8px). Gaze-driven lightX/lightY на core gradient.
+- **Ember motion signatures** — 8 уникальных pose-функций с разной физикой: sigh (вздох), calmBurn (тление), wiggle (джиттер), tilt (наклон), stretch (упругий rebound), sleepySag (таяние), smolder (вспышки), gust (порыв с инерцией)
+- **Ember per-type particles** — ash (swirl+heatLift), spark (gravity+trail), shooting (high speed), crumb (bounce), anomaly (arc+jitter из правого верхнего угла), anomaly-dust (микро-пыль)
+- **Ember style cache** — setVar() и setStyle() через Map<el, Map<name, value>>. Кэширует CSS custom properties и прямые style writes. Очищается при destroy и на временных DOM элементах.
+- **Ember free-list** — acquireEl O(1) через freeParticleIndices stack. releaseEl push back. Аналогично glowPool из 8 элементов для landing glow.
+- **Ember reduced motion** — early return с полным набором CSS vars. setTimeout → rAF scheduler. Skip mouse/caret/hotspots/wind/attention/particles/shimmer.
+- **Ember tooltip lifecycle** — hideTooltip(immediate) + showTooltip с reuse DOM element. Click-only. Refresh при status/edit. mouseleave/rootBlur скрывают.
+- **Ember state sync** — BroadcastChannel filter: tabId !== currentTabId. storage: startsWith(STORAGE_KEY_PREFIX). Deterministic tie-break: updatedAt > lastEditTime > sourceTabId.
 
 ## Ожидают решения
 
-- **ТЕКУЩИЙ БАГ: подсветка строки** — drift вниз к 400-й строке. updateCurrentLineHighlight() в blocks.js. Mirror-based расчёт позиции накапливает ошибку. Возможно несовпадение ширины mirror/textarea из-за scrollbar. Исправить ДО继续 аудита app.js
+- **ТЕКУЩИЙ БАГ: подсветка строки** — drift вниз к 400-й строке. updateCurrentLineHighlight() в blocks.js. Mirror-based расчёт позиции накапливает ошибку. Возможно несовпадение ширины mirror/textarea из-за scrollbar.
 - **Structure menu scrollbar** — баг с `|` в тексте последнего блока
 - **Spell-check overlay drift** — после ~10 строк фон сдвигается вправо
 - **TextSkeletonizer fence length** — nested fences разной длины
 - **TextSkeletonizer мёртвый API** — `shouldCompress()` не используется
-
-### Column resize + independent scroll fix (2026-07-03)
-
-1. ✅ **Resizer drag** — `applyLayout(ratios)` принимает параметр, не вызывает `State.setLayout()` в mousemove → нет `fullRender()` → ресайзеры живут → drag плавный. State коммитится на mouseUp.
-2. ✅ **Independent column scrolling** — `.column { overflow-y: auto }`, `#workspace { overflow: hidden }`. Каждая колонка скроллится отдельно.
-3. ✅ **Scrollbar off by default** — `#workspace { scrollbar-width: none }`. `.col-scrollbar` toggle возвращает.
+- ⏳ app.js: ожидает аудит (969 строк)
 
 ## Ранее выполнено (архив)
 
