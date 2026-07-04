@@ -357,14 +357,29 @@ const Ember = (() => {
   function applyRemoteState(next) {
     const normalized = normalizeState(next);
     if (!normalized) return;
-    if (!state || normalized.updatedAt >= (state.updatedAt || 0)) {
-      state = {
-        lastEditTime: normalized.lastEditTime,
-        lastInitTime: normalized.lastInitTime,
-        updatedAt: normalized.updatedAt,
-        sourceTabId: normalized.sourceTabId,
-      };
+    if (!state) {
+      state = normalized;
+      return;
     }
+    const currentUpdatedAt = state.updatedAt || 0;
+    const nextUpdatedAt = normalized.updatedAt || 0;
+    const currentEdit = state.lastEditTime || 0;
+    const nextEdit = normalized.lastEditTime || 0;
+
+    const isNewer =
+      nextUpdatedAt > currentUpdatedAt ||
+      (nextUpdatedAt === currentUpdatedAt && nextEdit > currentEdit) ||
+      (nextUpdatedAt === currentUpdatedAt && nextEdit === currentEdit &&
+        String(normalized.sourceTabId || '') > String(state.sourceTabId || ''));
+
+    if (!isNewer) return;
+
+    state = {
+      lastEditTime: Math.max(currentEdit, nextEdit),
+      lastInitTime: Math.max(state.lastInitTime || 0, normalized.lastInitTime || 0),
+      updatedAt: nextUpdatedAt,
+      sourceTabId: normalized.sourceTabId,
+    };
   }
 
   function saveState() {
@@ -642,6 +657,7 @@ const Ember = (() => {
     heatOffsetY += (heatTargetY - heatOffsetY) * clamp(0.003 * dt, 0, 1);
     heatPhase += heatPhaseSpeed * dt;
 
+    const nextZones = [];
     zones.forEach((zone, i) => {
       const isExtraZone = i >= 3;
       if (!zone._life) {
@@ -685,10 +701,11 @@ const Ember = (() => {
       zone.style.setProperty('--cx', clamp(zone._curX, 10, 90).toFixed(1) + '%');
       zone.style.setProperty('--cy', clamp(zone._curY, 10, 90).toFixed(1) + '%');
       zone.style.setProperty('--zoneHeat', clamp(zone._curHeat, 0, 1.5).toFixed(3));
+      if (zone.isConnected) nextZones.push(zone);
     });
-    const avgHeat = zones.reduce((s, z) => s + (z._curHeat || 0.6), 0) / Math.max(zones.length, 1);
+    const avgHeat = nextZones.reduce((s, z) => s + (z._curHeat || 0.6), 0) / Math.max(nextZones.length, 1);
     if (crustEl) crustEl.style.opacity = (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3);
-    zones = zones.filter(z => z.isConnected);
+    zones = nextZones;
   }
 
   // ---------- менеджер эффектов ядра ----------
@@ -1741,6 +1758,8 @@ const Ember = (() => {
   let tooltipEl = null;
   let lastAriaLabel = '';
   let tooltipText = '';
+  let tooltipHideTimer = null;
+  let tooltipRemoveTimer = null;
 
   function syncAccessibleLabel(force = false) {
     if (!root) return;
@@ -1751,14 +1770,31 @@ const Ember = (() => {
     root.title = label;
   }
 
+  function hideTooltip(immediate = false) {
+    clearDeferred(tooltipHideTimer);
+    clearDeferred(tooltipRemoveTimer);
+    tooltipHideTimer = null;
+    tooltipRemoveTimer = null;
+    if (!tooltipEl) return;
+    if (immediate) {
+      styleCache.delete(tooltipEl);
+      tooltipEl.remove();
+      tooltipEl = null;
+      tooltipText = '';
+      return;
+    }
+    tooltipEl.style.opacity = '0';
+    const el = tooltipEl;
+    tooltipRemoveTimer = defer(() => {
+      if (tooltipEl === el) { tooltipEl = null; tooltipText = ''; }
+      styleCache.delete(el);
+      el.remove();
+    }, 300);
+  }
+
   function showTooltip() {
     if (!root) return;
-    const ownerRoot = root;
-    if (tooltipEl) {
-      tooltipEl.remove();
-      styleCache.delete(tooltipEl);
-      tooltipEl = null;
-    }
+    hideTooltip(true);
     const h = Math.floor(hoursWithoutActivity());
     const rem = remainingSegments();
     const cold = rem <= 0 || intensity <= 0.03;
@@ -1796,20 +1832,19 @@ const Ember = (() => {
       return;
     }
 
-    const el = document.createElement('div');
-    el.className = 'ember-tooltip';
+    let el = tooltipEl;
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'ember-tooltip';
+      tooltipEl = el;
+      root.appendChild(el);
+    }
     el.textContent = nextText;
+    el.style.opacity = '1';
     tooltipText = nextText;
-    tooltipEl = el;
-    root.appendChild(el);
-    defer(() => {
-      if (!ownerRoot.isConnected || root !== ownerRoot || tooltipEl !== el) return;
-      el.style.opacity = '0';
-      defer(() => {
-        if (root === ownerRoot && tooltipEl === el) tooltipEl = null;
-        styleCache.delete(el);
-        el.remove();
-      }, 300);
+    tooltipHideTimer = defer(() => {
+      if (!root || tooltipEl !== el) return;
+      hideTooltip();
     }, 3000);
   }
 
@@ -2792,7 +2827,7 @@ const Ember = (() => {
         const seg = segments[i % 12];
         if (seg) {
           markSegmentDirty(seg);
-          seg.style.setProperty('--seg-flash', '0.8');
+          setVar(seg, '--seg-flash', '0.8');
         }
       }
     }
@@ -2816,8 +2851,10 @@ const Ember = (() => {
   function update(now, dt) {
     intensity = calcIntensity();
 
-    sampleMousePosition(now);
-    if (!reduceMotion) sampleCaretPosition(now);
+    if (!reduceMotion) {
+      sampleMousePosition(now);
+      sampleCaretPosition(now);
+    }
 
     if (reduceMotion) {
       heat = clamp(intensity + heatBoost * 0.15, 0, 1);
@@ -3284,12 +3321,8 @@ const Ember = (() => {
     if (reduceMotion) {
       reducedMotionTimer = setTimeout(() => {
         reducedMotionTimer = null;
-        if (!destroyed && root && !document.hidden && onScreen) {
-          const now = performance.now();
-          update(now, Math.min(now - lastFrame, 250));
-          lastFrame = now;
-          animate(now);
-        }
+        if (destroyed || !root || document.hidden || !onScreen) return;
+        rafId = requestAnimationFrame(animate);
       }, 100);
     } else {
       rafId = requestAnimationFrame(animate);
@@ -3323,9 +3356,9 @@ const Ember = (() => {
 
   function setupEventListeners() {
     handlers.mouseenter = () => { hover = true; syncAccessibleLabel(true); showTooltip(); };
-    handlers.mouseleave = () => { hover = false; };
+    handlers.mouseleave = () => { hover = false; hideTooltip(); };
     handlers.rootFocus = () => { hover = true; syncAccessibleLabel(true); showTooltip(); };
-    handlers.rootBlur = () => { hover = false; };
+    handlers.rootBlur = () => { hover = false; hideTooltip(); };
     handlers.contextmenu = (e) => {
       if (!allowTestMode) return;
       e.preventDefault();
@@ -3519,6 +3552,9 @@ const Ember = (() => {
     clearDeferred(resetTimer);
     clearDeferred(caret._typingTimer);
     clearDeferred(statusTimer);
+    clearDeferred(tooltipHideTimer);
+    clearDeferred(tooltipRemoveTimer);
+    hideTooltip(true);
     clearAllDeferred();
     particles.forEach(p => releaseEl(p.el));
     particles = [];
@@ -3549,6 +3585,9 @@ const Ember = (() => {
     flashHeat = 0; coreHeatReserve = 0;
     breathHoldUntil = 0;
     tooltipEl = null;
+    tooltipText = '';
+    tooltipHideTimer = null;
+    tooltipRemoveTimer = null;
     testLabel = null;
     onClickCallback = null;
     if (styleCache) styleCache.clear();
