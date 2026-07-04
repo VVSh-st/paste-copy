@@ -87,6 +87,28 @@ ba8cf3d fix: columns scroll independently
 - Performance: mirror text optimization, dedup getComputedStyle, _createLineMarker helper
 - Readability: magic numbers → constants, remove unused code (escHtml, _charW, _isScrolling)
 
+**translator.js (5 раундов, 78 фиксов)**
+- Security: Google key validation, fetchWithTimeout abort, credentials/referrerPolicy, response size limit
+- Race conditions: shared GoogleKey/MsToken promises, AbortError handling, translate race guard (notepad)
+- Cache: dirty flag fix, TTL for old entries, MAX_CACHE_TEXT_LEN, cacheKey string concat, loadCache stale filter
+- API: HTTP error handling (!r.ok), Retry-After header, MS Chinese mapping, Legacy max query/stop/breaker, Google key reset 401/403
+- UX: needsTranslation in pipeline, translateProtected token-history, formatting preservation, null→original fallback, history dedup
+- Settings: normalizeTargetLang, ENGINES constant, loadSettings validation, targetLang/engine setter validation
+- Performance: decodeHtmlEntities DOM reuse, loadCache 5MB guard, TTL constants, countChars helper
+- Readability: accept echo detection, retry readability, templateSeq counter, HAN_RE/NON_LETTER constants
+- Template protection: TMPL_RE \b fix, length limits, Unicode sentinels (⟦...⟧), %VAR% regex
+
+**notepad.js (3 раунда, 62 фикса)**
+- Critical: disconnected DOM cleanup, async paste/translate race guards, Shift+Tab de-indent fix
+- State: per-tab undo history, tabOffset persistence, minimized persistence, _translateOriginal per-tab
+- UX: chevron on restore, double-click guard, rename maxLength 12, Ctrl+S, undo/redo caret, focus minimized
+- Safety: cut clipboard safety, paste type safety, Toast safety (_toast helper), TextEncoder fallback
+- Persistence: _loadSaved full validation, cssPx validation, _persist skip identical, strip _history from persist
+- Performance: renderTabs optimization (filled-state only), renderTabs fragment, _updateCount threshold, line count
+- Readability: magic numbers constants, translate handler extraction, _mkBtn addEventListener, clean FIX comments
+- Keyboard: Tab accessibility (Alt+Tab escape, metaKey), undo for Tab/Shift+Tab
+- Resize/Drag: abort on close, actual size boundary, resize viewport bounds, position after size
+
 **Коммиты:**
 ```
 0aaa687 anchors: GPT audit round 2 — 8 fixes (navIdx, CSS.escape, palette leak, State consistency, visibility, mirror width, line marker helper)
@@ -99,17 +121,28 @@ ff2870e ai-transform: GPT audit round 3 — 3 fixes (_isRunning, empty toast, ab
 741e497 ai-transform: GPT audit round 1 — 7 fixes (accept cleanup, requestSeq, LCS limit, history validation, clipboard error, prompt boundary, _State usage)
 2a33a87 blocks: GPT audit round 2 — document.addEventListener leak, _appendCaptureText race, jump-highlight guard
 59d8017 blocks: GPT audit round 1 — cache cleanup, scroll race, timer cleanup, todo blocked, line highlight debounce
+60e4df4 translator: GPT audit round 5 (final) — 12 fixes (TMPL_RE \b fix, Unicode sentinels, credentials, Google key reset, Retry-After, forced engine null→original, pagehide, response size, accept echo, loadCache guard, TTL constants)
+39e185b translator: GPT audit round 4 — 29 fixes (fetchWithTimeout, input validation, normalizeTargetLang, TMPL_RE limits, HAN_RE, cache limits, getStorage, error details, referrerPolicy, legacy max query/breaker, translate null→original, init guard, visibilitychange, clearCache reset, countChars)
+cafe828 translator: GPT audit round 3 — 12 fixes (translateProtected token-history, formatting preservation, history dedup, batch for-loop, MS Chinese mapping, loadCache stale filter, ENGINES constant, retry readability, templateSeq, translateOne no-op, _stats.failed, Legacy engine)
+0bdd36d translator: GPT audit round 2 — 16 fixes (AbortError, shared promises, needsTranslation, Legacy defensive, settings validation, URL encoding, DOM reuse, cache key, history, CJK, accept, _stats.failed, Legacy engine)
+c086b76 translator: GPT audit round 1 — 9 fixes (withTimeout cleanup, HTTP error handling, Google key validation, cache dirty flag, cache TTL, template token uniqueness, needsTranslation all langs, dead code removal, clearCache bug)
+a51c6c8 notepad: GPT audit round 3 — 19 fixes (disconnected DOM cleanup, Shift+Tab fix, chevron on restore, double-click guard, rename maxLength 12, undo for Tab, clear history order, cut without clipboard, paste type safety, translate cancel toast, undo/redo renderTabs, _updateCount threshold, renderTabs cancel click, focus minimized, persist after restore, cssPx non-negative, dead _lastFilled, clean FIX comments, localStorage error reason)
+5578f24 notepad: GPT audit round 2 — 21 fixes (loadSaved tabs safety, async paste/translate race, history flush order, per-tab undo, tabOffset persist, position after size, resize viewport bounds, translate original per-tab, commitTitle reset, Escape rename, Tab metaKey, undo caret, persist skip identical, _updateCount KB approx, renderTabs fragment, strip _history from persist, activeTab Math.max, cssPx validation, addEventListener, minimize persist)
+59ece03 notepad: GPT audit round 1 — 22 fixes (click timer cleanup, drag/resize abort, singleton guard, cut clipboard safety, history flush, per-tab undo, transfer all-full, translate race/selection, loadSaved validation, position clamp, notepad-container fallback, commitRename guard, filename sanitize, renderTabs optimization, persist error toast, Ctrl+S, toast safety, TextEncoder fallback, line count, Tab accessibility, translate handler, magic numbers)
 ```
 
-**Итого: 130 фиксов за 17 раундов аудита**
+**Итого: 270 фиксов за 25 раундов аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
 - ✅ state.js: аудит завершён
 - ✅ ai-transform.js: аудит завершён
 - ✅ anchors.js: аудит завершён
+- ✅ **translator.js: аудит завершён** (5 раундов, 78 фиксов)
+- ✅ **notepad.js: аудит завершён** (3 раунда, 62 фикса)
 - ❌ **ТЕКУЩИЙ БАГ:** подсветка текущей строки смещается вниз к 400-й строке ( drift накапливается)
 - ⏳ app.js: ожидает аудит (969 строк)
+- ⏳ intelligence-core.js: ожидает аудит (1339 строк)
 
 ### Flowchart — Query menu
 
@@ -256,7 +289,13 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `state.js` (~1230 строк) — State, Events, persistence, history, search, GPT audit fixes (58 fixes)
 - `ai-transform.js` (~450 строк) — AI transform module, GPT audit fixes (39 fixes)
 - `anchors.js` (~600 строк) — anchor navigation, markers, palette, GPT audit fixes (25 fixes)
+- `translator.js` (~763 строк) — Google/MS/Legacy translate, GPT audit fixes (78 fixes, 5 раундов)
+- `notepad.js` (~971 строк) — singleton floating notepad, GPT audit fixes (62 fixes, 3 раунда)
+- `intelligence-core.js` (~1339 строк) — ядро интеллектуальных подсказок, scoring, prediction
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
+- `prompt-translator-review.md` — GPT audit prompt для translator.js
+- `prompt-notepad-review.md` — GPT audit prompt для notepad.js
+- `prompt-intelligence-core-review.md` — GPT audit prompt для intelligence-core.js
 - `flowchart.js` и `mindmap.js` — `_fetchWithQuery` используют `await processAsync()`
 - `prompt-blocks-review.md` / `prompt-state-review.md` / `prompt-aitransform-review.md` / `prompt-anchors-review.md` — GPT audit prompts
 
