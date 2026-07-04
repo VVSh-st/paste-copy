@@ -15,6 +15,8 @@ const Translator = (() => {
   const MS_TIMEOUT = 12000;
   const LEGACY_TIMEOUT = 9000;
   const LEGACY_MAX_QUERY_CHARS = 1200;
+  const GOOGLE_KEY_TTL = 4 * 60 * 60 * 1000;
+  const MS_TOKEN_TTL = 8 * 60 * 1000;
 
   // ── State ──────────────────────────────────────────────────
   let cache = new Map();
@@ -131,15 +133,18 @@ const Translator = (() => {
 
   // ── Template protection ────────────────────────────────────
   // {{...}}, $VAR, !теги — не переводим
-  const TMPL_RE = /(\{\{[^}\n]{1,200}\}\}|\$[A-Z_][A-Z0-9_]*|\$\{[^}\n]{1,200}\}|\[\[[^\]\n]{1,200}\]\]|%[A-Z_][A-Z0-9_]*%|\{\d+\}|![а-яёА-ЯЁ]+)\b/g;
+  const TMPL_RE = /(\{\{[^}\n]{1,200}\}\}|\$[A-Z_][A-Z0-9_]*\b|\$\{[^}\n]{1,200}\}|\[\[[^\]\n]{1,200}\]\]|%[A-Z_][A-Z0-9_]*%|\{\d+\}|![а-яёА-ЯЁ]+\b)/g;
   let templateSeq = 0;
 
   function protectTemplates(text) {
     const tokens = [];
     let i = 0;
-    const prefix = `__TRPL${(templateSeq++).toString(36)}_`;
+    let prefix;
+    do {
+      prefix = `\u27E6TRPL_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_`;
+    } while (text.includes(prefix));
     const protected_ = text.replace(TMPL_RE, m => {
-      const token = `${prefix}${i++}`;
+      const token = `${prefix}${i++}\u27E7`;
       tokens.push({ token, original: m });
       return token;
     });
@@ -205,6 +210,11 @@ const Translator = (() => {
       const storage = getStorage();
       const raw = storage?.getItem(CACHE_KEY);
       if (raw) {
+        if (raw.length > 5 * 1024 * 1024) {
+          storage?.removeItem(CACHE_KEY);
+          cache = new Map();
+          return;
+        }
         const arr = JSON.parse(raw);
         if (Array.isArray(arr)) {
           const now = Date.now();
@@ -337,7 +347,7 @@ const Translator = (() => {
 
   // ── Google API ─────────────────────────────────────────────
   async function fetchGoogleKey() {
-    if (googleKey && Date.now() - googleKeyTs < 4 * 3600 * 1000) return googleKey;
+    if (googleKey && Date.now() - googleKeyTs < GOOGLE_KEY_TTL) return googleKey;
     if (googleKeyPromise) return googleKeyPromise;
     googleKeyPromise = (async () => {
       try {
@@ -350,7 +360,16 @@ const Translator = (() => {
           googleKeyError = `google key http ${r.status}`;
           return null;
         }
+        const len = Number(r.headers.get('Content-Length') || 0);
+        if (len && len > 512 * 1024) {
+          googleKeyError = 'google key response too large';
+          return null;
+        }
         const text = await r.text();
+        if (text.length > 512 * 1024) {
+          googleKeyError = 'google key response too large';
+          return null;
+        }
         const m = text.match(/["']?x-goog-api-key["']?\s*[:=]\s*["']([^"']+)["']/i);
         if (m && /^AIza[0-9A-Za-z_-]{20,}$/.test(m[1])) {
           googleKey = m[1];
@@ -391,7 +410,18 @@ const Translator = (() => {
         },
         GOOGLE_TIMEOUT
       );
-      if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
+      if (r.status === 401 || r.status === 403) {
+        googleKey = null;
+        googleKeyTs = 0;
+        throw Object.assign(new Error(`google auth http ${r.status}`), { status: r.status });
+      }
+      if (r.status === 429) {
+        const retryAfter = Number(r.headers.get('Retry-After') || 0);
+        throw Object.assign(new Error('rate limit'), {
+          status: 429,
+          retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0
+        });
+      }
       if (!r.ok) throw Object.assign(new Error(`google http ${r.status}`), { status: r.status });
       try {
         const data = await r.json();
@@ -409,13 +439,13 @@ const Translator = (() => {
 
   // ── Microsoft API ──────────────────────────────────────────
   async function fetchMsToken() {
-    if (msToken && Date.now() - msTokenTs < 480000) return msToken;
+    if (msToken && Date.now() - msTokenTs < MS_TOKEN_TTL) return msToken;
     if (msTokenPromise) return msTokenPromise;
     msTokenPromise = (async () => {
       try {
         const r = await fetchWithTimeout(
           'https://edge.microsoft.com/translate/auth',
-          {},
+          { credentials: 'omit', referrerPolicy: 'no-referrer' },
           5000
         );
         if (r.ok) {
@@ -467,7 +497,13 @@ const Translator = (() => {
         msToken = null; msTokenTs = 0;
         throw Object.assign(new Error('ms auth'), { status: r.status });
       }
-      if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
+      if (r.status === 429) {
+        const retryAfter = Number(r.headers.get('Retry-After') || 0);
+        throw Object.assign(new Error('rate limit'), {
+          status: 429,
+          retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0
+        });
+      }
       if (!r.ok) throw Object.assign(new Error(`ms http ${r.status}`), { status: r.status });
       try {
         const data = await r.json();
@@ -487,10 +523,16 @@ const Translator = (() => {
     if (text.length > LEGACY_MAX_QUERY_CHARS) return null;
     const r = await fetchWithTimeout(
       `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`,
-      { signal },
+      { signal, credentials: 'omit', referrerPolicy: 'no-referrer' },
       LEGACY_TIMEOUT
     );
-    if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
+    if (r.status === 429) {
+      const retryAfter = Number(r.headers.get('Retry-After') || 0);
+      throw Object.assign(new Error('rate limit'), {
+        status: 429,
+        retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0
+      });
+    }
     if (!r.ok) throw Object.assign(new Error(`legacy http ${r.status}`), { status: r.status });
     const data = await r.json();
     if (!Array.isArray(data?.[0])) return null;
@@ -550,15 +592,16 @@ const Translator = (() => {
     const engine = settings.engine;
     let rem = todo.map((x, i) => ({ t: x.raw, key: x.key, i }));
 
-    const accept = tr => {
+    const accept = (tr, src) => {
       if (!tr || !tr.trim()) return false;
+      if (src && norm(tr) === src.key && needsTranslation(src.key, toLang)) return false;
       return true;
     };
 
     const apply = (arr, src) => {
       for (let j = 0; j < src.length; j++) {
         const tr = arr[j];
-        if (accept(tr)) {
+        if (accept(tr, src[j])) {
           cacheSet(src[j].key, toLang, tr);
           out[idx[src[j].i]] = tr;
         }
@@ -566,7 +609,7 @@ const Translator = (() => {
     };
 
     const filterRem = (arr, src) => src.filter((x, j) => {
-      return !accept(arr[j]);
+      return !accept(arr[j], x);
     });
 
     // Google
@@ -580,10 +623,11 @@ const Translator = (() => {
           if (e?.name === 'AbortError' || signal.aborted) throw e;
           gFail++;
           _stats.failed++;
-          if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
+          if (e?.retryAfterMs) gBlockUntil = Date.now() + e.retryAfterMs;
+          else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
         }
       }
-      if (engine === 'google') return out;
+      if (engine === 'google') return out.map((v, i) => v == null ? texts[i] : v);
     }
 
     // Microsoft
@@ -596,9 +640,10 @@ const Translator = (() => {
         if (e?.name === 'AbortError' || signal.aborted) throw e;
         mFail++;
         _stats.failed++;
-        if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
+        if (e?.retryAfterMs) mBlockUntil = Date.now() + e.retryAfterMs;
+        else if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
       }
-      if (engine === 'microsoft') return out;
+      if (engine === 'microsoft') return out.map((v, i) => v == null ? texts[i] : v);
     }
 
     // Legacy fallback
@@ -681,7 +726,9 @@ const Translator = (() => {
       loadHistory();
       loadSettings();
       if (typeof window !== 'undefined') {
-        window.addEventListener('beforeunload', () => { if (_activeController) _activeController.abort(); flushCache(); });
+        const finalFlush = () => { if (_activeController) _activeController.abort(); flushCache(); };
+        window.addEventListener('beforeunload', finalFlush);
+        window.addEventListener('pagehide', finalFlush);
       }
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => {
