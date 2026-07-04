@@ -96,6 +96,7 @@ const Ember = (() => {
 
   const POOL_SIZE = 40;
   let particlePool = [];
+  let freeParticleIndices = [];
   let poolInited = false;
 
   let shimmerActive = false;
@@ -349,24 +350,25 @@ const Ember = (() => {
       lastEditTime: s.lastEditTime,
       lastInitTime: typeof s.lastInitTime === 'number' ? s.lastInitTime : 0,
       updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : s.lastEditTime,
+      sourceTabId: s.sourceTabId || null,
     };
   }
 
   function applyRemoteState(next) {
     const normalized = normalizeState(next);
     if (!normalized) return;
-    if (!state) {
-      state = normalized;
-      return;
+    if (!state || normalized.updatedAt >= (state.updatedAt || 0)) {
+      state = {
+        lastEditTime: normalized.lastEditTime,
+        lastInitTime: normalized.lastInitTime,
+        updatedAt: normalized.updatedAt,
+        sourceTabId: normalized.sourceTabId,
+      };
     }
-    state = {
-      lastEditTime: Math.max(state.lastEditTime || 0, normalized.lastEditTime || 0),
-      lastInitTime: Math.max(state.lastInitTime || 0, normalized.lastInitTime || 0),
-      updatedAt: Math.max(state.updatedAt || 0, normalized.updatedAt || 0),
-    };
   }
 
   function saveState() {
+    if (state) state.sourceTabId = currentTabId;
     try { localStorage.setItem(getStorageKey(currentTabId), JSON.stringify(state)); } catch {}
   }
 
@@ -406,6 +408,7 @@ const Ember = (() => {
     const now = Date.now();
     state.lastEditTime = now;
     state.updatedAt = now;
+    state.sourceTabId = currentTabId;
     saveState();
     broadcast();
   }
@@ -639,6 +642,7 @@ const Ember = (() => {
     heatPhase += heatPhaseSpeed * dt;
 
     zones.forEach((zone, i) => {
+      const isExtraZone = i >= 3;
       if (!zone._life) {
         zone._life = rand(4000, 10000);
         zone._targetHeat = rand(0.4, 1.3);
@@ -650,6 +654,11 @@ const Ember = (() => {
       }
       zone._life -= dt;
       if (zone._life <= 0) {
+        if (isExtraZone) {
+          zone.remove();
+          styleCache.delete(zone);
+          return;
+        }
         zone._life = rand(4000, 10000);
         zone._targetHeat = rand(0.4, 1.3);
         zone._targetX = rand(20, 80);
@@ -675,19 +684,10 @@ const Ember = (() => {
       zone.style.setProperty('--cx', clamp(zone._curX, 10, 90).toFixed(1) + '%');
       zone.style.setProperty('--cy', clamp(zone._curY, 10, 90).toFixed(1) + '%');
       zone.style.setProperty('--zoneHeat', clamp(zone._curHeat, 0, 1.5).toFixed(3));
-    });
+    }).filter(Boolean);
     const avgHeat = zones.reduce((s, z) => s + (z._curHeat || 0.6), 0) / Math.max(zones.length, 1);
     if (crustEl) crustEl.style.opacity = (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3);
-
-    if (zones.length > 3) {
-      for (let i = zones.length - 1; i >= 3; i--) {
-        const z = zones[i];
-        if ((z._life || 0) <= dt) {
-          z.remove();
-          zones.splice(i, 1);
-        }
-      }
-    }
+    zones = zones.filter(z => z.isConnected);
   }
 
   // ---------- менеджер эффектов ядра ----------
@@ -1297,34 +1297,34 @@ const Ember = (() => {
       el.__poolIndex = i;
       particleLayer.appendChild(el);
       particlePool.push({ el, free: true });
+      freeParticleIndices.push(i);
     }
     poolInited = true;
   }
 
   function acquireEl(className) {
     if (!particleLayer) return null;
-    for (const slot of particlePool) {
-      if (slot.free) {
-        slot.free = false;
-        slot.el.className = className;
-        slot.el.classList.add('active-particle');
-        slot.el.style.display = '';
-        slot.el.style.opacity = '0';
-        slot.el.style.boxShadow = '';
-        slot.el.style.transform = '';
-        slot.el.style.borderRadius = '';
-        slot.el.style.width = '';
-        slot.el.style.height = '';
-        return slot.el;
-      }
-    }
-    return null;
+    const idx = freeParticleIndices.pop();
+    if (idx == null) return null;
+    const slot = particlePool[idx];
+    slot.free = false;
+    slot.el.className = className;
+    slot.el.classList.add('active-particle');
+    slot.el.style.display = '';
+    slot.el.style.opacity = '0';
+    slot.el.style.boxShadow = '';
+    slot.el.style.transform = '';
+    slot.el.style.borderRadius = '';
+    slot.el.style.width = '';
+    slot.el.style.height = '';
+    return slot.el;
   }
 
   function releaseEl(el) {
     const i = el && el.__poolIndex;
     if (Number.isInteger(i) && particlePool[i] && particlePool[i].el === el) {
       particlePool[i].free = true;
+      freeParticleIndices.push(i);
       el.style.display = 'none';
       el.className = 'ember-ash';
       el.classList.remove('active-particle');
@@ -1484,11 +1484,14 @@ const Ember = (() => {
     el.style.left = x + '%';
     el.style.top = y + '%';
     particleLayer.appendChild(el);
-    defer(() => el.remove(), 250);
+    defer(() => {
+      styleCache.delete(el);
+      el.remove();
+    }, 250);
   }
 
   function updateParticles(now, dt) {
-    const nextParticles = [];
+    let write = 0;
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
       const t = clamp((now - p.born) / p.dur, 0, 1);
@@ -1554,9 +1557,9 @@ const Ember = (() => {
         `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${(rot + wobble).toFixed(1)}deg) scale(${scale.toFixed(2)})`;
       p.el.style.opacity = clamp(opacity, 0, 1).toFixed(3);
       if (shadow) p.el.style.boxShadow = shadow;
-      nextParticles.push(p);
+      particles[write++] = p;
     }
-    particles = nextParticles;
+    particles.length = write;
   }
 
   // ---------- горячие точки на поверхности ----------
@@ -1657,6 +1660,13 @@ const Ember = (() => {
   // ---------- дрожание воздуха ----------
 
   function updateShimmer(now) {
+    if (lowFpsMode) {
+      if (shimmerActive) {
+        shimmerActive = false;
+        root.classList.remove('ember-shimmer');
+      }
+      return;
+    }
     if (!shimmerActive && now > nextShimmerCheck) {
       if (Math.random() < 0.15) {
         shimmerActive = true;
@@ -1729,6 +1739,7 @@ const Ember = (() => {
 
   let tooltipEl = null;
   let lastAriaLabel = '';
+  let tooltipText = '';
 
   function syncAccessibleLabel(force = false) {
     if (!root) return;
@@ -1741,8 +1752,10 @@ const Ember = (() => {
 
   function showTooltip() {
     if (!root) return;
+    const ownerRoot = root;
     if (tooltipEl) {
       tooltipEl.remove();
+      styleCache.delete(tooltipEl);
       tooltipEl = null;
     }
     const h = Math.floor(hoursWithoutActivity());
@@ -1776,16 +1789,24 @@ const Ember = (() => {
     else if (statusState === 'saved') lines.push('✓ сохранено');
     else if (statusState === 'error') lines.push('✗ ошибка');
 
+    const nextText = lines.join('\n');
+    if (tooltipEl && tooltipText === nextText) {
+      tooltipEl.style.opacity = '1';
+      return;
+    }
+
     const el = document.createElement('div');
     el.className = 'ember-tooltip';
-    el.textContent = lines.join('\n');
+    el.textContent = nextText;
+    tooltipText = nextText;
     tooltipEl = el;
     root.appendChild(el);
     defer(() => {
-      if (!root || tooltipEl !== el) return;
+      if (!ownerRoot.isConnected || root !== ownerRoot || tooltipEl !== el) return;
       el.style.opacity = '0';
       defer(() => {
-        if (tooltipEl === el) tooltipEl = null;
+        if (root === ownerRoot && tooltipEl === el) tooltipEl = null;
+        styleCache.delete(el);
         el.remove();
       }, 300);
     }, 3000);
@@ -3246,12 +3267,18 @@ const Ember = (() => {
     if (fpsHistory.length >= 20) {
       const avgDt = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
       lowFpsMode = avgDt > 33;
+      if (root) root.classList.toggle('low-fps', lowFpsMode);
     }
-    try { update(timestamp, dt * (reduceMotion ? 6 : 1)); } catch (e) { console.error('Ember update error:', e); }
+    try { update(timestamp, dt * (reduceMotion ? 1 : 1)); } catch (e) { console.error('Ember update error:', e); }
     if (reduceMotion) {
       reducedMotionTimer = setTimeout(() => {
         reducedMotionTimer = null;
-        if (!destroyed && root) animate(performance.now());
+        if (!destroyed && root && !document.hidden && onScreen) {
+          const now = performance.now();
+          update(now, Math.min(now - lastFrame, 250));
+          lastFrame = now;
+          animate(now);
+        }
       }, 100);
     } else {
       rafId = requestAnimationFrame(animate);
@@ -3375,6 +3402,7 @@ const Ember = (() => {
     };
     handlers.windowBlur = () => {
       browserFocused = false;
+      if (testMode) stopTestMode();
       if (focusState === 'active') {
         focusState = 'settling';
         focusTimer = 0;
@@ -3384,6 +3412,7 @@ const Ember = (() => {
     handlers.visibilitychange = () => {
       if (document.hidden) {
         browserFocused = false;
+        if (testMode) stopTestMode();
         if (focusState === 'active') {
           focusState = 'settling';
           focusTimer = 0;
@@ -3482,8 +3511,15 @@ const Ember = (() => {
     clearAllDeferred();
     particles.forEach(p => releaseEl(p.el));
     particles = [];
+    if (particleLayer) {
+      particleLayer.querySelectorAll('.ember-landing-glow').forEach(el => {
+        styleCache.delete(el);
+        el.remove();
+      });
+    }
     particlePool.forEach(s => s.el.remove());
     particlePool = [];
+    freeParticleIndices = [];
     poolInited = false;
     activeSparks = 0;
     glowTrackX = 0; glowTrackY = 0;

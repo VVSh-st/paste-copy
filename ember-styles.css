@@ -439,8 +439,14 @@
   opacity: 0;
 }
 
-.ember-spark.active-particle {
-  will-change: transform, opacity;
+@media (prefers-reduced-motion: no-preference) {
+  .ember-spark.active-particle {
+    will-change: transform, opacity;
+  }
+}
+
+.ember.low-fps .ember-spark.active-particle {
+  will-change: auto;
 }
 
 .ember-spark-shoot {
@@ -496,6 +502,10 @@
 /* ===== Дрожание воздуха ===== */
 .ember-shimmer {
   animation: shimmerPulse 3s ease-in-out;
+}
+
+.ember.low-fps.ember-shimmer {
+  animation: none;
 }
 
 @keyframes shimmerPulse {
