@@ -31,6 +31,7 @@ const Notepad = (() => {
 
   let _instance = null;
   let _lastPersistErrorAt = 0;
+  let _lastPersistPayload = '';
 
   function _toast(msg, type) {
     if (typeof Toast !== 'undefined' && Toast?.show) {
@@ -44,14 +45,22 @@ const Notepad = (() => {
 
   function _persist(state) {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({
+      const payload = JSON.stringify({
         title:     state.title,
-        tabs:      state.tabs,
+        tabs:      state.tabs.map(tab => ({
+          label: tab.label,
+          value: tab.value,
+        })),
         activeTab: state.activeTab,
+        tabOffset: state.tabOffset,
         fontSize:  state.fontSize,
+        minimized: state.minimized,
         pos:       state.pos,
         size:      state.size,
-      }));
+      });
+      if (payload === _lastPersistPayload) return;
+      localStorage.setItem(STORE_KEY, payload);
+      _lastPersistPayload = payload;
     } catch (err) {
       const now = Date.now();
       if (now - _lastPersistErrorAt > 5000) {
@@ -67,28 +76,46 @@ const Notepad = (() => {
       if (!raw) return null;
       const saved = JSON.parse(raw);
       if (!saved || typeof saved !== 'object') return null;
-      const tabs = Array.isArray(saved.tabs) ? saved.tabs.slice(0, TAB_COUNT) : null;
-      return {
-        title: typeof saved.title === 'string' && saved.title.trim()
-          ? saved.title.slice(0, 80)
-          : 'Блокнот',
-        tabs: tabs?.map((t, i) => ({
+      const rawTabs = Array.isArray(saved.tabs) ? saved.tabs.slice(0, TAB_COUNT) : [];
+      const tabs = Array.from({ length: TAB_COUNT }, (_, i) => {
+        const t = rawTabs[i];
+        return {
           label: typeof t?.label === 'string' && t.label.trim()
             ? t.label.slice(0, 12)
             : String(i + 1),
           value: typeof t?.value === 'string' ? t.value : '',
-        })),
+        };
+      });
+      const cssPx = value => {
+        if (typeof value !== 'string') return null;
+        const n = parseFloat(value);
+        return Number.isFinite(n) ? n + 'px' : null;
+      };
+      const posLeft = cssPx(saved.pos?.left);
+      const posTop = cssPx(saved.pos?.top);
+      const sizeW = cssPx(saved.size?.w);
+      const sizeH = cssPx(saved.size?.h);
+
+      return {
+        title: typeof saved.title === 'string' && saved.title.trim()
+          ? saved.title.slice(0, 80)
+          : 'Блокнот',
+        tabs,
         activeTab: Number.isInteger(saved.activeTab)
           ? Math.max(0, Math.min(TAB_COUNT - 1, saved.activeTab))
+          : 0,
+        tabOffset: Number.isInteger(saved.tabOffset)
+          ? Math.max(0, Math.min(TAB_COUNT - VISIBLE_TABS, saved.tabOffset))
           : 0,
         fontSize: Number.isFinite(saved.fontSize)
           ? Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, saved.fontSize))
           : 12,
-        pos: saved.pos && typeof saved.pos.left === 'string' && typeof saved.pos.top === 'string'
-          ? saved.pos
+        minimized: typeof saved.minimized === 'boolean' ? saved.minimized : false,
+        pos: posLeft && posTop
+          ? { left: posLeft, top: posTop }
           : null,
-        size: saved.size && typeof saved.size.w === 'string' && typeof saved.size.h === 'string'
-          ? saved.size
+        size: sizeW && sizeH
+          ? { w: sizeW, h: sizeH }
           : null,
       };
     } catch (_) { return null; }
@@ -116,7 +143,7 @@ const Notepad = (() => {
     b.type      = 'button';
     b.innerHTML = html;
     b.title     = title;
-    b.onclick   = onclick;
+    if (onclick) b.addEventListener('click', onclick);
     return b;
   }
 
@@ -165,16 +192,16 @@ const Notepad = (() => {
     }
     while (tabs.length < TAB_COUNT) tabs.push({ label: String(tabs.length + 1), value: '' });
 
-    const activeTab = Math.min(saved?.activeTab ?? 0, TAB_COUNT - 1);
+    const activeTab = Math.max(0, Math.min(saved?.activeTab ?? 0, TAB_COUNT - 1));
     const initVal   = tabs[activeTab]?.value ?? '';
 
     const state = {
       title:        saved?.title    || 'Блокнот',
       tabs,
       activeTab,
-      tabOffset:    0,
+      tabOffset:    saved?.tabOffset ?? 0,
       fontSize:     saved?.fontSize || 12,
-      minimized:    false,
+      minimized:    saved?.minimized ?? false,
       pos:          saved?.pos      || null,
       size:         saved?.size     || null,
       history:      [initVal],
@@ -185,6 +212,7 @@ const Notepad = (() => {
       resizeAbort:  null,
       _translateBusy: false,
       _translateOriginal: null,
+      _translateOriginalTab: null,
       _saveToFile:  null,
       _lastFilled:  null,
       el:           null,
@@ -202,19 +230,22 @@ const Notepad = (() => {
     const container = document.getElementById('notepad-container') || document.body;
     container.appendChild(win);
 
-    if (state.pos) {
-      const left = parseFloat(state.pos.left);
-      const top  = parseFloat(state.pos.top);
-      win.style.left      = Math.max(0, Math.min(window.innerWidth - 80, Number.isFinite(left) ? left : 0)) + 'px';
-      win.style.top       = Math.max(0, Math.min(window.innerHeight - 40, Number.isFinite(top) ? top : 0)) + 'px';
-      win.style.transform = 'none';
-    }
     if (state.size) {
       const w = parseFloat(state.size.w);
       const h = parseFloat(state.size.h);
       win.style.width  = Math.max(MIN_WIDTH, Math.min(window.innerWidth,  Number.isFinite(w) ? w : 420)) + 'px';
       win.style.height = Math.max(MIN_HEIGHT, Math.min(window.innerHeight, Number.isFinite(h) ? h : 320)) + 'px';
     }
+    if (state.pos) {
+      const left = parseFloat(state.pos.left);
+      const top  = parseFloat(state.pos.top);
+      const maxLeft = Math.max(0, window.innerWidth - win.offsetWidth);
+      const maxTop  = Math.max(0, window.innerHeight - win.offsetHeight);
+      win.style.left      = Math.max(0, Math.min(maxLeft, Number.isFinite(left) ? left : 0)) + 'px';
+      win.style.top       = Math.max(0, Math.min(maxTop, Number.isFinite(top) ? top : 0)) + 'px';
+      win.style.transform = 'none';
+    }
+    win.classList.toggle('notepad-minimized', state.minimized);
 
     requestAnimationFrame(() => win.querySelector('.notepad-body textarea')?.focus());
   }
@@ -227,11 +258,12 @@ const Notepad = (() => {
 
     const ta = state.el?.querySelector('.notepad-body textarea');
     if (ta) {
+      clearTimeout(state.histTimer);
       state.tabs[state.activeTab].value = ta.value;
       state._pushHistory?.(ta.value);
     }
 
-    clearTimeout(state.histTimer);
+    state.histTimer = null;
     clearTimeout(state.tabClickTimer);
     state.dragAbort?.abort();
     state.resizeAbort?.abort();
@@ -298,6 +330,7 @@ const Notepad = (() => {
       if (titleInput.style.display === 'none') return;
       const v = titleInput.value.trim();
       if (v) state.title = v;
+      titleInput.value = state.title;
       titleLabel.textContent   = state.title;
       titleLabel.style.display = '';
       titleInput.style.display = 'none';
@@ -336,6 +369,7 @@ const Notepad = (() => {
     win.classList.toggle('notepad-minimized', state.minimized);
     const chevron = win.querySelector('.notepad-min-btn svg');
     if (chevron) chevron.style.transform = state.minimized ? 'rotate(-90deg)' : '';
+    _persist(state);
   }
 
   /* ================================================================
@@ -367,6 +401,7 @@ const Notepad = (() => {
       if (!ta || state.histIdx <= 0) return;
       state.histIdx--;
       ta.value = state.history[state.histIdx];
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
       state.tabs[state.activeTab].value = ta.value;
       _updateCount(ta, countSpan);
       _persist(state);
@@ -377,6 +412,7 @@ const Notepad = (() => {
       if (!ta || state.histIdx >= state.history.length - 1) return;
       state.histIdx++;
       ta.value = state.history[state.histIdx];
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
       state.tabs[state.activeTab].value = ta.value;
       _updateCount(ta, countSpan);
       _persist(state);
@@ -424,7 +460,9 @@ const Notepad = (() => {
 
     const pasteBtn = _mkBtn(SVG.paste, 'Вставить из буфера (или Ctrl+V)', () => {
       const ta = getTa(); if (!ta) return;
+      const tabAtStart = state.activeTab;
       _doPaste(ta, text => {
+        if (state.activeTab !== tabAtStart || !state.el?.isConnected) return;
         pushHistory(ta.value);
         ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end');
         ta.dispatchEvent(new Event('input'));
@@ -522,10 +560,11 @@ const Notepad = (() => {
         return;
       }
 
-      if (state._translateOriginal !== null) {
+      if (state._translateOriginal !== null && state._translateOriginalTab === state.activeTab) {
         ta.value = state._translateOriginal;
         state.tabs[state.activeTab].value = state._translateOriginal;
         state._translateOriginal = null;
+        state._translateOriginalTab = null;
         ta.dispatchEvent(new Event('input'));
         _toast('↩ Оригинал восстановлен');
         return;
@@ -533,6 +572,7 @@ const Notepad = (() => {
 
       const selStart = ta.selectionStart;
       const selEnd   = ta.selectionEnd;
+      const tabAtStart = state.activeTab;
       const hasSel   = selStart !== selEnd;
       const sel      = ta.value.substring(selStart, selEnd);
       const text     = hasSel ? sel : ta.value;
@@ -541,9 +581,11 @@ const Notepad = (() => {
       _toast('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
       state._translateBusy = true;
       Translator.translateProtected(text, Translator.targetLang).then(result => {
+        if (state.activeTab !== tabAtStart || !state.el?.isConnected) return;
         if (!result || result === text) { _toast('Не удалось перевести'); return; }
         pushHistory(ta.value);
         state._translateOriginal = ta.value;
+        state._translateOriginalTab = state.activeTab;
         if (hasSel) {
           ta.setRangeText(result, selStart, selEnd, 'select');
         } else {
@@ -580,7 +622,7 @@ const Notepad = (() => {
   function _renderTabs(state) {
     const row = state._tabsRow;
     if (!row) return;
-    row.innerHTML = '';
+    const frag = document.createDocumentFragment();
 
     let off = state.tabOffset || 0;
     if (state.activeTab < off) off = state.activeTab;
@@ -622,7 +664,11 @@ const Notepad = (() => {
       renameInput.onkeydown = e => {
         e.stopPropagation();
         if (e.key === 'Enter')  { e.preventDefault(); commitRename(); }
-        if (e.key === 'Escape') { renameInput.style.display = 'none'; labelSpan.style.display = ''; }
+        if (e.key === 'Escape') {
+          renameInput.value = state.tabs[i].label;
+          renameInput.style.display = 'none';
+          labelSpan.style.display = '';
+        }
       };
       renameInput.onclick = e => e.stopPropagation();
 
@@ -655,8 +701,9 @@ const Notepad = (() => {
         }
       };
 
-      row.appendChild(btn);
+      frag.appendChild(btn);
     }
+    row.replaceChildren(frag);
   }
 
   function _openRenameOnTab(state, idx) {
@@ -682,12 +729,14 @@ const Notepad = (() => {
     if (ta) {
       clearTimeout(state.histTimer);
       state.tabs[state.activeTab].value = ta.value;
-      state.tabs[state.activeTab]._history = state.history;
-      state.tabs[state.activeTab]._histIdx = state.histIdx;
       state._pushHistory?.(ta.value);
+      state.tabs[state.activeTab]._history = state.history.slice();
+      state.tabs[state.activeTab]._histIdx = state.histIdx;
     }
 
     state.activeTab = idx;
+    state._translateOriginal = null;
+    state._translateOriginalTab = null;
 
     if (ta) {
       const newVal = state.tabs[idx].value ?? '';
@@ -734,7 +783,8 @@ const Notepad = (() => {
       const ctrl = e.ctrlKey || e.metaKey;
 
       // Tab / Shift+Tab: indent / de-indent (no focus change)
-      if (e.key === 'Tab' && !ctrl && !e.altKey) {
+      if (e.key === 'Tab' && !ctrl && !e.altKey && !e.metaKey) {
+        if (e.shiftKey && ta.selectionStart === ta.selectionEnd) return;
         e.preventDefault();
         const start = ta.selectionStart;
         const end   = ta.selectionEnd;
@@ -810,7 +860,8 @@ const Notepad = (() => {
     for (let i = 0; i < value.length; i++) {
       if (value.charCodeAt(i) === 10) lines++;
     }
-    const kb = (_byteLen(value) / 1024).toFixed(1);
+    const bytes = value.length > 50000 ? value.length * 2 : _byteLen(value);
+    const kb = (bytes / 1024).toFixed(1);
     countSpan.textContent = `${chars}/${lines}/${kb}KB`;
   }
 
@@ -834,8 +885,11 @@ const Notepad = (() => {
       const ac = new AbortController();
       state.resizeAbort = ac;
       document.addEventListener('mousemove', mv => {
-        win.style.width  = Math.max(MIN_WIDTH, startW + (mv.clientX - startX)) + 'px';
-        win.style.height = Math.max(MIN_HEIGHT, startH + (mv.clientY - startY)) + 'px';
+        const rect = win.getBoundingClientRect();
+        const maxW = Math.max(MIN_WIDTH, window.innerWidth - rect.left);
+        const maxH = Math.max(MIN_HEIGHT, window.innerHeight - rect.top);
+        win.style.width  = Math.max(MIN_WIDTH, Math.min(maxW, startW + (mv.clientX - startX))) + 'px';
+        win.style.height = Math.max(MIN_HEIGHT, Math.min(maxH, startH + (mv.clientY - startY))) + 'px';
       }, { signal: ac.signal });
       document.addEventListener('mouseup', () => {
         document.body.style.userSelect = '';
