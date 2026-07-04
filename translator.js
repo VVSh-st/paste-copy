@@ -20,8 +20,10 @@ const Translator = (() => {
   let settings = { targetLang: 'ru', engine: 'auto' };
   let googleKey = null;
   let googleKeyTs = 0;
+  let googleKeyPromise = null;
   let msToken = null;
   let msTokenTs = 0;
+  let msTokenPromise = null;
   let gFail = 0, gBlockUntil = 0;
   let mFail = 0, mBlockUntil = 0;
   const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
@@ -63,11 +65,15 @@ const Translator = (() => {
   const WS = /\s+/g;
   const norm = t => (t == null ? '' : String(t)).replace(ZW, '').replace(WS, ' ').trim();
 
+  const htmlDecodeEl = typeof document !== 'undefined' ? document.createElement('textarea') : null;
+
   function decodeHtmlEntities(s) {
     if (!s || !s.includes('&')) return s;
-    const el = document.createElement('textarea');
-    el.innerHTML = s;
-    return el.value;
+    if (!htmlDecodeEl) return s;
+    htmlDecodeEl.innerHTML = s;
+    const value = htmlDecodeEl.value;
+    htmlDecodeEl.innerHTML = '';
+    return value;
   }
 
   // ── Template protection ────────────────────────────────────
@@ -112,7 +118,7 @@ const Translator = (() => {
   function detectLangHint(text) {
     if (!text) return null;
     if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return { code: 'ja', name: 'Japanese' };
-    if (/[\u3400-\u9FFF]/.test(text)) return { code: 'zh', name: 'Chinese' };
+    if (/[\u3400-\u9FFF\uF900-\uFAFF]|\p{Script=Han}/u.test(text)) return { code: 'zh', name: 'Chinese' };
     if (/[\uAC00-\uD7A3]/.test(text)) return { code: 'ko', name: 'Korean' };
     if (/[\u0600-\u06FF]/.test(text)) return { code: 'ar', name: 'Arabic' };
     const letters = text.replace(/[\s\d\p{P}]/gu, '');
@@ -166,8 +172,10 @@ const Translator = (() => {
     _cacheSaveTimer = setTimeout(flushCache, 3000);
   }
 
+  const cacheKey = (text, lang) => `${lang}\u0001${text}`;
+
   function cacheGet(text, lang) {
-    const key = JSON.stringify([lang, text]);
+    const key = cacheKey(text, lang);
     const v = cache.get(key);
     if (v !== undefined) {
       if (typeof v === 'string' || !v.ts || Date.now() - v.ts > CACHE_TTL) {
@@ -187,7 +195,7 @@ const Translator = (() => {
 
   function cacheSet(text, lang, translated) {
     if (!text || !translated) return;
-    const key = JSON.stringify([lang, text]);
+    const key = cacheKey(text, lang);
     cache.delete(key);
     cache.set(key, { text: translated, ts: Date.now() });
     if (cache.size > MAX_CACHE) {
@@ -203,12 +211,13 @@ const Translator = (() => {
       const raw = localStorage.getItem(HISTORY_KEY);
       if (raw) history = JSON.parse(raw);
       if (!Array.isArray(history)) history = [];
+      if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
     } catch { history = []; }
   }
 
   function saveHistory() {
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-MAX_HISTORY)));
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     } catch {}
   }
 
@@ -230,8 +239,8 @@ const Translator = (() => {
       const raw = localStorage.getItem(SETTINGS_KEY);
       if (raw) {
         const s = JSON.parse(raw);
-        if (s?.targetLang) settings.targetLang = s.targetLang;
-        if (s?.engine) settings.engine = s.engine;
+        if (LANG_BY_CODE[s?.targetLang]) settings.targetLang = s.targetLang;
+        if (['auto', 'google', 'microsoft', 'legacy'].includes(s?.engine)) settings.engine = s.engine;
       }
     } catch {}
   }
@@ -245,21 +254,29 @@ const Translator = (() => {
   // ── Google API ─────────────────────────────────────────────
   async function fetchGoogleKey() {
     if (googleKey && Date.now() - googleKeyTs < 4 * 3600 * 1000) return googleKey;
+    if (googleKeyPromise) return googleKeyPromise;
+    googleKeyPromise = (async () => {
+      try {
+        const r = await withTimeout(
+          fetch('https://translate.googleapis.com/_/translate_http/_/js/k=translate_http.tr.en_US.YusFYy3P_ro.O/am=AAg/d=1/exm=el_conf/ed=1/rs=AN8SPfq1Hb8iJRleQqQc8zhdzXmF9E56eQ/m=el_main'),
+          8000
+        );
+        if (!r.ok) return null;
+        const text = await r.text();
+        const m = text.match(/x-goog-api-key['"]\s*:\s*['"]([^'"]+)/i);
+        if (m && /^AIza[0-9A-Za-z_-]{20,}$/.test(m[1])) {
+          googleKey = m[1];
+          googleKeyTs = Date.now();
+          return googleKey;
+        }
+      } catch {}
+      return null;
+    })();
     try {
-      const r = await withTimeout(
-        fetch('https://translate.googleapis.com/_/translate_http/_/js/k=translate_http.tr.en_US.YusFYy3P_ro.O/am=AAg/d=1/exm=el_conf/ed=1/rs=AN8SPfq1Hb8iJRleQqQc8zhdzXmF9E56eQ/m=el_main'),
-        8000
-      );
-      if (!r.ok) return null;
-      const text = await r.text();
-      const m = text.match(/x-goog-api-key['"]\s*:\s*['"]([^'"]+)/i);
-      if (m && /^AIza[0-9A-Za-z_-]{20,}$/.test(m[1])) {
-        googleKey = m[1];
-        googleKeyTs = Date.now();
-        return googleKey;
-      }
-    } catch {}
-    return null;
+      return await googleKeyPromise;
+    } finally {
+      googleKeyPromise = null;
+    }
   }
 
   async function translateGoogle(texts, to, signal) {
@@ -294,18 +311,26 @@ const Translator = (() => {
   // ── Microsoft API ──────────────────────────────────────────
   async function fetchMsToken() {
     if (msToken && Date.now() - msTokenTs < 480000) return msToken;
+    if (msTokenPromise) return msTokenPromise;
+    msTokenPromise = (async () => {
+      try {
+        const r = await withTimeout(
+          fetch('https://edge.microsoft.com/translate/auth'),
+          5000
+        );
+        if (r.ok) {
+          msToken = await r.text();
+          msTokenTs = Date.now();
+          return msToken;
+        }
+      } catch {}
+      return null;
+    })();
     try {
-      const r = await withTimeout(
-        fetch('https://edge.microsoft.com/translate/auth'),
-        5000
-      );
-      if (r.ok) {
-        msToken = await r.text();
-        msTokenTs = Date.now();
-        return msToken;
-      }
-    } catch {}
-    return null;
+      return await msTokenPromise;
+    } finally {
+      msTokenPromise = null;
+    }
   }
 
   async function translateMs(texts, to, signal) {
@@ -318,7 +343,7 @@ const Translator = (() => {
     for (let i = 0; i < texts.length; i += 100) {
       const chunk = texts.slice(i, i + 100);
       const r = await withTimeout(
-        fetch(`https://api-edge.cognitive.microsofttranslator.com/translate?to=${tg}&api-version=3.0`, {
+        fetch(`https://api-edge.cognitive.microsofttranslator.com/translate?to=${encodeURIComponent(tg)}&api-version=3.0`, {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
           body: JSON.stringify(chunk.map(Text => ({ Text }))),
@@ -345,14 +370,15 @@ const Translator = (() => {
   // ── Legacy fallback ────────────────────────────────────────
   async function translateLegacyOne(text, to, signal) {
     const r = await withTimeout(
-      fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${to}&dt=t&q=${encodeURIComponent(text)}`, { signal }),
+      fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`, { signal }),
       LEGACY_TIMEOUT
     );
     if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
     if (!r.ok) throw Object.assign(new Error(`legacy http ${r.status}`), { status: r.status });
     const data = await r.json();
+    if (!Array.isArray(data?.[0])) return null;
     let out = '';
-    data[0].forEach(y => { if (y[0]) out += y[0]; });
+    data[0].forEach(y => { if (Array.isArray(y) && y[0]) out += y[0]; });
     return decodeHtmlEntities(out) || null;
   }
 
@@ -387,6 +413,10 @@ const Translator = (() => {
     texts.forEach((t, i) => {
       const n = norm(t);
       if (!n) return;
+      if (!needsTranslation(n, toLang)) {
+        out[i] = n;
+        return;
+      }
       const c = cacheGet(n, toLang);
       if (c !== undefined) out[i] = c;
       else { todo.push(n); idx.push(i); }
@@ -397,7 +427,7 @@ const Translator = (() => {
     const engine = settings.engine;
     let rem = todo.map((t, i) => ({ t, i }));
 
-    const accept = (src, tr) => {
+    const accept = tr => {
       if (!tr || !tr.trim()) return false;
       return true;
     };
@@ -405,7 +435,7 @@ const Translator = (() => {
     const apply = (arr, src) => {
       for (let j = 0; j < src.length; j++) {
         const tr = arr[j];
-        if (accept(src[j].t, tr)) {
+        if (accept(tr)) {
           cacheSet(src[j].t, toLang, tr);
           out[idx[src[j].i]] = tr;
         }
@@ -413,7 +443,7 @@ const Translator = (() => {
     };
 
     const filterRem = (arr, src) => src.filter((x, j) => {
-      return !accept(x.t, arr[j]);
+      return !accept(arr[j]);
     });
 
     // Google
@@ -424,7 +454,9 @@ const Translator = (() => {
           gFail = 0;
           if (!g.every(v => !v)) { apply(g, rem); rem = filterRem(g, rem); }
         } catch (e) {
+          if (e?.name === 'AbortError' || signal.aborted) throw e;
           gFail++;
+          _stats.failed++;
           if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
         }
       }
@@ -438,18 +470,23 @@ const Translator = (() => {
         mFail = 0;
         if (!m.every(v => !v)) { apply(m, rem); rem = filterRem(m, rem); }
       } catch (e) {
+        if (e?.name === 'AbortError' || signal.aborted) throw e;
         mFail++;
+        _stats.failed++;
         if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
       }
       if (engine === 'microsoft') return out;
     }
 
     // Legacy fallback
-    if (rem.length) {
+    if ((engine === 'legacy' || engine === 'auto') && rem.length) {
       try {
         const l = await translateLegacy(rem.map(x => x.t), toLang, signal);
         apply(l, rem);
-      } catch {}
+      } catch (e) {
+        if (e?.name === 'AbortError' || signal.aborted) throw e;
+        _stats.failed++;
+      }
     }
 
     return out;
@@ -481,10 +518,20 @@ const Translator = (() => {
     LANG_BY_CODE,
 
     get targetLang() { return settings.targetLang; },
-    set targetLang(v) { settings.targetLang = v; saveSettings(); },
+    set targetLang(v) {
+      if (LANG_BY_CODE[v]) {
+        settings.targetLang = v;
+        saveSettings();
+      }
+    },
 
     get engine() { return settings.engine; },
-    set engine(v) { settings.engine = v; saveSettings(); },
+    set engine(v) {
+      if (['auto', 'google', 'microsoft', 'legacy'].includes(v)) {
+        settings.engine = v;
+        saveSettings();
+      }
+    },
 
     get history() { return history; },
 
