@@ -33,6 +33,7 @@
   let lastSuggestions = [];
   let lastMenuSuggestions = [];
   let lastContext = null;
+  let lastContextKey = '';
   let refreshTimer = null;
   let lastRefreshAt = 0;
   const editSessions = new Map();
@@ -105,8 +106,7 @@
   function findSnippetCandidate() {
     const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
     let lastSuccess = null;
-    let lastExport = null;
-    for (let i = recent.length - 1; i >= 0 && (!lastSuccess || !lastExport); i -= 1) {
+    for (let i = recent.length - 1; i >= 0 && !lastSuccess; i -= 1) {
       const e = recent[i];
       if (!lastSuccess && e?.type && e?.ts && /preview\.(copy|download|exportAll)|file\.export/.test(e.type)) lastSuccess = e;
     }
@@ -174,11 +174,24 @@
 
   function track(type, payload = {}) {
     if (!type) return null;
-    const event = window.UserMemory?.recordEvent?.(type, normalizePayload(type, payload)) || null;
+    let event = null;
+    try {
+      event = window.UserMemory?.recordEvent?.(type, normalizePayload(type, payload)) || null;
+    } catch (err) {
+      console.warn('[Intelligence] recordEvent failed:', err);
+    }
 
     if (/preview\.(copy|download|exportAll)|file\.export/.test(type)) {
-      window.ProjectGraph?.captureSnapshot?.(type, { force: true });
-      rememberSuccessfulStructure(type);
+      try {
+        window.ProjectGraph?.captureSnapshot?.(type, { force: true });
+      } catch (err) {
+        console.warn('[Intelligence] ProjectGraph snapshot failed:', err);
+      }
+      try {
+        rememberSuccessfulStructure(type);
+      } catch (err) {
+        console.warn('[Intelligence] rememberSuccessfulStructure failed:', err);
+      }
     }
 
     scheduleRefresh(shouldRefreshImmediately(type) ? 60 : RENDER_DEBOUNCE);
@@ -261,9 +274,15 @@
   function getContext() {
     const tab = window.State?.getActive?.();
     const text = safePreviewText();
+    const textHash = hashText(text);
+    const contextKey = `${tab?.id || ''}\x00${textHash}\x00${tab?.blocks?.length || 0}`;
+
+    if (lastContext && lastContextKey === contextKey && now() - lastContext.ts < 1500) {
+      return lastContext;
+    }
+
     const analysis = safeCall(() => window.QualityDetectors?.analyzePreview?.(text, tab), null, 'QualityDetectors.analyzePreview');
     const lastEvent = safeCall(() => window.UserMemory?.getLastEvent?.(), null, 'UserMemory.getLastEvent');
-    const textHash = hashText(text);
 
     lastContext = {
       ts: now(),
@@ -286,6 +305,7 @@
       roleGaps: safeCall(() => window.ProjectGraph?.findRoleGaps?.(tab, { minScore: 0.58, limit: 4 }), null, 'ProjectGraph.findRoleGaps'),
       analysis
     };
+    lastContextKey = contextKey;
 
     return lastContext;
   }
@@ -388,6 +408,7 @@
       return {
         ...s,
         confidence: cappedConfidence,
+        hidden: Boolean(s.hidden || hidden || !meaningful),
         menuOnly: Boolean(s.menuOnly || menuOnly),
         priorityGroup: 'project-graph',
         priorityScore: priority,
@@ -398,7 +419,9 @@
 
   function suggestionSortScore(s) {
     const priority = Number(s.priorityScore || 0);
-    return Number(s.confidence || 0) + priority / 1000;
+    const confidence = Number(s.confidence || 0);
+    const confidenceBucket = Math.floor(confidence * 20) / 20;
+    return confidenceBucket + priority / 10000 + confidence / 100;
   }
 
   function prepareSuggestions(items, profile, ctx) {
@@ -411,10 +434,12 @@
       .filter(prev => !prev.menuOnly)
       .map(prev => `${prev.type}\x00${prev.contextKey || ''}\x00${prev.preparedHash || ''}`)
     );
-    const allowed = applyProjectGraphPriorityPolicy(items)
-      .filter(s => s && s.type && window.UserMemory?.isSuggestionAllowed?.(s.type) !== false)
+    const personalized = applyProjectGraphPriorityPolicy(items)
+      .filter(s => s && s.type && !s.hidden && window.UserMemory?.isSuggestionAllowed?.(s.type) !== false)
       .map(s => personalizeConfidence(s, ctx, profile))
-      .map(s => s.menuOnly ? { ...s, confidence: Math.max(0.55, Math.min(s.confidence, 0.69)) } : s)
+      .map(s => s.menuOnly ? { ...s, confidence: Math.min(Math.max(s.confidence, 0.55), 0.69) } : s);
+
+    let allowed = personalized
       .filter(s => {
         const stats = profile?.suggestions?.byType?.[s.type];
         const key = `${s.type}\x00${s.contextKey || ''}\x00${s.preparedHash || ''}`;
@@ -423,7 +448,17 @@
         if (!isSamePreparedAction && stats?.lastShownAt && ts - stats.lastShownAt < SAME_SUGGESTION_COOLDOWN) return false;
         return s.confidence >= 0.55;
       })
-      .sort((a, b) => suggestionSortScore(b) - suggestionSortScore(a))
+      .sort((a, b) => suggestionSortScore(b) - suggestionSortScore(a));
+
+    if (!allowed.length) {
+      allowed = personalized
+        .filter(s => s.confidence >= 0.45)
+        .sort((a, b) => suggestionSortScore(b) - suggestionSortScore(a))
+        .slice(0, 1)
+        .map(s => ({ ...s, menuOnly: true, lowConfidenceFallback: true }));
+    }
+
+    allowed = allowed
       // id нужен для идентификации; primary назначается позже отдельно для visible и menu
       .map((s, idx) => ({ ...s, id: s.id || `sug_${s.type}_${ctx.textHash}_${idx}` }));
 
@@ -720,7 +755,12 @@
       renderReportLines(
         'Найденные повторы',
         'Это только отчёт: текст блоков не меняется автоматически.',
-        pairs.map((p, i) => `${i + 1}. «${p.a.title}» ↔ «${p.b.title}» · similarity ${p.score}`)
+        pairs.map((p, i) => {
+          const aTitle = p?.a?.title || 'Блок A';
+          const bTitle = p?.b?.title || 'Блок B';
+          const score = Number.isFinite(Number(p?.score)) ? p.score : '—';
+          return `${i + 1}. «${aTitle}» ↔ «${bTitle}» · similarity ${score}`;
+        })
       );
       return true;
     }
@@ -873,8 +913,13 @@
       return true;
     }
 
-    const title = sanitizeUserTitle(prompt('Название сниппета:', candidate.title || makeSnippetTitle(value)));
-    if (!title) return false;
+    const rawTitle = prompt('Название сниппета:', candidate.title || makeSnippetTitle(value));
+    if (rawTitle === null) return false;
+    const title = sanitizeUserTitle(rawTitle);
+    if (!title) {
+      window.Toast?.show?.('Название сниппета не может быть пустым', 'info');
+      return false;
+    }
 
     try {
       const snippet = window.State?.addGlobalSnippet?.(title, value, {
@@ -909,19 +954,28 @@
   function saveTemplateFromSuggestion() {
     const tab = window.State?.getActive?.();
     if (!tab) return false;
-    const name = sanitizeUserTitle(prompt('Название шаблона:', tab.name || 'Новый шаблон'), 'Новый шаблон');
-    if (!name) return false;
+    const rawName = prompt('Название шаблона:', tab.name || 'Новый шаблон');
+    if (rawName === null) return false;
+    const name = sanitizeUserTitle(rawName, 'Новый шаблон');
+    if (!name) {
+      window.Toast?.show?.('Название шаблона не может быть пустым', 'info');
+      return false;
+    }
 
     try {
       const storageApi = window.Storage || (typeof Storage !== 'undefined' ? Storage : null);
-      const saved = storageApi?.loadTemplates?.() || [];
+      if (!storageApi?.loadTemplates || !storageApi?.saveTemplates) {
+        window.Toast?.show?.('Сохранение шаблонов недоступно', 'error');
+        return false;
+      }
+      const saved = storageApi.loadTemplates() || [];
       saved.push({
         id: 'user-intel-' + Date.now().toString(36),
         name,
         blocks: JSON.parse(JSON.stringify(tab.blocks || [])),
         source: 'intelligence'
       });
-      storageApi?.saveTemplates?.(saved);
+      storageApi.saveTemplates(saved);
       window.Templates?.renderDropdown?.();
       track('template.saved', {
         title: name,
@@ -952,38 +1006,52 @@
     const sections = getStructureSections(candidate);
     if (!tab || !candidate?.blockId || sections.length < 2) return false;
 
-    window.State.update(activeTab => {
-      const source = window.State.findBlock(activeTab.blocks || [], candidate.blockId);
-      if (!source || source.type !== 'text') {
-        console.warn('[Intelligence] invalid source block');
-        return;
-      }
-      const sourceIdx = source.activeSubtab ?? 0;
+    let applied = false;
 
-      const sourceColumn = Number.isFinite(Number(source.column)) ? source.column : 0;
-      const newBlocks = sections.map(section => {
-        const block = window.State.makeBlock(section.title, '📄', sourceColumn, '', 'text');
-        block.subtabs[0].value = section.value;
-        block.activeSubtab = 0;
-        return block;
+    try {
+      window.State.update(activeTab => {
+        const source = window.State.findBlock(activeTab.blocks || [], candidate.blockId);
+        if (!source || source.type !== 'text') {
+          console.warn('[Intelligence] invalid source block');
+          return;
+        }
+        const sourceIdx = source.activeSubtab ?? 0;
+
+        const sourceColumn = Number.isFinite(Number(source.column)) ? source.column : 0;
+        const newBlocks = sections.map(section => {
+          const block = window.State.makeBlock(section.title, '📄', sourceColumn, '', 'text');
+          block.subtabs[0].value = section.value;
+          block.activeSubtab = 0;
+          return block;
+        });
+
+        const insertAfter = (list) => {
+          const index = list.findIndex(item => item.id === source.id);
+          if (index >= 0) {
+            list.splice(index + 1, 0, ...newBlocks);
+            return true;
+          }
+          for (const item of list) {
+            if (item.type === 'group' && Array.isArray(item.children) && insertAfter(item.children)) return true;
+          }
+          return false;
+        };
+
+        const inserted = insertAfter(activeTab.blocks);
+        if (!inserted) activeTab.blocks.push(...newBlocks);
+        if (source.subtabs?.[sourceIdx]) source.subtabs[sourceIdx].value = '';
+        applied = true;
       });
+    } catch (err) {
+      console.error('[Intelligence] apply structure failed:', err);
+      window.Toast?.show?.('Не удалось разбить текст на блоки', 'error');
+      return false;
+    }
 
-      const insertAfter = (list) => {
-        const index = list.findIndex(item => item.id === source.id);
-        if (index >= 0) {
-          list.splice(index + 1, 0, ...newBlocks);
-          return true;
-        }
-        for (const item of list) {
-          if (item.type === 'group' && Array.isArray(item.children) && insertAfter(item.children)) return true;
-        }
-        return false;
-      };
-
-      const inserted = insertAfter(activeTab.blocks);
-      if (!inserted) activeTab.blocks.push(...newBlocks);
-      if (source.subtabs?.[sourceIdx]) source.subtabs[sourceIdx].value = '';
-    });
+    if (!applied) {
+      window.Toast?.show?.('Не удалось найти исходный блок для разбиения', 'error');
+      return false;
+    }
 
     track('block.structure.applied', { blockId: candidate.blockId, chars: candidate.chars || 0, sectionCount: sections.length });
     window.Toast?.show?.(`Разбито на блоки: ${sections.length}`, 'success');
@@ -1369,7 +1437,12 @@
   function runSuggestionAction(suggestion) {
     const action = suggestion.action || {};
     if (action.kind === 'llm-feature' && action.feature) {
-      window.LLMFeatures?.handleAction?.(action.feature);
+      const handler = window.LLMFeatures?.handleAction;
+      if (typeof handler !== 'function') {
+        window.Toast?.show?.('LLM-функция сейчас недоступна', 'error');
+        return false;
+      }
+      handler(action.feature);
       return true;
     }
     if (action.kind === 'open-report') return openReport(suggestion);
@@ -1385,12 +1458,15 @@
     const tab = window.State?.getActive?.();
     const text = safePreviewText();
     if (!tab || !text.trim()) return;
-    const analysis = window.QualityDetectors?.analyzePreview?.(text, tab);
+    const textHash = hashText(text);
+    const analysis = lastContext?.tabId === tab.id && lastContext?.textHash === textHash
+      ? lastContext.analysis
+      : window.QualityDetectors?.analyzePreview?.(text, tab);
     window.UserMemory?.addSuccessfulStructure?.({
       source,
       tabName: tab.name || '',
       blockCount: tab.blocks?.length || 0,
-      textHash: hashText(text),
+      textHash,
       chars: text.length,
       structure: analysis?.structure || null
     });
