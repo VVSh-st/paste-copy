@@ -128,6 +128,22 @@ const Ember = (() => {
   const caret = { x: 0, y: 0, active: false, typing: false, _typingTimer: null };
   const cursorLean = { x: 0, y: 0, squish: 0, scale: 1, tiltX: 0, tiltY: 0 };
 
+  // --- temperament ---
+  const temperament = { curiosity: 0, nervousness: 0, tiredness: 0, satisfaction: 0 };
+
+  // --- gaze (взгляд) ---
+  const gaze = { x: 0, y: 0, strength: 0 };
+
+  // --- anticipation ---
+  const anticipation = { active: false, type: null, start: 0, dur: 0, power: 0 };
+
+  // --- split heat ---
+  let flashHeat = 0;
+  let coreHeatReserve = 0;
+
+  // --- breath ---
+  let breathHoldUntil = 0;
+
   // state machine для peek-цикла
   const peek = {
     state: 'idle',
@@ -874,7 +890,7 @@ const Ember = (() => {
     ashTrackX += (pose.ashShiftX - ashTrackX) * 0.03;
     ashTrackY += (pose.ashShiftY - ashTrackY) * 0.03;
     hazeTrackX += (pose.x * 0.1 - hazeTrackX) * 0.015;
-    pose.glow += residualHeat;
+    pose.glow += residualHeat + flashHeat * 0.9 + coreHeatReserve * 0.45;
 
     // floating bob — медленное парение, отдельное от дыхания
     bobPhase += 0.0008;
@@ -917,8 +933,10 @@ const Ember = (() => {
 
     root.style.setProperty('--glowSkewX', pose.glowSkewX.toFixed(1) + 'deg');
     root.style.setProperty('--glowSkewY', pose.glowSkewY.toFixed(1) + 'deg');
-    root.style.setProperty('--glowX', glowTrackX.toFixed(2) + 'px');
-    root.style.setProperty('--glowY', glowTrackY.toFixed(2) + 'px');
+    const gazeGlowX = gaze.x * 0.18 * gaze.strength;
+    const gazeGlowY = gaze.y * 0.12 * gaze.strength;
+    root.style.setProperty('--glowX', (glowTrackX + gazeGlowX).toFixed(2) + 'px');
+    root.style.setProperty('--glowY', (glowTrackY + gazeGlowY).toFixed(2) + 'px');
 
     root.style.setProperty('--crustX', pose.crustX.toFixed(2) + 'px');
     root.style.setProperty('--crustY', pose.crustY.toFixed(2) + 'px');
@@ -938,8 +956,8 @@ const Ember = (() => {
     coreEl.style.setProperty('--glintRot', pose.glintRot.toFixed(1) + 'deg');
     coreEl.style.setProperty('--glintScale', pose.glintScale.toFixed(3));
     // glint от курсора — блик скользит по поверхности при наклоне
-    const glintCursorX = (cursorLean.tiltY || 0) * 0.8;
-    const glintCursorY = (cursorLean.tiltX || 0) * -0.5;
+    const glintCursorX = (cursorLean.tiltY || 0) * 0.8 + gaze.x * 0.15 * gaze.strength;
+    const glintCursorY = (cursorLean.tiltX || 0) * -0.5 + gaze.y * -0.10 * gaze.strength;
     coreEl.style.setProperty('--glintCursorX', glintCursorX.toFixed(1) + '%');
     coreEl.style.setProperty('--glintCursorY', glintCursorY.toFixed(1) + '%');
 
@@ -1537,6 +1555,61 @@ const Ember = (() => {
     defer(() => { if (tooltipEl) { tooltipEl.style.opacity = '0'; defer(() => tooltipEl?.remove(), 300); } }, 3000);
   }
 
+  function updateGaze(dt, targetX, targetY, activeStrength) {
+    gaze.x += (targetX - gaze.x) * clamp(dt * 0.006, 0, 1);
+    gaze.y += (targetY - gaze.y) * clamp(dt * 0.006, 0, 1);
+    gaze.strength += (activeStrength - gaze.strength) * clamp(dt * 0.008, 0, 1);
+  }
+
+  function startAnticipation(type, dur, power = 1) {
+    anticipation.active = true;
+    anticipation.type = type;
+    anticipation.start = performance.now();
+    anticipation.dur = dur;
+    anticipation.power = power;
+  }
+
+  function applyAnticipationPose(pose, now) {
+    if (!anticipation.active) return;
+    const t = clamp((now - anticipation.start) / anticipation.dur, 0, 1);
+    const k = Math.sin(t * Math.PI);
+    pose.squash += 0.10 * k * anticipation.power;
+    pose.scaleX *= 1 - 0.03 * k * anticipation.power;
+    pose.scaleY *= 1 - 0.02 * k * anticipation.power;
+    pose.glow -= 0.05 * k * anticipation.power;
+    if (t >= 1) anticipation.active = false;
+  }
+
+  function getSceneFocusSuppression() {
+    if (egg.active) return 0.15;
+    if (previewScare.active) return 0.35;
+    if (peek.state !== 'idle') return 0.55;
+    return 1;
+  }
+
+  function applyRingMoodBias() {
+    if (!segments.length) return;
+    const sleepyBias = temperament.tiredness;
+    if (sleepyBias > 0.1) {
+      [4, 5, 6, 7].forEach(i => {
+        const seg = segments[i];
+        if (!seg) return;
+        markSegmentDirty(seg);
+        seg.style.setProperty('--seg-dim', (sleepyBias * 0.35).toFixed(3));
+        seg.style.setProperty('--seg-push', (sleepyBias * -0.8).toFixed(2) + 'px');
+      });
+    }
+    if (temperament.curiosity > 0.3) {
+      const bias = (temperament.curiosity - 0.3) * 0.5;
+      [0, 1, 2].forEach(i => {
+        const seg = segments[i];
+        if (!seg) return;
+        markSegmentDirty(seg);
+        seg.style.setProperty('--seg-brightness', (bias * 0.6).toFixed(3));
+      });
+    }
+  }
+
   function updateCursorLean(now, dt) {
     const lerp = clamp(dt * 0.008, 0, 1);
 
@@ -1624,9 +1697,10 @@ const Ember = (() => {
         // вытягиваемся к курсору
         peek.leanProgress = clamp(peek.leanProgress + dt * 0.0025, 0, 1);
         const ep = easeOutQuad(peek.leanProgress);
+        const curiosityAmp = 1 + temperament.curiosity * 0.3;
 
-        cursorLean.x += (peek.leanX * ep - cursorLean.x) * peekLerp;
-        cursorLean.y += (peek.leanY * ep - cursorLean.y) * peekLerp;
+        cursorLean.x += (peek.leanX * ep * curiosityAmp - cursorLean.x) * peekLerp;
+        cursorLean.y += (peek.leanY * ep * curiosityAmp - cursorLean.y) * peekLerp;
 
         // лёгкое наклонение «головой»
         const tiltTargetX = -peek.leanY * 0.3;
@@ -2034,6 +2108,9 @@ const Ember = (() => {
   function startPreviewScare() {
     if (previewScare.active || egg.active) return;
     if (Math.random() > 0.4) return;
+    startAnticipation('scare', 100, 1.0);
+    temperament.nervousness = Math.min(1, temperament.nervousness + 0.5);
+    flashHeat = Math.max(flashHeat, 0.25);
     const recoilX = (Math.random() < 0.5 ? -1 : 1) * rand(8, 20);
     const recoilY = -rand(14, 30);
     previewScare.active = true;
@@ -2153,19 +2230,24 @@ const Ember = (() => {
       case 'delete': {
         if (Math.random() > 0.30) return;
         reactionCooldowns['delete'] = now + 4000;
-        const rx = rand(15, 30) * (Math.random() < 0.5 ? -1 : 1);
-        const ry = -rand(18, 35);
-        cursorLean.x += rx;
-        cursorLean.y += ry;
-        cursorLean.squish += 0.18;
-        cursorLean.scale *= 0.88;
-        cursorLean.tiltX += ry * 0.3;
-        cursorLean.tiltY += -rx * 0.25;
-        heatBoost = Math.max(heatBoost, 0.25);
-        ringImpulse = rand(5, 10) * (Math.random() < 0.5 ? 1 : -1);
-        for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
-        for (let i = 0; i < 4; i++) defer(() => spawnAshParticle(), i * 100);
-        defer(() => spawnShootingSpark(), 100);
+        startAnticipation('delete', 120, 1.2);
+        flashHeat = Math.max(flashHeat, 0.3);
+        temperament.nervousness = Math.min(1, temperament.nervousness + 0.3);
+        defer(() => {
+          const rx = rand(15, 30) * (Math.random() < 0.5 ? -1 : 1);
+          const ry = -rand(18, 35);
+          cursorLean.x += rx;
+          cursorLean.y += ry;
+          cursorLean.squish += 0.18;
+          cursorLean.scale *= 0.88;
+          cursorLean.tiltX += ry * 0.3;
+          cursorLean.tiltY += -rx * 0.25;
+          heatBoost = Math.max(heatBoost, 0.25);
+          ringImpulse = rand(5, 10) * (Math.random() < 0.5 ? 1 : -1);
+          for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
+          for (let i = 0; i < 4; i++) defer(() => spawnAshParticle(), i * 100);
+          defer(() => spawnShootingSpark(), 100);
+        }, 120);
         break;
       }
 
@@ -2186,6 +2268,7 @@ const Ember = (() => {
         cursorLean.scale *= 1.06;
         cursorLean.squish += rand(-0.06, -0.02);
         heatBoost = Math.max(heatBoost, 0.18);
+        temperament.satisfaction = Math.min(1, temperament.satisfaction + 0.25);
         defer(() => spawnSpark(), 120);
         defer(() => spawnSpark(), 250);
         defer(() => spawnAshParticle(), 200);
@@ -2197,6 +2280,7 @@ const Ember = (() => {
         cursorLean.y += rand(-12, -6);
         cursorLean.squish += rand(0.04, 0.1);
         heatBoost = Math.max(heatBoost, 0.15);
+        temperament.satisfaction = Math.min(1, temperament.satisfaction + 0.3);
         for (let i = 0; i < 5; i++) defer(() => spawnSpark(), i * 70);
         break;
       }
@@ -2225,11 +2309,14 @@ const Ember = (() => {
 
       case 'save': {
         if (!canReact('save', 5000)) return;
+        startAnticipation('save', 80, 0.6);
         cursorLean.y += rand(-8, -3);
         cursorLean.scale *= 1.03;
         cursorLean.squish += rand(-0.04, -0.01);
         heatBoost = Math.max(heatBoost, 0.1);
+        coreHeatReserve = Math.min(1, coreHeatReserve + 0.12);
         residualHeat += 0.15;
+        temperament.satisfaction = Math.min(1, temperament.satisfaction + 0.4);
         for (let i = 0; i < 3; i++) defer(() => spawnSpark(), i * 100);
         break;
       }
@@ -2398,6 +2485,33 @@ const Ember = (() => {
     else if (mood.agitated > 0.3) emberMood = 'overheated';
     else if (mood.sleepy > 0.6) emberMood = 'sleepy';
     else emberMood = 'calm';
+  }
+
+  function updateTemperament(now, dt) {
+    const ember = getEmberCenter();
+    const dx = mouse.x - ember.x;
+    const dy = mouse.y - ember.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > 50 && dist < 220 && mouse.speed > 2 && mouse.speed < 25) {
+      temperament.curiosity = Math.min(1, temperament.curiosity + dt * 0.0008);
+    } else {
+      temperament.curiosity = Math.max(0, temperament.curiosity - dt * 0.0005);
+    }
+
+    if (mouse.speed > 60) {
+      temperament.nervousness = Math.min(1, temperament.nervousness + dt * 0.0015);
+    } else {
+      temperament.nervousness = Math.max(0, temperament.nervousness - dt * 0.0008);
+    }
+
+    if (hoursWithoutActivity() > 2) {
+      temperament.tiredness = Math.min(1, temperament.tiredness + dt * 0.00008);
+    } else {
+      temperament.tiredness = Math.max(0, temperament.tiredness - dt * 0.00012);
+    }
+
+    temperament.satisfaction = Math.max(0, temperament.satisfaction - dt * 0.0012);
   }
 
   function updateRingSegments(now) {
@@ -2605,6 +2719,22 @@ const Ember = (() => {
       sparkDone = false;
     }
 
+    updateTemperament(now, dt);
+
+    // gaze: направление внимания
+    const peekActive = peek.state === 'noticing' || peek.state === 'peeking' || peek.state === 'looking';
+    if (peekActive) {
+      const ember = getEmberCenter();
+      const gDx = mouse.x - ember.x;
+      const gDy = mouse.y - ember.y;
+      const gDist = Math.hypot(gDx, gDy);
+      const gNorm = gDist > 0 ? { x: gDx / gDist, y: gDy / gDist } : { x: 0, y: 0 };
+      const closeness = clamp(1 - (gDist - 50) / 210, 0, 1);
+      updateGaze(dt, gNorm.x * closeness * 30, gNorm.y * closeness * 30, closeness * 0.8);
+    } else {
+      updateGaze(dt, 0, 0, 0);
+    }
+
     updateCursorLean(now, dt);
     updatePreviewScare(now);
     processReactions(now);
@@ -2618,8 +2748,23 @@ const Ember = (() => {
     hoverVal += hover ? (1 - hoverVal) * hoverStep : (0 - hoverVal) * hoverStep;
 
     const speedMult = (1 + hoverVal * 0.8) / sleepSlowdown();
-    const breathBase = intensity > 0.3 ? 0.00055 : 0.0002;
-    breathPhase += breathBase * speedMult * dt;
+
+    // breath: temperament modulation + rare pauses
+    const stressed = temperament.nervousness > 0.65;
+    const sleepy = temperament.tiredness > 0.6;
+    if (!breathHoldUntil && !stressed && Math.random() < 0.00003 * dt) {
+      breathHoldUntil = now + rand(120, 280);
+    }
+    if (breathHoldUntil && now < breathHoldUntil) {
+      // hold — skip breath phase advance
+    } else {
+      if (breathHoldUntil && now >= breathHoldUntil) breathHoldUntil = 0;
+      const breathBase =
+        stressed ? 0.00072 :
+        sleepy ? 0.00016 :
+        intensity > 0.3 ? 0.00055 : 0.0002;
+      breathPhase += breathBase * speedMult * dt;
+    }
     if (Date.now() > nextBreathSwitch) {
       breathPatternIdx = (breathPatternIdx + 1) % breathPattern.length;
       nextBreathSwitch = Date.now() + rand(2000, 6000);
@@ -2639,6 +2784,8 @@ const Ember = (() => {
     updateMood(now);
     applyStatus();
     if (heatBoost > 0 && statusState !== 'error') heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
+    flashHeat = Math.max(0, flashHeat - dt * 0.0012);
+    coreHeatReserve = Math.max(0, coreHeatReserve - dt * 0.00012);
     residualHeat *= 0.992;
 
     // --- редкие экстремальные события ---
@@ -2659,7 +2806,7 @@ const Ember = (() => {
       tryStart('microShift', 0.2 * moodMul, [1000, 2000], () => ({ dx: rand(0.3, 0.6) * (Math.random() < 0.5 ? -1 : 1) }));
       tryStart('crackle', 0.4 * moodMul * agitatedBoost, [80, 160], () => ({ mag: rand(0.9, 1.5), side: Math.random() < 0.5 ? -1 : 1 }));
       tryStart('stretch', 0.35 * moodMul, [3000, 4200], () => ({ amp: rand(0.9, 1.25), mag: rand(0.7, 1.1) }));
-      tryStart('glint', 0.3 * moodMul, [2000, 3000], () => ({ hue: rand(15, 35), sat: rand(0.3, 0.6) }));
+      tryStart('glint', 0.3 * moodMul * (1 + temperament.curiosity * 0.5), [2000, 3000], () => ({ hue: rand(15, 35), sat: rand(0.3, 0.6) }));
       if (intensity < 0.4 || emberMood === 'sleepy') tryStart('sleepySag', 0.25 * moodMul, [3000, 5000], () => ({ mag: rand(0.6, 1.0) }));
       tryStart('smolder', 0.3 * moodMul, [3000, 4000], () => ({ hue: rand(10, 26), sat: rand(0.15, 0.32) }));
       tryStart('heatRadiance', 0.25 * moodMul, [2500, 3500]);
@@ -2789,18 +2936,21 @@ const Ember = (() => {
 
       advanceSegEffects(dt);
       applySegEffects();
+      applyRingMoodBias();
       updateRingSegments(now);
 
       if (Date.now() > nextAshSpawn) {
-        if (Math.random() < (lowFpsMode ? 0.3 : 0.55)) spawnAshParticle();
-        if (intensity > 0.6 && Math.random() < (lowFpsMode ? 0.05 : 0.15)) spawnAshParticle();
+        const sceneBudget = getSceneFocusSuppression();
+        if (Math.random() < (lowFpsMode ? 0.3 : 0.55) * sceneBudget) spawnAshParticle();
+        if (intensity > 0.6 && Math.random() < (lowFpsMode ? 0.05 : 0.15) * sceneBudget) spawnAshParticle();
         nextAshSpawn = Date.now() + rand(lowFpsMode ? 500 : 600, lowFpsMode ? 1200 : 1100);
       }
 
       if (Date.now() > nextSparkCheck) {
-        if (Math.random() < (lowFpsMode ? 0.2 : 0.5) * (0.4 + intensity * 0.6)) spawnSpark();
-        if (intensity > 0.6 && Math.random() < (lowFpsMode ? 0.02 : 0.08)) spawnShootingSpark();
-        if (intensity < 0.5 && Math.random() < (lowFpsMode ? 0.04 : 0.12)) spawnCrumb();
+        const sceneBudget = getSceneFocusSuppression();
+        if (Math.random() < (lowFpsMode ? 0.2 : 0.5) * (0.4 + intensity * 0.6) * sceneBudget) spawnSpark();
+        if (intensity > 0.6 && Math.random() < (lowFpsMode ? 0.02 : 0.08) * sceneBudget) spawnShootingSpark();
+        if (intensity < 0.5 && Math.random() < (lowFpsMode ? 0.04 : 0.12) * sceneBudget) spawnCrumb();
         nextSparkCheck = Date.now() + rand(lowFpsMode ? 2400 : 1400, lowFpsMode ? 5500 : 3800);
       }
 
@@ -3071,6 +3221,12 @@ const Ember = (() => {
     nextBreathSwitch = 0;
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
     focusState = 'active'; focusTimer = 0;
+    temperament.curiosity = 0; temperament.nervousness = 0;
+    temperament.tiredness = 0; temperament.satisfaction = 0;
+    gaze.x = 0; gaze.y = 0; gaze.strength = 0;
+    anticipation.active = false;
+    flashHeat = 0; coreHeatReserve = 0;
+    breathHoldUntil = 0;
 
     root.removeEventListener('mouseenter', handlers.mouseenter);
     root.removeEventListener('mouseleave', handlers.mouseleave);
