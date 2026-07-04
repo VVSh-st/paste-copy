@@ -190,9 +190,11 @@ const Notepad = (() => {
 
     if (_instance && !_instance.el?.isConnected) {
       clearTimeout(_instance.histTimer);
-      _persist(_instance);
+      clearTimeout(_instance.tabClickTimer);
       _instance.dragAbort?.abort();
       _instance.resizeAbort?.abort();
+      document.body.style.userSelect = '';
+      _persist(_instance);
       _instance = null;
     }
 
@@ -211,7 +213,9 @@ const Notepad = (() => {
       title:        saved?.title    || 'Блокнот',
       tabs,
       activeTab,
-      tabOffset:    saved?.tabOffset ?? 0,
+      tabOffset:    Number.isInteger(saved?.tabOffset)
+        ? Math.max(0, Math.min(TAB_COUNT - VISIBLE_TABS, saved.tabOffset))
+        : 0,
       fontSize:     saved?.fontSize || 12,
       minimized:    saved?.minimized ?? false,
       pos:          saved?.pos      || null,
@@ -275,7 +279,9 @@ const Notepad = (() => {
     if (ta) {
       clearTimeout(state.histTimer);
       state.tabs[state.activeTab].value = ta.value;
-      state._pushHistory?.(ta.value);
+      if (state.history[state.histIdx] !== ta.value) {
+        state._pushHistory?.(ta.value);
+      }
     }
 
     state.histTimer = null;
@@ -331,8 +337,10 @@ const Notepad = (() => {
     titleInput.spellcheck    = false;
     titleInput.style.display = 'none';
 
+    let titleEditing = false;
     titleLabel.ondblclick = e => {
       e.stopPropagation();
+      titleEditing = true;
       titleLabel.style.display = 'none';
       titleInput.style.display = '';
       titleInput.value = state.title;
@@ -340,6 +348,8 @@ const Notepad = (() => {
       titleInput.select();
     };
     const commitTitle = () => {
+      if (!titleEditing) return;
+      titleEditing = false;
       if (titleInput.style.display === 'none') return;
       const v = titleInput.value.trim();
       if (v) state.title = v;
@@ -352,7 +362,12 @@ const Notepad = (() => {
     titleInput.onblur    = commitTitle;
     titleInput.onkeydown = e => {
       if (e.key === 'Enter')  { e.preventDefault(); commitTitle(); }
-      if (e.key === 'Escape') { titleInput.style.display = 'none'; titleLabel.style.display = ''; }
+      if (e.key === 'Escape') {
+        titleEditing = false;
+        titleInput.value = state.title;
+        titleInput.style.display = 'none';
+        titleLabel.style.display = '';
+      }
     };
 
     titleWrap.append(titleLabel, titleInput);
@@ -405,31 +420,36 @@ const Notepad = (() => {
       }
       if (state.history[state.histIdx] === val) return;
       state.history.push(val);
-      if (state.history.length > MAX_HISTORY) state.history.shift();
+      if (state.history.length > MAX_HISTORY) {
+        state.history.shift();
+        state.histIdx = Math.max(0, state.histIdx - 1);
+      }
       state.histIdx = state.history.length - 1;
     }
 
     const doUndo = () => {
       const ta = getTa();
       if (!ta || state.histIdx <= 0) return;
+      const wasFilled = !!state.tabs[state.activeTab].value;
       state.histIdx--;
       ta.value = state.history[state.histIdx];
       ta.selectionStart = ta.selectionEnd = ta.value.length;
       state.tabs[state.activeTab].value = ta.value;
       _updateCount(ta, countSpan);
-      _renderTabs(state);
+      if (wasFilled !== !!ta.value) _renderTabs(state);
       _persist(state);
     };
 
     const doRedo = () => {
       const ta = getTa();
       if (!ta || state.histIdx >= state.history.length - 1) return;
+      const wasFilled = !!state.tabs[state.activeTab].value;
       state.histIdx++;
       ta.value = state.history[state.histIdx];
       ta.selectionStart = ta.selectionEnd = ta.value.length;
       state.tabs[state.activeTab].value = ta.value;
       _updateCount(ta, countSpan);
-      _renderTabs(state);
+      if (wasFilled !== !!ta.value) _renderTabs(state);
       _persist(state);
     };
 
@@ -452,8 +472,7 @@ const Notepad = (() => {
           .then(removeSelection)
           .catch(() => _toast('Не удалось вырезать: буфер недоступен', 'error'));
       } else {
-        _toast('Буфер обмена недоступен, выделение удалено', 'info');
-        removeSelection();
+        _toast('Буфер обмена недоступен: вырезание отменено', 'error');
       }
     });
 
@@ -476,9 +495,10 @@ const Notepad = (() => {
 
     const pasteBtn = _mkBtn(SVG.paste, 'Вставить из буфера (или Ctrl+V)', () => {
       const ta = getTa(); if (!ta) return;
+      const taAtStart = ta;
       const tabAtStart = state.activeTab;
       _doPaste(ta, text => {
-        if (state.activeTab !== tabAtStart || !state.el?.isConnected) return;
+        if (state.activeTab !== tabAtStart || !state.el?.isConnected || getTa() !== taAtStart) return;
         pushHistory(ta.value);
         ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end');
         ta.dispatchEvent(new Event('input'));
@@ -518,7 +538,7 @@ const Notepad = (() => {
       _toast('Файл скачан ✓', 'success');
     };
     state._saveToFile = saveToFile;
-    const saveBtn = _mkBtn(SVG.save, 'Сохранить в .txt', saveToFile);
+    const saveBtn = _mkBtn(SVG.save, 'Сохранить в .txt (Ctrl+S)', saveToFile);
 
     const transferBtn = _mkBtn(SVG.transfer, 'Скопировать на следующую свободную вкладку', () => {
       const ta = getTa(); if (!ta || !ta.value.trim()) return;
@@ -568,6 +588,7 @@ const Notepad = (() => {
 
     _renderTabs(state);
 
+    const translateBtn = _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст');
     const handleTranslate = () => {
       if (typeof Translator === 'undefined') { _toast('Модуль переводчика не загружен', 'error'); return; }
       const ta = getTa(); if (!ta) return;
@@ -589,6 +610,7 @@ const Notepad = (() => {
       const selStart = ta.selectionStart;
       const selEnd   = ta.selectionEnd;
       const tabAtStart = state.activeTab;
+      const sourceValue = ta.value;
       const hasSel   = selStart !== selEnd;
       const sel      = ta.value.substring(selStart, selEnd);
       const text     = hasSel ? sel : ta.value;
@@ -596,9 +618,14 @@ const Notepad = (() => {
       const lang = Translator.LANG_BY_CODE[Translator.targetLang];
       _toast('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
       state._translateBusy = true;
+      translateBtn.disabled = true;
       Translator.translateProtected(text, Translator.targetLang).then(result => {
         if (state.activeTab !== tabAtStart || !state.el?.isConnected) {
           _toast('Перевод отменён: вкладка изменена', 'info');
+          return;
+        }
+        if (ta.value !== sourceValue) {
+          _toast('Перевод отменён: текст изменён', 'info');
           return;
         }
         if (!result || result === text) { _toast('Не удалось перевести'); return; }
@@ -614,8 +641,12 @@ const Notepad = (() => {
         ta.dispatchEvent(new Event('input'));
         _toast('✓ Переведено → ' + (lang?.name || Translator.targetLang) + ' (клик ↩ — вернуть)');
       }).catch(err => _toast('Ошибка: ' + err.message))
-        .finally(() => { state._translateBusy = false; });
+        .finally(() => {
+          state._translateBusy = false;
+          translateBtn.disabled = false;
+        });
     };
+    translateBtn.addEventListener('click', handleTranslate);
 
     toolbar.append(
       _mkBtn(SVG.undo, 'Отменить (Ctrl+Z)',  doUndo),
@@ -626,7 +657,7 @@ const Notepad = (() => {
       _mkDiv(),
       fDecBtn, fIncBtn,
       _mkDiv(),
-      _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст', handleTranslate),
+      translateBtn,
       _mkDiv(),
       prevTabBtn, tabsWrap, nextTabBtn,
       _mkDiv(),
@@ -672,6 +703,8 @@ const Notepad = (() => {
         'font-family:inherit;font-weight:600;outline:none;text-align:center;';
 
       const commitRename = () => {
+        if (!renameInput._editing) return;
+        renameInput._editing = false;
         if (renameInput.style.display === 'none') return;
         const v = renameInput.value.trim();
         if (v) state.tabs[i].label = v;
@@ -685,6 +718,7 @@ const Notepad = (() => {
         e.stopPropagation();
         if (e.key === 'Enter')  { e.preventDefault(); commitRename(); }
         if (e.key === 'Escape') {
+          renameInput._editing = false;
           renameInput.value = state.tabs[i].label;
           renameInput.style.display = 'none';
           labelSpan.style.display = '';
@@ -714,6 +748,7 @@ const Notepad = (() => {
           _switchTab(state, idx, state.el);
           _openRenameOnTab(state, idx);
         } else {
+          renameInput._editing = true;
           labelSpan.style.display = 'none';
           renameInput.style.display = '';
           renameInput.value = state.tabs[idx].label;
@@ -737,6 +772,7 @@ const Notepad = (() => {
       const ls = newBtn?.querySelector('span');
       const ri = newBtn?.querySelector('input.notepad-tab-rename');
       if (!ls || !ri) return;
+      ri._editing = true;
       ls.style.display = 'none';
       ri.style.display = '';
       ri.value = state.tabs[idx].label;
