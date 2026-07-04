@@ -134,9 +134,10 @@ aaef441 notepad: GPT audit round 5 — 8 fixes (_openRenameOnTab sync, ondblclic
 05100bb intelligence-core: GPT audit round 1 — 20 fixes (safeCall wrapper, refresh try/catch, editSessions cleanup, stableStringify cycles, hasMeaningfulDiff, acceptSuggestion post-check, template tracking, sanitizeUserTitle, snippet Set, prepareSuggestions Set, findSnippetCandidate linear, computeFinality single pass, applyStructureCandidate order, dismissSuggestion by hash, escapeHtml label, scheduleRefresh min interval, trackEdit cleanup, getSuggestions copy, preferredColumn recursive)
 221e4f0 intelligence-core: GPT audit round 2 — 12 fixes (track try/catch, suppressed suggestions hidden flag, applyStructureCandidate false success, saveTemplate Storage API check, llm-feature handler check, low confidence fallback, getContext cache, rememberSuccessfulStructure reuse, suggestionSortScore priority, openReport duplicates safety, prompt Cancel vs empty, dead lastExport)
 083613b intelligence-core: GPT audit round 3 — 8 fixes (runningSuggestionActions guard, preview return value, previewed tracking, snippet re-check after prompt, structuredClone, template name no fallback, timeline 50 limit, getInsertionTargets limit, DOM placement select)
+5391c60 intelligence-core: GPT audit round 4 — 9 fixes (acceptSuggestion catch, normalizePayload strip content, Array.isArray safety, computeFinality settled, trackEdit tabId key, getContext skip empty, openReport array validation, template ID random, previewCompanionBlock selectable)
 ```
 
-**Итого: 331 фикс за 30 раундов аудита**
+**Итого: 340 фиксов за 31 раунд аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
@@ -296,7 +297,7 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - `anchors.js` (~600 строк) — anchor navigation, markers, palette, GPT audit fixes (25 fixes)
 - `translator.js` (~763 строк) — Google/MS/Legacy translate, GPT audit fixes (78 fixes, 5 раундов)
 - `notepad.js` (~1007 строк) — singleton floating notepad, GPT audit fixes (83 fixes, 5 раундов)
-- `intelligence-core.js` (~1531 строк) — ядро интеллектуальных подсказок, scoring, prediction, GPT audit fixes (40 fixes, 3 раунда)
+- `intelligence-core.js` (~1563 строк) — ядро интеллектуальных подсказок, scoring, prediction, GPT audit fixes (49 fixes, 4 раунда)
 - `text-skeletonizer-worker.js` (~270 строк) — Worker с паритетной логикой
 - `prompt-translator-review.md` — GPT audit prompt для translator.js
 - `prompt-notepad-review.md` — GPT audit prompt для notepad.js
