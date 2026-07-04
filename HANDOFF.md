@@ -138,9 +138,11 @@ aaef441 notepad: GPT audit round 5 — 8 fixes (_openRenameOnTab sync, ondblclic
 1653646 intelligence-core: GPT audit round 5 — 10 fixes (makeContextKey String guard, personalizeConfidence NaN, findCurrentBlockByHash subtabs, formatLocalDate, sanitizeReportText, snapshot throttle, acceptSuggestion tab check, FINALITY_SIGNAL_WINDOW_MS, openPreparedReport validation, track skip report events)
 f4fffe3 intelligence-core: GPT audit round 6 (final) — 10 fixes (deep clone suggestions, contextTextHash stale check, stableStringify seen.delete, getStructureSections idx+hash, loadTemplates Array.isArray, structuredClone fallback, renderReportLines limits, getContext blockStructureKey, recentEvents Array.isArray, insertBlockNear dedup)
 368b76e project-graph: GPT audit round 1 — 7 fixes (import sanitization, safe save/export, pair dedup+limit, trimGraph guard, similarity cache)
+7f23bf9 project-graph: GPT audit round 2 — 5 fixes (cache collision, safe import, counters sync, baselines sanitize, blockHashes 64)
+3b514c2 project-graph: GPT audit round 3 — 3 fixes (trimSnapshotsByLimit cap protected, MAX_SNAPSHOT_BLOCK_META=64, titleRole word-boundary)
 ```
 
-**Итого: 367 фиксов за 34 раунда аудита**
+**Итого: 375 фиксов за 36 раундов аудита**
 
 **Текущий статус:**
 - ✅ blocks.js: аудит завершён
@@ -152,7 +154,7 @@ f4fffe3 intelligence-core: GPT audit round 6 (final) — 10 fixes (deep clone su
 - ❌ **ТЕКУЩИЙ БАГ:** подсветка текущей строки смещается вниз к 400-й строке ( drift накапливается)
 - ⏳ app.js: ожидает аудит (969 строк)
 - ✅ **intelligence-core.js: аудит завершён** (6 раундов, 69 фиксов)
-- 🔄 **project-graph.js: раунд 1/2+** (7 фиксов, ожидает следующий раунд)
+- 🔄 **project-graph.js: раунд 3/2+** (15 фиксов, ожидает следующий раунд)
 
 ### Flowchart — Query menu
 

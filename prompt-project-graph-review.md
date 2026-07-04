@@ -1,4 +1,4 @@
-# Prompt: project-graph.js — GPT audit round 3
+# Prompt: project-graph.js — GPT audit round 4
 
 Ты — GPT-5, coding agent. Проведи аудит файла `project-graph.js`.
 
@@ -19,6 +19,9 @@
 - baselines.byTabId: sanitizeBaselines (isPlainObject, pinnedAt sort, field validation, max 200)
 - counters.snapshots: set to promptSnapshots.length in updateCounters(), removed +=1 from captureSnapshot
 - blockHashes in normalizeTimelineSnapshot: limit 64 (was 16)
+- trimSnapshotsByLimit: protected snapshots capped at limit (not unlimited)
+- MAX_SNAPSHOT_BLOCK_META = 64: blockTitles/blockRoles limit 64 (was 16) everywhere
+- titleRole: word-boundary match via titleMatchesAlias (no more substring false positives)
 
 ## Что искать (НОВЫЕ проблемы, не из списка выше)
 1. **Критично**: data loss, race conditions, silent corruption
