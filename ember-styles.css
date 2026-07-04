@@ -183,7 +183,6 @@
   inset: 0;
   border-radius: inherit;
   mix-blend-mode: screen;
-  will-change: background;
   background:
     radial-gradient(circle at var(--cx, 50%) var(--cy, 50%),
       rgba(255, 170, 70, calc(var(--heat, 0.5) * var(--zoneHeat, 0.6) * 0.7)) 0%,
@@ -440,7 +439,6 @@
   opacity: 0;
 }
 
-.ember-ash.active-particle,
 .ember-spark.active-particle {
   will-change: transform, opacity;
 }

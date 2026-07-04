@@ -376,7 +376,7 @@ const Ember = (() => {
     try {
       channel = new BroadcastChannel(BROADCAST_KEY);
       channel.onmessage = (e) => {
-        if (e.data?.type === 'update' && e.data?.tabId === currentTabId && e.data?.state) {
+        if (e.data?.type === 'update' && e.data?.tabId !== currentTabId && e.data?.state) {
           applyRemoteState(e.data.state);
         }
       };
@@ -395,7 +395,6 @@ const Ember = (() => {
   function notifyEdit() {
     const now = Date.now();
     state.lastEditTime = now;
-    state.lastInitTime = now;
     state.updatedAt = now;
     saveState();
     broadcast();
@@ -585,8 +584,11 @@ const Ember = (() => {
 
   // ---------- сегменты ----------
 
+  let prevAppliedRemaining = -1;
+
   function applySegments() {
     const remaining = remainingSegments();
+    if (remaining === prevAppliedRemaining) return;
     if (remaining > prevRemaining) {
       const added = remaining - prevRemaining;
       const totalWindow = clamp(300 + added * 20, 300, 500);
@@ -597,6 +599,7 @@ const Ember = (() => {
     }
     segments.forEach((seg, i) => seg.classList.toggle('active', i < remaining));
     prevRemaining = remaining;
+    prevAppliedRemaining = remaining;
   }
 
   function getActiveSegIndices() {
@@ -664,6 +667,16 @@ const Ember = (() => {
     });
     const avgHeat = zones.reduce((s, z) => s + (z._curHeat || 0.6), 0) / Math.max(zones.length, 1);
     if (crustEl) crustEl.style.opacity = (0.5 + (1 - intensity) * 0.4 - avgHeat * 0.15).toFixed(3);
+
+    if (zones.length > 3) {
+      for (let i = zones.length - 1; i >= 3; i--) {
+        const z = zones[i];
+        if ((z._life || 0) <= dt) {
+          z.remove();
+          zones.splice(i, 1);
+        }
+      }
+    }
   }
 
   // ---------- менеджер эффектов ядра ----------
@@ -1022,74 +1035,74 @@ const Ember = (() => {
     // contact shadow — масштаб зависит от высоты + shadowTighten
     const shadowBase = 1 + Math.abs(pose.y) * 0.02 + Math.abs(bobY) * 0.05 - pose.shadowTighten * 0.08;
     const shadowAlpha = clamp(0.45 - Math.abs(pose.y + bobY) * 0.01 + pose.shadowTighten * 0.06, 0.15, 0.62);
-    root.style.setProperty('--shadowScale', shadowBase.toFixed(3));
-    root.style.setProperty('--shadowAlpha', shadowAlpha.toFixed(3));
+    setVar(root, '--shadowScale', shadowBase.toFixed(3));
+    setVar(root, '--shadowAlpha', shadowAlpha.toFixed(3));
 
     const shiftX = heatOffsetX * 0.6 + pose.x * 0.35 + ashTrackX * 0.3;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.35 + bobY;
 
-    root.style.setProperty('--shiftX', shiftX.toFixed(2) + 'px');
-    root.style.setProperty('--shiftY', shiftY.toFixed(2) + 'px');
+    setVar(root, '--shiftX', shiftX.toFixed(2) + 'px');
+    setVar(root, '--shiftY', shiftY.toFixed(2) + 'px');
 
-    root.style.setProperty('--depthZ', depthZ.toFixed(2) + 'px');
-    root.style.setProperty('--glowDepth', glowDepth.toFixed(2) + 'px');
-    root.style.setProperty('--ringDepth', ringDepthVal.toFixed(2) + 'px');
+    setVar(root, '--depthZ', depthZ.toFixed(2) + 'px');
+    setVar(root, '--glowDepth', glowDepth.toFixed(2) + 'px');
+    setVar(root, '--ringDepth', ringDepthVal.toFixed(2) + 'px');
 
     const sq = clamp(pose.squash, -1, 1);
     const absSq = Math.abs(sq);
     const stretchK = 1 + absSq * 0.55;
     const squashX = absSq > 0.005 ? (sq > 0 ? stretchK : 1 / stretchK) : 1;
     const squashY = absSq > 0.005 ? (sq > 0 ? 1 / stretchK : stretchK) : 1;
-    root.style.setProperty('--scaleX', (pose.scaleX * breathScale * cursorLean.scale * spawnCore * squashX).toFixed(4));
-    root.style.setProperty('--scaleY', (pose.scaleY * breathScale * cursorLean.scale * spawnCore * squashY).toFixed(4));
-    root.style.setProperty('--rotation', (tiltCurrent + pose.rotate).toFixed(2) + 'deg');
-    root.style.setProperty('--tiltX', (pose.tiltX + cursorLean.tiltX).toFixed(2) + 'deg');
-    root.style.setProperty('--tiltY', (tiltCurrent * 0.6 + pose.tiltY + cursorLean.tiltY).toFixed(2) + 'deg');
+    setVar(root, '--scaleX', (pose.scaleX * breathScale * cursorLean.scale * spawnCore * squashX).toFixed(4));
+    setVar(root, '--scaleY', (pose.scaleY * breathScale * cursorLean.scale * spawnCore * squashY).toFixed(4));
+    setVar(root, '--rotation', (tiltCurrent + pose.rotate).toFixed(2) + 'deg');
+    setVar(root, '--tiltX', (pose.tiltX + cursorLean.tiltX).toFixed(2) + 'deg');
+    setVar(root, '--tiltY', (tiltCurrent * 0.6 + pose.tiltY + cursorLean.tiltY).toFixed(2) + 'deg');
 
     const glow = clamp(intensity + heatBoost * 0.4 + pose.glow + hoverVal * 0.2 + windGust * 0.25, 0, 1.8);
     const brightness = clamp(0.8 + intensity * 0.35 + pose.brightness + heatBoost * 0.45 + hoverVal * 0.18 + windGust * 0.35, 0.4, 2.5);
 
-    root.style.setProperty('--heat', heat.toFixed(3));
-    root.style.setProperty('--glow', glow.toFixed(3));
-    root.style.setProperty('--intensity', intensity.toFixed(3));
-    root.style.setProperty('--hover', hoverVal.toFixed(3));
-    root.style.setProperty('--brightness', brightness.toFixed(3));
-    root.style.setProperty('--glowOpacity', (1.1 + hoverVal * 0.18 + windGust * 0.25).toFixed(3));
-    root.style.setProperty('--glowBlur', (6 + hoverVal * 1.8 + windGust * 2.5).toFixed(2) + 'px');
-    root.style.setProperty('--glowScale', (1.04 + hoverVal * 0.1 + windGust * 0.08).toFixed(3));
-    root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
+    setVar(root, '--heat', heat.toFixed(3));
+    setVar(root, '--glow', glow.toFixed(3));
+    setVar(root, '--intensity', intensity.toFixed(3));
+    setVar(root, '--hover', hoverVal.toFixed(3));
+    setVar(root, '--brightness', brightness.toFixed(3));
+    setVar(root, '--glowOpacity', (1.1 + hoverVal * 0.18 + windGust * 0.25).toFixed(3));
+    setVar(root, '--glowBlur', (6 + hoverVal * 1.8 + windGust * 2.5).toFixed(2) + 'px');
+    setVar(root, '--glowScale', (1.04 + hoverVal * 0.1 + windGust * 0.08).toFixed(3));
+    setVar(root, '--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
 
-    root.style.setProperty('--glowSkewX', pose.glowSkewX.toFixed(1) + 'deg');
-    root.style.setProperty('--glowSkewY', pose.glowSkewY.toFixed(1) + 'deg');
+    setVar(root, '--glowSkewX', pose.glowSkewX.toFixed(1) + 'deg');
+    setVar(root, '--glowSkewY', pose.glowSkewY.toFixed(1) + 'deg');
     const gazeGlowX = gaze.x * 0.18 * gaze.strength;
     const gazeGlowY = gaze.y * 0.12 * gaze.strength;
-    root.style.setProperty('--glowX', (glowTrackX + gazeGlowX).toFixed(2) + 'px');
-    root.style.setProperty('--glowY', (glowTrackY + gazeGlowY).toFixed(2) + 'px');
-    root.style.setProperty('--lightX', (pose.lightX + gaze.x * 0.45).toFixed(2) + '%');
-    root.style.setProperty('--lightY', (pose.lightY + gaze.y * 0.35).toFixed(2) + '%');
+    setVar(root, '--glowX', (glowTrackX + gazeGlowX).toFixed(2) + 'px');
+    setVar(root, '--glowY', (glowTrackY + gazeGlowY).toFixed(2) + 'px');
+    setVar(root, '--lightX', (pose.lightX + gaze.x * 0.45).toFixed(2) + '%');
+    setVar(root, '--lightY', (pose.lightY + gaze.y * 0.35).toFixed(2) + '%');
 
-    root.style.setProperty('--crustX', pose.crustX.toFixed(2) + 'px');
-    root.style.setProperty('--crustY', pose.crustY.toFixed(2) + 'px');
-    root.style.setProperty('--crustRot', pose.crustRot.toFixed(2) + 'deg');
-    root.style.setProperty('--crustScale', pose.crustScale.toFixed(3));
+    setVar(root, '--crustX', pose.crustX.toFixed(2) + 'px');
+    setVar(root, '--crustY', pose.crustY.toFixed(2) + 'px');
+    setVar(root, '--crustRot', pose.crustRot.toFixed(2) + 'deg');
+    setVar(root, '--crustScale', pose.crustScale.toFixed(3));
 
-    root.style.setProperty('--ashShiftX', ashTrackX.toFixed(2) + 'px');
-    root.style.setProperty('--ashShiftY', ashTrackY.toFixed(2) + 'px');
-    root.style.setProperty('--ashRot', pose.ashRot.toFixed(2) + 'deg');
+    setVar(root, '--ashShiftX', ashTrackX.toFixed(2) + 'px');
+    setVar(root, '--ashShiftY', ashTrackY.toFixed(2) + 'px');
+    setVar(root, '--ashRot', pose.ashRot.toFixed(2) + 'deg');
 
-    root.style.setProperty('--ringExpand', (pose.ringExpand + pose.ringExpandY).toFixed(2) + 'px');
-    root.style.setProperty('--ringExpandX', pose.ringExpandX.toFixed(2) + 'px');
+    setVar(root, '--ringExpand', (pose.ringExpand + pose.ringExpandY).toFixed(2) + 'px');
+    setVar(root, '--ringExpandX', pose.ringExpandX.toFixed(2) + 'px');
 
-    coreEl.style.setProperty('--glintOpacity', pose.glintOpacity.toFixed(3));
-    coreEl.style.setProperty('--glintX', pose.glintX.toFixed(1) + '%');
-    coreEl.style.setProperty('--glintY', pose.glintY.toFixed(1) + '%');
-    coreEl.style.setProperty('--glintRot', pose.glintRot.toFixed(1) + 'deg');
-    coreEl.style.setProperty('--glintScale', pose.glintScale.toFixed(3));
+    setVar(coreEl, '--glintOpacity', pose.glintOpacity.toFixed(3));
+    setVar(coreEl, '--glintX', pose.glintX.toFixed(1) + '%');
+    setVar(coreEl, '--glintY', pose.glintY.toFixed(1) + '%');
+    setVar(coreEl, '--glintRot', pose.glintRot.toFixed(1) + 'deg');
+    setVar(coreEl, '--glintScale', pose.glintScale.toFixed(3));
     // glint от курсора — блик скользит по поверхности при наклоне
     const glintCursorX = (cursorLean.tiltY || 0) * 0.8 + gaze.x * 0.15 * gaze.strength;
     const glintCursorY = (cursorLean.tiltX || 0) * -0.5 + gaze.y * -0.10 * gaze.strength;
-    coreEl.style.setProperty('--glintCursorX', glintCursorX.toFixed(1) + '%');
-    coreEl.style.setProperty('--glintCursorY', glintCursorY.toFixed(1) + '%');
+    setVar(coreEl, '--glintCursorX', glintCursorX.toFixed(1) + '%');
+    setVar(coreEl, '--glintCursorY', glintCursorY.toFixed(1) + '%');
 
     const sqBr = clamp(pose.squash, -1, 1);
     const absSqBr = Math.abs(sqBr);
@@ -1110,16 +1123,16 @@ const Ember = (() => {
       coreEl.style.borderRadius = '';
     }
 
-    coreEl.style.setProperty('--cursorLeanX', cursorLean.x.toFixed(1));
-    coreEl.style.setProperty('--cursorLeanY', cursorLean.y.toFixed(1));
-    coreEl.style.setProperty('--cursorSquish', cursorLean.squish.toFixed(3));
-    coreEl.style.setProperty('--cursorScale', cursorLean.scale.toFixed(3));
-    coreEl.style.setProperty('--cursorTiltX', cursorLean.tiltX.toFixed(1));
-    coreEl.style.setProperty('--cursorTiltY', cursorLean.tiltY.toFixed(1));
+    setVar(coreEl, '--cursorLeanX', cursorLean.x.toFixed(1));
+    setVar(coreEl, '--cursorLeanY', cursorLean.y.toFixed(1));
+    setVar(coreEl, '--cursorSquish', cursorLean.squish.toFixed(3));
+    setVar(coreEl, '--cursorScale', cursorLean.scale.toFixed(3));
+    setVar(coreEl, '--cursorTiltX', cursorLean.tiltX.toFixed(1));
+    setVar(coreEl, '--cursorTiltY', cursorLean.tiltY.toFixed(1));
 
-    root.style.setProperty('--spawnCore', spawnCore.toFixed(3));
-    root.style.setProperty('--spawnGlow', spawnGlow.toFixed(3));
-    root.style.setProperty('--spawnRing', spawnRing.toFixed(3));
+    setVar(root, '--spawnCore', spawnCore.toFixed(3));
+    setVar(root, '--spawnGlow', spawnGlow.toFixed(3));
+    setVar(root, '--spawnRing', spawnRing.toFixed(3));
 
     const totalHue = pose.hue;
     const totalSat = pose.saturation;
@@ -1450,6 +1463,7 @@ const Ember = (() => {
   }
 
   function spawnLandingGlow(x, y) {
+    if (!particleLayer || reduceMotion || lowFpsMode) return;
     const el = document.createElement('div');
     el.className = 'ember-landing-glow';
     el.style.left = x + '%';
@@ -1666,6 +1680,10 @@ const Ember = (() => {
   function sampleCaretPosition(now) {
     if (now < nextCaretSample) return;
     nextCaretSample = now + CARET_SAMPLE_INTERVAL;
+    if (!caret.typing && !caret.active) return;
+    const ae = document.activeElement;
+    const editable = ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable);
+    if (!editable) { caret.active = false; return; }
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) { caret.active = false; return; }
     const range = sel.getRangeAt(0);
@@ -2044,15 +2062,26 @@ const Ember = (() => {
     };
   }
 
+  let eggTriggeredDay = null;
+
   function checkEggTrigger() {
     if (egg.active || egg.triggeredToday) return false;
     const today = new Date().toDateString();
+    if (eggTriggeredDay === today) {
+      egg.triggeredToday = true;
+      return false;
+    }
     try {
       const saved = localStorage.getItem(EGG_STORAGE_KEY);
-      if (saved === today) { egg.triggeredToday = true; return false; }
+      if (saved === today) {
+        egg.triggeredToday = true;
+        eggTriggeredDay = today;
+        return false;
+      }
     } catch {}
     if (eggCharCount >= EGG_CHARS_THRESHOLD) {
       egg.triggeredToday = true;
+      eggTriggeredDay = today;
       try { localStorage.setItem(EGG_STORAGE_KEY, today); } catch {}
       return true;
     }
@@ -2723,7 +2752,7 @@ const Ember = (() => {
     intensity = calcIntensity();
 
     sampleMousePosition(now);
-    sampleCaretPosition(now);
+    if (!reduceMotion) sampleCaretPosition(now);
 
     // вращение кольца — медленное, только при наведении + импульс от втягивания
     ringAngle += dt * 0.0003 * hoverVal / sleepSlowdown();
@@ -2942,9 +2971,11 @@ const Ember = (() => {
     breathScale = 1 + flicker * 0.012 * intensity * breathAmp + hoverBreath + windGust * 0.04;
 
     updateHeatZones(dt);
-    updateHotspots(now, dt);
-    updateWind(now, dt);
-    updateAttention(now, dt);
+    if (!reduceMotion) {
+      updateHotspots(now, dt);
+      updateWind(now, dt);
+      updateAttention(now, dt);
+    }
     updateMood(now);
 
     // haze — динамическое обновление с cursor/wind
@@ -3329,6 +3360,11 @@ const Ember = (() => {
     resetDomRefs();
     currentTabId = tabId || null;
     state = loadState(currentTabId);
+    if (!state.lastInitTime) {
+      state.lastInitTime = Date.now();
+      state.updatedAt = state.lastInitTime;
+      saveState();
+    }
     createDOM();
     initParticlePool();
     setupBroadcast();
@@ -3360,6 +3396,9 @@ const Ember = (() => {
     const quickReload = state.lastInitTime && (Date.now() - state.lastInitTime < 3000);
     spawnStart = quickReload ? performance.now() - 600 : performance.now();
     lastFrame = 0;
+    fpsHistory.length = 0;
+    lowFpsMode = false;
+    reducedMotionTimer = null;
 
     ['segTremor', 'segTryIgnite', 'segHeatRipple', 'segFlicker', 'segHeatWave']
       .forEach(rescheduleSegDue);
@@ -3431,6 +3470,11 @@ const Ember = (() => {
     segmentEffects = [];
     Object.keys(nextDue).forEach(k => delete nextDue[k]);
     Object.keys(nextSegDue).forEach(k => delete nextSegDue[k]);
+    prevAppliedRemaining = -1;
+    prevRemaining = 12;
+    fpsHistory.length = 0;
+    lowFpsMode = false;
+    lastFrame = 0;
   }
 
   return {
