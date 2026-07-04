@@ -101,7 +101,9 @@
   function isExistingGlobalSnippet(value) {
     const needle = normalizeSnippetText(value).toLowerCase();
     if (!needle) return true;
-    return (window.State?.getGlobalSnippets?.() || []).some(item => normalizeSnippetText(item?.value).toLowerCase() === needle);
+    const snippets = window.State?.getGlobalSnippets?.();
+    return (Array.isArray(snippets) ? snippets : [])
+      .some(item => normalizeSnippetText(item?.value).toLowerCase() === needle);
   }
 
   function findSnippetCandidate() {
@@ -113,13 +115,15 @@
     }
     if (!lastSuccess || now() - lastSuccess.ts > 15 * 60 * 1000) return null;
 
+    const snippets = window.State?.getGlobalSnippets?.();
     const existingSnippetSet = new Set(
-      (window.State?.getGlobalSnippets?.() || [])
+      (Array.isArray(snippets) ? snippets : [])
         .map(item => normalizeSnippetText(item?.value).toLowerCase())
         .filter(Boolean)
     );
 
-    const items = window.PromptLoom?.getItems?.() || [];
+    const rawItems = window.PromptLoom?.getItems?.();
+    const items = Array.isArray(rawItems) ? rawItems : [];
     const candidates = items
       .map(item => ({
         item,
@@ -168,8 +172,12 @@
       tabName: payload.tabName || tab?.name || '',
       ts: now()
     };
-    if (!clean.textHash && typeof clean.text === 'string') clean.textHash = hashText(clean.text);
-    delete clean.text;
+    ['text', 'value', 'content', 'html', 'prompt', 'markdown'].forEach(key => {
+      if (typeof clean[key] === 'string') {
+        if (!clean.textHash && clean[key]) clean.textHash = hashText(clean[key]);
+        delete clean[key];
+      }
+    });
     return clean;
   }
 
@@ -211,7 +219,11 @@
       clearTimeout(oldest?.timer);
       editSessions.delete(oldestKey);
     }
-    const key = String(payload.blockId || 'active');
+    const activeTab = window.State?.getActive?.();
+    const key = [
+      payload.tabId || activeTab?.id || 'tab',
+      payload.blockId || payload.title || payload.kind || 'active'
+    ].map(part => String(part || '')).join('\x00');
     const chars = Math.max(0, Number(payload.chars) || 0);
     let session = editSessions.get(key);
 
@@ -252,7 +264,12 @@
         lastExport = e;
       }
     }
-    const editsAfterCopy = lastCopy ? recent.filter(e => e.ts > lastCopy.ts && (e.type === 'block.edit.large-change' || e.type === 'block.paste')).length : null;
+    const editsAfterCopy = lastCopy
+      ? recent.filter(e =>
+        e.ts > lastCopy.ts
+        && (e.type === 'block.edit.large-change' || e.type === 'block.edit.settled' || e.type === 'block.paste')
+      ).length
+      : null;
 
     const copySignal = lastCopy && editsAfterCopy !== null && editsAfterCopy === 0 && ts - lastCopy.ts > 25_000 && ts - lastCopy.ts < 12 * 60 * 1000 ? 1 : 0;
     const exportSignal = lastExport && ts - lastExport.ts < 12 * 60 * 1000 ? 1 : 0;
@@ -284,6 +301,7 @@
 
     const analysis = safeCall(() => window.QualityDetectors?.analyzePreview?.(text, tab), null, 'QualityDetectors.analyzePreview');
     const lastEvent = safeCall(() => window.UserMemory?.getLastEvent?.(), null, 'UserMemory.getLastEvent');
+    const hasPrompt = Boolean(tab && String(text || '').trim());
 
     lastContext = {
       ts: now(),
@@ -295,15 +313,15 @@
       textHash,
       lastEvent,
       finalityScore: computeFinality(tab, text, analysis),
-      structureCandidate: safeCall(() => window.QualityDetectors?.findStructureCandidate?.(tab, lastEvent), null, 'findStructureCandidate'),
-      snippetCandidate: safeCall(() => findSnippetCandidate(), null, 'findSnippetCandidate'),
-      similarPrompt: safeCall(() => window.ProjectGraph?.findSimilarPrompt?.(tab, text, { threshold: 0.72 }), null, 'ProjectGraph.findSimilarPrompt'),
-      oftenWith: safeCall(() => window.ProjectGraph?.findOftenWith?.(tab, { minCount: 2, limit: 5 }), null, 'ProjectGraph.findOftenWith'),
-      derivedFrom: safeCall(() => window.ProjectGraph?.findDerivedFrom?.(tab, { text, threshold: 0.58, limit: 3 }), null, 'ProjectGraph.findDerivedFrom'),
-      versionTimeline: safeCall(() => window.ProjectGraph?.findVersionTimeline?.(tab, { limit: 6 }), null, 'ProjectGraph.findVersionTimeline'),
-      namedVersionDrift: safeCall(() => window.ProjectGraph?.findNamedVersionDrift?.(tab, { text, minConfidence: 0.64, limit: 4 }), null, 'ProjectGraph.findNamedVersionDrift'),
-      pinnedBaselineDrift: safeCall(() => window.ProjectGraph?.comparePinnedBaselineToCurrent?.(tab, text), null, 'ProjectGraph.comparePinnedBaselineToCurrent'),
-      roleGaps: safeCall(() => window.ProjectGraph?.findRoleGaps?.(tab, { minScore: 0.58, limit: 4 }), null, 'ProjectGraph.findRoleGaps'),
+      structureCandidate: hasPrompt ? safeCall(() => window.QualityDetectors?.findStructureCandidate?.(tab, lastEvent), null, 'findStructureCandidate') : null,
+      snippetCandidate: hasPrompt ? safeCall(() => findSnippetCandidate(), null, 'findSnippetCandidate') : null,
+      similarPrompt: hasPrompt ? safeCall(() => window.ProjectGraph?.findSimilarPrompt?.(tab, text, { threshold: 0.72 }), null, 'ProjectGraph.findSimilarPrompt') : null,
+      oftenWith: hasPrompt ? safeCall(() => window.ProjectGraph?.findOftenWith?.(tab, { minCount: 2, limit: 5 }), null, 'ProjectGraph.findOftenWith') : null,
+      derivedFrom: hasPrompt ? safeCall(() => window.ProjectGraph?.findDerivedFrom?.(tab, { text, threshold: 0.58, limit: 3 }), null, 'ProjectGraph.findDerivedFrom') : null,
+      versionTimeline: hasPrompt ? safeCall(() => window.ProjectGraph?.findVersionTimeline?.(tab, { limit: 6 }), null, 'ProjectGraph.findVersionTimeline') : null,
+      namedVersionDrift: hasPrompt ? safeCall(() => window.ProjectGraph?.findNamedVersionDrift?.(tab, { text, minConfidence: 0.64, limit: 4 }), null, 'ProjectGraph.findNamedVersionDrift') : null,
+      pinnedBaselineDrift: hasPrompt ? safeCall(() => window.ProjectGraph?.comparePinnedBaselineToCurrent?.(tab, text), null, 'ProjectGraph.comparePinnedBaselineToCurrent') : null,
+      roleGaps: hasPrompt ? safeCall(() => window.ProjectGraph?.findRoleGaps?.(tab, { minScore: 0.58, limit: 4 }), null, 'ProjectGraph.findRoleGaps') : null,
       analysis
     };
     lastContextKey = contextKey;
@@ -717,6 +735,11 @@
         track('suggestion.failed', { action: suggestion.type });
       }
       return ok;
+    } catch (err) {
+      console.error('[Intelligence] suggestion action failed:', err);
+      track('suggestion.failed', { action: suggestion.type, error: err?.message || 'unknown' });
+      window.Toast?.show?.('Не удалось выполнить подсказку', 'error');
+      return false;
     } finally {
       runningSuggestionActions.delete(actionKey);
     }
@@ -764,7 +787,8 @@
   function openReport(suggestion) {
     const report = suggestion.action?.report;
     if (report === 'duplicates') {
-      const pairs = suggestion.prepared?.duplicates || [];
+      const rawPairs = suggestion.prepared?.duplicates;
+      const pairs = Array.isArray(rawPairs) ? rawPairs : [];
       renderReportLines(
         'Найденные повторы',
         'Это только отчёт: текст блоков не меняется автоматически.',
@@ -778,7 +802,8 @@
       return true;
     }
     if (report === 'heavy-blocks') {
-      const blocks = suggestion.prepared?.heavyBlocks || [];
+      const rawBlocks = suggestion.prepared?.heavyBlocks;
+      const blocks = Array.isArray(rawBlocks) ? rawBlocks : [];
       renderReportLines(
         'Тяжёлые блоки',
         `Оценка размера prompt: ~${suggestion.prepared?.estimatedTokens || 0} токенов.`,
@@ -803,7 +828,8 @@
       return true;
     }
     if (report === 'often-with') {
-      const items = suggestion.prepared?.oftenWith?.items || [];
+      const rawItems = suggestion.prepared?.oftenWith?.items;
+      const items = Array.isArray(rawItems) ? rawItems : [];
       renderReportLines(
         'Частые связки блоков',
         'ProjectGraph заметил, что эти блоки раньше часто использовались вместе. Текст не вставляется автоматически.',
@@ -995,7 +1021,7 @@
         ? structuredClone(tab.blocks || [])
         : JSON.parse(JSON.stringify(tab.blocks || []));
       saved.push({
-        id: 'user-intel-' + Date.now().toString(36),
+        id: 'user-intel-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
         name,
         blocks,
         source: 'intelligence'
@@ -1432,6 +1458,7 @@
       return confirm(`Добавить каркас блока «${top.companion?.title || 'Блок'}»?`) && insertCompanionSkeleton(top);
     }
 
+    let selectedItem = top;
     window.SmartSuggestions.openReport({
       title: 'Частая связка блоков',
       subtitle: 'ProjectGraph не хранит полный текст, поэтому можно безопасно вставить только каркас связанного блока.',
@@ -1440,13 +1467,19 @@
         list.className = 'intelligence-report-list';
         items.forEach((item, index) => {
           const tabs = Object.values(item.companion?.tabs || {}).filter(Boolean).slice(0, 3).join(', ');
-          const row = document.createElement('div');
-          row.className = 'intelligence-report-line intelligence-report-section';
+          const row = document.createElement('label');
+          row.className = 'intelligence-report-line intelligence-report-section intelligence-choice-line';
           row.innerHTML = `
-            <strong>${index + 1}. ${escapeHtml(item.source?.title || 'Блок')} → ${escapeHtml(item.companion?.title || 'Блок')}</strong>
+            <span class="intelligence-choice-head">
+              <input type="radio" name="companion-choice" value="${index}" ${index === 0 ? 'checked' : ''}>
+              <strong>${index + 1}. ${escapeHtml(item.source?.title || 'Блок')} → ${escapeHtml(item.companion?.title || 'Блок')}</strong>
+            </span>
             <span>${item.count || 0}× · ${item.companion?.chars || 0} симв · ~${item.companion?.tokens || 0} токенов</span>
             <small>${tabs ? 'Встречалось во вкладках: ' + escapeHtml(tabs) : 'Локальная связь из ProjectGraph'}</small>
           `;
+          row.querySelector('input')?.addEventListener('change', () => {
+            selectedItem = items[index] || top;
+          });
           list.appendChild(row);
         });
         body.appendChild(list);
@@ -1455,7 +1488,7 @@
         {
           label: `Вставить каркас «${String(top.companion?.title || 'Блок')}»`,
           className: 'primary',
-          onClick: () => insertCompanionSkeleton(top)
+          onClick: () => insertCompanionSkeleton(selectedItem)
         },
         {
           label: 'Только отчёт',
