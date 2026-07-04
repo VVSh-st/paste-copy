@@ -1,0 +1,355 @@
+Я прочитал файл из сообщения как цельный `intelligence-core.js` и сверяю именно оставшиеся риски, не повторяя пункты, которые вы явно исключили как уже исправленные. Сейчас дам ревью в формате патчей.
+
+Я LLM-модель GPT-5.
+
+### [1] [Критично] Публичные `getSuggestions()` / `getMenuSuggestions()` отдают изменяемые вложенные объекты
+
+**Проблема:** методы возвращают только shallow copy. Внешний код может изменить `suggestion.action`, `suggestion.prepared`, `preparedHash`, `contextKey`, и затем `acceptSuggestion()` выполнит уже мутированное действие.
+
+**Строки:** ~568-574, `getSuggestions()` / `getMenuSuggestions()`
+
+**Влияние:** ломается целостность внутреннего состояния `Intelligence`; сторонний UI или отладочный код может случайно изменить действие подсказки, отчёт или prepared-данные.
+
+**Патч:**
+```diff
++  function clonePlain(value) {
++    if (value === null || typeof value !== 'object') return value;
++    if (typeof structuredClone === 'function') {
++      try { return structuredClone(value); } catch (_) {}
++    }
++    try {
++      return JSON.parse(JSON.stringify(value));
++    } catch (_) {
++      return Array.isArray(value) ? value.slice() : { ...value };
++    }
++  }
++
++  function cloneSuggestion(suggestion) {
++    return clonePlain(suggestion);
++  }
++
+   function getSuggestions() {
+-    return lastSuggestions.map(s => ({ ...s }));
++    return lastSuggestions.map(cloneSuggestion);
+   }
+ 
+   function getMenuSuggestions() {
+-    return lastMenuSuggestions.map(s => ({ ...s }));
++    return lastMenuSuggestions.map(cloneSuggestion);
+   }
+```
+
+### [2] [Критично] Подсказку можно принять после изменения текста в той же вкладке
+
+**Проблема:** `acceptSuggestion()` проверяет только `contextTabId`. Если пользователь изменил prompt в той же вкладке после генерации подсказки, старая подсказка всё ещё может примениться.
+
+**Строки:** ~498-504, ~581-589
+
+**Влияние:** stale action: можно открыть отчёт по старому diff, сохранить шаблон по уже неактуальной финальности или вставить ProjectGraph-каркас для прежней структуры.
+
+**Патч:**
+```diff
+     allowed = allowed
+       // id нужен для идентификации; primary назначается позже отдельно для visible и menu
+       .map((s, idx) => ({
+         ...s,
+         id: s.id || `sug_${s.type}_${ctx.textHash}_${idx}`,
+-        contextTabId: ctx.tabId || ''
++        contextTabId: ctx.tabId || '',
++        contextTextHash: ctx.textHash || ''
+       }));
+```
+
+```diff
+   function acceptSuggestion(idOrType) {
+     const suggestion = findSuggestion(idOrType);
+     if (!suggestion) return false;
+     const activeTab = window.State?.getActive?.();
+     if (suggestion.contextTabId && activeTab?.id && suggestion.contextTabId !== activeTab.id) {
+       window.Toast?.show?.('Подсказка устарела для текущей вкладки', 'info');
+       refresh();
+       return false;
+     }
++    const currentHash = hashText(safePreviewText());
++    if (suggestion.contextTextHash && suggestion.contextTextHash !== currentHash) {
++      window.Toast?.show?.('Подсказка устарела после изменения текста', 'info');
++      refresh();
++      return false;
++    }
+     const actionKey = suggestion.preparedHash || suggestion.id || suggestion.type;
+```
+
+### [3] [Критично] `stableStringify()` помечает повторные ссылки как cycle
+
+**Проблема:** `WeakSet` используется глобально на весь обход и элементы из него не удаляются после выхода из ветки. Одна и та же ссылка, встреченная дважды без цикла, сериализуется как `"__cycle__"`.
+
+**Строки:** ~358-367, `stableStringify()`
+
+**Влияние:** `preparedHash` может стать нестабильным или одинаковым для разных prepared/action-структур. Это влияет на dedupe, cooldown, dismiss и защиту от повторного запуска действия.
+
+**Патч:**
+```diff
+   function stableStringify(value, seen = new WeakSet()) {
+     if (value === undefined) return '"__undefined__"';
+     if (value === null || typeof value !== 'object') return JSON.stringify(value);
+     if (seen.has(value)) return '"__cycle__"';
+     seen.add(value);
+-    if (Array.isArray(value)) return '[' + value.map(item => stableStringify(item, seen)).join(',') + ']';
+-    return '{' + Object.keys(value).sort().map(key => {
+-      return JSON.stringify(key) + ':' + stableStringify(value[key], seen);
+-    }).join(',') + '}';
++    let result;
++    if (Array.isArray(value)) {
++      result = '[' + value.map(item => stableStringify(item, seen)).join(',') + ']';
++    } else {
++      result = '{' + Object.keys(value).sort().map(key => {
++        return JSON.stringify(key) + ':' + stableStringify(value[key], seen);
++      }).join(',') + '}';
++    }
++    seen.delete(value);
++    return result;
+   }
+```
+
+### [4] [Критично] Разбиение структуры может очистить не тот subtab при смене activeSubtab
+
+**Проблема:** `getStructureSections()` читает `block.activeSubtab` до `State.update()`, а `applyStructureCandidate()` внутри update заново берёт `source.activeSubtab`. Если активный subtab сменился между preview и применением, новые блоки создаются из одного текста, а очищается другой subtab.
+
+**Строки:** ~820-858, `getStructureSections()` / `applyStructureCandidate()`
+
+**Влияние:** пользователь может потерять содержимое другого subtab.
+
+**Патч:**
+```diff
+   function getStructureSections(candidate) {
+     const tab = window.State?.getActive?.();
+     const block = candidate?.blockId ? window.State?.findBlock?.(tab?.blocks || [], candidate.blockId) : null;
+     const idx = block?.activeSubtab ?? 0;
+     const value = String(block?.subtabs?.[idx]?.value || '');
+-    return window.QualityDetectors?.splitIntoSections?.(value) || [];
++    return {
++      idx,
++      valueHash: hashText(value),
++      sections: window.QualityDetectors?.splitIntoSections?.(value) || []
++    };
+   }
+```
+
+```diff
+   function applyStructureCandidate(candidate) {
+     const tab = window.State?.getActive?.();
+-    const sections = getStructureSections(candidate);
++    const prepared = getStructureSections(candidate);
++    const sections = prepared.sections;
+     if (!tab || !candidate?.blockId || sections.length < 2) return false;
+```
+
+```diff
+-        const sourceIdx = source.activeSubtab ?? 0;
++        const sourceIdx = prepared.idx;
++        const currentValue = String(source.subtabs?.[sourceIdx]?.value || '');
++        if (hashText(currentValue) !== prepared.valueHash) {
++          console.warn('[Intelligence] source block changed before structure apply');
++          return;
++        }
+```
+
+```diff
+   function structureLastPaste(suggestion) {
+     const candidate = suggestion.prepared?.structureCandidate;
+-    const sections = getStructureSections(candidate);
++    const prepared = getStructureSections(candidate);
++    const sections = prepared.sections;
+     if (!candidate || sections.length < 2) {
+```
+
+### [5] [UX] `saveTemplateFromSuggestion()` падает на повреждённом списке шаблонов
+
+**Проблема:** `storageApi.loadTemplates() || []` предполагает массив. Если storage повреждён и вернул объект или строку, `saved.push()` бросит исключение.
+
+**Строки:** ~794-811
+
+**Влияние:** пользователь видит “Не удалось сохранить шаблон”, хотя можно безопасно начать с пустого списка.
+
+**Патч:**
+```diff
+-      const saved = storageApi.loadTemplates() || [];
++      const loaded = storageApi.loadTemplates();
++      const saved = Array.isArray(loaded) ? loaded : [];
+```
+
+### [6] [UX] `structuredClone()` может сорвать сохранение шаблона без fallback
+
+**Проблема:** если `structuredClone` существует, но падает на конкретной структуре блока, JSON fallback не используется, потому что ошибка уходит сразу в `catch`.
+
+**Строки:** ~800-802
+
+**Влияние:** шаблон не сохраняется из-за одного неклонируемого поля, хотя JSON-копия для шаблона была бы достаточной.
+
+**Патч:**
+```diff
++  function cloneBlocksForTemplate(blocks) {
++    const source = Array.isArray(blocks) ? blocks : [];
++    if (typeof structuredClone === 'function') {
++      try { return structuredClone(source); } catch (_) {}
++    }
++    return JSON.parse(JSON.stringify(source));
++  }
++
+   function saveTemplateFromSuggestion() {
+```
+
+```diff
+-      const blocks = typeof structuredClone === 'function'
+-        ? structuredClone(tab.blocks || [])
+-        : JSON.parse(JSON.stringify(tab.blocks || []));
++      const blocks = cloneBlocksForTemplate(tab.blocks);
+```
+
+### [7] [Производительность] `renderReportLines()` может отрисовать слишком большой отчёт
+
+**Проблема:** `renderReportLines()` принимает массив любой длины и строки любой длины. Часть отчётов уже режет данные, но не все ветки централизованно защищены.
+
+**Строки:** ~675-691
+
+**Влияние:** большой ProjectGraph/duplicates/heavy-blocks отчёт может подвесить UI или создать огромный modal/alert.
+
+**Патч:**
+```diff
+   function renderReportLines(title, subtitle, lines) {
++    const MAX_REPORT_LINES = 120;
++    const MAX_REPORT_LINE_CHARS = 600;
+     const cleanTitle = sanitizeReportText(title);
+     const cleanSubtitle = sanitizeReportText(subtitle);
+-    const cleanLines = (Array.isArray(lines) ? lines : []).map(sanitizeReportText);
++    const rawLines = Array.isArray(lines) ? lines : [];
++    const cleanLines = rawLines
++      .slice(0, MAX_REPORT_LINES)
++      .map(line => {
++        const text = String(line || '');
++        return sanitizeReportText(text.length > MAX_REPORT_LINE_CHARS
++          ? text.slice(0, MAX_REPORT_LINE_CHARS).trim() + '…'
++          : text);
++      });
++    if (rawLines.length > MAX_REPORT_LINES) {
++      cleanLines.push(sanitizeReportText(`Показаны первые ${MAX_REPORT_LINES} строк из ${rawLines.length}.`));
++    }
+```
+
+### [8] [Производительность] `getContext()` cache key не учитывает структуру блоков
+
+**Проблема:** cache key состоит из `tabId`, `textHash`, `blockCount`. Если пользователь переименовал блоки, поменял роли/порядок или переместил блоки без изменения итогового preview text и количества блоков, в течение 1.5 секунд вернётся старый `analysis` и старые ProjectGraph-результаты.
+
+**Строки:** ~296-305
+
+**Влияние:** кратковременно показываются неправильные role gaps, similar prompt, diff/timeline и финальность.
+
+**Патч:**
+```diff
++  function blockStructureKey(blocks) {
++    const parts = [];
++    const walk = list => {
++      (list || []).forEach(block => {
++        if (!block) return;
++        parts.push([
++          block.id || '',
++          block.type || '',
++          block.title || '',
++          block.role || '',
++          Number.isFinite(Number(block.column)) ? Number(block.column) : 0
++        ].join(':'));
++        if (block.type === 'group' && Array.isArray(block.children)) walk(block.children);
++      });
++    };
++    walk(blocks || []);
++    return hashText(parts.join('|'));
++  }
++
+   function getContext() {
+     const tab = window.State?.getActive?.();
+     const text = safePreviewText();
+     const textHash = hashText(text);
+-    const contextKey = `${tab?.id || ''}\x00${textHash}\x00${tab?.blocks?.length || 0}`;
++    const structureKey = blockStructureKey(tab?.blocks || []);
++    const contextKey = `${tab?.id || ''}\x00${textHash}\x00${tab?.blocks?.length || 0}\x00${structureKey}`;
+```
+
+### [9] [UX] `findSnippetCandidate()` и `computeFinality()` предполагают, что `recentEvents` всегда массив
+
+**Проблема:** оба места берут `recentEvents || []`, но не проверяют тип. Если профиль повреждён или UserMemory вернул объект, циклы по `recent.length` и `.filter()` могут работать неверно или упасть.
+
+**Строки:** ~108, ~247
+
+**Влияние:** одна битая запись профиля может отключить сниппет-подсказки или весь `refresh()`.
+
+**Патч:**
+```diff
+   function findSnippetCandidate() {
+-    const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
++    const rawRecent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents;
++    const recent = Array.isArray(rawRecent) ? rawRecent : [];
+```
+
+```diff
+   function computeFinality(tab, text, analysis) {
+-    const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
++    const rawRecent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents;
++    const recent = Array.isArray(rawRecent) ? rawRecent : [];
+```
+
+### [10] [Читаемость] Две рекурсивные функции вставки дублируют один и тот же обход
+
+**Проблема:** `insertBlockAfter()` и `insertBlockBefore()` почти полностью одинаковые, различается только позиция `splice`.
+
+**Строки:** ~933-958
+
+**Влияние:** больше риск исправить поведение в одной функции и забыть вторую. Особенно это касается вложенных `group.children`.
+
+**Патч:**
+```diff
++  function insertBlockNear(blocks, targetId, newBlock, offset) {
++    const list = blocks || [];
++    const index = list.findIndex(item => item?.id === targetId);
++    if (index >= 0) {
++      list.splice(index + offset, 0, newBlock);
++      return true;
++    }
++
++    for (const item of list) {
++      if (item?.type === 'group' && Array.isArray(item.children) && insertBlockNear(item.children, targetId, newBlock, offset)) return true;
++    }
++    return false;
++  }
++
+   function insertBlockAfter(blocks, sourceId, newBlock) {
+-    const list = blocks || [];
+-    const index = list.findIndex(item => item?.id === sourceId);
+-    if (index >= 0) {
+-      list.splice(index + 1, 0, newBlock);
+-      return true;
+-    }
+-
+-    for (const item of list) {
+-      if (item?.type === 'group' && Array.isArray(item.children) && insertBlockAfter(item.children, sourceId, newBlock)) return true;
+-    }
+-    return false;
++    return insertBlockNear(blocks, sourceId, newBlock, 1);
+   }
+ 
+   function insertBlockBefore(blocks, targetId, newBlock) {
+-    const list = blocks || [];
+-    const index = list.findIndex(item => item?.id === targetId);
+-    if (index >= 0) {
+-      list.splice(index, 0, newBlock);
+-      return true;
+-    }
+-
+-    for (const item of list) {
+-      if (item?.type === 'group' && Array.isArray(item.children) && insertBlockBefore(item.children, targetId, newBlock)) return true;
+-    }
+-    return false;
++    return insertBlockNear(blocks, targetId, newBlock, 0);
+   }
+```
+
+Итог: нашёл 4 критичных улучшения, 3 UX-улучшения, 2 производительных и 1 по читаемости. Общая оценка качества кода хорошая: модуль уже заметно защищён `safeCall`, cooldown, guards и sanitization, но оставшиеся риски в основном вокруг stale state, мутабельности публичных данных и нескольких edge cases при повреждённом local state.

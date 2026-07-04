@@ -1,0 +1,22 @@
+{
+  "provider": "lmstudio",
+  "anthropicApiKey": "",
+  "model": "claude-sonnet-4-6",
+  "lmstudioBaseUrl": "http://localhost:1234/v1",
+  "lmstudioModel": "",
+  "lmstudioMaxTokens": 16384,
+  "maxIterations": 15,
+  "embeddingProvider": "local",
+  "embeddingModel": "Xenova/all-MiniLM-L6-v2",
+  "openaiEmbeddingApiKey": "",
+  "openaiEmbeddingModel": "text-embedding-3-small",
+  "googleEmbeddingApiKey": "",
+  "googleEmbeddingModel": "text-embedding-004",
+  "indexedNotesCount": 467,
+  "indexedChunksCount": 7413,
+  "lastIndexedAt": "2026-07-02T16:31:12.185Z",
+  "excalidrawEnabled": true,
+  "diagramDefaultFolder": "Diagrams",
+  "diagramWatcherEnabled": true,
+  "diagramEmbedStyle": "embed"
+}

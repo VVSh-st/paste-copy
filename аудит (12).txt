@@ -1,0 +1,462 @@
+Это последний тикет. Потом переходим к аудиту "E:\CODE\Paste_copy\intelligence-core.js", первый тикет уже есть.
+
+
+Сначала прочитаю файл и зафиксирую номера строк, чтобы дать ревью с точными ссылками и не повторить то, что вы исключили.Собираю контекст по коду и нумерации строк, затем отберу только самостоятельные улучшения из оставшегося пространства: критические, UX и производительность.Я — **GPT-5**.
+
+Ниже даю ревью `notepad.js` в формате аудита, с упором на реальные проблемы и без повторения пунктов, которые вы заранее исключили.
+
+### [1] [Критично] Двойной клик по неактивной вкладке может не открыть rename из-за `requestAnimationFrame` race
+
+**Проблема:**  
+При двойном клике по неактивной вкладке вызывается `_switchTab()`, затем `_openRenameOnTab()`, а сам `_openRenameOnTab()` ищет нужный DOM-элемент только на следующем кадре через `requestAnimationFrame`. Если за этот кадр произойдёт ещё один `_renderTabs()` или окно будет закрыто/минимизировано/переключено, rename может не открыться или открыться не на той вкладке.
+
+**Строки:**  
+Около `_renderTabs()` и `_openRenameOnTab()`:
+- `btn.ondblclick` — примерно 494–506
+- `_openRenameOnTab` — примерно 515–530
+
+**Влияние:**  
+Пользователь двойным кликом ожидает мгновенное переименование, но поведение становится нестабильным, особенно при быстрых действиях. Это уже не просто UX-мелочь: тут есть асинхронная гонка между перерисовкой вкладок и отложенным доступом к DOM.
+
+**Патч:**
+```diff
+-      btn.ondblclick = e => {
+-        e.stopPropagation();
+-        clearTimeout(state.tabClickTimer);
+-        if (state.activeTab !== idx) {
+-          _switchTab(state, idx, state.el);
+-          _openRenameOnTab(state, idx);
+-        } else {
+-          renameInput._editing = true;
+-          labelSpan.style.display = 'none';
+-          renameInput.style.display = '';
+-          renameInput.value = state.tabs[idx].label;
+-          renameInput.focus();
+-          renameInput.select();
+-        }
+-      };
++      btn.ondblclick = e => {
++        e.stopPropagation();
++        clearTimeout(state.tabClickTimer);
++        if (state.activeTab !== idx) {
++          _switchTab(state, idx, state.el);
++        }
++        _openRenameOnTab(state, idx);
++      };
+```
+
+```diff
+-  function _openRenameOnTab(state, idx) {
+-    requestAnimationFrame(() => {
+-      const row = state._tabsRow;
+-      if (!row) return;
+-      const visPos = idx - state.tabOffset;
+-      if (visPos < 0 || visPos >= row.children.length) return;
+-      const newBtn = row.children[visPos];
+-      const ls = newBtn?.querySelector('span');
+-      const ri = newBtn?.querySelector('input.notepad-tab-rename');
+-      if (!ls || !ri) return;
+-      ri._editing = true;
+-      ls.style.display = 'none';
+-      ri.style.display = '';
+-      ri.value = state.tabs[idx].label;
+-      ri.focus();
+-      ri.select();
+-    });
+-  }
++  function _openRenameOnTab(state, idx) {
++    const row = state._tabsRow;
++    if (!row) return;
++    const visPos = idx - state.tabOffset;
++    if (visPos < 0 || visPos >= row.children.length) return;
++    const tabEl = row.children[visPos];
++    const ls = tabEl?.querySelector('span');
++    const ri = tabEl?.querySelector('input.notepad-tab-rename');
++    if (!ls || !ri) return;
++    ri._editing = true;
++    ls.style.display = 'none';
++    ri.style.display = '';
++    ri.value = state.tabs[idx].label;
++    ri.focus();
++    ri.select();
++  }
+```
+
+---
+
+### [2] [Критично] После перевода undo возвращает “до перевода”, но кнопка restore-original остаётся активной и может затереть новые правки
+
+**Проблема:**  
+`handleTranslate()` сохраняет оригинал в `state._translateOriginal` и потом позволяет одной кнопкой восстановить исходный текст. Но если после перевода пользователь нажал `Undo` или отредактировал текст вручную, `_translateOriginal` не очищается. Кнопка перевода остаётся в режиме “вернуть оригинал” и может перезаписать уже изменённый текст устаревшим состоянием.
+
+**Строки:**  
+- `handleTranslate()` — примерно 389–447
+- `doUndo()` / `doRedo()` — примерно 285–311
+- `textarea input` — примерно 564–576
+
+**Влияние:**  
+Это реальная потеря пользовательских правок: после перевода и последующих действий восстановление оригинала работает по устаревшему снимку и перетирает текущее содержимое.
+
+**Патч:**
+```diff
+     const doUndo = () => {
+       const ta = getTa();
+       if (!ta || state.histIdx <= 0) return;
++      state._translateOriginal = null;
++      state._translateOriginalTab = null;
+       const wasFilled = !!state.tabs[state.activeTab].value;
+       state.histIdx--;
+       ta.value = state.history[state.histIdx];
+```
+
+```diff
+     const doRedo = () => {
+       const ta = getTa();
+       if (!ta || state.histIdx >= state.history.length - 1) return;
++      state._translateOriginal = null;
++      state._translateOriginalTab = null;
+       const wasFilled = !!state.tabs[state.activeTab].value;
+       state.histIdx++;
+       ta.value = state.history[state.histIdx];
+```
+
+```diff
+     ta.addEventListener('input', () => {
++      state._translateOriginal = null;
++      state._translateOriginalTab = null;
+       const wasFilled = !!state.tabs[state.activeTab].value;
+       state.tabs[state.activeTab].value = ta.value;
+```
+
+---
+
+### [3] [UX] При minimize не сохраняется текущий текст, если debounce истории ещё не сработал
+
+**Проблема:**  
+`_toggleMinimize()` только меняет CSS-класс и вызывает `_persist(state)`, но не синхронизирует текущее содержимое `textarea` в `state.tabs[state.activeTab].value`, если пользователь печатал только что и debounce `input` ещё не завершился.
+
+**Строки:**  
+`_toggleMinimize()` — примерно 258–264
+
+**Влияние:**  
+Пользователь сворачивает окно, ожидая что “всё уже сохранено”, а последнее изменение может не попасть в persistence до следующего события. Это даёт ощущение случайной потери текста.
+
+**Патч:**
+```diff
+   function _toggleMinimize(state, win) {
++    const ta = win.querySelector('.notepad-body textarea');
++    if (ta) {
++      clearTimeout(state.histTimer);
++      state.tabs[state.activeTab].value = ta.value;
++    }
+     state.minimized = !state.minimized;
+     win.classList.toggle('notepad-minimized', state.minimized);
+     const chevron = win.querySelector('.notepad-min-btn svg');
+     if (chevron) chevron.style.transform = state.minimized ? 'rotate(-90deg)' : '';
+     _persist(state);
+   }
+```
+
+---
+
+### [4] [UX] При восстановлении оригинала после перевода изменение не попадает в history
+
+**Проблема:**  
+В ветке `if (state._translateOriginal !== null ...)` текст просто подставляется обратно, но `pushHistory()` перед заменой не вызывается. В результате пользователь не может нормально сделать `Undo/Redo` вокруг операции “перевод -> вернуть оригинал”.
+
+**Строки:**  
+Внутри `handleTranslate()` — примерно 401–410
+
+**Влияние:**  
+Undo/redo становится непоследовательным: часть значимых операций попадает в стек, часть нет. Для редактора это ломает ожидаемую модель поведения.
+
+**Патч:**
+```diff
+       if (state._translateOriginal !== null && state._translateOriginalTab === state.activeTab) {
++        pushHistory(ta.value);
+         ta.value = state._translateOriginal;
+         state.tabs[state.activeTab].value = state._translateOriginal;
+         state._translateOriginal = null;
+         state._translateOriginalTab = null;
+         ta.dispatchEvent(new Event('input'));
+```
+
+---
+
+### [5] [Производительность] `_updateCount()` делает полный проход по строке на каждый `input`, даже для очень больших текстов
+
+**Проблема:**  
+На каждое изменение `_updateCount()` считает `chars`, `lines`, `bytes`. Для `lines` идёт полный цикл по всей строке, для `bytes` при длине до 10k вызывается `TextEncoder.encode()`, который тоже проходит весь текст и выделяет память под новый буфер.
+
+**Строки:**  
+`_updateCount()` — примерно 633–645
+
+**Влияние:**  
+При больших заметках интерфейс начнёт тормозить именно во время набора текста, то есть в самом чувствительном месте. Особенно на слабых устройствах.
+
+**Патч:**  
+Самостоятельное улучшение: не считать байты и строки синхронно на каждом `input` для крупного текста, а деградировать в более дешёвую оценку.
+```diff
+   function _updateCount(ta, countSpan) {
+     if (!countSpan || !ta) return;
+     const value = ta.value;
+     const chars = value.length;
+-    let lines = value ? 1 : 0;
+-    for (let i = 0; i < value.length; i++) {
+-      if (value.charCodeAt(i) === 10) lines++;
+-    }
+-    const bytes = value.length > 10000
+-      ? Math.ceil(value.length * 1.5)
+-      : _byteLen(value);
++    const isLarge = value.length > 20000;
++    const lines = value
++      ? (isLarge ? value.split('\n').length : 1 + (value.match(/\n/g)?.length || 0))
++      : 0;
++    const bytes = isLarge
++      ? Math.ceil(value.length * 1.5)
++      : _byteLen(value);
+     const kb = (bytes / 1024).toFixed(1);
+     countSpan.textContent = `${chars}/${lines}/${kb}KB`;
+   }
+```
+
+Примечание: это не идеальный микробенчмарк, но уменьшает “тяжесть” подсчёта для больших заметок без архитектурных изменений.
+
+---
+
+### [6] [UX] Кнопка “Очистить всё” не диспатчит `input`, поэтому поведение расходится с очисткой выделения
+
+**Проблема:**  
+В `clearBtn` две ветки ведут себя по-разному:
+- при очистке выделения вызывается `ta.dispatchEvent(new Event('input'))`
+- при очистке всей вкладки `input` не диспатчится, а состояние обновляется вручную
+
+Из-за этого часть побочных эффектов живёт в одном месте (`input` handler), а часть размазана по кнопке.
+
+**Строки:**  
+`clearBtn` — примерно 334–349
+
+**Влияние:**  
+Поведение становится хрупким: если дальше логика `input` будет расширяться, полная очистка может начать работать “не как обычное редактирование”. Это уже UX- и support-риск.
+
+**Патч:**
+```diff
+       } else if (ta.value) {
+         pushHistory(ta.value);
+         ta.value = '';
+-        state.tabs[state.activeTab].value = '';
+-        pushHistory('');
+-        _updateCount(ta, countSpan);
+-        _renderTabs(state);
+-        _persist(state);
++        pushHistory('');
++        ta.dispatchEvent(new Event('input'));
++        _persist(state);
+       }
+     });
+```
+
+---
+
+### [7] [Читаемость] Сохранение “текущего текста в state перед сменой режима/вкладки/закрытием” дублируется в нескольких местах
+
+**Проблема:**  
+Одинаковая логика встречается минимум в:
+- `create()` cleanup ветке
+- `_closeNotepad()`
+- `_switchTab()`
+- `_toggleMinimize()` после исправления
+Это уже не просто стиль: при дальнейшем изменении формата state можно легко обновить одну ветку и забыть остальные.
+
+**Строки:**  
+Около:
+- `create()` — 137–146
+- `_closeNotepad()` — 192–199
+- `_switchTab()` — 533–540
+- `_toggleMinimize()` — 258–264
+
+**Влияние:**  
+Рост вероятности расхождения поведения и регрессий при доработках persistence/history.
+
+**Патч:**
+```diff
++  function _syncActiveTabValue(state) {
++    const ta = state.el?.querySelector('.notepad-body textarea');
++    if (!ta) return null;
++    clearTimeout(state.histTimer);
++    state.tabs[state.activeTab].value = ta.value;
++    return ta;
++  }
+```
+
+```diff
+   function _closeNotepad(state) {
+     if (_instance !== state) return;
+-
+-    const ta = state.el?.querySelector('.notepad-body textarea');
++    const ta = _syncActiveTabValue(state);
+     if (ta) {
+-      clearTimeout(state.histTimer);
+-      state.tabs[state.activeTab].value = ta.value;
+       if (state.history[state.histIdx] !== ta.value) {
+         state._pushHistory?.(ta.value);
+       }
+     }
+```
+
+```diff
+   function _switchTab(state, idx, win) {
+-    const ta = win?.querySelector('.notepad-body textarea');
++    const ta = _syncActiveTabValue(state) || win?.querySelector('.notepad-body textarea');
+     if (ta) {
+-      clearTimeout(state.histTimer);
+-      state.tabs[state.activeTab].value = ta.value;
+       state._pushHistory?.(ta.value);
+       state.tabs[state.activeTab]._history = state.history.slice();
+       state.tabs[state.activeTab]._histIdx = state.histIdx;
+     }
+```
+
+```diff
+   function _toggleMinimize(state, win) {
+-    const ta = win.querySelector('.notepad-body textarea');
+-    if (ta) {
+-      clearTimeout(state.histTimer);
+-      state.tabs[state.activeTab].value = ta.value;
+-    }
++    _syncActiveTabValue(state);
+     state.minimized = !state.minimized;
+```
+
+---
+
+### [8] [UX] При открытии окно может оказаться частично вне экрана после изменения viewport с прошлого сеанса
+
+**Проблема:**  
+Размер ограничивается `window.innerWidth/innerHeight`, а позиция затем считается через `maxLeft/maxTop`. Но если сохранённый размер почти равен viewport, а есть системный scrollbar/zoom/мобильный visual viewport, окно может при открытии оказаться неудобно прижатым или частично недоступным.
+
+**Строки:**  
+`create()` — примерно 172–185
+
+**Влияние:**  
+Пользователь иногда получает окно, у которого неудобно схватить resize handle или drag header, особенно после смены дисплея/масштаба.
+
+**Патч:**  
+Ограничить максимальный размер небольшим отступом от краёв.
+```diff
+     if (state.size) {
+       const w = parseFloat(state.size.w);
+       const h = parseFloat(state.size.h);
+-      win.style.width  = Math.max(MIN_WIDTH, Math.min(window.innerWidth,  Number.isFinite(w) ? w : 420)) + 'px';
+-      win.style.height = Math.max(MIN_HEIGHT, Math.min(window.innerHeight, Number.isFinite(h) ? h : 320)) + 'px';
++      win.style.width  = Math.max(MIN_WIDTH, Math.min(window.innerWidth - 16,  Number.isFinite(w) ? w : 420)) + 'px';
++      win.style.height = Math.max(MIN_HEIGHT, Math.min(window.innerHeight - 16, Number.isFinite(h) ? h : 320)) + 'px';
+     }
+```
+
+---
+
+### [9] [Производительность] При каждом `_switchTab()` история вкладки копируется целиком через `.slice()`
+
+**Проблема:**  
+При переключении вкладки:
+```js
+state.tabs[state.activeTab]._history = state.history.slice();
+```
+Копируется весь undo-стек. При 10 вкладках и длинной истории это создаёт лишние аллокации и GC-нагрузку.
+
+**Строки:**  
+`_switchTab()` — примерно 538–539
+
+**Влияние:**  
+Чем больше редактирования и переключений вкладок, тем больше лишней памяти и пауз на сборку мусора.
+
+**Патч:**  
+Хранить отдельную history на вкладке как объект и переиспользовать массив, а не копировать при каждом переключении.
+```diff
+-      state.tabs[state.activeTab]._history = state.history.slice();
+-      state.tabs[state.activeTab]._histIdx = state.histIdx;
++      state.tabs[state.activeTab]._history = state.history;
++      state.tabs[state.activeTab]._histIdx = state.histIdx;
+```
+
+```diff
+-      state.history = state.tabs[idx]._history || [newVal];
++      state.history = Array.isArray(state.tabs[idx]._history) ? state.tabs[idx]._history : [newVal];
+       state.histIdx = state.tabs[idx]._histIdx ?? state.history.length - 1;
+```
+
+Замечание: это самостоятельное улучшение, но оно меняет модель владения массивом. Если хотите совсем без aliasing-риска, можно вместо этого сохранять history только при реальном изменении вкладки, а не на каждый switch.
+
+---
+
+### [10] [Читаемость] Логика keyboard shortcuts в одном обработчике стала слишком плотной и содержит пересекающиеся условия
+
+**Проблема:**  
+`keydown` для `textarea` одновременно обрабатывает:
+- Tab / Shift+Tab
+- Ctrl/Cmd+Z
+- Ctrl/Cmd+Y
+- Ctrl/Cmd+Shift+Z
+- Ctrl/Cmd+S
+
+Условия уже пересекаются и читаются тяжело, особенно ветка redo:
+```js
+} else if (ctrl && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
+```
+
+**Строки:**  
+`ta.addEventListener('keydown', ...)` — примерно 578–624
+
+**Влияние:**  
+Функция сложнее сопровождать, выше шанс поломать комбинации при следующих правках.
+
+**Патч:**  
+Вынести ветки в ранние return-проверки.
+```diff
+     ta.addEventListener('keydown', e => {
+       const ctrl = e.ctrlKey || e.metaKey;
+ 
+-      // Tab / Shift+Tab: indent / de-indent (no focus change)
+       if (e.key === 'Tab' && !ctrl && !e.altKey && !e.metaKey) {
+         e.preventDefault();
+         const start = ta.selectionStart;
+         const end   = ta.selectionEnd;
+         state._pushHistory?.(ta.value);
+@@
+         ta.dispatchEvent(new Event('input'));
+         return;
+       }
+ 
+-      if (ctrl && !e.shiftKey && e.code === 'KeyZ') {
++      if (ctrl && !e.shiftKey && e.code === 'KeyS') {
++        e.preventDefault();
++        state._saveToFile?.();
++        return;
++      }
++
++      if (ctrl && !e.shiftKey && e.code === 'KeyZ') {
+         e.preventDefault();
+         state._doUndo?.();
+-      } else if (ctrl && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
++        return;
++      }
++
++      if (ctrl && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
+         e.preventDefault();
+         state._doRedo?.();
+-      } else if (ctrl && !e.shiftKey && e.code === 'KeyS') {
+-        e.preventDefault();
+-        state._saveToFile?.();
++        return;
+       }
+     });
+```
+
+---
+
+## Итог
+
+Нашёл **2 критических**, **4 UX**, **2 производительных** и **2 на читаемость/сопровождаемость** улучшения.
+
+Общая оценка кода: **хорошая, ближе к strong mid/senior vanilla JS**, особенно по части singleton lifecycle, drag/resize cleanup и общей аккуратности state. Главные слабые места сейчас не в базовой архитектуре, а в пограничных состояниях: перевод, rename-flow, синхронизация текста перед UI-переходами и лишняя стоимость некоторых операций при больших заметках.
