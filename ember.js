@@ -218,6 +218,30 @@ const Ember = (() => {
   function rand(min, max) { return min + Math.random() * (max - min); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function easeOutQuad(t) { return t * (2 - t); }
+
+  // ---------- style cache ----------
+  const styleCache = new Map();
+  function setVar(el, name, value) {
+    if (!el) return;
+    let map = styleCache.get(el);
+    if (!map) { map = new Map(); styleCache.set(el, map); }
+    if (map.get(name) === value) return;
+    map.set(name, value);
+    el.style.setProperty(name, value);
+  }
+
+  function computeBreath() {
+    if (Date.now() > nextBreathSwitch) {
+      breathPatternIdx = (breathPatternIdx + 1) % breathPattern.length;
+      nextBreathSwitch = Date.now() + rand(2000, 6000);
+    }
+    const breathAmp = breathPattern[breathPatternIdx];
+    const flicker =
+      Math.sin(breathPhase * 2.5) * 0.5 +
+      Math.sin(breathPhase * 6.3 + 1.7) * 0.3 +
+      Math.sin(breathPhase * 11.1 + 4.2) * 0.2;
+    return { breathAmp, flicker };
+  }
   function easeInQuad(t) { return t * t; }
   function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
   function bump(t, riseEnd, holdEnd) {
@@ -312,7 +336,8 @@ const Ember = (() => {
   function normalizeState(s) {
     if (!s || typeof s.lastEditTime !== 'number') return null;
     return {
-      ...s,
+      lastEditTime: s.lastEditTime,
+      lastInitTime: typeof s.lastInitTime === 'number' ? s.lastInitTime : 0,
       updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : s.lastEditTime,
     };
   }
@@ -320,8 +345,15 @@ const Ember = (() => {
   function applyRemoteState(next) {
     const normalized = normalizeState(next);
     if (!normalized) return;
-    const currentUpdatedAt = typeof state?.updatedAt === 'number' ? state.updatedAt : state?.lastEditTime || 0;
-    if (normalized.updatedAt >= currentUpdatedAt) state = normalized;
+    if (!state) {
+      state = normalized;
+      return;
+    }
+    state = {
+      lastEditTime: Math.max(state.lastEditTime || 0, normalized.lastEditTime || 0),
+      lastInitTime: Math.max(state.lastInitTime || 0, normalized.lastInitTime || 0),
+      updatedAt: Math.max(state.updatedAt || 0, normalized.updatedAt || 0),
+    };
   }
 
   function saveState() {
@@ -333,6 +365,14 @@ const Ember = (() => {
   }
 
   function setupBroadcast() {
+    if (handlers.storageSync) {
+      window.removeEventListener('storage', handlers.storageSync);
+      handlers.storageSync = null;
+    }
+    if (channel) {
+      try { channel.close(); } catch {}
+      channel = null;
+    }
     try {
       channel = new BroadcastChannel(BROADCAST_KEY);
       channel.onmessage = (e) => {
@@ -1230,6 +1270,7 @@ const Ember = (() => {
       const el = document.createElement('div');
       el.className = 'ember-ash';
       el.style.display = 'none';
+      el.__poolIndex = i;
       particleLayer.appendChild(el);
       particlePool.push({ el, free: true });
     }
@@ -1257,21 +1298,18 @@ const Ember = (() => {
   }
 
   function releaseEl(el) {
-    for (let i = 0; i < particlePool.length; i++) {
-      if (particlePool[i].el === el) {
-        if (i >= POOL_SIZE) {
-          el.remove();
-          particlePool.splice(i, 1);
-        } else {
-          particlePool[i].free = true;
-          el.style.display = 'none';
-          el.className = 'ember-ash';
-          el.classList.remove('active-particle');
-        }
-        return;
-      }
+    const i = el && el.__poolIndex;
+    if (Number.isInteger(i) && particlePool[i] && particlePool[i].el === el) {
+      particlePool[i].free = true;
+      el.style.display = 'none';
+      el.className = 'ember-ash';
+      el.classList.remove('active-particle');
+      el.style.opacity = '0';
+      el.style.boxShadow = '';
+      el.style.transform = '';
+      return;
     }
-    el.remove();
+    if (el) el.remove();
   }
 
   function spawnAshParticle() {
@@ -1421,7 +1459,8 @@ const Ember = (() => {
   }
 
   function updateParticles(now, dt) {
-    for (let i = particles.length - 1; i >= 0; i--) {
+    const nextParticles = [];
+    for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
       const t = clamp((now - p.born) / p.dur, 0, 1);
       if (t >= 1) {
@@ -1436,7 +1475,6 @@ const Ember = (() => {
         }
         releaseEl(p.el);
         if (p.isSpark) activeSparks = Math.max(0, activeSparks - 1);
-        particles.splice(i, 1);
         continue;
       }
 
@@ -1489,7 +1527,9 @@ const Ember = (() => {
         `translate(${drift.toFixed(2)}px, ${rise.toFixed(2)}px) rotate(${(rot + wobble).toFixed(1)}deg) scale(${scale.toFixed(2)})`;
       p.el.style.opacity = clamp(opacity, 0, 1).toFixed(3);
       if (shadow) p.el.style.boxShadow = shadow;
+      nextParticles.push(p);
     }
+    particles = nextParticles;
   }
 
   // ---------- горячие точки на поверхности ----------
@@ -1675,11 +1715,19 @@ const Ember = (() => {
     else if (statusState === 'saved') lines.push('✓ сохранено');
     else if (statusState === 'error') lines.push('✗ ошибка');
 
-    tooltipEl = document.createElement('div');
-    tooltipEl.className = 'ember-tooltip';
-    tooltipEl.textContent = lines.join('\n');
-    root.appendChild(tooltipEl);
-    defer(() => { if (tooltipEl) { tooltipEl.style.opacity = '0'; defer(() => tooltipEl?.remove(), 300); } }, 3000);
+    const el = document.createElement('div');
+    el.className = 'ember-tooltip';
+    el.textContent = lines.join('\n');
+    tooltipEl = el;
+    root.appendChild(el);
+    defer(() => {
+      if (!root || tooltipEl !== el) return;
+      el.style.opacity = '0';
+      defer(() => {
+        if (tooltipEl === el) tooltipEl = null;
+        el.remove();
+      }, 300);
+    }, 3000);
   }
 
   function updateGaze(dt, targetX, targetY, activeStrength) {
@@ -2479,7 +2527,8 @@ const Ember = (() => {
     testQueue = [...TEST_EFFECTS];
     testIndex = 0;
     clearDeferred(testModeTimer);
-    testModeTimer = defer(stopTestMode, TEST_EFFECTS.length * 3600 + 1000);
+    const TEST_STEP_MS = 3300;
+    testModeTimer = defer(stopTestMode, TEST_EFFECTS.length * TEST_STEP_MS + 1500);
     runNextTest();
   }
 
@@ -2642,11 +2691,15 @@ const Ember = (() => {
   }
 
   function updateRingSegments(now) {
-    if (Math.random() < 0.3) {
+    if (Math.random() < 0.02) {
       const start = Math.floor(rand(0, 12));
       const len = Math.floor(rand(2, 5));
       for (let i = start; i < start + len; i++) {
-        segments[i % 12].style.setProperty('--seg-flash', '0.8');
+        const seg = segments[i % 12];
+        if (seg) {
+          markSegmentDirty(seg);
+          seg.style.setProperty('--seg-flash', '0.8');
+        }
       }
     }
   }
@@ -2691,15 +2744,7 @@ const Ember = (() => {
 
       const breathBase = intensity > 0.3 ? 0.00055 : 0.0002;
       breathPhase += breathBase * dt;
-      if (Date.now() > nextBreathSwitch) {
-        breathPatternIdx = (breathPatternIdx + 1) % breathPattern.length;
-        nextBreathSwitch = Date.now() + rand(2000, 6000);
-      }
-      const breathAmp = breathPattern[breathPatternIdx];
-      const flicker =
-        Math.sin(breathPhase * 2.5) * 0.5 +
-        Math.sin(breathPhase * 6.3 + 1.7) * 0.3 +
-        Math.sin(breathPhase * 11.1 + 4.2) * 0.2;
+      const { breathAmp, flicker } = computeBreath();
       breathScale = 1 + flicker * 0.012 * intensity * breathAmp;
 
       updateHeatZones(dt);
@@ -2892,16 +2937,8 @@ const Ember = (() => {
         intensity > 0.3 ? 0.00055 : 0.0002;
       breathPhase += breathBase * speedMult * dt;
     }
-    if (Date.now() > nextBreathSwitch) {
-      breathPatternIdx = (breathPatternIdx + 1) % breathPattern.length;
-      nextBreathSwitch = Date.now() + rand(2000, 6000);
-    }
-    const breathAmp = breathPattern[breathPatternIdx];
+    const { breathAmp, flicker } = computeBreath();
     const hoverBreath = hover ? Math.sin(breathPhase * 2.5) * 0.05 * hoverVal : 0;
-    const flicker =
-      Math.sin(breathPhase * 2.5) * 0.5 +
-      Math.sin(breathPhase * 6.3 + 1.7) * 0.3 +
-      Math.sin(breathPhase * 11.1 + 4.2) * 0.2;
     breathScale = 1 + flicker * 0.012 * intensity * breathAmp + hoverBreath + windGust * 0.04;
 
     updateHeatZones(dt);
@@ -3115,13 +3152,7 @@ const Ember = (() => {
       return;
     }
     lastFrame = timestamp;
-    if (reduceMotion) {
-      if (reducedMotionTimer) return;
-      reducedMotionTimer = setTimeout(() => {
-        reducedMotionTimer = null;
-        rafId = requestAnimationFrame(animate);
-      }, 100);
-    }
+    if (reduceMotion && reducedMotionTimer) return;
     fpsHistory.push(dt);
     if (fpsHistory.length > 30) fpsHistory.shift();
     if (fpsHistory.length >= 20) {
@@ -3129,7 +3160,14 @@ const Ember = (() => {
       lowFpsMode = avgDt > 33;
     }
     try { update(timestamp, dt * (reduceMotion ? 6 : 1)); } catch (e) { console.error('Ember update error:', e); }
-    if (!reduceMotion) rafId = requestAnimationFrame(animate);
+    if (reduceMotion) {
+      reducedMotionTimer = setTimeout(() => {
+        reducedMotionTimer = null;
+        animate(performance.now());
+      }, 100);
+    } else {
+      rafId = requestAnimationFrame(animate);
+    }
   }
 
   function startLoop() {
@@ -3335,8 +3373,8 @@ const Ember = (() => {
   function destroy() {
     stopLoop();
     if (io) { io.disconnect(); io = null; }
-    if (channel) { try { channel.close(); } catch {} }
-    window.removeEventListener('storage', handlers.storageSync);
+    if (channel) { try { channel.close(); } catch {} channel = null; }
+    if (handlers.storageSync) window.removeEventListener('storage', handlers.storageSync);
     clearDeferred(resetTimer);
     clearDeferred(caret._typingTimer);
     clearDeferred(statusTimer);
@@ -3362,21 +3400,27 @@ const Ember = (() => {
     anticipation.active = false;
     flashHeat = 0; coreHeatReserve = 0;
     breathHoldUntil = 0;
+    tooltipEl = null;
+    testLabel = null;
+    onClickCallback = null;
+    if (styleCache) styleCache.clear();
 
-    root.removeEventListener('mouseenter', handlers.mouseenter);
-    root.removeEventListener('mouseleave', handlers.mouseleave);
-    root.removeEventListener('focus', handlers.rootFocus);
-    root.removeEventListener('blur', handlers.rootBlur);
-    root.removeEventListener('contextmenu', handlers.contextmenu);
-    root.removeEventListener('click', handlers.click);
-    root.removeEventListener('dblclick', handlers.dblclick);
-    root.removeEventListener('keydown', handlers.keydown);
-    document.removeEventListener('input', handlers.input);
-    document.removeEventListener('mousemove', handlers.mousemove);
-    document.removeEventListener('selectionchange', handlers.selectionchange);
-    window.removeEventListener('focus', handlers.windowFocus);
-    window.removeEventListener('blur', handlers.windowBlur);
-    document.removeEventListener('visibilitychange', handlers.visibilitychange);
+    if (root) {
+      if (handlers.mouseenter) root.removeEventListener('mouseenter', handlers.mouseenter);
+      if (handlers.mouseleave) root.removeEventListener('mouseleave', handlers.mouseleave);
+      if (handlers.rootFocus) root.removeEventListener('focus', handlers.rootFocus);
+      if (handlers.rootBlur) root.removeEventListener('blur', handlers.rootBlur);
+      if (handlers.contextmenu) root.removeEventListener('contextmenu', handlers.contextmenu);
+      if (handlers.click) root.removeEventListener('click', handlers.click);
+      if (handlers.dblclick) root.removeEventListener('dblclick', handlers.dblclick);
+      if (handlers.keydown) root.removeEventListener('keydown', handlers.keydown);
+    }
+    if (handlers.input) document.removeEventListener('input', handlers.input);
+    if (handlers.mousemove) document.removeEventListener('mousemove', handlers.mousemove);
+    if (handlers.selectionchange) document.removeEventListener('selectionchange', handlers.selectionchange);
+    if (handlers.windowFocus) window.removeEventListener('focus', handlers.windowFocus);
+    if (handlers.windowBlur) window.removeEventListener('blur', handlers.windowBlur);
+    if (handlers.visibilitychange) document.removeEventListener('visibilitychange', handlers.visibilitychange);
     handlers = {};
 
     if (root) { root.remove(); root = null; }
