@@ -363,7 +363,8 @@ const Flowchart = (() => {
 
     // Initial x-positions: compact left-to-right within each layer
     const xOf = new Map();
-    const widthOf = v => v.real ? (v.node.w || 140) : 24;
+    const widthOf = v => v.real ? (v.node.w || 140) : 6;
+    const gapFor = (a, b) => (a.real && b.real) ? NODE_GAP : NODE_GAP * 0.3;
 
     for (const L of layers) {
       let cursor = 0;
@@ -395,10 +396,10 @@ const Flowchart = (() => {
           if (desired === undefined) continue;
           const w = widthOf(v);
           const minLeft = i > 0
-            ? xOf.get(L[i - 1].id) + (widthOf(L[i - 1]) + w) / 2 + NODE_GAP
+            ? xOf.get(L[i - 1].id) + (widthOf(L[i - 1]) + w) / 2 + gapFor(L[i - 1], v)
             : -Infinity;
           const maxRight = i < L.length - 1
-            ? xOf.get(L[i + 1].id) - (widthOf(L[i + 1]) + w) / 2 - NODE_GAP
+            ? xOf.get(L[i + 1].id) - (widthOf(L[i + 1]) + w) / 2 - gapFor(v, L[i + 1])
             : Infinity;
           xOf.set(v.id, Math.max(minLeft, Math.min(maxRight, desired)));
         }
@@ -412,7 +413,7 @@ const Flowchart = (() => {
           const a = L[i], b = L[i + 1];
           const aw = widthOf(a) / 2, bw = widthOf(b) / 2;
           const ax = xOf.get(a.id), bx = xOf.get(b.id);
-          const minDist = aw + bw + NODE_GAP;
+          const minDist = aw + bw + gapFor(a, b);
           const dist = bx - ax;
           if (dist < minDist) {
             const shift = (minDist - dist) / 2;
@@ -438,6 +439,20 @@ const Flowchart = (() => {
           if (nb.length) xOf.set(v.id, nb.reduce((s, x) => s + x, 0) / nb.length);
         }
       }
+    }
+
+    // Push dummy nodes away from real nodes in the same layer
+    for (const L of layers) {
+      const reals = L.filter(v => v.real);
+      L.filter(v => !v.real).forEach(dummy => {
+        reals.forEach(r => {
+          const dx = xOf.get(dummy.id) - xOf.get(r.id);
+          const minGap = (r.node.w || 140) / 2 + 20;
+          if (Math.abs(dx) < minGap) {
+            xOf.set(dummy.id, xOf.get(r.id) + Math.sign(dx || 1) * minGap);
+          }
+        });
+      });
     }
 
     // Assign y-coordinates top-down
@@ -743,8 +758,10 @@ const Flowchart = (() => {
   }
 
   function _drawSideArc(src, dst, edge) {
-    const side = src.x < VCW / 2 ? -1 : 1;
-    const marginX = side > 0 ? VCW - 60 : 60;
+    const allX = _nodes.map(n => n.x);
+    const contentMinX = Math.min(...allX) - 60, contentMaxX = Math.max(...allX) + 60;
+    const side = src.x < (contentMinX + contentMaxX) / 2 ? -1 : 1;
+    const marginX = side > 0 ? contentMaxX : contentMinX;
     const p1 = _edgeAnchor(src, { x: marginX, y: src.y });
     const p2 = _edgeAnchor(dst, { x: marginX, y: dst.y });
     // Orthogonal: horizontal out, vertical down, horizontal in
