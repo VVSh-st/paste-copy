@@ -9,10 +9,12 @@ const Translator = (() => {
   const HISTORY_KEY = 'tr-history-v1';
   const SETTINGS_KEY = 'tr-settings-v1';
   const MAX_CACHE = 2000;
+  const MAX_CACHE_TEXT_LEN = 2000;
   const MAX_HISTORY = 50;
   const GOOGLE_TIMEOUT = 8000;
   const MS_TIMEOUT = 12000;
   const LEGACY_TIMEOUT = 9000;
+  const LEGACY_MAX_QUERY_CHARS = 1200;
 
   // ── State ──────────────────────────────────────────────────
   let cache = new Map();
@@ -21,11 +23,15 @@ const Translator = (() => {
   let googleKey = null;
   let googleKeyTs = 0;
   let googleKeyPromise = null;
+  let googleKeyError = null;
   let msToken = null;
   let msTokenTs = 0;
   let msTokenPromise = null;
+  let msTokenError = null;
   let gFail = 0, gBlockUntil = 0;
   let mFail = 0, mBlockUntil = 0;
+  let lFail = 0, lBlockUntil = 0;
+  let _inited = false;
   const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
   let _activeController = null;
   let _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 };
@@ -50,6 +56,30 @@ const Translator = (() => {
 
   // ── Helpers ────────────────────────────────────────────────
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  function fetchWithTimeout(url, options = {}, ms) {
+    const ctrl = new AbortController();
+    const external = options.signal;
+    let timer;
+    const abort = () => ctrl.abort();
+    if (external) {
+      if (external.aborted) ctrl.abort();
+      else external.addEventListener('abort', abort, { once: true });
+    }
+    timer = setTimeout(() => ctrl.abort(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })), ms);
+    return fetch(url, { ...options, signal: ctrl.signal })
+      .catch(e => {
+        if (ctrl.signal.aborted && !external?.aborted) {
+          throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' });
+        }
+        throw e;
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        if (external) external.removeEventListener('abort', abort);
+      });
+  }
+
   const withTimeout = (p, ms) => {
     let timer;
     const timeout = new Promise((_, rej) => {
@@ -57,6 +87,22 @@ const Translator = (() => {
     });
     return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
   };
+
+  function countChars(texts) {
+    return texts.reduce((s, t) => s + String(t || '').length, 0);
+  }
+
+  function normalizeTargetLang(v) {
+    return LANG_BY_CODE[v] ? v : settings.targetLang;
+  }
+
+  function getStorage() {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage : null;
+    } catch {
+      return null;
+    }
+  }
   const retry = async (fn, canRetry, m = 2, d = 700) => {
     for (let i = 0; i < m; i++) {
       try { return await fn(); }
@@ -85,7 +131,7 @@ const Translator = (() => {
 
   // ── Template protection ────────────────────────────────────
   // {{...}}, $VAR, !теги — не переводим
-  const TMPL_RE = /(\{\{[^}]+\}\}|\$[A-Z_][A-Z0-9_]*|\$\{[^}]+\}|\[\[[^\]]+\]\]|%[^%]+%|\{\d+\}|![а-яёА-ЯЁ]+)\b/g;
+  const TMPL_RE = /(\{\{[^}\n]{1,200}\}\}|\$[A-Z_][A-Z0-9_]*|\$\{[^}\n]{1,200}\}|\[\[[^\]\n]{1,200}\]\]|%[A-Z_][A-Z0-9_]*%|\{\d+\}|![а-яёА-ЯЁ]+)\b/g;
   let templateSeq = 0;
 
   function protectTemplates(text) {
@@ -122,14 +168,17 @@ const Translator = (() => {
   // ── Cyrillic detection ─────────────────────────────────────
   const CYR_RE = /[\u0400-\u04FF]/gu;
   const LAT_RE = /[A-Za-z]/g;
+  const HAN_RE = /\p{Script=Han}/u;
+  const NON_LETTER_HINT_RE = /[\s\d\p{P}]/gu;
 
   function detectLangHint(text) {
+    text = text == null ? '' : String(text);
     if (!text) return null;
     if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return { code: 'ja', name: 'Japanese' };
-    if (/[\u3400-\u9FFF\uF900-\uFAFF]|\p{Script=Han}/u.test(text)) return { code: 'zh', name: 'Chinese' };
+    if (HAN_RE.test(text)) return { code: 'zh', name: 'Chinese' };
     if (/[\uAC00-\uD7A3]/.test(text)) return { code: 'ko', name: 'Korean' };
     if (/[\u0600-\u06FF]/.test(text)) return { code: 'ar', name: 'Arabic' };
-    const letters = text.replace(/[\s\d\p{P}]/gu, '');
+    const letters = text.replace(NON_LETTER_HINT_RE, '');
     if (!letters) return null;
     const cyrCount = (letters.match(CYR_RE) || []).length;
     const latCount = (letters.match(LAT_RE) || []).length;
@@ -153,7 +202,8 @@ const Translator = (() => {
 
   function loadCache() {
     try {
-      const raw = localStorage.getItem(CACHE_KEY);
+      const storage = getStorage();
+      const raw = storage?.getItem(CACHE_KEY);
       if (raw) {
         const arr = JSON.parse(raw);
         if (Array.isArray(arr)) {
@@ -169,8 +219,10 @@ const Translator = (() => {
   function flushCache() {
     if (!_cacheDirty) return;
     try {
+      const storage = getStorage();
+      if (!storage) return;
       const arr = [...cache.entries()].slice(-MAX_CACHE);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(arr));
+      storage.setItem(CACHE_KEY, JSON.stringify(arr));
       _cacheDirty = false;
     } catch {
       // dirty flag stays true so we retry on next flush
@@ -186,6 +238,10 @@ const Translator = (() => {
   const cacheKey = (text, lang) => `${lang}\u0001${text}`;
 
   function cacheGet(text, lang) {
+    if (text.length > MAX_CACHE_TEXT_LEN) {
+      _stats.cacheMisses++;
+      return undefined;
+    }
     const key = cacheKey(text, lang);
     const v = cache.get(key);
     if (v !== undefined) {
@@ -206,6 +262,7 @@ const Translator = (() => {
 
   function cacheSet(text, lang, translated) {
     if (!text || !translated) return;
+    if (text.length > MAX_CACHE_TEXT_LEN || translated.length > MAX_CACHE_TEXT_LEN) return;
     const key = cacheKey(text, lang);
     cache.delete(key);
     cache.set(key, { text: translated, ts: Date.now() });
@@ -219,16 +276,25 @@ const Translator = (() => {
   // ── History ────────────────────────────────────────────────
   function loadHistory() {
     try {
-      const raw = localStorage.getItem(HISTORY_KEY);
+      const storage = getStorage();
+      const raw = storage?.getItem(HISTORY_KEY);
       if (raw) history = JSON.parse(raw);
       if (!Array.isArray(history)) history = [];
+      history = history.filter(item =>
+        item &&
+        typeof item.original === 'string' &&
+        typeof item.translated === 'string' &&
+        typeof item.to === 'string' &&
+        typeof item.ts === 'number'
+      );
       if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
     } catch { history = []; }
   }
 
   function saveHistory() {
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+      const storage = getStorage();
+      storage?.setItem(HISTORY_KEY, JSON.stringify(history));
     } catch {}
   }
 
@@ -251,9 +317,11 @@ const Translator = (() => {
   // ── Settings ───────────────────────────────────────────────
   function loadSettings() {
     try {
-      const raw = localStorage.getItem(SETTINGS_KEY);
+      const storage = getStorage();
+      const raw = storage?.getItem(SETTINGS_KEY);
       if (raw) {
         const s = JSON.parse(raw);
+        if (!s || typeof s !== 'object') return;
         if (LANG_BY_CODE[s?.targetLang]) settings.targetLang = s.targetLang;
         if (ENGINES.has(s?.engine)) settings.engine = s.engine;
       }
@@ -262,7 +330,8 @@ const Translator = (() => {
 
   function saveSettings() {
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      const storage = getStorage();
+      storage?.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch {}
   }
 
@@ -272,19 +341,27 @@ const Translator = (() => {
     if (googleKeyPromise) return googleKeyPromise;
     googleKeyPromise = (async () => {
       try {
-        const r = await withTimeout(
-          fetch('https://translate.googleapis.com/_/translate_http/_/js/k=translate_http.tr.en_US.YusFYy3P_ro.O/am=AAg/d=1/exm=el_conf/ed=1/rs=AN8SPfq1Hb8iJRleQqQc8zhdzXmF9E56eQ/m=el_main'),
+        const r = await fetchWithTimeout(
+          'https://translate.googleapis.com/_/translate_http/_/js/k=translate_http.tr.en_US.YusFYy3P_ro.O/am=AAg/d=1/exm=el_conf/ed=1/rs=AN8SPfq1Hb8iJRleQqQc8zhdzXmF9E56eQ/m=el_main',
+          { credentials: 'omit', referrerPolicy: 'no-referrer' },
           8000
         );
-        if (!r.ok) return null;
+        if (!r.ok) {
+          googleKeyError = `google key http ${r.status}`;
+          return null;
+        }
         const text = await r.text();
-        const m = text.match(/x-goog-api-key['"]\s*:\s*['"]([^'"]+)/i);
+        const m = text.match(/["']?x-goog-api-key["']?\s*[:=]\s*["']([^"']+)["']/i);
         if (m && /^AIza[0-9A-Za-z_-]{20,}$/.test(m[1])) {
           googleKey = m[1];
           googleKeyTs = Date.now();
+          googleKeyError = null;
           return googleKey;
         }
-      } catch {}
+        googleKeyError = 'google key not found in response';
+      } catch (e) {
+        googleKeyError = e?.message || 'google key network error';
+      }
       return null;
     })();
     try {
@@ -296,19 +373,22 @@ const Translator = (() => {
 
   async function translateGoogle(texts, to, signal) {
     const key = await fetchGoogleKey();
-    if (!key) throw new Error('Google auth failed');
+    if (!key) throw new Error(`Google auth failed${googleKeyError ? ': ' + googleKeyError : ''}`);
     _stats.googleRequests++;
-    _stats.totalChars += texts.reduce((s, t) => s + t.length, 0);
+    _stats.totalChars += countChars(texts);
     const results = [];
     for (let i = 0; i < texts.length; i += 50) {
       const chunk = texts.slice(i, i + 50);
-      const r = await withTimeout(
-        fetch('https://translate-pa.googleapis.com/v1/translateHtml', {
+      const r = await fetchWithTimeout(
+        'https://translate-pa.googleapis.com/v1/translateHtml',
+        {
           method: 'POST',
+          credentials: 'omit',
+          referrerPolicy: 'no-referrer',
           headers: { 'Content-Type': 'application/json+protobuf', 'X-Goog-Api-Key': key },
           body: JSON.stringify([[chunk, 'auto', to], 'te']),
           signal,
-        }),
+        },
         GOOGLE_TIMEOUT
       );
       if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
@@ -333,16 +413,26 @@ const Translator = (() => {
     if (msTokenPromise) return msTokenPromise;
     msTokenPromise = (async () => {
       try {
-        const r = await withTimeout(
-          fetch('https://edge.microsoft.com/translate/auth'),
+        const r = await fetchWithTimeout(
+          'https://edge.microsoft.com/translate/auth',
+          {},
           5000
         );
         if (r.ok) {
-          msToken = await r.text();
+          const token = (await r.text()).trim();
+          if (!token) {
+            msTokenError = 'ms auth empty token';
+            return null;
+          }
+          msToken = token;
           msTokenTs = Date.now();
+          msTokenError = null;
           return msToken;
         }
-      } catch {}
+        msTokenError = `ms auth http ${r.status}`;
+      } catch (e) {
+        msTokenError = e?.message || 'ms auth network error';
+      }
       return null;
     })();
     try {
@@ -354,20 +444,23 @@ const Translator = (() => {
 
   async function translateMs(texts, to, signal) {
     const token = await fetchMsToken();
-    if (!token) throw new Error('MS auth failed');
+    if (!token) throw new Error(`MS auth failed${msTokenError ? ': ' + msTokenError : ''}`);
     _stats.msRequests++;
-    _stats.totalChars += texts.reduce((s, t) => s + t.length, 0);
+    _stats.totalChars += countChars(texts);
     const tg = MS_LANG_MAP[to] || to;
     const results = [];
     for (let i = 0; i < texts.length; i += 100) {
       const chunk = texts.slice(i, i + 100);
-      const r = await withTimeout(
-        fetch(`https://api-edge.cognitive.microsofttranslator.com/translate?to=${encodeURIComponent(tg)}&api-version=3.0`, {
+      const r = await fetchWithTimeout(
+        `https://api-edge.cognitive.microsofttranslator.com/translate?to=${encodeURIComponent(tg)}&api-version=3.0`,
+        {
           method: 'POST',
+          credentials: 'omit',
+          referrerPolicy: 'no-referrer',
           headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
           body: JSON.stringify(chunk.map(Text => ({ Text }))),
           signal,
-        }),
+        },
         MS_TIMEOUT
       );
       if (r.status === 401 || r.status === 403) {
@@ -391,8 +484,10 @@ const Translator = (() => {
 
   // ── Legacy fallback ────────────────────────────────────────
   async function translateLegacyOne(text, to, signal) {
-    const r = await withTimeout(
-      fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`, { signal }),
+    if (text.length > LEGACY_MAX_QUERY_CHARS) return null;
+    const r = await fetchWithTimeout(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(to)}&dt=t&q=${encodeURIComponent(text)}`,
+      { signal },
       LEGACY_TIMEOUT
     );
     if (r.status === 429) throw Object.assign(new Error('rate limit'), { status: 429 });
@@ -406,16 +501,21 @@ const Translator = (() => {
 
   async function translateLegacy(texts, to, signal) {
     _stats.legacyRequests++;
-    _stats.totalChars += texts.reduce((s, t) => s + t.length, 0);
+    _stats.totalChars += countChars(texts);
     const CONCURRENCY = 5;
     const out = new Array(texts.length).fill(null);
     let next = 0;
+    let stop = false;
     const worker = async () => {
-      while (next < texts.length) {
+      while (!stop && next < texts.length) {
         if (signal?.aborted) break;
         const i = next++;
-        try { out[i] = await retry(() => translateLegacyOne(texts[i], to, signal), e => e?.status !== 429 && e?.name !== 'AbortError', 2, 500); }
-        catch { out[i] = null; }
+        try {
+          out[i] = await retry(() => translateLegacyOne(texts[i], to, signal), e => e?.status !== 429 && e?.name !== 'AbortError', 2, 500);
+        } catch (e) {
+          if (e?.status === 429) stop = true;
+          out[i] = null;
+        }
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, texts.length) }, worker));
@@ -424,11 +524,12 @@ const Translator = (() => {
 
   // ── Main translate pipeline ────────────────────────────────
   async function translate(texts, toLang) {
+    if (!Array.isArray(texts)) texts = texts == null ? [] : [String(texts)];
     if (!texts.length) return [];
     if (_activeController) _activeController.abort();
     _activeController = new AbortController();
     const signal = _activeController.signal;
-    toLang = toLang || settings.targetLang;
+    toLang = normalizeTargetLang(toLang || settings.targetLang);
     const out = new Array(texts.length).fill(null);
     const todo = [], idx = [];
 
@@ -501,17 +602,20 @@ const Translator = (() => {
     }
 
     // Legacy fallback
-    if ((engine === 'legacy' || engine === 'auto') && rem.length) {
+    if ((engine === 'legacy' || engine === 'auto') && rem.length && (engine === 'legacy' || Date.now() >= lBlockUntil)) {
       try {
         const l = await translateLegacy(rem.map(x => x.t), toLang, signal);
+        lFail = 0;
         apply(l, rem);
       } catch (e) {
         if (e?.name === 'AbortError' || signal.aborted) throw e;
+        lFail++;
+        if (lFail >= 3) lBlockUntil = Date.now() + 3 * 60 * 1000;
         _stats.failed++;
       }
     }
 
-    return out;
+    return out.map((v, i) => v == null ? texts[i] : v);
   }
 
   // ── Single text translate ──────────────────────────────────
@@ -521,28 +625,29 @@ const Translator = (() => {
   }
 
   async function translateOne(text, toLang) {
-    const target = toLang || settings.targetLang;
+    const target = normalizeTargetLang(toLang || settings.targetLang);
     if (!needsTranslation(text, target)) return text;
     const translated = await translateOneRaw(text, toLang);
     if (translated) {
       const from = detectLangHint(text)?.code || 'auto';
       addHistory(text, translated, from, target);
     }
-    return translated;
+    return translated || text;
   }
 
   // ── Translate with template protection ─────────────────────
   async function translateProtected(text, toLang) {
     if (!text?.trim()) return text;
+    const target = normalizeTargetLang(toLang || settings.targetLang);
     const { text: safe, tokens } = protectTemplates(text);
-    const result = await translateOneRaw(safe, toLang);
+    const result = await translateOneRaw(safe, target);
     if (!result) {
       _stats.failed++;
       return text;
     }
     const restored = restoreTemplates(result, tokens);
     const from = detectLangHint(text)?.code || 'auto';
-    addHistory(text, restored, from, toLang || settings.targetLang);
+    addHistory(text, restored, from, target);
     return restored;
   }
 
@@ -570,10 +675,19 @@ const Translator = (() => {
     get history() { return history; },
 
     init() {
+      if (_inited) return;
+      _inited = true;
       loadCache();
       loadHistory();
       loadSettings();
-      window.addEventListener('beforeunload', () => { if (_activeController) _activeController.abort(); flushCache(); });
+      if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', () => { if (_activeController) _activeController.abort(); flushCache(); });
+      }
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'hidden') flushCache();
+        });
+      }
     },
 
     detectLang: detectLangHint,
@@ -587,6 +701,9 @@ const Translator = (() => {
 
     clearCache() {
       cache.clear();
+      clearTimeout(_cacheSaveTimer);
+      _cacheSaveTimer = null;
+      _cacheDirty = false;
       try { localStorage.removeItem(CACHE_KEY); } catch {}
     },
     clearHistory() { history = []; saveHistory(); },
