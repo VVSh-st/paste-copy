@@ -110,7 +110,8 @@
   }
 
   function findSnippetCandidate() {
-    const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
+    const rawRecent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents;
+    const recent = Array.isArray(rawRecent) ? rawRecent : [];
     let lastSuccess = null;
     for (let i = recent.length - 1; i >= 0 && !lastSuccess; i -= 1) {
       const e = recent[i];
@@ -262,7 +263,8 @@
   }
 
   function computeFinality(tab, text, analysis) {
-    const recent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents || [];
+    const rawRecent = window.UserMemory?.getProfile?.()?.behavior?.recentEvents;
+    const recent = Array.isArray(rawRecent) ? rawRecent : [];
     const ts = now();
     let lastCopy = null;
     let lastExport = null;
@@ -298,11 +300,31 @@
     return Number(Math.max(0, Math.min(1, score)).toFixed(2));
   }
 
+  function blockStructureKey(blocks) {
+    const parts = [];
+    const walk = list => {
+      (list || []).forEach(block => {
+        if (!block) return;
+        parts.push([
+          block.id || '',
+          block.type || '',
+          block.title || '',
+          block.role || '',
+          Number.isFinite(Number(block.column)) ? Number(block.column) : 0
+        ].join(':'));
+        if (block.type === 'group' && Array.isArray(block.children)) walk(block.children);
+      });
+    };
+    walk(blocks || []);
+    return hashText(parts.join('|'));
+  }
+
   function getContext() {
     const tab = window.State?.getActive?.();
     const text = safePreviewText();
     const textHash = hashText(text);
-    const contextKey = `${tab?.id || ''}\x00${textHash}\x00${tab?.blocks?.length || 0}`;
+    const structureKey = blockStructureKey(tab?.blocks || []);
+    const contextKey = `${tab?.id || ''}\x00${textHash}\x00${tab?.blocks?.length || 0}\x00${structureKey}`;
 
     if (lastContext && lastContextKey === contextKey && now() - lastContext.ts < 1500) {
       return lastContext;
@@ -350,10 +372,16 @@
     if (value === null || typeof value !== 'object') return JSON.stringify(value);
     if (seen.has(value)) return '"__cycle__"';
     seen.add(value);
-    if (Array.isArray(value)) return '[' + value.map(item => stableStringify(item, seen)).join(',') + ']';
-    return '{' + Object.keys(value).sort().map(key => {
-      return JSON.stringify(key) + ':' + stableStringify(value[key], seen);
-    }).join(',') + '}';
+    let result;
+    if (Array.isArray(value)) {
+      result = '[' + value.map(item => stableStringify(item, seen)).join(',') + ']';
+    } else {
+      result = '{' + Object.keys(value).sort().map(key => {
+        return JSON.stringify(key) + ':' + stableStringify(value[key], seen);
+      }).join(',') + '}';
+    }
+    seen.delete(value);
+    return result;
   }
 
   function makePreparedHash(suggestion, ctx) {
@@ -494,7 +522,8 @@
       .map((s, idx) => ({
         ...s,
         id: s.id || `sug_${s.type}_${ctx.textHash}_${idx}`,
-        contextTabId: ctx.tabId || ''
+        contextTabId: ctx.tabId || '',
+        contextTextHash: ctx.textHash || ''
       }));
 
     const visible = allowed
@@ -723,12 +752,24 @@
     refreshTimer = setTimeout(refresh, Math.max(delay, minDelay));
   }
 
+  function clonePlain(value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (typeof structuredClone === 'function') {
+      try { return structuredClone(value); } catch (_) {}
+    }
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+      return Array.isArray(value) ? value.slice() : { ...value };
+    }
+  }
+
   function getSuggestions() {
-    return lastSuggestions.map(s => ({ ...s }));
+    return lastSuggestions.map(clonePlain);
   }
 
   function getMenuSuggestions() {
-    return lastMenuSuggestions.map(s => ({ ...s }));
+    return lastMenuSuggestions.map(clonePlain);
   }
 
   function findSuggestion(idOrType) {
@@ -743,6 +784,12 @@
     const activeTab = window.State?.getActive?.();
     if (suggestion.contextTabId && activeTab?.id && suggestion.contextTabId !== activeTab.id) {
       window.Toast?.show?.('Подсказка устарела для текущей вкладки', 'info');
+      refresh();
+      return false;
+    }
+    const currentHash = hashText(safePreviewText());
+    if (suggestion.contextTextHash && suggestion.contextTextHash !== currentHash) {
+      window.Toast?.show?.('Подсказка устарела после изменения текста', 'info');
       refresh();
       return false;
     }
@@ -800,9 +847,22 @@
   }
 
   function renderReportLines(title, subtitle, lines) {
+    const MAX_REPORT_LINES = 120;
+    const MAX_REPORT_LINE_CHARS = 600;
     const cleanTitle = sanitizeReportText(title);
     const cleanSubtitle = sanitizeReportText(subtitle);
-    const cleanLines = (Array.isArray(lines) ? lines : []).map(sanitizeReportText);
+    const rawLines = Array.isArray(lines) ? lines : [];
+    const cleanLines = rawLines
+      .slice(0, MAX_REPORT_LINES)
+      .map(line => {
+        const text = String(line || '');
+        return sanitizeReportText(text.length > MAX_REPORT_LINE_CHARS
+          ? text.slice(0, MAX_REPORT_LINE_CHARS).trim() + '…'
+          : text);
+      });
+    if (rawLines.length > MAX_REPORT_LINES) {
+      cleanLines.push(sanitizeReportText(`Показаны первые ${MAX_REPORT_LINES} строк из ${rawLines.length}.`));
+    }
 
     if (window.SmartSuggestions?.openReport) {
       window.SmartSuggestions.openReport({
@@ -1062,10 +1122,15 @@
         window.Toast?.show?.('Сохранение шаблонов недоступно', 'error');
         return false;
       }
-      const saved = storageApi.loadTemplates() || [];
-      const blocks = typeof structuredClone === 'function'
-        ? structuredClone(tab.blocks || [])
-        : JSON.parse(JSON.stringify(tab.blocks || []));
+      const loaded = storageApi.loadTemplates();
+      const saved = Array.isArray(loaded) ? loaded : [];
+      const source = Array.isArray(tab.blocks) ? tab.blocks : [];
+      let blocks;
+      if (typeof structuredClone === 'function') {
+        try { blocks = structuredClone(source); } catch (_) { blocks = JSON.parse(JSON.stringify(source)); }
+      } else {
+        blocks = JSON.parse(JSON.stringify(source));
+      }
       saved.push({
         id: 'user-intel-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
         name,
@@ -1095,12 +1160,17 @@
     const block = candidate?.blockId ? window.State?.findBlock?.(tab?.blocks || [], candidate.blockId) : null;
     const idx = block?.activeSubtab ?? 0;
     const value = String(block?.subtabs?.[idx]?.value || '');
-    return window.QualityDetectors?.splitIntoSections?.(value) || [];
+    return {
+      idx,
+      valueHash: hashText(value),
+      sections: window.QualityDetectors?.splitIntoSections?.(value) || []
+    };
   }
 
   function applyStructureCandidate(candidate) {
     const tab = window.State?.getActive?.();
-    const sections = getStructureSections(candidate);
+    const prepared = getStructureSections(candidate);
+    const sections = prepared.sections;
     if (!tab || !candidate?.blockId || sections.length < 2) return false;
 
     let applied = false;
@@ -1112,7 +1182,12 @@
           console.warn('[Intelligence] invalid source block');
           return;
         }
-        const sourceIdx = source.activeSubtab ?? 0;
+        const sourceIdx = prepared.idx;
+        const currentValue = String(source.subtabs?.[sourceIdx]?.value || '');
+        if (hashText(currentValue) !== prepared.valueHash) {
+          console.warn('[Intelligence] source block changed before structure apply');
+          return;
+        }
 
         const sourceColumn = Number.isFinite(Number(source.column)) ? source.column : 0;
         const newBlocks = sections.map(section => {
@@ -1157,7 +1232,8 @@
 
   function structureLastPaste(suggestion) {
     const candidate = suggestion.prepared?.structureCandidate;
-    const sections = getStructureSections(candidate);
+    const prepared = getStructureSections(candidate);
+    const sections = prepared.sections;
     if (!candidate || sections.length < 2) {
       window.Toast?.show?.('Не удалось подготовить разбиение', 'error');
       return false;
@@ -1242,32 +1318,26 @@
     return left <= right ? 0 : 1;
   }
 
-  function insertBlockAfter(blocks, sourceId, newBlock) {
+  function insertBlockNear(blocks, targetId, newBlock, offset) {
     const list = blocks || [];
-    const index = list.findIndex(item => item?.id === sourceId);
+    const index = list.findIndex(item => item?.id === targetId);
     if (index >= 0) {
-      list.splice(index + 1, 0, newBlock);
+      list.splice(index + offset, 0, newBlock);
       return true;
     }
 
     for (const item of list) {
-      if (item?.type === 'group' && Array.isArray(item.children) && insertBlockAfter(item.children, sourceId, newBlock)) return true;
+      if (item?.type === 'group' && Array.isArray(item.children) && insertBlockNear(item.children, targetId, newBlock, offset)) return true;
     }
     return false;
   }
 
-  function insertBlockBefore(blocks, targetId, newBlock) {
-    const list = blocks || [];
-    const index = list.findIndex(item => item?.id === targetId);
-    if (index >= 0) {
-      list.splice(index, 0, newBlock);
-      return true;
-    }
+  function insertBlockAfter(blocks, sourceId, newBlock) {
+    return insertBlockNear(blocks, sourceId, newBlock, 1);
+  }
 
-    for (const item of list) {
-      if (item?.type === 'group' && Array.isArray(item.children) && insertBlockBefore(item.children, targetId, newBlock)) return true;
-    }
-    return false;
+  function insertBlockBefore(blocks, targetId, newBlock) {
+    return insertBlockNear(blocks, targetId, newBlock, 0);
   }
 
   function insertCompanionSkeleton(item) {
