@@ -7,6 +7,7 @@
   backdrop-filter: blur(8px);
   opacity: 0; visibility: hidden;
   transition: opacity 0.3s ease, visibility 0.3s ease;
+  color-scheme: dark;
 }
 .flowchart-overlay.visible { opacity: 1; visibility: visible; }
 

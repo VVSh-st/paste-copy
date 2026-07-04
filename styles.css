@@ -5,7 +5,6 @@
 html, body { height: 100%; }
 
 :root {
-  color-scheme: dark;
   --bg0:      #0d1117;
   --bg1:      #13191f;
   --bg2:      #1a2130;
