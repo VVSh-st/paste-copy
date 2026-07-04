@@ -156,6 +156,15 @@ const Notepad = (() => {
     return d;
   }
 
+  /* ---- Sync textarea → state ---------------------------------------- */
+  function _syncActiveTabValue(state) {
+    const ta = state.el?.querySelector('.notepad-body textarea');
+    if (!ta) return null;
+    clearTimeout(state.histTimer);
+    state.tabs[state.activeTab].value = ta.value;
+    return ta;
+  }
+
   /* ---- Paste helper -------------------------------------------------- */
   // execCommand('paste') removed: deprecated, inconsistent, causes permission
   // dialogs in some browsers. If Clipboard API is disabled or fails we just
@@ -248,8 +257,8 @@ const Notepad = (() => {
     if (state.size) {
       const w = parseFloat(state.size.w);
       const h = parseFloat(state.size.h);
-      win.style.width  = Math.max(MIN_WIDTH, Math.min(window.innerWidth,  Number.isFinite(w) ? w : 420)) + 'px';
-      win.style.height = Math.max(MIN_HEIGHT, Math.min(window.innerHeight, Number.isFinite(h) ? h : 320)) + 'px';
+      win.style.width  = Math.max(MIN_WIDTH, Math.min(window.innerWidth - 16,  Number.isFinite(w) ? w : 420)) + 'px';
+      win.style.height = Math.max(MIN_HEIGHT, Math.min(window.innerHeight - 16, Number.isFinite(h) ? h : 320)) + 'px';
     }
     if (state.pos) {
       const left = parseFloat(state.pos.left);
@@ -275,10 +284,8 @@ const Notepad = (() => {
   function _closeNotepad(state) {
     if (_instance !== state) return;
 
-    const ta = state.el?.querySelector('.notepad-body textarea');
+    const ta = _syncActiveTabValue(state);
     if (ta) {
-      clearTimeout(state.histTimer);
-      state.tabs[state.activeTab].value = ta.value;
       if (state.history[state.histIdx] !== ta.value) {
         state._pushHistory?.(ta.value);
       }
@@ -393,6 +400,7 @@ const Notepad = (() => {
   }
 
   function _toggleMinimize(state, win) {
+    _syncActiveTabValue(state);
     state.minimized = !state.minimized;
     win.classList.toggle('notepad-minimized', state.minimized);
     const chevron = win.querySelector('.notepad-min-btn svg');
@@ -430,6 +438,8 @@ const Notepad = (() => {
     const doUndo = () => {
       const ta = getTa();
       if (!ta || state.histIdx <= 0) return;
+      state._translateOriginal = null;
+      state._translateOriginalTab = null;
       const wasFilled = !!state.tabs[state.activeTab].value;
       state.histIdx--;
       ta.value = state.history[state.histIdx];
@@ -443,6 +453,8 @@ const Notepad = (() => {
     const doRedo = () => {
       const ta = getTa();
       if (!ta || state.histIdx >= state.history.length - 1) return;
+      state._translateOriginal = null;
+      state._translateOriginalTab = null;
       const wasFilled = !!state.tabs[state.activeTab].value;
       state.histIdx++;
       ta.value = state.history[state.histIdx];
@@ -515,10 +527,8 @@ const Notepad = (() => {
       } else if (ta.value) {
         pushHistory(ta.value);
         ta.value = '';
-        state.tabs[state.activeTab].value = '';
         pushHistory('');
-        _updateCount(ta, countSpan);
-        _renderTabs(state);
+        ta.dispatchEvent(new Event('input'));
         _persist(state);
       }
     });
@@ -598,6 +608,7 @@ const Notepad = (() => {
       }
 
       if (state._translateOriginal !== null && state._translateOriginalTab === state.activeTab) {
+        pushHistory(ta.value);
         ta.value = state._translateOriginal;
         state.tabs[state.activeTab].value = state._translateOriginal;
         state._translateOriginal = null;
@@ -746,15 +757,8 @@ const Notepad = (() => {
         clearTimeout(state.tabClickTimer);
         if (state.activeTab !== idx) {
           _switchTab(state, idx, state.el);
-          _openRenameOnTab(state, idx);
-        } else {
-          renameInput._editing = true;
-          labelSpan.style.display = 'none';
-          renameInput.style.display = '';
-          renameInput.value = state.tabs[idx].label;
-          renameInput.focus();
-          renameInput.select();
         }
+        _openRenameOnTab(state, idx);
       };
 
       frag.appendChild(btn);
@@ -763,29 +767,25 @@ const Notepad = (() => {
   }
 
   function _openRenameOnTab(state, idx) {
-    requestAnimationFrame(() => {
-      const row = state._tabsRow;
-      if (!row) return;
-      const visPos = idx - state.tabOffset;
-      if (visPos < 0 || visPos >= row.children.length) return;
-      const newBtn = row.children[visPos];
-      const ls = newBtn?.querySelector('span');
-      const ri = newBtn?.querySelector('input.notepad-tab-rename');
-      if (!ls || !ri) return;
-      ri._editing = true;
-      ls.style.display = 'none';
-      ri.style.display = '';
-      ri.value = state.tabs[idx].label;
-      ri.focus();
-      ri.select();
-    });
+    const row = state._tabsRow;
+    if (!row) return;
+    const visPos = idx - state.tabOffset;
+    if (visPos < 0 || visPos >= row.children.length) return;
+    const tabEl = row.children[visPos];
+    const ls = tabEl?.querySelector('span');
+    const ri = tabEl?.querySelector('input.notepad-tab-rename');
+    if (!ls || !ri) return;
+    ri._editing = true;
+    ls.style.display = 'none';
+    ri.style.display = '';
+    ri.value = state.tabs[idx].label;
+    ri.focus();
+    ri.select();
   }
 
   function _switchTab(state, idx, win) {
-    const ta = win?.querySelector('.notepad-body textarea');
+    const ta = _syncActiveTabValue(state) || win?.querySelector('.notepad-body textarea');
     if (ta) {
-      clearTimeout(state.histTimer);
-      state.tabs[state.activeTab].value = ta.value;
       state._pushHistory?.(ta.value);
       state.tabs[state.activeTab]._history = state.history.slice();
       state.tabs[state.activeTab]._histIdx = state.histIdx;
@@ -824,6 +824,8 @@ const Notepad = (() => {
     _updateCount(ta, state._countSpan);
 
     ta.addEventListener('input', () => {
+      state._translateOriginal = null;
+      state._translateOriginalTab = null;
       const wasFilled = !!state.tabs[state.activeTab].value;
       state.tabs[state.activeTab].value = ta.value;
       const isFilled = !!ta.value;
@@ -886,15 +888,21 @@ const Notepad = (() => {
         return;
       }
 
+      if (ctrl && !e.shiftKey && e.code === 'KeyS') {
+        e.preventDefault();
+        state._saveToFile?.();
+        return;
+      }
+
       if (ctrl && !e.shiftKey && e.code === 'KeyZ') {
         e.preventDefault();
         state._doUndo?.();
-      } else if (ctrl && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
+        return;
+      }
+
+      if (ctrl && (e.code === 'KeyY' || (e.shiftKey && e.code === 'KeyZ'))) {
         e.preventDefault();
         state._doRedo?.();
-      } else if (ctrl && !e.shiftKey && e.code === 'KeyS') {
-        e.preventDefault();
-        state._saveToFile?.();
       }
     });
 
