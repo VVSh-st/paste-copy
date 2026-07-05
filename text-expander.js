@@ -37,8 +37,6 @@ const TextExpander = (() => {
     'да','нет','его','её','их','мы','вы','он','она','оно','они','я','ты'
   ]);
 
-  const TRIGGER_CHARS = new Set([' ', '\n', '\t', '(', '[', '{', '"', "'", '\u2014', ':']);
-
   const DEFAULT_CATEGORIES = ['General', 'AI Prompts', 'Scripts', 'Outreach'];
 
   // ========================
@@ -63,7 +61,6 @@ const TextExpander = (() => {
   let _dropdownStart = 0;
   let _dropdownFocusedIdx = 0;
   let _dropdownItems = [];
-  let _dropdownOwnsInputListener = false;
   let _panelDragging = false;
   let _panelResizing = false;
   let _caretMirrorEl = null;
@@ -77,7 +74,6 @@ const TextExpander = (() => {
   let _formBody = null;
 
   // Stored listener refs for cleanup
-  let _triggerHandler = null;
   let _dropdownKeyHandler = null;
   let _outsideClickHandler = null;
   let _escapePanelHandler = null;
@@ -635,35 +631,48 @@ const TextExpander = (() => {
   }
 
   // ========================
-  // TRIGGER ENGINE
+  // TRIGGER ENGINE (input-based, like slash)
   // ========================
 
-  function _handleTrigger(e) {
-    if (e.code !== _settings.triggerCode) return;
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.isComposing) return;
-    if (_panelEl && _panelEl.contains(document.activeElement)) return;
-    if (document.querySelector('.gs-modal')?.style.display === 'flex') return;
+  function _getTriggerChar() {
+    return _settings.triggerCode === 'Backquote' ? '\u0401' : '`'; // Ё или `
+  }
 
-    const ta = document.activeElement;
-    if (!ta || ta.tagName !== 'TEXTAREA') return;
+  function _handleTriggerInTextarea(ta) {
     const pos = ta.selectionStart;
     if (pos === undefined || pos === null) return;
 
     const before = ta.value.slice(0, pos);
-    const lastChar = before.slice(-1);
-    if (lastChar && !TRIGGER_CHARS.has(lastChar)) return;
+    const triggerChar = _getTriggerChar();
+    // Match: start/whitespace + trigger + query (non-whitespace until cursor)
+    const re = new RegExp('(^|[\\n\\s])' + triggerChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\s\\n]*)$', 'i');
+    const m = before.match(re);
 
-    e.preventDefault();
-    e.stopPropagation();
+    if (m) {
+      const query = m[2].toLowerCase();
+      const triggerStart = pos - m[0].length + m[1].length;
 
-    _activeTa = ta;
-    _activeBlockId = ta.closest('.block')?.dataset?.id || null;
-    _dropdownQuery = '';
-    _dropdownStart = pos;
-    _dropdownFocusedIdx = 0;
+      if (!_dropdownEl) {
+        // Show dropdown
+        _activeTa = ta;
+        _activeBlockId = ta.closest('.block')?.dataset?.id || null;
+        _dropdownStart = triggerStart;
+        _dropdownFocusedIdx = 0;
+        _dropdownQuery = query;
+        _showDropdown(ta);
+      } else {
+        // Update existing dropdown
+        _dropdownQuery = query;
+        _dropdownFocusedIdx = 0;
+        _renderDropdownItems();
+        if (!_dropdownItems.length) { _hideDropdown(); return; }
+        _positionDropdownAtCaret(ta, _dropdownEl);
+      }
+      return;
+    }
 
-    _showDropdown(ta);
+    // No trigger pattern — close dropdown
+    if (_dropdownEl) _hideDropdown();
   }
 
   // ========================
@@ -682,45 +691,14 @@ const TextExpander = (() => {
     _renderDropdownItems();
     _positionDropdownAtCaret(ta, dd);
 
-    const onInput = () => {
-      const curPos = ta.selectionStart;
-
-      // Close if cursor moved before dropdown start
-      if (curPos < _dropdownStart) { _hideDropdown(); return; }
-
-      const typed = ta.value.slice(_dropdownStart, curPos);
-
-      // Close on whitespace
-      if (/\s/.test(typed)) {
-        // If exact match exists — insert it (trigger + query + space)
-        const q = typed.replace(/\s+$/, '').toLowerCase();
-        if (q) {
-          for (const s of _shortcuts.values()) {
-            if (s.enabled && s.trigger.toLowerCase() === q) {
-              _dropdownQuery = q;
-              _insertExpansion(s);
-              return;
-            }
-          }
-        }
-        _hideDropdown();
-        return;
-      }
-
-      _dropdownQuery = typed;
-      _dropdownFocusedIdx = 0;
-      _renderDropdownItems();
-      // If no matches — close silently
-      if (!_dropdownItems.length && typed.length > 0) { _hideDropdown(); return; }
-      _positionDropdownAtCaret(ta, dd);
-    };
-
+    // Close on blur
     const onBlur = () => {
       setTimeout(() => {
         if (_dropdownEl && !_dropdownEl.contains(document.activeElement)) _hideDropdown();
       }, 150);
     };
 
+    // Reposition on selection change
     const onSelectionChange = () => {
       if (!_dropdownEl || document.activeElement !== ta) return;
       const curPos = ta.selectionStart;
@@ -728,16 +706,12 @@ const TextExpander = (() => {
       _positionDropdownAtCaret(ta, dd);
     };
 
-    ta.addEventListener('input', onInput);
     ta.addEventListener('blur', onBlur);
     document.addEventListener('selectionchange', onSelectionChange);
-    _dropdownOwnsInputListener = true;
 
     dd._cleanupInput = () => {
-      ta.removeEventListener('input', onInput);
       ta.removeEventListener('blur', onBlur);
       document.removeEventListener('selectionchange', onSelectionChange);
-      _dropdownOwnsInputListener = false;
     };
   }
 
@@ -906,8 +880,8 @@ const TextExpander = (() => {
 
     const startPos = _dropdownStart;
     const endPos = ta.selectionStart;
-    const expectedQuery = _dropdownQuery;
-    const expectedBlockId = _activeBlockId;
+    const triggerChar = _getTriggerChar();
+    const expectedText = triggerChar + _dropdownQuery;
 
     // Синхронная вставка для быстрых токенов
     let expansion = expandDynamicTokens(item.text);
@@ -915,24 +889,29 @@ const TextExpander = (() => {
     // Для clipboard — async fallback
     if (expansion.includes('{{clipboard}}')) {
       expandDynamicTokensAsync(item.text).then(result => {
-        _doInsert(ta, result, startPos, endPos, expectedQuery, expectedBlockId);
+        _doInsert(ta, result, startPos, endPos, expectedText, triggerChar);
       });
       return;
     }
 
-    _doInsert(ta, expansion, startPos, endPos, expectedQuery, expectedBlockId);
+    _doInsert(ta, expansion, startPos, endPos, expectedText, triggerChar);
   }
 
-  function _doInsert(ta, expansion, startPos, endPos, expectedQuery, expectedBlockId) {
-    if (!_dropdownEl || _activeTa !== ta || _activeBlockId !== expectedBlockId) return;
-    if (ta.selectionStart !== endPos || ta.value.slice(startPos, endPos) !== expectedQuery) return;
+  function _doInsert(ta, expansion, startPos, endPos, expectedText, triggerChar) {
+    // Verify state is still valid
+    if (!_dropdownEl || _activeTa !== ta) return;
+    if (ta.selectionStart !== endPos) return;
+    // Check the text at trigger position still matches
+    const actualText = ta.value.slice(startPos, endPos);
+    if (actualText.toLowerCase() !== expectedText.toLowerCase()) return;
 
-    if (expectedBlockId && typeof State !== 'undefined') State.blockSnapshot(expectedBlockId);
+    if (_activeBlockId && typeof State !== 'undefined') State.blockSnapshot(_activeBlockId);
 
-    if (expectedQuery) {
-      const letters = expectedQuery.match(/[a-zа-яё]/gi) || [];
+    // Case handling
+    if (_dropdownQuery) {
+      const letters = _dropdownQuery.match(/[a-zа-яё]/gi) || [];
       const isUpper = letters.length > 0 && letters.every(ch => ch === ch.toUpperCase());
-      const q0 = expectedQuery[0];
+      const q0 = _dropdownQuery[0];
       if (isUpper) {
         expansion = expansion.toUpperCase();
       } else if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
@@ -941,13 +920,11 @@ const TextExpander = (() => {
       }
     }
 
-    const nextChar = ta.value[endPos] || '';
-    const needsSpace = expansion && !/\s$/.test(expansion) && nextChar && !/[\s.,;:!?)]/.test(nextChar);
-
-    ta.setRangeText(expansion + (needsSpace ? ' ' : ''), startPos, endPos, 'end');
+    // Replace trigger+query with expansion
+    ta.setRangeText(expansion + ' ', startPos, endPos, 'end');
     ta.dispatchEvent(new Event('input', { bubbles: true }));
 
-    if (expectedBlockId && typeof State !== 'undefined') State.snapshot();
+    if (_activeBlockId && typeof State !== 'undefined') State.snapshot();
 
     _hideDropdown();
     ta.focus();
@@ -1023,23 +1000,7 @@ const TextExpander = (() => {
   // ========================
 
   function handleInput(ta, blockId) {
-    if (_dropdownOwnsInputListener) return;
-    if (!_dropdownEl || _activeTa !== ta) return;
-    const pos = ta.selectionStart;
-    if (pos === undefined) return;
-
-    if (pos < _dropdownStart) { _hideDropdown(); return; }
-
-    const textAfter = ta.value.slice(_dropdownStart, pos);
-
-    if (/\s/.test(textAfter)) { _hideDropdown(); return; }
-
-    _dropdownQuery = textAfter;
-    _dropdownFocusedIdx = 0;
-    _renderDropdownItems();
-    // If no matches — close silently
-    if (!_dropdownItems.length && textAfter.length > 0) { _hideDropdown(); return; }
-    _positionDropdownAtCaret(ta, _dropdownEl);
+    _handleTriggerInTextarea(ta);
   }
 
   // ========================
@@ -1206,9 +1167,6 @@ const TextExpander = (() => {
     _inited = true;
     _load();
 
-    _triggerHandler = _handleTrigger;
-    document.addEventListener('keydown', _triggerHandler, true);
-
     _dropdownKeyHandler = _handleDropdownKeydown;
     document.addEventListener('keydown', _dropdownKeyHandler, true);
 
@@ -1230,13 +1188,11 @@ const TextExpander = (() => {
   function destroy() {
     if (!_inited) return;
     _inited = false;
-    if (_triggerHandler) document.removeEventListener('keydown', _triggerHandler, true);
     if (_dropdownKeyHandler) document.removeEventListener('keydown', _dropdownKeyHandler, true);
     if (_outsideClickHandler) document.removeEventListener('mousedown', _outsideClickHandler);
     if (_escapePanelHandler) document.removeEventListener('keydown', _escapePanelHandler);
     if (_windowBlurHandler) window.removeEventListener('blur', _windowBlurHandler);
     if (_visibilityChangeHandler) document.removeEventListener('visibilitychange', _visibilityChangeHandler);
-    _triggerHandler = null;
     _dropdownKeyHandler = null;
     _outsideClickHandler = null;
     _escapePanelHandler = null;
