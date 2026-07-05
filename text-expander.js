@@ -62,6 +62,8 @@ const TextExpander = (() => {
   let _dropdownFocusedIdx = 0;
   let _dropdownItems = [];
   let _dropdownSession = 0;
+  let _insertingExpansion = false;
+  let _dropdownPositionSeq = 0;
   let _panelDragging = false;
   let _panelResizing = false;
   let _panelInteractionCleanup = null;
@@ -80,6 +82,7 @@ const TextExpander = (() => {
   // Stored listener refs for cleanup
   let _dropdownKeyHandler = null;
   let _outsideClickHandler = null;
+  let _focusInHandler = null;
   let _escapePanelHandler = null;
   let _windowBlurHandler = null;
   let _visibilityChangeHandler = null;
@@ -163,6 +166,24 @@ const TextExpander = (() => {
     _settings.categories = [...seen];
   }
 
+  function _dedupeShortcutsByKey() {
+    const seen = new Map();
+    for (const [id, s] of _shortcuts) {
+      const key = _shortcutKey(s);
+      const prev = seen.get(key);
+      if (!prev) {
+        seen.set(key, { id, updatedAt: s.updatedAt || 0 });
+        continue;
+      }
+      if ((s.updatedAt || 0) > prev.updatedAt) {
+        _shortcuts.delete(prev.id);
+        seen.set(key, { id, updatedAt: s.updatedAt || 0 });
+      } else {
+        _shortcuts.delete(id);
+      }
+    }
+  }
+
   function _load() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -176,6 +197,7 @@ const TextExpander = (() => {
           if (normalized) _shortcuts.set(normalized.id, normalized);
         }
       }
+      _dedupeShortcutsByKey();
       if (data.settings && typeof data.settings === 'object') {
         Object.assign(_settings, _normalizeSettings(data.settings));
       }
@@ -252,6 +274,7 @@ const TextExpander = (() => {
 
   function expandDynamicTokens(text) {
     if (!text) return text;
+    if (!String(text).includes('{{')) return text;
     const now = new Date();
     return text
       .replace(/\{\{date\}\}/g, () => now.toLocaleDateString('ru-RU'))
@@ -262,6 +285,7 @@ const TextExpander = (() => {
 
   async function expandDynamicTokensAsync(text) {
     if (!text) return text;
+    if (!String(text).includes('{{')) return text;
     let result = expandDynamicTokens(text);
     if (result.includes('{{clipboard}}')) {
       try {
@@ -594,15 +618,19 @@ const TextExpander = (() => {
     _refreshPanelTable(body);
   }
 
+  function _getPanelItems(activeFilter) {
+    return [..._shortcuts.values()]
+      .filter(s => activeFilter === 'All' || s.category === activeFilter)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
   function _refreshPanelTable(body) {
     const container = body?.querySelector('.te-table-container');
     if (!container) return;
     container.replaceChildren();
 
     const activeFilter = body.querySelector('.te-filter-btn.active')?.textContent || 'All';
-    const items = [..._shortcuts.values()]
-      .filter(s => activeFilter === 'All' || s.category === activeFilter)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+    const items = _getPanelItems(activeFilter);
 
     if (!items.length) {
       const empty = document.createElement('div');
@@ -823,6 +851,8 @@ const TextExpander = (() => {
 
   function _hideDropdown() {
     _dropdownSession++;
+    _dropdownPositionSeq++;
+    _insertingExpansion = false;
     if (_dropdownEl) {
       _dropdownEl._cleanupInput?.();
       _dropdownEl.remove();
@@ -842,11 +872,10 @@ const TextExpander = (() => {
 
   function _filterDropdownItems(query) {
     const q = (query || '').toLowerCase();
-    const values = _shortcuts.values();
 
     if (!q) {
       const out = [];
-      for (const s of values) {
+      for (const s of _shortcuts.values()) {
         if (!s.enabled) continue;
         out.push(s);
         if (out.length >= MAX_DROPDOWN_ITEMS) break;
@@ -854,7 +883,9 @@ const TextExpander = (() => {
       return out;
     }
 
-    const exact = [], starts = [], includes = [];
+    const exact = [];
+    const starts = [];
+    const includes = [];
     for (const s of _shortcuts.values()) {
       if (!s.enabled) continue;
       const tl = s.trigger.toLowerCase();
@@ -863,7 +894,15 @@ const TextExpander = (() => {
       else if (tl.includes(q)) includes.push(s);
       if (exact.length + starts.length + includes.length >= MAX_DROPDOWN_ITEMS * 2) break;
     }
-    return [...exact, ...starts, ...includes].slice(0, MAX_DROPDOWN_ITEMS);
+
+    const out = [];
+    for (const group of [exact, starts, includes]) {
+      for (const s of group) {
+        out.push(s);
+        if (out.length >= MAX_DROPDOWN_ITEMS) return out;
+      }
+    }
+    return out;
   }
 
   function _refreshDropdownModel() {
@@ -922,6 +961,7 @@ const TextExpander = (() => {
   }
 
   function _positionDropdownAtCaret(ta, dd) {
+    const posSeq = ++_dropdownPositionSeq;
     const cs = window.getComputedStyle(ta);
     const pl = parseFloat(cs.paddingLeft) || 0;
     const pr = parseFloat(cs.paddingRight) || 0;
@@ -976,6 +1016,7 @@ const TextExpander = (() => {
     let cy = mkR.top + oy + lh + 4;
 
     requestAnimationFrame(() => {
+      if (posSeq !== _dropdownPositionSeq) return;
       if (!_dropdownEl || _dropdownEl !== dd || !dd.isConnected) return;
       const pw = _dropdownEl.offsetWidth || 248;
       const ph = _dropdownEl.offsetHeight || 180;
@@ -993,8 +1034,10 @@ const TextExpander = (() => {
   // ========================
 
   function _insertExpansion(item) {
+    if (_insertingExpansion) return;
     const ta = _activeTa;
     if (!ta) return;
+    _insertingExpansion = true;
 
     const session = _dropdownSession;
     const startPos = _dropdownStart;
@@ -1014,11 +1057,18 @@ const TextExpander = (() => {
       }).catch(() => {
         if (session !== _dropdownSession) return;
         _doInsert(ta, expansion.replace(/\{\{clipboard\}\}/g, ''), startPos, endPos, expectedQuery, blockId);
+      }).finally(() => {
+        _insertingExpansion = false;
+        if (_dropdownEl) _dropdownEl.classList.remove('te-dd-pending');
       });
       return;
     }
 
-    _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId);
+    try {
+      _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId);
+    } finally {
+      _insertingExpansion = false;
+    }
   }
 
   function _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId) {
@@ -1078,7 +1128,11 @@ const TextExpander = (() => {
       startX = e.clientX;
       startY = e.clientY;
       try { btn.setPointerCapture?.(e.pointerId); } catch (_) {}
-      timer = setTimeout(() => { longFired = true; openPanel(); }, LONG_PRESS_MS);
+      timer = setTimeout(() => {
+        timer = null;
+        longFired = true;
+        openPanel();
+      }, LONG_PRESS_MS);
     });
 
     btn.addEventListener('pointermove', e => {
@@ -1094,7 +1148,8 @@ const TextExpander = (() => {
     });
 
     btn.addEventListener('pointercancel', e => {
-      clearTimeout(timer); timer = null; longFired = false;
+      clearTimeout(timer);
+      timer = null;
       try { btn.releasePointerCapture?.(e.pointerId); } catch (_) {}
     });
 
@@ -1141,6 +1196,9 @@ const TextExpander = (() => {
   // ========================
 
   function handleInput(ta, blockId) {
+    if (_dropdownEl && _activeTa && _activeTa !== ta) {
+      _hideDropdown();
+    }
     _handleTriggerInTextarea(ta, blockId);
   }
 
@@ -1152,6 +1210,7 @@ const TextExpander = (() => {
     handle.addEventListener('mousedown', e => {
       if (e.target.closest('button')) return;
       e.preventDefault();
+      _cancelPanelInteraction();
       const rect = panel.getBoundingClientRect();
       const startX = e.clientX, startY = e.clientY;
       const startL = rect.left, startT = rect.top;
@@ -1195,6 +1254,7 @@ const TextExpander = (() => {
     handle.addEventListener('mousedown', e => {
       e.preventDefault();
       e.stopPropagation();
+      _cancelPanelInteraction();
       const startX = e.clientX, startY = e.clientY;
       const startW = panel.offsetWidth, startH = panel.offsetHeight;
       document.body.style.userSelect = 'none';
@@ -1231,6 +1291,13 @@ const TextExpander = (() => {
 
   function _handleDropdownKeydown(e) {
     if (!_dropdownEl) return;
+    if (_insertingExpansion) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
     if (_activeTa && !_activeTa.isConnected) {
       _hideDropdown();
       return;
@@ -1305,14 +1372,7 @@ const TextExpander = (() => {
           _shortcuts.set(normalized.id, normalized);
         }
       }
-      const seen = new Map();
-      for (const [id, s] of _shortcuts) {
-        const key = _shortcutKey(s);
-        const prev = seen.get(key);
-        if (!prev) { seen.set(key, { id, updatedAt: s.updatedAt || 0 }); continue; }
-        if ((s.updatedAt || 0) > prev.updatedAt) { _shortcuts.delete(prev.id); seen.set(key, { id, updatedAt: s.updatedAt || 0 }); }
-        else _shortcuts.delete(id);
-      }
+      _dedupeShortcutsByKey();
     }
     if (data.settings && typeof data.settings === 'object') {
       Object.assign(_settings, _normalizeSettings(data.settings));
@@ -1343,6 +1403,18 @@ const TextExpander = (() => {
     };
     document.addEventListener('mousedown', _outsideClickHandler);
 
+    _focusInHandler = e => {
+      if (!_dropdownEl) return;
+      if (_activeTa && !_activeTa.isConnected) {
+        _hideDropdown();
+        return;
+      }
+      if (e.target !== _activeTa && !_dropdownEl.contains(e.target)) {
+        _hideDropdown();
+      }
+    };
+    document.addEventListener('focusin', _focusInHandler);
+
     _escapePanelHandler = e => { if (e.key === 'Escape' && _panelEl) closePanel(); };
     document.addEventListener('keydown', _escapePanelHandler);
 
@@ -1358,11 +1430,13 @@ const TextExpander = (() => {
     _inited = false;
     if (_dropdownKeyHandler) document.removeEventListener('keydown', _dropdownKeyHandler, true);
     if (_outsideClickHandler) document.removeEventListener('mousedown', _outsideClickHandler);
+    if (_focusInHandler) document.removeEventListener('focusin', _focusInHandler);
     if (_escapePanelHandler) document.removeEventListener('keydown', _escapePanelHandler);
     if (_windowBlurHandler) window.removeEventListener('blur', _windowBlurHandler);
     if (_visibilityChangeHandler) document.removeEventListener('visibilitychange', _visibilityChangeHandler);
     _dropdownKeyHandler = null;
     _outsideClickHandler = null;
+    _focusInHandler = null;
     _escapePanelHandler = null;
     _windowBlurHandler = null;
     _visibilityChangeHandler = null;
