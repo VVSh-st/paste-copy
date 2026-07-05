@@ -61,8 +61,10 @@ const TextExpander = (() => {
   let _dropdownStart = 0;
   let _dropdownFocusedIdx = 0;
   let _dropdownItems = [];
+  let _dropdownSession = 0;
   let _panelDragging = false;
   let _panelResizing = false;
+  let _panelInteractionCleanup = null;
   let _caretMirrorEl = null;
   let _caretMirrorSource = null;
   let _caretMirrorSignature = '';
@@ -140,6 +142,25 @@ const TextExpander = (() => {
     return out;
   }
 
+  function _ensureKnownCategories() {
+    const seen = new Set(
+      (_settings.categories || [])
+        .filter(c => typeof c === 'string' && c.trim())
+        .map(c => c.trim())
+    );
+
+    for (const s of _shortcuts.values()) {
+      const cat = typeof s.category === 'string' && s.category.trim()
+        ? s.category.trim().slice(0, 80)
+        : 'General';
+      s.category = cat;
+      seen.add(cat);
+    }
+
+    if (!seen.size) seen.add('General');
+    _settings.categories = [...seen];
+  }
+
   function _load() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -156,6 +177,7 @@ const TextExpander = (() => {
       if (data.settings && typeof data.settings === 'object') {
         Object.assign(_settings, _normalizeSettings(data.settings));
       }
+      _ensureKnownCategories();
     } catch (_) {}
   }
 
@@ -297,6 +319,16 @@ const TextExpander = (() => {
   // UI PANEL
   // ========================
 
+  function _cancelPanelInteraction() {
+    if (_panelInteractionCleanup) {
+      _panelInteractionCleanup();
+      _panelInteractionCleanup = null;
+    }
+    _panelDragging = false;
+    _panelResizing = false;
+    document.body.style.userSelect = '';
+  }
+
   function openPanel() {
     if (_panelEl) {
       _panelEl.style.display = 'flex';
@@ -308,7 +340,14 @@ const TextExpander = (() => {
   }
 
   function closePanel() {
+    _cancelPanelInteraction();
     if (_panelEl) { _panelEl.remove(); _panelEl = null; }
+    _editingId = null;
+    _formShortcutInput = null;
+    _formTextarea = null;
+    _formCatSelect = null;
+    _formAddBtn = null;
+    _formBody = null;
   }
 
   function _buildPanel() {
@@ -548,7 +587,7 @@ const TextExpander = (() => {
   function _refreshPanelTable(body) {
     const container = body?.querySelector('.te-table-container');
     if (!container) return;
-    container.innerHTML = '';
+    container.replaceChildren();
 
     const activeFilter = body.querySelector('.te-filter-btn.active')?.textContent || 'All';
     const items = [..._shortcuts.values()]
@@ -563,6 +602,8 @@ const TextExpander = (() => {
       return;
     }
 
+    const frag = document.createDocumentFragment();
+
     const thead = document.createElement('div');
     thead.className = 'te-table-head';
     ['Enabled', 'Shortcut', 'Category', 'Preview', ''].forEach(label => {
@@ -570,7 +611,7 @@ const TextExpander = (() => {
       span.textContent = label;
       thead.appendChild(span);
     });
-    container.appendChild(thead);
+    frag.appendChild(thead);
 
     items.forEach(s => {
       const row = document.createElement('div');
@@ -626,16 +667,33 @@ const TextExpander = (() => {
       row.appendChild(cat);
       row.appendChild(preview);
       row.appendChild(del);
-      container.appendChild(row);
+      frag.appendChild(row);
     });
+
+    container.appendChild(frag);
   }
 
   // ========================
   // TRIGGER ENGINE (input-based, like slash)
   // ========================
 
+  function _escapeRe(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   function _getTriggerChar() {
-    return _settings.triggerCode === 'Backquote' ? '\u0401' : '`'; // Ё или `
+    return _settings.triggerCode === 'Backquote' ? '\u0401' : '`';
+  }
+
+  function _getTriggerPattern() {
+    return _settings.triggerCode === 'Backquote'
+      ? '[`Ёё]'
+      : _escapeRe(_getTriggerChar());
+  }
+
+  function _isTriggerChar(ch) {
+    if (_settings.triggerCode === 'Backquote') return ch === '`' || ch === 'Ё' || ch === 'ё';
+    return ch === _getTriggerChar();
   }
 
   function _handleTriggerInTextarea(ta) {
@@ -643,9 +701,8 @@ const TextExpander = (() => {
     if (pos === undefined || pos === null) return;
 
     const before = ta.value.slice(0, pos);
-    const triggerChar = _getTriggerChar();
     // Match: start/whitespace + trigger + query (non-whitespace until cursor)
-    const re = new RegExp('(^|[\\n\\s])' + triggerChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\s\\n]*)$', 'i');
+    const re = new RegExp('(^|[\\n\\s])' + _getTriggerPattern() + '([^\\s\\n]*)$', 'i');
     const m = before.match(re);
 
     if (m) {
@@ -672,7 +729,7 @@ const TextExpander = (() => {
     // No regex match — check if space was typed after exact match
     if (_dropdownEl && _dropdownQuery && _activeTa === ta) {
       // Try to find trigger+query in text (including with trailing space)
-      const reWithSpace = new RegExp(triggerChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + _dropdownQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'i');
+      const reWithSpace = new RegExp(_getTriggerPattern() + _escapeRe(_dropdownQuery) + '\\s*$', 'i');
       const mSpace = before.match(reWithSpace);
       if (mSpace) {
         // Find the matching shortcut and insert
@@ -697,10 +754,12 @@ const TextExpander = (() => {
 
   function _showDropdown(ta) {
     _hideDropdown();
+    const session = ++_dropdownSession;
 
     const dd = document.createElement('div');
     dd.className = 'text-expander-dropdown';
     dd.setAttribute('role', 'listbox');
+    dd._teSession = session;
     document.body.appendChild(dd);
     _dropdownEl = dd;
 
@@ -719,6 +778,21 @@ const TextExpander = (() => {
       if (!_dropdownEl || document.activeElement !== ta) return;
       const curPos = ta.selectionStart;
       if (curPos < _dropdownStart) { _hideDropdown(); return; }
+
+      const fragment = ta.value.slice(_dropdownStart, curPos);
+      if (!fragment || !_isTriggerChar(fragment[0]) || /\s/.test(fragment.slice(1))) {
+        _hideDropdown();
+        return;
+      }
+
+      const nextQuery = fragment.slice(1).toLowerCase();
+      if (nextQuery !== _dropdownQuery) {
+        _dropdownQuery = nextQuery;
+        _dropdownFocusedIdx = 0;
+        _renderDropdownItems();
+        if (!_dropdownEl) return;
+      }
+
       _positionDropdownAtCaret(ta, dd);
     };
 
@@ -732,6 +806,7 @@ const TextExpander = (() => {
   }
 
   function _hideDropdown() {
+    _dropdownSession++;
     if (_dropdownEl) {
       _dropdownEl._cleanupInput?.();
       _dropdownEl.remove();
@@ -743,6 +818,10 @@ const TextExpander = (() => {
     _dropdownQuery = '';
     _dropdownStart = 0;
     _dropdownFocusedIdx = 0;
+    if (_caretMirrorSource && !_caretMirrorSource.isConnected) {
+      _caretMirrorSource = null;
+      _caretMirrorSignature = '';
+    }
   }
 
   function _filterDropdownItems(query) {
@@ -874,7 +953,7 @@ const TextExpander = (() => {
     let cy = mkR.top + oy + lh + 4;
 
     requestAnimationFrame(() => {
-      if (!_dropdownEl) return;
+      if (!_dropdownEl || _dropdownEl !== dd || !dd.isConnected) return;
       const pw = _dropdownEl.offsetWidth || 248;
       const ph = _dropdownEl.offsetHeight || 180;
       if (cx + pw > window.innerWidth - 8) cx = Math.max(4, window.innerWidth - pw - 8);
@@ -894,10 +973,10 @@ const TextExpander = (() => {
     const ta = _activeTa;
     if (!ta) return;
 
+    const session = _dropdownSession;
     const startPos = _dropdownStart;
     const endPos = ta.selectionStart;
-    const triggerChar = _getTriggerChar();
-    const expectedText = triggerChar + _dropdownQuery;
+    const expectedQuery = _dropdownQuery;
 
     // Синхронная вставка для быстрых токенов
     let expansion = expandDynamicTokens(item.text);
@@ -905,20 +984,25 @@ const TextExpander = (() => {
     // Для clipboard — async fallback
     if (expansion.includes('{{clipboard}}')) {
       expandDynamicTokensAsync(item.text).then(result => {
-        _doInsert(ta, result, startPos, endPos, expectedText, triggerChar);
+        if (session !== _dropdownSession) return;
+        _doInsert(ta, result, startPos, endPos, expectedQuery);
+      }).catch(() => {
+        if (session !== _dropdownSession) return;
+        _doInsert(ta, expansion.replace(/\{\{clipboard\}\}/g, ''), startPos, endPos, expectedQuery);
       });
       return;
     }
 
-    _doInsert(ta, expansion, startPos, endPos, expectedText, triggerChar);
+    _doInsert(ta, expansion, startPos, endPos, expectedQuery);
   }
 
-  function _doInsert(ta, expansion, startPos, endPos, expectedText, triggerChar) {
+  function _doInsert(ta, expansion, startPos, endPos, expectedQuery) {
     if (!_dropdownEl || _activeTa !== ta) return;
     if (ta.selectionStart !== endPos) return;
     const actualText = ta.value.slice(startPos, endPos);
-    // trimEnd for space-trigger case: "Ёвесь " vs "Ёвесь"
-    if (actualText.trimEnd().toLowerCase() !== expectedText.toLowerCase()) return;
+    const actualTrimmed = actualText.trimEnd();
+    if (!actualTrimmed || !_isTriggerChar(actualTrimmed[0])) return;
+    if (actualTrimmed.slice(1).toLowerCase() !== String(expectedQuery || '').toLowerCase()) return;
 
     if (_activeBlockId && typeof State !== 'undefined') State.blockSnapshot(_activeBlockId);
 
@@ -983,6 +1067,13 @@ const TextExpander = (() => {
       try { btn.releasePointerCapture?.(e.pointerId); } catch (_) {}
     });
 
+    btn.addEventListener('pointerleave', e => {
+      if (!timer) return;
+      clearTimeout(timer);
+      timer = null;
+      try { btn.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    });
+
     btn.addEventListener('click', e => {
       if (longFired) { e.preventDefault(); e.stopPropagation(); longFired = false; return; }
       if (ta && ta.selectionStart !== ta.selectionEnd) {
@@ -1038,14 +1129,21 @@ const TextExpander = (() => {
         panel.style.left = Math.max(0, Math.min(Math.max(0, window.innerWidth - panel.offsetWidth), startL + (mv.clientX - startX))) + 'px';
         panel.style.top = Math.max(0, Math.min(Math.max(0, window.innerHeight - panel.offsetHeight), startT + (mv.clientY - startY))) + 'px';
       };
-      const onUp = () => {
+      const cleanup = () => {
         document.body.style.userSelect = '';
         _panelDragging = false;
-        _settings.panelPosition = { left: panel.style.left, top: panel.style.top };
-        _save();
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
+      const onUp = () => {
+        cleanup();
+        _panelInteractionCleanup = null;
+        if (panel.isConnected) {
+          _settings.panelPosition = { left: panel.style.left, top: panel.style.top };
+          _save();
+        }
+      };
+      _panelInteractionCleanup = cleanup;
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
     });
@@ -1071,14 +1169,21 @@ const TextExpander = (() => {
         panel.style.width = Math.max(PANEL_MIN_W, Math.min(Math.max(PANEL_MIN_W, window.innerWidth - rect.left), startW + (mv.clientX - startX))) + 'px';
         panel.style.height = Math.max(PANEL_MIN_H, Math.min(Math.max(PANEL_MIN_H, window.innerHeight - rect.top), startH + (mv.clientY - startY))) + 'px';
       };
-      const onUp = () => {
+      const cleanup = () => {
         document.body.style.userSelect = '';
         _panelResizing = false;
-        _settings.panelSize = { w: panel.style.width, h: panel.style.height };
-        _save();
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
+      const onUp = () => {
+        cleanup();
+        _panelInteractionCleanup = null;
+        if (panel.isConnected) {
+          _settings.panelSize = { w: panel.style.width, h: panel.style.height };
+          _save();
+        }
+      };
+      _panelInteractionCleanup = cleanup;
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
     });
@@ -1166,6 +1271,7 @@ const TextExpander = (() => {
     if (data.settings && typeof data.settings === 'object') {
       Object.assign(_settings, _normalizeSettings(data.settings));
     }
+    _ensureKnownCategories();
     _save();
     if (_panelEl) {
       const body = _panelEl.querySelector('.te-body');
