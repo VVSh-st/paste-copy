@@ -486,10 +486,11 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 8. ✅ **Категории** — General, AI Prompts, Scripts, Outreach (из скриншота). Фильтрация в панели
 9. ✅ **Динамические токены** — {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}. {{clipboard}} читается async через navigator.clipboard.readText(). Без рекурсии
 10. ✅ **Auto Shortener** — generateSmartShortName: L1 значимое слово (slice 0..maxLen), L2 акроним, L3 первые N букв, L4 коллизии. _normalizeWord единый. _nextCandidate проверяет MAX_SHORTCUT_LEN
-11. ✅ **Gist Sync** — State.serialize() включает textExpander, State.load() восстанавливает. mergeById при pull
-12. ✅ **Storage** — _normalizeShortcut/_normalizeSettings при load(). Валидация всех полей. serialize() возвращает clone (JSON parse/stringify)
-13. ✅ **Init/destroy** — _inited guard, idempotent init(). destroy() снимает listeners, закрывает dropdown/panel
-14. ✅ **Аудит** — исправлены: {{clipboard}} баг, long press UX, idempotent init, storage validation, input bubbles, dropdown lifecycle, _nextCandidate length, serialize clone, unused variable
+11. ✅ **Gist Sync** — State.serialize() включает textExpander, State.load() восстанавливает. mergeById + дедуп trigger+category при pull
+12. ✅ **Storage** — _normalizeShortcut/_normalizeSettings при load(). Валидация panelPosition/panelSize (parseFloat+isFinite). serialize() clone. _save() возвращает boolean, откат при ошибке
+13. ✅ **Init/destroy** — _inited guard, idempotent init(). destroy() снимает listeners, закрывает dropdown/panel, удаляет mirror node
+14. ✅ **Аудит R1** — clipboard token, long press, idempotent init, storage validation, input bubbles, dropdown lifecycle, _nextCandidate, serialize clone, unused variable
+15. ✅ **Аудит R2 (21 fix)** — race condition clipboard, undo blockSnapshot после async, dropdown close на visibilitychange/window.blur, panelPosition/panelSize валидация, load() дедуп trigger+category, createFromSelection лимит 50K, _save() возврат статуса+откат, outsideClick не закрывает активную textarea, _filterDropdownItems кэш toLowerCase, рендер VISIBLE_DROPDOWN_ITEMS, mirror node reuse, handleInput dedup, selectionchange handler, whitespace через _dropdownStart, trigger: игнорировать Ctrl/Alt/Meta+IME, pointerleave отменяет таймер, UPPER case handling, smart space, _addShortcut/_insertIntoTextarea хелперы
 
 ## Ранее выполнено (архив)
 
