@@ -983,6 +983,11 @@ const State = (() => {
       return;
     }
 
+    // TextExpander integration — restore from Gist payload
+    if (data.textExpander && typeof TextExpander !== 'undefined') {
+      TextExpander.load(data.textExpander);
+    }
+
     emit();
   }
 
@@ -1000,7 +1005,7 @@ const State = (() => {
 
   function serialize() {
     const serializedGlobalSnippets = _serializeGlobalSnippets();
-    return {
+    const state = {
       version: 5,
       defaultTemplateId,
       tabs: tabs.map(t => ({
@@ -1022,6 +1027,11 @@ const State = (() => {
       },
       globalSnippets: serializedGlobalSnippets,
     };
+    // TextExpander integration — include in Gist payload
+    if (typeof TextExpander !== 'undefined') {
+      state.textExpander = TextExpander.serialize();
+    }
+    return state;
   }
 
   /* ── search ── */

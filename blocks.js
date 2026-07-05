@@ -1698,6 +1698,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       updateGlobalWordCount(); // debounced
 
       _handleSlashTrigger(ta); // улучш. #4
+      if (typeof TextExpander !== 'undefined') TextExpander.handleInput(ta, b.id);
 
       _scheduleBlockSnap();    // фиксируем состояние блока в историю
 
@@ -2493,6 +2494,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     footer.appendChild(thesaurusBtn);
     body.appendChild(thesaurusDropdown);
+
+    // Text Expander — short click: create from selection, long press: open panel
+    if (typeof TextExpander !== 'undefined') {
+      const teBtn = document.createElement('button');
+      teBtn.type = 'button';
+      teBtn.className = 'font-ctrl-btn text-expander-btn';
+      teBtn.title = 'Text Expander — выдели текст (short) / панель (long)';
+      teBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M4 6h8M4 10h5"/><path d="M12 8l2 2-2 2"/></svg>';
+      TextExpander._setupLongPress(teBtn, ta, b.id);
+      footer.appendChild(teBtn);
+    }
 
     const aiTransformBtn = document.createElement('button');
     aiTransformBtn.type = 'button';

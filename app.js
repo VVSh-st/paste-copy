@@ -946,6 +946,7 @@
   if (typeof Translator !== 'undefined') Translator.init();
   if (typeof Ember !== 'undefined') Ember.init(null, State.getActive()?.id);
   if (typeof AiTransform !== 'undefined') AiTransform.init(State, LLMCore);
+  if (typeof TextExpander !== 'undefined') TextExpander.init();
 
   State.onChange(() => {
     if (typeof Ember !== 'undefined') Ember.switchTab(State.getActive()?.id);
