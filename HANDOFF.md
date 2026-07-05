@@ -474,6 +474,20 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 - **TextSkeletonizer мёртвый API** — `shouldCompress()` не используется
 - ⏳ app.js: ожидает аудит (969 строк)
 
+### Text Expander (2026-07-05)
+
+1. ✅ **text-expander.js** — модуль в одном файле (~1035 строк). IIFE object-modular, секции CONFIG/STATE/STORAGE/AUTO SHORTENER/TOKEN ENGINE/UI PANEL/TRIGGER ENGINE/DROPDOWN/INSERTION/LONG PRESS FSM/INIT
+2. ✅ **Кнопка** — SVG-иконка в footer текстового блока перед AI-трансформацией. Short click → createFromSelection, long press → openPanel
+3. ✅ **Long Press FSM** — pointerdown/pointermove/pointerup/pointercancel/pointerleave. Состояния: IDLE→PRESSING→LONG_PRESS_FIRED|CANCELLED. Порог 450ms, отмена >10px
+4. ✅ **Trigger** — KeyboardEvent.code === Backquote (работает RU/EN ё/`)
+5. ✅ **Dropdown** — positioned at caret, startsWith→includes фильтрация, навигация ↑↓EnterEscape, 8 visible / 100 max
+6. ✅ **Вставка** — setRangeText + trigger removal + expansion + space. Undo через blockSnapshot + snapshot. Регистр сохраняется
+7. ✅ **Панель управления** — 400x600, draggable, resizable, сохраняет позицию/размер. Shortcut input, category select, textarea, token buttons (date/time/clipboard/url/email), auto-length slider (2-20), category filter, таблица с toggle/delete
+8. ✅ **Категории** — General, AI Prompts, Scripts, Outreach (из скриншота). Фильтрация в панели
+9. ✅ **Динамические токены** — {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}. Без рекурсии
+10. ✅ **Auto Shortener** — generateSmartShortName: L1 значимое слово, L2 акроним, L3 первые N букв, L4 коллизии. Stop words фильтр
+11. ✅ **Gist Sync** — State.serialize() включает textExpander, State.load() восстанавливает. mergeById при pull
+
 ## Ранее выполнено (архив)
 
 - Prompt Loom Ultra Light, LLM MiniChat, Groom меню, Python Embedded, структура превью, якоря, подсказки с навигацией, Sticky/TODO/Table, Уголёк (Ember), переводчик, мульти-колонки 2-5, drag-and-drop вкладок
