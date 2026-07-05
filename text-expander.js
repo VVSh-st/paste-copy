@@ -105,11 +105,20 @@ const TextExpander = (() => {
     if (typeof raw.trigger !== 'string') return null;
     const trigger = _normalizeTrigger(raw.trigger);
     if (!trigger) return null;
+
+    const category = typeof raw.category === 'string' && raw.category.trim()
+      ? raw.category.trim().slice(0, 80)
+      : 'General';
+
+    const text = typeof raw.text === 'string'
+      ? raw.text.slice(0, MAX_SELECTION_LEN)
+      : '';
+
     return {
       id: raw.id,
       trigger,
-      category: typeof raw.category === 'string' && raw.category ? raw.category : 'General',
-      text: typeof raw.text === 'string' ? raw.text : '',
+      category,
+      text,
       enabled: raw.enabled !== false,
       createdAt: Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now(),
       updatedAt: Number.isFinite(Number(raw.updatedAt)) ? Number(raw.updatedAt) : Date.now()
@@ -487,11 +496,22 @@ const TextExpander = (() => {
             return;
           }
         }
+        const prev = {
+          trigger: existing.trigger,
+          text: existing.text,
+          category: existing.category,
+          updatedAt: existing.updatedAt
+        };
+
         existing.trigger = newTrigger;
         existing.text = newText;
         existing.category = newCat;
         existing.updatedAt = Date.now();
-        if (!_save()) return;
+
+        if (!_save()) {
+          Object.assign(existing, prev);
+          return;
+        }
         _clearPanelForm();
         _refreshPanelTable(body);
         if (typeof Toast !== 'undefined') Toast.show('TextExpander: обновлено "' + newTrigger + '"', 'success');
@@ -660,7 +680,14 @@ const TextExpander = (() => {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = s.enabled;
-      checkbox.onchange = () => { s.enabled = checkbox.checked; _save(); };
+      checkbox.onchange = () => {
+        const prev = s.enabled;
+        s.enabled = checkbox.checked;
+        if (!_save()) {
+          s.enabled = prev;
+          checkbox.checked = prev;
+        }
+      };
       const slider = document.createElement('span');
       slider.className = 'te-toggle-slider';
       toggle.appendChild(checkbox);
@@ -695,8 +722,12 @@ const TextExpander = (() => {
       del.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
       del.onclick = () => {
         _shortcuts.delete(s.id);
+        if (!_save()) {
+          _shortcuts.set(s.id, s);
+          _refreshPanelTable(body);
+          return;
+        }
         if (_editingId === s.id) _clearPanelForm();
-        _save();
         _refreshPanelTable(body);
         if (typeof Toast !== 'undefined') Toast.show('TextExpander: удалено "' + s.trigger + '"', 'success');
       };
@@ -735,6 +766,15 @@ const TextExpander = (() => {
     return ch === _getTriggerChar();
   }
 
+  function _findExactEnabledShortcut(query) {
+    const q = String(query || '').toLowerCase();
+    if (!q) return null;
+    for (const s of _shortcuts.values()) {
+      if (s.enabled && String(s.trigger || '').toLowerCase() === q) return s;
+    }
+    return null;
+  }
+
   function _handleTriggerInTextarea(ta, blockId) {
     const pos = ta.selectionStart;
     if (pos === undefined || pos === null) return;
@@ -765,21 +805,27 @@ const TextExpander = (() => {
       return;
     }
 
-    // No regex match — check if space was typed after exact match
-    if (_dropdownEl && _dropdownQuery && _activeTa === ta) {
-      // Try to find trigger+query in text (including with trailing space)
-      const reWithSpace = new RegExp(_getTriggerPattern() + _escapeRe(_dropdownQuery) + '\\s*$', 'i');
-      const mSpace = before.match(reWithSpace);
-      if (mSpace) {
-        // Find the matching shortcut and insert
-        for (const s of _shortcuts.values()) {
-          if (s.enabled && s.trigger.toLowerCase() === _dropdownQuery) {
-            _dropdownStart = pos - mSpace[0].length;
-            _insertExpansion(s);
-            return;
-          }
-        }
+    // No regex match — delimiter after exact trigger+query, e.g. "Ёabc "
+    // This must work even if dropdown was already closed by blur/selectionchange.
+    const delimiterRe = new RegExp(
+      '(^|[\\n\\s])' + _getTriggerPattern() + '([^\\s\\n]+)([\\s\\n])$',
+      'i'
+    );
+    const dm = before.match(delimiterRe);
+    if (dm) {
+      const query = dm[2].toLowerCase();
+      const item = _findExactEnabledShortcut(query);
+      if (item) {
+        _activeTa = ta;
+        _activeBlockId = blockId || ta.closest('.block')?.dataset?.id || null;
+        _dropdownStart = pos - dm[0].length + dm[1].length;
+        _dropdownQuery = query;
+        _insertExpansion(item);
+        return;
       }
+    }
+
+    if (_dropdownEl && _activeTa === ta) {
       _hideDropdown();
       return;
     }
@@ -803,6 +849,10 @@ const TextExpander = (() => {
     _dropdownEl = dd;
 
     _renderDropdownItems();
+    if (!_dropdownEl || _dropdownEl !== dd || !dd.isConnected) {
+      return;
+    }
+
     _positionDropdownAtCaret(ta, dd);
 
     // Close on blur
@@ -921,7 +971,7 @@ const TextExpander = (() => {
   function _renderDropdownItems() {
     if (!_dropdownEl) return;
     const dd = _dropdownEl;
-    dd.innerHTML = '';
+    dd.replaceChildren();
 
     if (!_refreshDropdownModel()) {
       _hideDropdown();
@@ -1053,10 +1103,10 @@ const TextExpander = (() => {
       if (_dropdownEl) _dropdownEl.classList.add('te-dd-pending');
       expandDynamicTokensAsync(item.text).then(result => {
         if (session !== _dropdownSession) return;
-        _doInsert(ta, result, startPos, endPos, expectedQuery, blockId);
+        if (!_doInsert(ta, result, startPos, endPos, expectedQuery, blockId)) _hideDropdown();
       }).catch(() => {
         if (session !== _dropdownSession) return;
-        _doInsert(ta, expansion.replace(/\{\{clipboard\}\}/g, ''), startPos, endPos, expectedQuery, blockId);
+        if (!_doInsert(ta, expansion.replace(/\{\{clipboard\}\}/g, ''), startPos, endPos, expectedQuery, blockId)) _hideDropdown();
       }).finally(() => {
         _insertingExpansion = false;
         if (_dropdownEl) _dropdownEl.classList.remove('te-dd-pending');
@@ -1065,19 +1115,20 @@ const TextExpander = (() => {
     }
 
     try {
-      _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId);
+      if (!_doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId)) _hideDropdown();
     } finally {
       _insertingExpansion = false;
     }
   }
 
   function _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId) {
-    if (!ta || !ta.isConnected) return;
-    if (ta.selectionStart !== endPos) return;
+    if (!ta || !ta.isConnected) return false;
+    if (ta.selectionStart !== endPos) return false;
+
     const actualText = ta.value.slice(startPos, endPos);
     const actualTrimmed = actualText.trimEnd();
-    if (!actualTrimmed || !_isTriggerChar(actualTrimmed[0])) return;
-    if (actualTrimmed.slice(1).toLowerCase() !== String(expectedQuery || '').toLowerCase()) return;
+    if (!actualTrimmed || !_isTriggerChar(actualTrimmed[0])) return false;
+    if (actualTrimmed.slice(1).toLowerCase() !== String(expectedQuery || '').toLowerCase()) return false;
 
     if (blockId && typeof State !== 'undefined') State.blockSnapshot(blockId);
 
@@ -1104,6 +1155,7 @@ const TextExpander = (() => {
 
     _hideDropdown();
     ta.focus();
+    return true;
   }
 
   // ========================
@@ -1120,11 +1172,13 @@ const TextExpander = (() => {
 
     let timer = null;
     let longFired = false;
+    let cancelledByMove = false;
     let startX = 0, startY = 0;
 
     btn.addEventListener('pointerdown', e => {
       if (e.button !== undefined && e.button !== 0) return;
       longFired = false;
+      cancelledByMove = false;
       startX = e.clientX;
       startY = e.clientY;
       try { btn.setPointerCapture?.(e.pointerId); } catch (_) {}
@@ -1139,7 +1193,11 @@ const TextExpander = (() => {
       if (!timer) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) { clearTimeout(timer); timer = null; }
+      if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+        cancelledByMove = true;
+        clearTimeout(timer);
+        timer = null;
+      }
     });
 
     btn.addEventListener('pointerup', e => {
@@ -1162,7 +1220,13 @@ const TextExpander = (() => {
     });
 
     btn.addEventListener('click', e => {
-      if (longFired) { e.preventDefault(); e.stopPropagation(); longFired = false; return; }
+      if (longFired || cancelledByMove) {
+        e.preventDefault();
+        e.stopPropagation();
+        longFired = false;
+        cancelledByMove = false;
+        return;
+      }
       const ctx = btn._teLongPressCtx || {};
       const clickTa = ctx.ta;
       const clickBlockId = ctx.blockId;
@@ -1380,8 +1444,8 @@ const TextExpander = (() => {
     _ensureKnownCategories();
     _save();
     if (_panelEl) {
-      const body = _panelEl.querySelector('.te-body');
-      if (body) _refreshPanelTable(body);
+      closePanel();
+      openPanel();
     }
   }
 
@@ -1418,10 +1482,18 @@ const TextExpander = (() => {
     _escapePanelHandler = e => { if (e.key === 'Escape' && _panelEl) closePanel(); };
     document.addEventListener('keydown', _escapePanelHandler);
 
-    _windowBlurHandler = () => _hideDropdown();
+    _windowBlurHandler = () => {
+      _hideDropdown();
+      _cancelPanelInteraction();
+    };
     window.addEventListener('blur', _windowBlurHandler);
 
-    _visibilityChangeHandler = () => { if (document.hidden) _hideDropdown(); };
+    _visibilityChangeHandler = () => {
+      if (document.hidden) {
+        _hideDropdown();
+        _cancelPanelInteraction();
+      }
+    };
     document.addEventListener('visibilitychange', _visibilityChangeHandler);
   }
 
