@@ -365,7 +365,7 @@ const TextExpander = (() => {
     const shortcutInput = document.createElement('input');
     shortcutInput.type = 'text';
     shortcutInput.className = 'te-input te-input-wide';
-    shortcutInput.placeholder = 'shortcut';
+    shortcutInput.placeholder = 'trigger';
     shortcutInput.maxLength = MAX_SHORTCUT_LEN;
     shortcutInput.value = '\u0401'; // Ё по умолчанию
     shortcutRow.appendChild(shortcutInput);
@@ -914,12 +914,11 @@ const TextExpander = (() => {
   }
 
   function _doInsert(ta, expansion, startPos, endPos, expectedText, triggerChar) {
-    // Verify state is still valid
     if (!_dropdownEl || _activeTa !== ta) return;
     if (ta.selectionStart !== endPos) return;
-    // Check the text at trigger position still matches
     const actualText = ta.value.slice(startPos, endPos);
-    if (actualText.toLowerCase() !== expectedText.toLowerCase()) return;
+    // trimEnd for space-trigger case: "Ёвесь " vs "Ёвесь"
+    if (actualText.trimEnd().toLowerCase() !== expectedText.toLowerCase()) return;
 
     if (_activeBlockId && typeof State !== 'undefined') State.blockSnapshot(_activeBlockId);
 
