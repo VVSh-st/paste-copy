@@ -29,12 +29,15 @@ const TextExpander = (() => {
   const MAX_SHORTCUT_LEN = 20;
   const MAX_DROPDOWN_ITEMS = 100;
   const VISIBLE_DROPDOWN_ITEMS = 8;
+  const MAX_SELECTION_LEN = 50000;
 
   const STOP_WORDS = new Set([
     'и','в','на','не','с','по','для','от','до','из','к','о','а','но',
     'что','как','это','все','так','уже','при','об','за','или','ни',
     'да','нет','его','её','их','мы','вы','он','она','оно','они','я','ты'
   ]);
+
+  const TRIGGER_CHARS = new Set([' ', '\n', '\t', '(', '[', '{', '"', "'", '\u2014', ':']);
 
   const DEFAULT_CATEGORIES = ['General', 'AI Prompts', 'Scripts', 'Outreach'];
 
@@ -60,14 +63,18 @@ const TextExpander = (() => {
   let _dropdownStart = 0;
   let _dropdownFocusedIdx = 0;
   let _dropdownItems = [];
+  let _dropdownOwnsInputListener = false;
   let _panelDragging = false;
   let _panelResizing = false;
+  let _caretMirrorEl = null;
 
   // Stored listener refs for cleanup
   let _triggerHandler = null;
   let _dropdownKeyHandler = null;
   let _outsideClickHandler = null;
   let _escapePanelHandler = null;
+  let _windowBlurHandler = null;
+  let _visibilityChangeHandler = null;
 
   // ========================
   // STORAGE
@@ -98,10 +105,18 @@ const TextExpander = (() => {
       out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && c.trim()))];
     }
     if (raw.panelPosition && typeof raw.panelPosition === 'object' && !Array.isArray(raw.panelPosition)) {
-      out.panelPosition = raw.panelPosition;
+      const left = parseFloat(raw.panelPosition.left);
+      const top = parseFloat(raw.panelPosition.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) {
+        out.panelPosition = { left: Math.max(0, left) + 'px', top: Math.max(0, top) + 'px' };
+      }
     }
     if (raw.panelSize && typeof raw.panelSize === 'object' && !Array.isArray(raw.panelSize)) {
-      out.panelSize = raw.panelSize;
+      const w = parseFloat(raw.panelSize.w);
+      const h = parseFloat(raw.panelSize.h);
+      if (Number.isFinite(w) && Number.isFinite(h)) {
+        out.panelSize = { w: Math.max(PANEL_MIN_W, w) + 'px', h: Math.max(PANEL_MIN_H, h) + 'px' };
+      }
     }
     return out;
   }
@@ -132,8 +147,10 @@ const TextExpander = (() => {
         settings: _settings
       });
       localStorage.setItem(STORE_KEY, payload);
+      return true;
     } catch (err) {
       if (typeof Toast !== 'undefined') Toast.show('TextExpander: ошибка сохранения', 'error');
+      return false;
     }
   }
 
@@ -156,7 +173,6 @@ const TextExpander = (() => {
   }
 
   function _nextCandidate(base) {
-    // Truncate base if too long
     let b = base.slice(0, MAX_SHORTCUT_LEN);
     if (!exists(b)) return b;
     for (let i = 2; i < 100; i++) {
@@ -177,7 +193,7 @@ const TextExpander = (() => {
 
     const maxLen = _settings.autoLength;
 
-    // L1: первое значимое слово (без предлогов/союзов)
+    // L1: первое значимое слово
     for (const w of words) {
       const lower = _normalizeWord(w);
       if (lower.length > 0 && !STOP_WORDS.has(lower)) {
@@ -185,7 +201,7 @@ const TextExpander = (() => {
       }
     }
 
-    // L2: акроним из первых букв значимых слов
+    // L2: акроним
     const sigWords = words.filter(w => !STOP_WORDS.has(_normalizeWord(w)));
     if (sigWords.length >= 2) {
       const acr = sigWords.map(w => {
@@ -195,17 +211,15 @@ const TextExpander = (() => {
       if (acr.length >= 2) return _nextCandidate(acr);
     }
 
-    // L3: первые N букв из склеенных слов
+    // L3: склейка
     const joined = words.map(w => _normalizeWord(w)).filter(Boolean).join('');
-    const candidate = joined.slice(0, maxLen) || 'txt';
-    return _nextCandidate(candidate);
+    return _nextCandidate(joined.slice(0, maxLen) || 'txt');
   }
 
   // ========================
   // TOKEN ENGINE
   // ========================
 
-  // Sync: replaces all tokens EXCEPT {{clipboard}} (needs async read)
   function expandDynamicTokens(text) {
     if (!text) return text;
     const now = new Date();
@@ -214,13 +228,12 @@ const TextExpander = (() => {
       .replace(/\{\{time\}\}/g, () => now.toLocaleTimeString('ru-RU'))
       .replace(/\{\{url\}\}/g, () => window.location.href)
       .replace(/\{\{email\}\}/g, () => _settings.email || '');
-    // NOTE: {{clipboard}} is intentionally NOT replaced here — see expandDynamicTokensAsync
+    // {{clipboard}} intentionally NOT replaced here — see expandDynamicTokensAsync
   }
 
   async function expandDynamicTokensAsync(text) {
     if (!text) return text;
     let result = expandDynamicTokens(text);
-    // Only attempt clipboard read if token is still present
     if (result.includes('{{clipboard}}')) {
       try {
         const clip = (typeof navigator !== 'undefined' && navigator.clipboard?.readText)
@@ -235,13 +248,49 @@ const TextExpander = (() => {
   }
 
   // ========================
+  // HELPERS
+  // ========================
+
+  function _insertIntoTextarea(ta, value) {
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    ta.value = ta.value.slice(0, start) + value + ta.value.slice(end);
+    ta.selectionStart = ta.selectionEnd = start + value.length;
+    ta.focus();
+  }
+
+  function _addShortcut(trigger, text, category) {
+    trigger = String(trigger || '').trim().replace(/^\/+/, '').slice(0, MAX_SHORTCUT_LEN);
+    text = String(text || '').trim();
+    category = category || 'General';
+    if (!trigger || !text) return { ok: false, reason: 'empty' };
+    for (const s of _shortcuts.values()) {
+      if (s.trigger === trigger && s.category === category) {
+        return { ok: false, reason: 'duplicate' };
+      }
+    }
+    const id = _generateId();
+    const item = {
+      id, trigger, category, text,
+      enabled: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    _shortcuts.set(id, item);
+    if (!_save()) {
+      _shortcuts.delete(id);
+      return { ok: false, reason: 'save' };
+    }
+    return { ok: true, item };
+  }
+
+  // ========================
   // UI PANEL
   // ========================
 
   function openPanel() {
     if (_panelEl) {
       _panelEl.style.display = 'flex';
-      // Refresh table in case shortcuts changed externally
       const body = _panelEl.querySelector('.te-body');
       if (body) _refreshPanelTable(body);
       return;
@@ -259,12 +308,11 @@ const TextExpander = (() => {
     panel.style.minWidth = PANEL_MIN_W + 'px';
     panel.style.minHeight = PANEL_MIN_H + 'px';
 
-    // Восстановление позиции и размера (нормализация)
     const _cssSize = (val, fallback) => {
-      if (typeof val === 'number') return val + 'px';
-      if (typeof val === 'string' && val) return val;
-      return fallback + 'px';
+      const n = parseFloat(val);
+      return Number.isFinite(n) ? n + 'px' : fallback + 'px';
     };
+
     if (_settings.panelSize) {
       panel.style.width = _cssSize(_settings.panelSize.w, PANEL_DEFAULT_W);
       panel.style.height = _cssSize(_settings.panelSize.h, PANEL_DEFAULT_H);
@@ -280,7 +328,6 @@ const TextExpander = (() => {
       panel.style.top = Math.max(20, (window.innerHeight - PANEL_DEFAULT_H) / 2) + 'px';
     }
 
-    // Clamp panel position to viewport
     requestAnimationFrame(() => {
       if (!_panelEl) return;
       const rect = panel.getBoundingClientRect();
@@ -290,7 +337,7 @@ const TextExpander = (() => {
       if (rect.top > maxTop) panel.style.top = maxTop + 'px';
     });
 
-    // Header (drag handle)
+    // Header
     const header = document.createElement('div');
     header.className = 'te-header';
     const title = document.createElement('span');
@@ -309,7 +356,7 @@ const TextExpander = (() => {
     const body = document.createElement('div');
     body.className = 'te-body';
 
-    // --- Shortcut input ---
+    // Shortcut input
     const shortcutRow = document.createElement('div');
     shortcutRow.className = 'te-row';
     const shortcutLabel = document.createElement('span');
@@ -323,7 +370,7 @@ const TextExpander = (() => {
     shortcutRow.appendChild(shortcutLabel);
     shortcutRow.appendChild(shortcutInput);
 
-    // --- Category select ---
+    // Category select
     const catRow = document.createElement('div');
     catRow.className = 'te-row';
     const catLabel = document.createElement('span');
@@ -340,41 +387,26 @@ const TextExpander = (() => {
     catRow.appendChild(catLabel);
     catRow.appendChild(catSelect);
 
-    // --- Add button ---
+    // Add button
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'te-add-btn';
     addBtn.textContent = 'Add Key';
     addBtn.onclick = () => {
-      const trigger = shortcutInput.value.trim().replace(/^\/+/, '');
-      const text = textarea.value.trim();
-      const category = catSelect.value;
-      if (!trigger || !text) {
+      const result = _addShortcut(shortcutInput.value, textarea.value, catSelect.value);
+      if (!result.ok && result.reason === 'empty') {
         if (typeof Toast !== 'undefined') Toast.show('TextExpander: введите shortcut и текст', 'error');
         return;
       }
-      // Проверка коллизий
-      for (const s of _shortcuts.values()) {
-        if (s.trigger === trigger && s.category === category) {
-          if (typeof Toast !== 'undefined') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
-          return;
-        }
+      if (!result.ok && result.reason === 'duplicate') {
+        if (typeof Toast !== 'undefined') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
+        return;
       }
-      const id = _generateId();
-      _shortcuts.set(id, {
-        id,
-        trigger,
-        category,
-        text,
-        enabled: true,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
-      _save();
+      if (!result.ok) return;
       shortcutInput.value = '';
       textarea.value = '';
       _refreshPanelTable(body);
-      if (typeof Toast !== 'undefined') Toast.show('TextExpander: добавлено "' + trigger + '"', 'success');
+      if (typeof Toast !== 'undefined') Toast.show('TextExpander: добавлено "' + result.item.trigger + '"', 'success');
     };
 
     const inputRow = document.createElement('div');
@@ -383,39 +415,32 @@ const TextExpander = (() => {
     inputRow.appendChild(catRow);
     inputRow.appendChild(addBtn);
 
-    // --- Textarea ---
+    // Textarea
     const textarea = document.createElement('textarea');
     textarea.className = 'te-textarea';
     textarea.placeholder = 'Текст сокращения... Поддерживает {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}';
     textarea.rows = 5;
 
-    // --- Token buttons ---
+    // Token buttons
     const tokenBar = document.createElement('div');
     tokenBar.className = 'te-token-bar';
-    const tokens = [
+    [
       { label: 'date', token: '{{date}}' },
       { label: 'time', token: '{{time}}' },
       { label: 'clipboard', token: '{{clipboard}}' },
       { label: 'url', token: '{{url}}' },
       { label: 'email', token: '{{email}}' }
-    ];
-    tokens.forEach(t => {
+    ].forEach(t => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'te-token-btn';
       btn.textContent = t.label;
       btn.title = 'Вставить ' + t.token;
-      btn.onclick = () => {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        textarea.value = textarea.value.slice(0, start) + t.token + textarea.value.slice(end);
-        textarea.selectionStart = textarea.selectionEnd = start + t.token.length;
-        textarea.focus();
-      };
+      btn.onclick = () => _insertIntoTextarea(textarea, t.token);
       tokenBar.appendChild(btn);
     });
 
-    // --- Auto length ---
+    // Auto length
     const autoRow = document.createElement('div');
     autoRow.className = 'te-row te-auto-row';
     const autoLabel = document.createElement('span');
@@ -439,7 +464,7 @@ const TextExpander = (() => {
     autoRow.appendChild(autoSlider);
     autoRow.appendChild(autoValue);
 
-    // --- Category filter ---
+    // Category filter
     const filterRow = document.createElement('div');
     filterRow.className = 'te-filter-row';
     const filterAll = document.createElement('button');
@@ -454,8 +479,6 @@ const TextExpander = (() => {
       btn.textContent = cat;
       filterRow.appendChild(btn);
     });
-
-    // Filter logic
     filterRow.addEventListener('click', e => {
       const btn = e.target.closest('.te-filter-btn');
       if (!btn) return;
@@ -464,7 +487,7 @@ const TextExpander = (() => {
       _refreshPanelTable(body);
     });
 
-    // --- Table ---
+    // Table
     const tableContainer = document.createElement('div');
     tableContainer.className = 'te-table-container';
 
@@ -480,11 +503,8 @@ const TextExpander = (() => {
     document.body.appendChild(panel);
     _panelEl = panel;
 
-    // Drag
     _setupDrag(panel, header);
-    // Resize
     _setupResize(panel);
-
     _refreshPanelTable(body);
   }
 
@@ -506,7 +526,6 @@ const TextExpander = (() => {
       return;
     }
 
-    // Table header
     const thead = document.createElement('div');
     thead.className = 'te-table-head';
     ['Enabled', 'Shortcut', 'Category', 'Preview', ''].forEach(label => {
@@ -520,40 +539,31 @@ const TextExpander = (() => {
       const row = document.createElement('div');
       row.className = 'te-table-row';
 
-      // Enabled toggle
       const toggle = document.createElement('label');
       toggle.className = 'te-toggle';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = s.enabled;
-      checkbox.onchange = () => {
-        s.enabled = checkbox.checked;
-        s.updatedAt = Date.now();
-        _save();
-      };
+      checkbox.onchange = () => { s.enabled = checkbox.checked; s.updatedAt = Date.now(); _save(); };
       const slider = document.createElement('span');
       slider.className = 'te-toggle-slider';
       toggle.appendChild(checkbox);
       toggle.appendChild(slider);
 
-      // Shortcut
       const shortcut = document.createElement('span');
       shortcut.className = 'te-table-shortcut';
       shortcut.textContent = s.trigger;
 
-      // Category
       const cat = document.createElement('span');
       cat.className = 'te-table-category';
       cat.textContent = s.category;
 
-      // Preview
       const preview = document.createElement('span');
       preview.className = 'te-table-preview';
-      const previewText = (s.text || '').length > 25 ? s.text.slice(0, 25) + '...' : (s.text || '');
-      preview.textContent = previewText;
+      const pt = (s.text || '').length > 25 ? s.text.slice(0, 25) + '...' : (s.text || '');
+      preview.textContent = pt;
       preview.title = s.text || '';
 
-      // Delete
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'te-delete-btn';
@@ -580,22 +590,20 @@ const TextExpander = (() => {
 
   function _handleTrigger(e) {
     if (e.code !== _settings.triggerCode) return;
-    // Не триггерить если панель открыта или модальное окно активно
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.isComposing) return;
     if (_panelEl && _panelEl.contains(document.activeElement)) return;
     if (document.querySelector('.gs-modal')?.style.display === 'flex') return;
 
-    // Ищем активный textarea
     const ta = document.activeElement;
     if (!ta || ta.tagName !== 'TEXTAREA') return;
 
     const pos = ta.selectionStart;
     if (pos === undefined || pos === null) return;
 
-    // Проверяем что перед курсором нет текста (начало строки, пробел, или открытие скобки/кавычки)
     const before = ta.value.slice(0, pos);
     const lastChar = before.slice(-1);
-    const triggerChars = new Set([' ', '\n', '\t', '(', '[', '{', '"', "'", '\u2014', ':']);
-    if (lastChar && !triggerChars.has(lastChar)) return;
+    if (lastChar && !TRIGGER_CHARS.has(lastChar)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -606,14 +614,14 @@ const TextExpander = (() => {
     _dropdownStart = pos;
     _dropdownFocusedIdx = 0;
 
-    _showDropdown(ta, pos);
+    _showDropdown(ta);
   }
 
   // ========================
   // DROPDOWN MENU
   // ========================
 
-  function _showDropdown(ta, pos) {
+  function _showDropdown(ta) {
     _hideDropdown();
 
     const dd = document.createElement('div');
@@ -623,17 +631,13 @@ const TextExpander = (() => {
     _dropdownEl = dd;
 
     _renderDropdownItems();
-
-    // Позиционирование по caret
     _positionDropdownAtCaret(ta, dd);
 
-    // Обновляем при вводе
     const onInput = () => {
       const curPos = ta.selectionStart;
-      const textAfter = ta.value.slice(_dropdownStart, curPos);
 
       // Close on whitespace after trigger
-      if (/\s/.test(ta.value.slice(pos, curPos)) && _dropdownQuery.length > 0) {
+      if (/\s/.test(ta.value.slice(_dropdownStart, curPos)) && _dropdownQuery.length > 0) {
         _hideDropdown();
         return;
       }
@@ -644,13 +648,12 @@ const TextExpander = (() => {
         return;
       }
 
-      _dropdownQuery = textAfter;
+      _dropdownQuery = ta.value.slice(_dropdownStart, curPos);
       _dropdownFocusedIdx = 0;
       _renderDropdownItems();
       _positionDropdownAtCaret(ta, dd);
     };
 
-    // Close on blur (with small delay to allow click on dropdown)
     const onBlur = () => {
       setTimeout(() => {
         if (_dropdownEl && !_dropdownEl.contains(document.activeElement)) {
@@ -659,11 +662,26 @@ const TextExpander = (() => {
       }, 150);
     };
 
+    const onSelectionChange = () => {
+      if (!_dropdownEl || document.activeElement !== ta) return;
+      const curPos = ta.selectionStart;
+      if (curPos < _dropdownStart) {
+        _hideDropdown();
+        return;
+      }
+      _positionDropdownAtCaret(ta, dd);
+    };
+
     ta.addEventListener('input', onInput);
     ta.addEventListener('blur', onBlur);
+    document.addEventListener('selectionchange', onSelectionChange);
+    _dropdownOwnsInputListener = true;
+
     dd._cleanupInput = () => {
       ta.removeEventListener('input', onInput);
       ta.removeEventListener('blur', onBlur);
+      document.removeEventListener('selectionchange', onSelectionChange);
+      _dropdownOwnsInputListener = false;
     };
   }
 
@@ -680,13 +698,17 @@ const TextExpander = (() => {
 
   function _filterDropdownItems(query) {
     const q = (query || '').toLowerCase();
-    const items = [..._shortcuts.values()].filter(s => s.enabled);
-    if (!q) return items.slice(0, MAX_DROPDOWN_ITEMS);
+    const items = [..._shortcuts.values()]
+      .filter(s => s.enabled)
+      .map(s => ({ item: s, tl: s.trigger.toLowerCase() }));
+    if (!q) return items.map(x => x.item).slice(0, MAX_DROPDOWN_ITEMS);
 
-    // exact match first, then startsWith, then includes
-    const exact = items.filter(s => s.trigger.toLowerCase() === q);
-    const starts = items.filter(s => s.trigger.toLowerCase().startsWith(q) && s.trigger.toLowerCase() !== q);
-    const includes = items.filter(s => !s.trigger.toLowerCase().startsWith(q) && s.trigger.toLowerCase().includes(q));
+    const exact = [], starts = [], includes = [];
+    for (const x of items) {
+      if (x.tl === q) exact.push(x.item);
+      else if (x.tl.startsWith(q)) starts.push(x.item);
+      else if (x.tl.includes(q)) includes.push(x.item);
+    }
     return [...exact, ...starts, ...includes].slice(0, MAX_DROPDOWN_ITEMS);
   }
 
@@ -697,11 +719,10 @@ const TextExpander = (() => {
 
     _dropdownItems = _filterDropdownItems(_dropdownQuery);
 
-    // Clamp focused index
     if (_dropdownItems.length === 0) {
       _dropdownFocusedIdx = 0;
     } else {
-      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx, _dropdownItems.length - 1);
+      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx, Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS) - 1);
     }
 
     if (!_dropdownItems.length) {
@@ -712,9 +733,9 @@ const TextExpander = (() => {
       return;
     }
 
-    const visibleCount = Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS);
+    const renderItems = _dropdownItems.slice(0, VISIBLE_DROPDOWN_ITEMS);
 
-    _dropdownItems.forEach((item, idx) => {
+    renderItems.forEach((item, idx) => {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'te-dd-item' + (idx === _dropdownFocusedIdx ? ' focused' : '');
@@ -731,8 +752,8 @@ const TextExpander = (() => {
 
       const preview = document.createElement('span');
       preview.className = 'te-dd-preview';
-      const previewText = (item.text || '').length > 40 ? item.text.slice(0, 40) + '...' : (item.text || '');
-      preview.textContent = previewText;
+      const pt = (item.text || '').length > 40 ? item.text.slice(0, 40) + '...' : (item.text || '');
+      preview.textContent = pt;
 
       row.appendChild(shortcut);
       row.appendChild(catBadge);
@@ -746,11 +767,10 @@ const TextExpander = (() => {
       dd.appendChild(row);
     });
 
-    if (_dropdownItems.length > visibleCount) {
-      dd.style.maxHeight = (visibleCount * 36 + 10) + 'px';
-    } else {
-      dd.style.maxHeight = '';
-    }
+    const visibleCount = Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS);
+    dd.style.maxHeight = _dropdownItems.length > visibleCount
+      ? (visibleCount * 36 + 10) + 'px'
+      : '';
   }
 
   function _positionDropdownAtCaret(ta, dd) {
@@ -759,7 +779,19 @@ const TextExpander = (() => {
     const pr = parseFloat(cs.paddingRight) || 0;
     const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
 
-    const m = document.createElement('div');
+    const m = _caretMirrorEl || document.createElement('div');
+    if (!_caretMirrorEl) {
+      _caretMirrorEl = m;
+      m.style.position = 'absolute';
+      m.style.visibility = 'hidden';
+      m.style.pointerEvents = 'none';
+      m.style.top = '-9999px';
+      m.style.left = '-9999px';
+      m.style.whiteSpace = 'pre-wrap';
+      m.style.wordWrap = 'break-word';
+      document.body.appendChild(m);
+    }
+    m.innerHTML = '';
     const syncProps = [
       'borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth',
       'paddingTop','paddingRight','paddingBottom','paddingLeft',
@@ -769,14 +801,6 @@ const TextExpander = (() => {
     syncProps.forEach(p => { m.style[p] = cs[p]; });
     m.style.boxSizing = 'content-box';
     m.style.width = (ta.clientWidth - pl - pr) + 'px';
-    m.style.position = 'absolute';
-    m.style.visibility = 'hidden';
-    m.style.pointerEvents = 'none';
-    m.style.top = '-9999px';
-    m.style.left = '-9999px';
-    m.style.whiteSpace = 'pre-wrap';
-    m.style.wordWrap = 'break-word';
-    document.body.appendChild(m);
 
     const before = document.createElement('span');
     before.textContent = ta.value.substring(0, ta.selectionStart);
@@ -792,7 +816,6 @@ const TextExpander = (() => {
     const oy = taR.top - mR.top - ta.scrollTop;
     let cx = mkR.left + ox;
     let cy = mkR.top + oy + lh + 4;
-    document.body.removeChild(m);
 
     requestAnimationFrame(() => {
       if (!_dropdownEl) return;
@@ -817,20 +840,29 @@ const TextExpander = (() => {
 
     const startPos = _dropdownStart;
     const endPos = ta.selectionStart;
+    const expectedQuery = _dropdownQuery;
+    const expectedBlockId = _activeBlockId;
 
-    // Snapshot BEFORE change for proper undo
-    if (_activeBlockId && typeof State !== 'undefined') {
-      State.blockSnapshot(_activeBlockId);
-    }
-
-    // Готовим текст
+    // Готовим текст (async — может читать clipboard)
     let expansion = await expandDynamicTokensAsync(item.text);
 
-    // Обработка регистра
+    // Check state is still valid after async
+    if (!_dropdownEl || _activeTa !== ta || _activeBlockId !== expectedBlockId) return;
+    if (ta.selectionStart !== endPos || ta.value.slice(startPos, endPos) !== expectedQuery) return;
+
+    // Snapshot AFTER validation, BEFORE mutation
+    if (expectedBlockId && typeof State !== 'undefined') {
+      State.blockSnapshot(expectedBlockId);
+    }
+
+    // Case handling
     if (_dropdownQuery) {
+      const letters = _dropdownQuery.match(/[a-zа-яё]/gi) || [];
+      const isUpper = letters.length > 0 && letters.every(ch => ch === ch.toUpperCase());
       const q0 = _dropdownQuery[0];
-      if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
-        // Capitalized or UPPER — capitalize first alphabetic char
+      if (isUpper) {
+        expansion = expansion.toUpperCase();
+      } else if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
         const idx = expansion.search(/[a-zа-яё]/i);
         if (idx >= 0) {
           expansion = expansion.slice(0, idx) + expansion[idx].toUpperCase() + expansion.slice(idx + 1);
@@ -838,12 +870,15 @@ const TextExpander = (() => {
       }
     }
 
-    // Вставка через setRangeText
-    ta.setRangeText(expansion + ' ', startPos, endPos, 'end');
+    // Smart space: add space only if expansion doesn't end with space AND next char is not punctuation/space
+    const nextChar = ta.value[endPos] || '';
+    const needsSpace = expansion && !/\s$/.test(expansion) && nextChar && !/[\s.,;:!?)]/.test(nextChar);
+
+    ta.setRangeText(expansion + (needsSpace ? ' ' : ''), startPos, endPos, 'end');
     ta.dispatchEvent(new Event('input', { bubbles: true }));
 
-    // Snapshot AFTER change
-    if (_activeBlockId && typeof State !== 'undefined') {
+    // Snapshot AFTER mutation
+    if (expectedBlockId && typeof State !== 'undefined') {
       State.snapshot();
     }
 
@@ -856,7 +891,6 @@ const TextExpander = (() => {
   // ========================
 
   function _setupLongPress(btn, ta, blockId) {
-    // Prevent duplicate listeners
     if (btn.dataset.teLongPressAttached === '1') return;
     btn.dataset.teLongPressAttached = '1';
 
@@ -865,10 +899,10 @@ const TextExpander = (() => {
     let startX = 0, startY = 0;
 
     btn.addEventListener('pointerdown', e => {
+      if (e.button !== undefined && e.button !== 0) return;
       longFired = false;
       startX = e.clientX;
       startY = e.clientY;
-
       timer = setTimeout(() => {
         longFired = true;
         openPanel();
@@ -885,15 +919,9 @@ const TextExpander = (() => {
       }
     });
 
-    btn.addEventListener('pointerup', () => {
-      clearTimeout(timer);
-      timer = null;
-    });
-
-    btn.addEventListener('pointercancel', () => {
-      clearTimeout(timer);
-      timer = null;
-    });
+    btn.addEventListener('pointerup', () => { clearTimeout(timer); timer = null; });
+    btn.addEventListener('pointercancel', () => { clearTimeout(timer); timer = null; });
+    btn.addEventListener('pointerleave', () => { clearTimeout(timer); timer = null; });
 
     btn.addEventListener('click', e => {
       if (longFired) {
@@ -902,12 +930,9 @@ const TextExpander = (() => {
         longFired = false;
         return;
       }
-      // Short click — create from selection
       if (ta && ta.selectionStart !== ta.selectionEnd) {
         const selected = ta.value.slice(ta.selectionStart, ta.selectionEnd);
-        if (selected.length > 0) {
-          createFromSelection(selected, ta, blockId);
-        }
+        if (selected.length > 0) createFromSelection(selected, ta, blockId);
       }
     });
   }
@@ -917,24 +942,20 @@ const TextExpander = (() => {
   // ========================
 
   function createFromSelection(selectedText, ta, blockId) {
+    if (typeof selectedText !== 'string' || !selectedText.trim()) return;
+    if (selectedText.length > MAX_SELECTION_LEN) {
+      if (typeof Toast !== 'undefined') Toast.show('TextExpander: выделенный текст слишком большой', 'error');
+      return;
+    }
     const trigger = generateSmartShortName(selectedText);
     const category = _settings.categories[0] || 'General';
-
     const id = _generateId();
     _shortcuts.set(id, {
-      id,
-      trigger,
-      category,
-      text: selectedText,
-      enabled: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      id, trigger, category, text: selectedText,
+      enabled: true, createdAt: Date.now(), updatedAt: Date.now()
     });
-    _save();
-
-    if (typeof Toast !== 'undefined') {
-      Toast.show('TextExpander: создано "' + trigger + '"', 'success');
-    }
+    if (!_save()) { _shortcuts.delete(id); return; }
+    if (typeof Toast !== 'undefined') Toast.show('TextExpander: создано "' + trigger + '"', 'success');
   }
 
   // ========================
@@ -942,19 +963,12 @@ const TextExpander = (() => {
   // ========================
 
   function handleInput(ta, blockId) {
+    if (_dropdownOwnsInputListener) return;
     if (!_dropdownEl || _activeTa !== ta) return;
-
     const pos = ta.selectionStart;
     if (pos === undefined) return;
-
     const textAfter = ta.value.slice(_dropdownStart, pos);
-
-    // Если trigger символ удалён — закрыть
-    if (textAfter.length === 0 && _dropdownStart >= pos) {
-      _hideDropdown();
-      return;
-    }
-
+    if (textAfter.length === 0 && _dropdownStart >= pos) { _hideDropdown(); return; }
     _dropdownQuery = textAfter;
     _dropdownFocusedIdx = 0;
     _renderDropdownItems();
@@ -968,7 +982,6 @@ const TextExpander = (() => {
     handle.addEventListener('mousedown', e => {
       if (e.target.closest('button')) return;
       e.preventDefault();
-
       const rect = panel.getBoundingClientRect();
       const startX = e.clientX, startY = e.clientY;
       const startL = rect.left, startT = rect.top;
@@ -977,14 +990,10 @@ const TextExpander = (() => {
       panel.style.top = startT + 'px';
       document.body.style.userSelect = 'none';
       _panelDragging = true;
-
       const onMove = mv => {
-        const maxLeft = Math.max(0, window.innerWidth - panel.offsetWidth);
-        const maxTop = Math.max(0, window.innerHeight - panel.offsetHeight);
-        panel.style.left = Math.max(0, Math.min(maxLeft, startL + (mv.clientX - startX))) + 'px';
-        panel.style.top = Math.max(0, Math.min(maxTop, startT + (mv.clientY - startY))) + 'px';
+        panel.style.left = Math.max(0, Math.min(Math.max(0, window.innerWidth - panel.offsetWidth), startL + (mv.clientX - startX))) + 'px';
+        panel.style.top = Math.max(0, Math.min(Math.max(0, window.innerHeight - panel.offsetHeight), startT + (mv.clientY - startY))) + 'px';
       };
-
       const onUp = () => {
         document.body.style.userSelect = '';
         _panelDragging = false;
@@ -993,7 +1002,6 @@ const TextExpander = (() => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
-
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
     });
@@ -1007,7 +1015,6 @@ const TextExpander = (() => {
     const handle = document.createElement('div');
     handle.className = 'te-resize-handle';
     handle.innerHTML = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M10 2L2 10M10 6L6 10"/></svg>';
-
     handle.addEventListener('mousedown', e => {
       e.preventDefault();
       e.stopPropagation();
@@ -1015,15 +1022,11 @@ const TextExpander = (() => {
       const startW = panel.offsetWidth, startH = panel.offsetHeight;
       document.body.style.userSelect = 'none';
       _panelResizing = true;
-
       const onMove = mv => {
         const rect = panel.getBoundingClientRect();
-        const maxW = Math.max(PANEL_MIN_W, window.innerWidth - rect.left);
-        const maxH = Math.max(PANEL_MIN_H, window.innerHeight - rect.top);
-        panel.style.width = Math.max(PANEL_MIN_W, Math.min(maxW, startW + (mv.clientX - startX))) + 'px';
-        panel.style.height = Math.max(PANEL_MIN_H, Math.min(maxH, startH + (mv.clientY - startY))) + 'px';
+        panel.style.width = Math.max(PANEL_MIN_W, Math.min(Math.max(PANEL_MIN_W, window.innerWidth - rect.left), startW + (mv.clientX - startX))) + 'px';
+        panel.style.height = Math.max(PANEL_MIN_H, Math.min(Math.max(PANEL_MIN_H, window.innerHeight - rect.top), startH + (mv.clientY - startY))) + 'px';
       };
-
       const onUp = () => {
         document.body.style.userSelect = '';
         _panelResizing = false;
@@ -1032,11 +1035,9 @@ const TextExpander = (() => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
-
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp, { once: true });
     });
-
     panel.appendChild(handle);
   }
 
@@ -1047,32 +1048,24 @@ const TextExpander = (() => {
   function _handleDropdownKeydown(e) {
     if (!_dropdownEl) return;
     if (!_dropdownItems.length) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        _hideDropdown();
-      }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _hideDropdown(); }
       return;
     }
-
+    const visibleCount = Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS);
     if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      e.stopPropagation();
-      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx + 1, _dropdownItems.length - 1);
+      e.preventDefault(); e.stopPropagation();
+      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx + 1, visibleCount - 1);
       _updateDropdownFocus();
     } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       _dropdownFocusedIdx = Math.max(_dropdownFocusedIdx - 1, 0);
       _updateDropdownFocus();
     } else if (e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       const item = _dropdownItems[_dropdownFocusedIdx];
       if (item) _insertExpansion(item);
     } else if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       _hideDropdown();
     }
   }
@@ -1113,6 +1106,19 @@ const TextExpander = (() => {
           _shortcuts.set(normalized.id, normalized);
         }
       }
+      // Deduplicate by trigger + category (keep newer)
+      const seen = new Map();
+      for (const [id, s] of _shortcuts) {
+        const key = s.category + '\u0000' + s.trigger;
+        const prev = seen.get(key);
+        if (!prev) { seen.set(key, { id, updatedAt: s.updatedAt || 0 }); continue; }
+        if ((s.updatedAt || 0) > prev.updatedAt) {
+          _shortcuts.delete(prev.id);
+          seen.set(key, { id, updatedAt: s.updatedAt || 0 });
+        } else {
+          _shortcuts.delete(id);
+        }
+      }
     }
     if (data.settings && typeof data.settings === 'object') {
       Object.assign(_settings, _normalizeSettings(data.settings));
@@ -1130,29 +1136,29 @@ const TextExpander = (() => {
 
     _load();
 
-    // Глобальный keydown для trigger
     _triggerHandler = _handleTrigger;
     document.addEventListener('keydown', _triggerHandler, true);
 
-    // Глобальный keydown для dropdown навигации
     _dropdownKeyHandler = _handleDropdownKeydown;
     document.addEventListener('keydown', _dropdownKeyHandler, true);
 
-    // Закрытие dropdown по клику вне
     _outsideClickHandler = e => {
-      if (_dropdownEl && !_dropdownEl.contains(e.target)) {
+      if (_dropdownEl && !_dropdownEl.contains(e.target) && e.target !== _activeTa) {
         _hideDropdown();
       }
     };
     document.addEventListener('mousedown', _outsideClickHandler);
 
-    // Закрытие panel по Escape
     _escapePanelHandler = e => {
-      if (e.key === 'Escape' && _panelEl) {
-        closePanel();
-      }
+      if (e.key === 'Escape' && _panelEl) closePanel();
     };
     document.addEventListener('keydown', _escapePanelHandler);
+
+    _windowBlurHandler = () => _hideDropdown();
+    window.addEventListener('blur', _windowBlurHandler);
+
+    _visibilityChangeHandler = () => { if (document.hidden) _hideDropdown(); };
+    document.addEventListener('visibilitychange', _visibilityChangeHandler);
   }
 
   function destroy() {
@@ -1162,26 +1168,24 @@ const TextExpander = (() => {
     if (_dropdownKeyHandler) document.removeEventListener('keydown', _dropdownKeyHandler, true);
     if (_outsideClickHandler) document.removeEventListener('mousedown', _outsideClickHandler);
     if (_escapePanelHandler) document.removeEventListener('keydown', _escapePanelHandler);
+    if (_windowBlurHandler) window.removeEventListener('blur', _windowBlurHandler);
+    if (_visibilityChangeHandler) document.removeEventListener('visibilitychange', _visibilityChangeHandler);
     _triggerHandler = null;
     _dropdownKeyHandler = null;
     _outsideClickHandler = null;
     _escapePanelHandler = null;
+    _windowBlurHandler = null;
+    _visibilityChangeHandler = null;
     _hideDropdown();
     closePanel();
+    if (_caretMirrorEl) { _caretMirrorEl.remove(); _caretMirrorEl = null; }
   }
 
   return {
-    init,
-    destroy,
-    openPanel,
-    closePanel,
-    createFromSelection,
-    handleInput,
-    generateSmartShortName,
-    expandDynamicTokens,
-    serialize,
-    load,
-    exists,
+    init, destroy, openPanel, closePanel,
+    createFromSelection, handleInput,
+    generateSmartShortName, expandDynamicTokens,
+    serialize, load, exists,
     _setupLongPress
   };
 })();
