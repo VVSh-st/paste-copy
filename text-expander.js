@@ -68,6 +68,8 @@ const TextExpander = (() => {
   let _caretMirrorEl = null;
   let _caretMirrorSource = null;
   let _caretMirrorSignature = '';
+  let _caretMirrorBefore = null;
+  let _caretMirrorMarker = null;
   let _editingId = null; // ID shortcut в режиме редактирования
   let _formShortcutInput = null;
   let _formTextarea = null;
@@ -167,8 +169,8 @@ const TextExpander = (() => {
       if (!raw) return;
       const data = JSON.parse(raw);
       if (!data || typeof data !== 'object') return;
+      _shortcuts.clear();
       if (Array.isArray(data.shortcuts)) {
-        _shortcuts.clear();
         for (const s of data.shortcuts) {
           const normalized = _normalizeShortcut(s);
           if (normalized) _shortcuts.set(normalized.id, normalized);
@@ -285,13 +287,17 @@ const TextExpander = (() => {
     ta.focus();
   }
 
+  function _shortcutKey(s) {
+    return String(s.category || 'General') + '\u0000' + String(s.trigger || '');
+  }
+
   function _addShortcut(trigger, text, category) {
     trigger = _normalizeTrigger(trigger);
     text = String(text || '').trim();
     category = category || 'General';
     if (!trigger || !text) return { ok: false, reason: 'empty' };
     for (const s of _shortcuts.values()) {
-      if (s.trigger === trigger && s.category === category) return { ok: false, reason: 'duplicate' };
+      if (_shortcutKey(s) === _shortcutKey({ trigger, category })) return { ok: false, reason: 'duplicate' };
     }
     const id = _generateId();
     const item = { id, trigger, category, text, enabled: true, createdAt: Date.now(), updatedAt: Date.now() };
@@ -348,6 +354,14 @@ const TextExpander = (() => {
     _formCatSelect = null;
     _formAddBtn = null;
     _formBody = null;
+  }
+
+  function _clearPanelForm() {
+    _editingId = null;
+    if (_formShortcutInput) _formShortcutInput.value = '\u0401';
+    if (_formTextarea) _formTextarea.value = '';
+    if (_formCatSelect) _formCatSelect.value = _settings.categories[0] || 'General';
+    if (_formAddBtn) _formAddBtn.textContent = 'Add Key';
   }
 
   function _buildPanel() {
@@ -430,19 +444,11 @@ const TextExpander = (() => {
     addBtn.className = 'te-add-btn';
     addBtn.textContent = 'Add Key';
 
-    function _clearForm() {
-      _editingId = null;
-      if (_formShortcutInput) _formShortcutInput.value = '\u0401';
-      if (_formTextarea) _formTextarea.value = '';
-      if (_formCatSelect) _formCatSelect.value = _settings.categories[0] || 'General';
-      if (_formAddBtn) _formAddBtn.textContent = 'Add Key';
-    }
-
     addBtn.onclick = () => {
       if (_editingId) {
         // Режим редактирования — обновить существующий shortcut
         const existing = _shortcuts.get(_editingId);
-        if (!existing) { _clearForm(); return; }
+        if (!existing) { _clearPanelForm(); return; }
         const newTrigger = _normalizeTrigger(shortcutInput.value);
         const newText = textarea.value.trim();
         const newCat = catSelect.value;
@@ -452,7 +458,7 @@ const TextExpander = (() => {
         }
         // Проверка коллизий (кроме текущего)
         for (const s of _shortcuts.values()) {
-          if (s.id !== _editingId && s.trigger === newTrigger && s.category === newCat) {
+          if (s.id !== _editingId && _shortcutKey(s) === _shortcutKey({ trigger: newTrigger, category: newCat })) {
             if (typeof Toast !== 'undefined') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
             return;
           }
@@ -462,7 +468,7 @@ const TextExpander = (() => {
         existing.category = newCat;
         existing.updatedAt = Date.now();
         if (!_save()) return;
-        _clearForm();
+        _clearPanelForm();
         _refreshPanelTable(body);
         if (typeof Toast !== 'undefined') Toast.show('TextExpander: обновлено "' + newTrigger + '"', 'success');
         return;
@@ -478,7 +484,7 @@ const TextExpander = (() => {
         return;
       }
       if (!result.ok) return;
-      _clearForm();
+      _clearPanelForm();
       _refreshPanelTable(body);
       if (typeof Toast !== 'undefined') Toast.show('TextExpander: добавлено "' + result.item.trigger + '"', 'success');
     };
@@ -527,6 +533,10 @@ const TextExpander = (() => {
     autoValue.className = 'te-auto-value';
     autoValue.textContent = String(_settings.autoLength);
     autoSlider.oninput = () => {
+      _settings.autoLength = parseInt(autoSlider.value, 10);
+      autoValue.textContent = autoSlider.value;
+    };
+    autoSlider.onchange = () => {
       _settings.autoLength = parseInt(autoSlider.value, 10);
       autoValue.textContent = autoSlider.value;
       _save();
@@ -622,7 +632,7 @@ const TextExpander = (() => {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = s.enabled;
-      checkbox.onchange = () => { s.enabled = checkbox.checked; s.updatedAt = Date.now(); _save(); };
+      checkbox.onchange = () => { s.enabled = checkbox.checked; _save(); };
       const slider = document.createElement('span');
       slider.className = 'te-toggle-slider';
       toggle.appendChild(checkbox);
@@ -657,6 +667,7 @@ const TextExpander = (() => {
       del.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
       del.onclick = () => {
         _shortcuts.delete(s.id);
+        if (_editingId === s.id) _clearPanelForm();
         _save();
         _refreshPanelTable(body);
         if (typeof Toast !== 'undefined') Toast.show('TextExpander: удалено "' + s.trigger + '"', 'success');
@@ -696,7 +707,7 @@ const TextExpander = (() => {
     return ch === _getTriggerChar();
   }
 
-  function _handleTriggerInTextarea(ta) {
+  function _handleTriggerInTextarea(ta, blockId) {
     const pos = ta.selectionStart;
     if (pos === undefined || pos === null) return;
 
@@ -711,7 +722,7 @@ const TextExpander = (() => {
 
       if (!_dropdownEl) {
         _activeTa = ta;
-        _activeBlockId = ta.closest('.block')?.dataset?.id || null;
+        _activeBlockId = blockId || ta.closest('.block')?.dataset?.id || null;
         _dropdownStart = triggerStart;
         _dropdownFocusedIdx = 0;
         _dropdownQuery = query;
@@ -775,7 +786,12 @@ const TextExpander = (() => {
 
     // Reposition on selection change
     const onSelectionChange = () => {
-      if (!_dropdownEl || document.activeElement !== ta) return;
+      if (session !== _dropdownSession || _dropdownEl !== dd) return;
+      if (!_dropdownEl) return;
+      if (document.activeElement !== ta) {
+        _hideDropdown();
+        return;
+      }
       const curPos = ta.selectionStart;
       if (curPos < _dropdownStart) { _hideDropdown(); return; }
 
@@ -850,20 +866,25 @@ const TextExpander = (() => {
     return [...exact, ...starts, ...includes].slice(0, MAX_DROPDOWN_ITEMS);
   }
 
+  function _refreshDropdownModel() {
+    _dropdownItems = _filterDropdownItems(_dropdownQuery);
+    if (_dropdownItems.length === 0) {
+      _dropdownFocusedIdx = 0;
+      return false;
+    }
+    _dropdownFocusedIdx = Math.min(
+      _dropdownFocusedIdx,
+      Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS) - 1
+    );
+    return true;
+  }
+
   function _renderDropdownItems() {
     if (!_dropdownEl) return;
     const dd = _dropdownEl;
     dd.innerHTML = '';
 
-    _dropdownItems = _filterDropdownItems(_dropdownQuery);
-
-    if (_dropdownItems.length === 0) {
-      _dropdownFocusedIdx = 0;
-    } else {
-      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx, Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS) - 1);
-    }
-
-    if (!_dropdownItems.length) {
+    if (!_refreshDropdownModel()) {
       _hideDropdown();
       return;
     }
@@ -918,7 +939,13 @@ const TextExpander = (() => {
       m.style.wordWrap = 'break-word';
       document.body.appendChild(m);
     }
-    m.innerHTML = '';
+    if (!_caretMirrorBefore || !_caretMirrorMarker) {
+      m.replaceChildren();
+      _caretMirrorBefore = document.createElement('span');
+      _caretMirrorMarker = document.createElement('span');
+      m.appendChild(_caretMirrorBefore);
+      m.appendChild(_caretMirrorMarker);
+    }
 
     const syncProps = [
       'borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth',
@@ -937,16 +964,12 @@ const TextExpander = (() => {
     m.style.boxSizing = 'content-box';
     m.style.width = (ta.clientWidth - pl - pr) + 'px';
 
-    const before = document.createElement('span');
-    before.textContent = ta.value.substring(0, ta.selectionStart);
-    const marker = document.createElement('span');
-    marker.textContent = ta.value.substring(ta.selectionStart, ta.selectionStart + 1) || '.';
-    m.appendChild(before);
-    m.appendChild(marker);
+    _caretMirrorBefore.textContent = ta.value.substring(0, ta.selectionStart);
+    _caretMirrorMarker.textContent = ta.value.substring(ta.selectionStart, ta.selectionStart + 1) || '.';
 
     const taR = ta.getBoundingClientRect();
     const mR = m.getBoundingClientRect();
-    const mkR = marker.getBoundingClientRect();
+    const mkR = _caretMirrorMarker.getBoundingClientRect();
     const ox = taR.left - mR.left - ta.scrollLeft;
     const oy = taR.top - mR.top - ta.scrollTop;
     let cx = mkR.left + ox;
@@ -977,40 +1000,42 @@ const TextExpander = (() => {
     const startPos = _dropdownStart;
     const endPos = ta.selectionStart;
     const expectedQuery = _dropdownQuery;
+    const blockId = _activeBlockId;
 
     // Синхронная вставка для быстрых токенов
     let expansion = expandDynamicTokens(item.text);
 
     // Для clipboard — async fallback
     if (expansion.includes('{{clipboard}}')) {
+      if (_dropdownEl) _dropdownEl.classList.add('te-dd-pending');
       expandDynamicTokensAsync(item.text).then(result => {
         if (session !== _dropdownSession) return;
-        _doInsert(ta, result, startPos, endPos, expectedQuery);
+        _doInsert(ta, result, startPos, endPos, expectedQuery, blockId);
       }).catch(() => {
         if (session !== _dropdownSession) return;
-        _doInsert(ta, expansion.replace(/\{\{clipboard\}\}/g, ''), startPos, endPos, expectedQuery);
+        _doInsert(ta, expansion.replace(/\{\{clipboard\}\}/g, ''), startPos, endPos, expectedQuery, blockId);
       });
       return;
     }
 
-    _doInsert(ta, expansion, startPos, endPos, expectedQuery);
+    _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId);
   }
 
-  function _doInsert(ta, expansion, startPos, endPos, expectedQuery) {
-    if (!_dropdownEl || _activeTa !== ta) return;
+  function _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId) {
+    if (!ta || !ta.isConnected) return;
     if (ta.selectionStart !== endPos) return;
     const actualText = ta.value.slice(startPos, endPos);
     const actualTrimmed = actualText.trimEnd();
     if (!actualTrimmed || !_isTriggerChar(actualTrimmed[0])) return;
     if (actualTrimmed.slice(1).toLowerCase() !== String(expectedQuery || '').toLowerCase()) return;
 
-    if (_activeBlockId && typeof State !== 'undefined') State.blockSnapshot(_activeBlockId);
+    if (blockId && typeof State !== 'undefined') State.blockSnapshot(blockId);
 
     // Case handling
-    if (_dropdownQuery) {
-      const letters = _dropdownQuery.match(/[a-zа-яё]/gi) || [];
+    if (expectedQuery) {
+      const letters = String(expectedQuery).match(/[a-zа-яё]/gi) || [];
       const isUpper = letters.length > 0 && letters.every(ch => ch === ch.toUpperCase());
-      const q0 = _dropdownQuery[0];
+      const q0 = String(expectedQuery)[0];
       if (isUpper) {
         expansion = expansion.toUpperCase();
       } else if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
@@ -1020,10 +1045,12 @@ const TextExpander = (() => {
     }
 
     // Replace trigger+query with expansion
-    ta.setRangeText(expansion + ' ', startPos, endPos, 'end');
+    const nextChar = ta.value.charAt(endPos);
+    const needsSpace = !nextChar || !/[\s.,;:!?)]/.test(nextChar);
+    ta.setRangeText(expansion + (needsSpace ? ' ' : ''), startPos, endPos, 'end');
     ta.dispatchEvent(new Event('input', { bubbles: true }));
 
-    if (_activeBlockId && typeof State !== 'undefined') State.snapshot();
+    if (blockId && typeof State !== 'undefined') State.snapshot();
 
     _hideDropdown();
     ta.focus();
@@ -1034,8 +1061,12 @@ const TextExpander = (() => {
   // ========================
 
   function _setupLongPress(btn, ta, blockId) {
-    if (btn.dataset.teLongPressAttached === '1') return;
+    if (btn.dataset.teLongPressAttached === '1') {
+      btn._teLongPressCtx = { ta, blockId };
+      return;
+    }
     btn.dataset.teLongPressAttached = '1';
+    btn._teLongPressCtx = { ta, blockId };
 
     let timer = null;
     let longFired = false;
@@ -1068,6 +1099,7 @@ const TextExpander = (() => {
     });
 
     btn.addEventListener('pointerleave', e => {
+      if (btn.hasPointerCapture?.(e.pointerId)) return;
       if (!timer) return;
       clearTimeout(timer);
       timer = null;
@@ -1076,9 +1108,12 @@ const TextExpander = (() => {
 
     btn.addEventListener('click', e => {
       if (longFired) { e.preventDefault(); e.stopPropagation(); longFired = false; return; }
-      if (ta && ta.selectionStart !== ta.selectionEnd) {
-        const selected = ta.value.slice(ta.selectionStart, ta.selectionEnd);
-        if (selected.length > 0) createFromSelection(selected, ta, blockId);
+      const ctx = btn._teLongPressCtx || {};
+      const clickTa = ctx.ta;
+      const clickBlockId = ctx.blockId;
+      if (clickTa && clickTa.selectionStart !== clickTa.selectionEnd) {
+        const selected = clickTa.value.slice(clickTa.selectionStart, clickTa.selectionEnd);
+        if (selected.length > 0) createFromSelection(selected, clickTa, clickBlockId);
       }
     });
   }
@@ -1106,7 +1141,7 @@ const TextExpander = (() => {
   // ========================
 
   function handleInput(ta, blockId) {
-    _handleTriggerInTextarea(ta);
+    _handleTriggerInTextarea(ta, blockId);
   }
 
   // ========================
@@ -1196,6 +1231,10 @@ const TextExpander = (() => {
 
   function _handleDropdownKeydown(e) {
     if (!_dropdownEl) return;
+    if (_activeTa && !_activeTa.isConnected) {
+      _hideDropdown();
+      return;
+    }
 
     const ae = document.activeElement;
     const isDropdownContext = ae === _activeTa || (_dropdownEl && _dropdownEl.contains(ae));
@@ -1240,8 +1279,15 @@ const TextExpander = (() => {
 
   function serialize() {
     return {
-      shortcuts: [..._shortcuts.values()],
-      settings: JSON.parse(JSON.stringify(_settings))
+      shortcuts: [..._shortcuts.values()].map(s => _normalizeShortcut(s)).filter(Boolean),
+      settings: Object.assign({
+        triggerCode: TRIGGER_CODE,
+        autoLength: AUTO_LENGTH_DEFAULT,
+        email: '',
+        categories: [...DEFAULT_CATEGORIES],
+        panelPosition: null,
+        panelSize: null
+      }, _normalizeSettings(_settings))
     };
   }
 
@@ -1261,7 +1307,7 @@ const TextExpander = (() => {
       }
       const seen = new Map();
       for (const [id, s] of _shortcuts) {
-        const key = s.category + '\u0000' + s.trigger;
+        const key = _shortcutKey(s);
         const prev = seen.get(key);
         if (!prev) { seen.set(key, { id, updatedAt: s.updatedAt || 0 }); continue; }
         if ((s.updatedAt || 0) > prev.updatedAt) { _shortcuts.delete(prev.id); seen.set(key, { id, updatedAt: s.updatedAt || 0 }); }
@@ -1292,6 +1338,7 @@ const TextExpander = (() => {
     document.addEventListener('keydown', _dropdownKeyHandler, true);
 
     _outsideClickHandler = e => {
+      if (_activeTa && !_activeTa.isConnected) { _hideDropdown(); return; }
       if (_dropdownEl && !_dropdownEl.contains(e.target) && e.target !== _activeTa) _hideDropdown();
     };
     document.addEventListener('mousedown', _outsideClickHandler);
@@ -1324,6 +1371,8 @@ const TextExpander = (() => {
     if (_caretMirrorEl) { _caretMirrorEl.remove(); _caretMirrorEl = null; }
     _caretMirrorSource = null;
     _caretMirrorSignature = '';
+    _caretMirrorBefore = null;
+    _caretMirrorMarker = null;
   }
 
   return {
