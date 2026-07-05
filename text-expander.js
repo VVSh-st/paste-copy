@@ -653,7 +653,6 @@ const TextExpander = (() => {
       const triggerStart = pos - m[0].length + m[1].length;
 
       if (!_dropdownEl) {
-        // Show dropdown
         _activeTa = ta;
         _activeBlockId = ta.closest('.block')?.dataset?.id || null;
         _dropdownStart = triggerStart;
@@ -661,7 +660,6 @@ const TextExpander = (() => {
         _dropdownQuery = query;
         _showDropdown(ta);
       } else {
-        // Update existing dropdown
         _dropdownQuery = query;
         _dropdownFocusedIdx = 0;
         _renderDropdownItems();
@@ -671,8 +669,26 @@ const TextExpander = (() => {
       return;
     }
 
-    // No trigger pattern — close dropdown
-    if (_dropdownEl) _hideDropdown();
+    // No regex match — check if space was typed after exact match
+    if (_dropdownEl && _dropdownQuery && _activeTa === ta) {
+      // Try to find trigger+query in text (including with trailing space)
+      const reWithSpace = new RegExp(triggerChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + _dropdownQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'i');
+      const mSpace = before.match(reWithSpace);
+      if (mSpace) {
+        // Find the matching shortcut and insert
+        for (const s of _shortcuts.values()) {
+          if (s.enabled && s.trigger.toLowerCase() === _dropdownQuery) {
+            _dropdownStart = pos - mSpace[0].length;
+            _insertExpansion(s);
+            return;
+          }
+        }
+      }
+      _hideDropdown();
+      return;
+    }
+
+    // No dropdown open — do nothing (trigger char is just regular text)
   }
 
   // ========================
