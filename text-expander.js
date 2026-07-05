@@ -69,6 +69,7 @@ const TextExpander = (() => {
   let _caretMirrorEl = null;
   let _caretMirrorSource = null;
   let _caretMirrorSignature = '';
+  let _editingId = null; // ID shortcut в режиме редактирования
 
   // Stored listener refs for cleanup
   let _triggerHandler = null;
@@ -360,15 +361,12 @@ const TextExpander = (() => {
 
     const shortcutRow = document.createElement('div');
     shortcutRow.className = 'te-row';
-    const shortcutLabel = document.createElement('span');
-    shortcutLabel.className = 'te-label';
-    shortcutLabel.textContent = 'Shortcut';
     const shortcutInput = document.createElement('input');
     shortcutInput.type = 'text';
-    shortcutInput.className = 'te-input';
-    shortcutInput.placeholder = '/shortcut';
+    shortcutInput.className = 'te-input te-input-wide';
+    shortcutInput.placeholder = 'shortcut';
     shortcutInput.maxLength = MAX_SHORTCUT_LEN;
-    shortcutRow.appendChild(shortcutLabel);
+    shortcutInput.value = '\u0419'; // Ё по умолчанию
     shortcutRow.appendChild(shortcutInput);
 
     const catRow = document.createElement('div');
@@ -391,7 +389,45 @@ const TextExpander = (() => {
     addBtn.type = 'button';
     addBtn.className = 'te-add-btn';
     addBtn.textContent = 'Add Key';
+
+    function _clearForm() {
+      _editingId = null;
+      shortcutInput.value = '\u0419';
+      textarea.value = '';
+      catSelect.value = _settings.categories[0] || 'General';
+      addBtn.textContent = 'Add Key';
+    }
+
     addBtn.onclick = () => {
+      if (_editingId) {
+        // Режим редактирования — обновить существующий shortcut
+        const existing = _shortcuts.get(_editingId);
+        if (!existing) { _clearForm(); return; }
+        const newTrigger = _normalizeTrigger(shortcutInput.value);
+        const newText = textarea.value.trim();
+        const newCat = catSelect.value;
+        if (!newTrigger || !newText) {
+          if (typeof Toast !== 'undefined') Toast.show('TextExpander: введите shortcut и текст', 'error');
+          return;
+        }
+        // Проверка коллизий (кроме текущего)
+        for (const s of _shortcuts.values()) {
+          if (s.id !== _editingId && s.trigger === newTrigger && s.category === newCat) {
+            if (typeof Toast !== 'undefined') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
+            return;
+          }
+        }
+        existing.trigger = newTrigger;
+        existing.text = newText;
+        existing.category = newCat;
+        existing.updatedAt = Date.now();
+        if (!_save()) return;
+        _clearForm();
+        _refreshPanelTable(body);
+        if (typeof Toast !== 'undefined') Toast.show('TextExpander: обновлено "' + newTrigger + '"', 'success');
+        return;
+      }
+      // Режим добавления
       const result = _addShortcut(shortcutInput.value, textarea.value, catSelect.value);
       if (!result.ok && result.reason === 'empty') {
         if (typeof Toast !== 'undefined') Toast.show('TextExpander: введите shortcut и текст', 'error');
@@ -402,8 +438,7 @@ const TextExpander = (() => {
         return;
       }
       if (!result.ok) return;
-      shortcutInput.value = '';
-      textarea.value = '';
+      _clearForm();
       _refreshPanelTable(body);
       if (typeof Toast !== 'undefined') Toast.show('TextExpander: добавлено "' + result.item.trigger + '"', 'success');
     };
@@ -557,6 +592,16 @@ const TextExpander = (() => {
       const pt = (s.text || '').length > 25 ? s.text.slice(0, 25) + '...' : (s.text || '');
       preview.textContent = pt;
       preview.title = s.text || '';
+      preview.style.cursor = 'pointer';
+      preview.onclick = () => {
+        _editingId = s.id;
+        shortcutInput.value = s.trigger;
+        textarea.value = s.text || '';
+        catSelect.value = s.category;
+        addBtn.textContent = 'Save';
+        // Scroll to top of body
+        body.scrollTop = 0;
+      };
 
       const del = document.createElement('button');
       del.type = 'button';
@@ -634,12 +679,28 @@ const TextExpander = (() => {
 
       const typed = ta.value.slice(_dropdownStart, curPos);
 
-      // Close on whitespace — always, including first char after trigger
-      if (/\s/.test(typed)) { _hideDropdown(); return; }
+      // Close on whitespace
+      if (/\s/.test(typed)) {
+        // If exact match exists — insert it (trigger + query + space)
+        const q = typed.replace(/\s+$/, '').toLowerCase();
+        if (q) {
+          for (const s of _shortcuts.values()) {
+            if (s.enabled && s.trigger.toLowerCase() === q) {
+              _dropdownQuery = q;
+              _insertExpansion(s);
+              return;
+            }
+          }
+        }
+        _hideDropdown();
+        return;
+      }
 
       _dropdownQuery = typed;
       _dropdownFocusedIdx = 0;
       _renderDropdownItems();
+      // If no matches — close silently
+      if (!_dropdownItems.length && typed.length > 0) { _hideDropdown(); return; }
       _positionDropdownAtCaret(ta, dd);
     };
 
@@ -723,10 +784,7 @@ const TextExpander = (() => {
     }
 
     if (!_dropdownItems.length) {
-      const empty = document.createElement('div');
-      empty.className = 'te-dd-empty';
-      empty.textContent = 'Нет совпадений';
-      dd.appendChild(empty);
+      _hideDropdown();
       return;
     }
 
@@ -955,6 +1013,8 @@ const TextExpander = (() => {
     _dropdownQuery = textAfter;
     _dropdownFocusedIdx = 0;
     _renderDropdownItems();
+    // If no matches — close silently
+    if (!_dropdownItems.length && textAfter.length > 0) { _hideDropdown(); return; }
     _positionDropdownAtCaret(ta, _dropdownEl);
   }
 
