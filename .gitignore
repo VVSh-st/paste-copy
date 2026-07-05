@@ -3,3 +3,5 @@ node_modules/
 .headroom/
 python/
 python-embed.zip
+Backup/*.zip
+*.txt

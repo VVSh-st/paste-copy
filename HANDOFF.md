@@ -1,5 +1,13 @@
 # HANDOFF
 
+## Current agent setup (2026-07-05)
+
+- Read `AGENTS.md` first: it is the compact project workflow for Codex/agents.
+- Work in Russian with ponytail bias: smallest useful fix, no speculative architecture.
+- Before edits: read exact files, check `git status --short`, do not touch unrelated dirty files.
+- After each task: run the cheapest reliable checks and make a git backup commit with only touched code/config files.
+- Ignore audit `.txt` files and `Backup/*.zip` for commits; they are now covered by `.gitignore`.
+
 ## Objective
 
 Проект paste\copy — веб-приложение для работы с текстовыми промптами.
