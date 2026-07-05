@@ -168,6 +168,7 @@ const Ember = (() => {
   let testLabel = null;
   let allowTestMode = false;
   let testModeTimer = null;
+  let allowTestModeTimer = null;
 
   // пасхалка
   const egg = {
@@ -234,6 +235,13 @@ const Ember = (() => {
     if (map.get(name) === value) return;
     map.set(name, value);
     el.style.setProperty(name, value);
+  }
+
+  function removeVar(el, name) {
+    if (!el) return;
+    const map = styleCache.get(el);
+    if (map) map.delete(name);
+    el.style.removeProperty(name);
   }
 
   function computeBreath() {
@@ -364,6 +372,7 @@ const Ember = (() => {
     if (!normalized) return;
     if (!state) {
       state = normalized;
+      persistMergedState();
       return;
     }
     const currentUpdatedAt = state.updatedAt || 0;
@@ -382,13 +391,19 @@ const Ember = (() => {
     state = {
       lastEditTime: Math.max(currentEdit, nextEdit),
       lastInitTime: Math.max(state.lastInitTime || 0, normalized.lastInitTime || 0),
-      updatedAt: nextUpdatedAt,
+      updatedAt: Math.max(currentUpdatedAt, nextUpdatedAt),
       sourceTabId: normalized.sourceTabId,
     };
+    persistMergedState();
   }
 
   function saveState() {
     if (state) state.sourceTabId = currentTabId;
+    try { localStorage.setItem(getStorageKey(currentTabId), JSON.stringify(state)); } catch {}
+  }
+
+  function persistMergedState() {
+    if (!state) return;
     try { localStorage.setItem(getStorageKey(currentTabId), JSON.stringify(state)); } catch {}
   }
 
@@ -1358,6 +1373,7 @@ const Ember = (() => {
   function releaseEl(el) {
     const i = el && el.__poolIndex;
     if (Number.isInteger(i) && particlePool[i] && particlePool[i].el === el) {
+      if (particlePool[i].free) return;
       particlePool[i].free = true;
       freeParticleIndices.push(i);
       el.style.display = 'none';
@@ -1366,6 +1382,11 @@ const Ember = (() => {
       el.style.opacity = '0';
       el.style.boxShadow = '';
       el.style.transform = '';
+      el.style.width = '';
+      el.style.height = '';
+      el.style.left = '';
+      el.style.top = '';
+      el.style.borderRadius = '';
       return;
     }
     if (el) el.remove();
@@ -2518,9 +2539,9 @@ const Ember = (() => {
             egg._ringDone = true;
             ringImpulse = rand(3, 5) * (Math.random() < 0.5 ? 1 : -1);
             heatBoost = Math.max(heatBoost, 0.25);
-            root.style.setProperty('--ringOpacity', '1');
-            root.style.setProperty('--ringExpand', '-3px');
-            root.style.setProperty('--ringPulse', '0.7');
+            setVar(root, '--ringOpacity', '1');
+            setVar(root, '--ringExpand', '-3px');
+            setVar(root, '--ringPulse', '0.7');
           }
         } else if (p < 0.4) {
           const s = (p - 0.2) / 0.2;
@@ -2532,15 +2553,15 @@ const Ember = (() => {
           egg.scale = 0.2 + easeOutQuad(s) * 0.8 + bounce;
           egg.squish = -Math.sin(s * Math.PI) * 0.12;
           egg.tiltY = Math.sin(s * Math.PI * 3) * 4 * (1 - s);
-          root.style.setProperty('--ringPulse', String(0.7 + easeOutQuad(s) * 0.38));
-          root.style.setProperty('--ringExpand', (-3 + easeOutQuad(s) * 6).toFixed(1) + 'px');
+          setVar(root, '--ringPulse', String(0.7 + easeOutQuad(s) * 0.38));
+          setVar(root, '--ringExpand', (-3 + easeOutQuad(s) * 6).toFixed(1) + 'px');
         }
         if (p >= 1) {
           egg.scale = 1; egg.squish = 0; egg.active = false;
           egg._ringDone = false;
-          root.style.removeProperty('--ringOpacity');
-          root.style.removeProperty('--ringExpand');
-          root.style.removeProperty('--ringPulse');
+          removeVar(root, '--ringOpacity');
+          removeVar(root, '--ringExpand');
+          removeVar(root, '--ringPulse');
         }
         break;
       }
@@ -2810,6 +2831,18 @@ const Ember = (() => {
     testModeTimer = null;
   }
 
+  function setAllowTestMode(value = true, ttlMs = 60000) {
+    allowTestMode = !!value;
+    clearDeferred(allowTestModeTimer);
+    allowTestModeTimer = null;
+    if (allowTestMode && ttlMs > 0) {
+      allowTestModeTimer = defer(() => {
+        allowTestMode = false;
+        if (testMode) stopTestMode();
+      }, ttlMs);
+    }
+  }
+
   function runNextTest() {
     if (!testMode || testIndex >= testQueue.length) {
       stopTestMode();
@@ -3063,20 +3096,20 @@ const Ember = (() => {
       const ashRaw = clamp(1 - intensity, 0, 1);
       ashCoverage = ashRaw * ashRaw * (3 - 2 * ashRaw);
 
-      root.style.setProperty('--heat', heat.toFixed(3));
-      root.style.setProperty('--glow', glow.toFixed(3));
-      root.style.setProperty('--intensity', intensity.toFixed(3));
-      root.style.setProperty('--breathScale', breathScale.toFixed(4));
-      root.style.setProperty('--scaleX', breathScale.toFixed(4));
-      root.style.setProperty('--scaleY', breathScale.toFixed(4));
-      root.style.setProperty('--brightness', brightness.toFixed(3));
-      root.style.setProperty('--coreHue', coreHue.toFixed(1));
-      root.style.setProperty('--coreLight', coreLight.toFixed(1) + '%');
-      root.style.setProperty('--ashCoverage', ashCoverage.toFixed(3));
-      root.style.setProperty('--glowOpacity', (1 + heatBoost * 0.3).toFixed(3));
-      root.style.setProperty('--glowBlur', (5 + heatBoost * 2).toFixed(2) + 'px');
-      root.style.setProperty('--glowScale', (1 + heatBoost * 0.1).toFixed(3));
-      root.style.setProperty('--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
+      setVar(root, '--heat', heat.toFixed(3));
+      setVar(root, '--glow', glow.toFixed(3));
+      setVar(root, '--intensity', intensity.toFixed(3));
+      setVar(root, '--breathScale', breathScale.toFixed(4));
+      setVar(root, '--scaleX', breathScale.toFixed(4));
+      setVar(root, '--scaleY', breathScale.toFixed(4));
+      setVar(root, '--brightness', brightness.toFixed(3));
+      setVar(root, '--coreHue', coreHue.toFixed(1));
+      setVar(root, '--coreLight', coreLight.toFixed(1) + '%');
+      setVar(root, '--ashCoverage', ashCoverage.toFixed(3));
+      setVar(root, '--glowOpacity', (1 + heatBoost * 0.3).toFixed(3));
+      setVar(root, '--glowBlur', (5 + heatBoost * 2).toFixed(2) + 'px');
+      setVar(root, '--glowScale', (1 + heatBoost * 0.1).toFixed(3));
+      setVar(root, '--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
       updateCrackLayers(now, crackGlow);
       setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
 
@@ -3178,8 +3211,8 @@ const Ember = (() => {
       if (focusTimer < 200) {
         const wk = focusTimer / 200;
         breathScale += (1 + wk * 0.02 - breathScale) * 0.1;
-        root.style.setProperty('--breathScale', breathScale.toFixed(4));
-        root.style.setProperty('--brightness', (0.5 + wk * 0.3).toFixed(3));
+        setVar(root, '--breathScale', breathScale.toFixed(4));
+        setVar(root, '--brightness', (0.5 + wk * 0.3).toFixed(3));
         return;
       }
       if (focusTimer < 400 && !sparkDone) {
@@ -3354,9 +3387,9 @@ const Ember = (() => {
       coreLight = 20 + pulse * 8;
     }
 
-    root.style.setProperty('--coreHue', coreHue.toFixed(1));
-    root.style.setProperty('--coreLight', coreLight.toFixed(1) + '%');
-    root.style.setProperty('--ashCoverage', ashCoverage.toFixed(3));
+    setVar(root, '--coreHue', coreHue.toFixed(1));
+    setVar(root, '--coreLight', coreLight.toFixed(1) + '%');
+    setVar(root, '--ashCoverage', ashCoverage.toFixed(3));
 
     const crackGlow = 0.4 + flicker * 0.3 + heatBoost * 1.5 + windGust * 0.4 + crackGlowMod;
     updateCrackLayers(now, crackGlow);
@@ -3365,7 +3398,7 @@ const Ember = (() => {
     if (heatWaveEl) heatWaveEl.style.setProperty('--waveOffset', waveOffset.toFixed(1) + '%');
 
     commitPose(pose, now, dt);
-    root.style.setProperty('--breathScale', breathScale.toFixed(4));
+    setVar(root, '--breathScale', breathScale.toFixed(4));
 
     applySegments();
 
@@ -3462,7 +3495,11 @@ const Ember = (() => {
       lowFpsMode = avgDt > 33;
       if (root) root.classList.toggle('low-fps', lowFpsMode);
     }
-    try { update(timestamp, dt * (reduceMotion ? 1 : 1)); } catch (e) { console.error('Ember update error:', e); }
+    try { update(timestamp, dt); } catch (e) { console.error('Ember update error:', e); }
+    if (!browserFocused && focusState === 'idle') {
+      rafId = null;
+      return;
+    }
     if (reduceMotion) {
       reducedMotionTimer = setTimeout(() => {
         reducedMotionTimer = null;
@@ -3526,6 +3563,7 @@ const Ember = (() => {
       e.stopPropagation();
       clearDeferred(_clickTimer);
       reduceMotion = !reduceMotion;
+      root.classList.toggle('reduced-motion-runtime', reduceMotion);
       reduceMotionFrameSkip = 0;
       if (reduceMotion) {
         particles.forEach(p => releaseEl(p.el));
@@ -3542,7 +3580,10 @@ const Ember = (() => {
       toast.className = 'ember-eco-toast';
       toast.textContent = label;
       root.appendChild(toast);
-      requestAnimationFrame(() => toast.classList.add('show'));
+      defer(() => {
+        if (!root || !toast.isConnected) return;
+        toast.classList.add('show');
+      }, 0);
       defer(() => { toast.classList.remove('show'); defer(() => toast.remove(), 300); }, 1500);
     };
     handlers.keydown = (e) => {
@@ -3596,6 +3637,7 @@ const Ember = (() => {
         focusState = 'wakeUp';
         focusTimer = 0;
       }
+      if (onScreen && !document.hidden) startLoop();
     };
     handlers.windowBlur = () => {
       browserFocused = false;
@@ -3637,6 +3679,7 @@ const Ember = (() => {
 
     handlers.reduceMotionChange = (e) => {
       reduceMotion = e.matches;
+      if (root) root.classList.toggle('reduced-motion-runtime', reduceMotion);
       if (reduceMotion) {
         particles.forEach(p => releaseEl(p.el));
         particles = [];
@@ -3674,6 +3717,7 @@ const Ember = (() => {
       saveState();
     }
     createDOM();
+    root.classList.toggle('reduced-motion-runtime', reduceMotion);
     lastAriaLabel = '';
     syncAccessibleLabel(true);
     setupBroadcast();
@@ -3736,6 +3780,7 @@ const Ember = (() => {
     clearDeferred(statusTimer);
     clearDeferred(tooltipHideTimer);
     clearDeferred(tooltipRemoveTimer);
+    clearDeferred(allowTestModeTimer);
     hideTooltip(true);
     clearAllDeferred();
     particles.forEach(p => releaseEl(p.el));
@@ -3774,6 +3819,8 @@ const Ember = (() => {
     tooltipHideTimer = null;
     tooltipRemoveTimer = null;
     testLabel = null;
+    allowTestModeTimer = null;
+    allowTestMode = false;
     onClickCallback = null;
     if (styleCache) styleCache.clear();
 
@@ -3823,6 +3870,6 @@ const Ember = (() => {
     onPreviewOpen: startPreviewScare,
     onClick(fn) { onClickCallback = fn; },
     triggerReaction(type, data) { queueReaction(type, data); },
-    enableTestMode(value = true) { allowTestMode = !!value; },
+    enableTestMode(value = true, ttlMs = 60000) { setAllowTestMode(value, ttlMs); },
   };
 })();
