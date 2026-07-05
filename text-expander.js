@@ -42,6 +42,7 @@ const TextExpander = (() => {
   // STATE
   // ========================
 
+  let _inited = false;
   let _shortcuts = new Map();
   let _settings = {
     triggerCode: TRIGGER_CODE,
@@ -58,12 +59,52 @@ const TextExpander = (() => {
   let _dropdownQuery = '';
   let _dropdownStart = 0;
   let _dropdownFocusedIdx = 0;
+  let _dropdownItems = [];
   let _panelDragging = false;
   let _panelResizing = false;
+
+  // Stored listener refs for cleanup
+  let _triggerHandler = null;
+  let _dropdownKeyHandler = null;
+  let _outsideClickHandler = null;
+  let _escapePanelHandler = null;
 
   // ========================
   // STORAGE
   // ========================
+
+  function _normalizeShortcut(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (typeof raw.id !== 'string' || !raw.id) return null;
+    if (typeof raw.trigger !== 'string' || !raw.trigger) return null;
+    return {
+      id: raw.id,
+      trigger: raw.trigger.slice(0, MAX_SHORTCUT_LEN),
+      category: typeof raw.category === 'string' && raw.category ? raw.category : 'General',
+      text: typeof raw.text === 'string' ? raw.text : '',
+      enabled: raw.enabled !== false,
+      createdAt: Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now(),
+      updatedAt: Number.isFinite(Number(raw.updatedAt)) ? Number(raw.updatedAt) : Date.now()
+    };
+  }
+
+  function _normalizeSettings(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out = {};
+    if (typeof raw.triggerCode === 'string') out.triggerCode = raw.triggerCode;
+    if (Number.isFinite(Number(raw.autoLength))) out.autoLength = Math.max(2, Math.min(20, Number(raw.autoLength)));
+    if (typeof raw.email === 'string') out.email = raw.email;
+    if (Array.isArray(raw.categories) && raw.categories.length) {
+      out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && c.trim()))];
+    }
+    if (raw.panelPosition && typeof raw.panelPosition === 'object' && !Array.isArray(raw.panelPosition)) {
+      out.panelPosition = raw.panelPosition;
+    }
+    if (raw.panelSize && typeof raw.panelSize === 'object' && !Array.isArray(raw.panelSize)) {
+      out.panelSize = raw.panelSize;
+    }
+    return out;
+  }
 
   function _load() {
     try {
@@ -74,13 +115,12 @@ const TextExpander = (() => {
       if (Array.isArray(data.shortcuts)) {
         _shortcuts.clear();
         for (const s of data.shortcuts) {
-          if (s && typeof s.id === 'string' && typeof s.trigger === 'string') {
-            _shortcuts.set(s.id, s);
-          }
+          const normalized = _normalizeShortcut(s);
+          if (normalized) _shortcuts.set(normalized.id, normalized);
         }
       }
       if (data.settings && typeof data.settings === 'object') {
-        Object.assign(_settings, data.settings);
+        Object.assign(_settings, _normalizeSettings(data.settings));
       }
     } catch (_) {}
   }
@@ -116,12 +156,19 @@ const TextExpander = (() => {
   }
 
   function _nextCandidate(base) {
-    if (!exists(base)) return base;
+    // Truncate base if too long
+    let b = base.slice(0, MAX_SHORTCUT_LEN);
+    if (!exists(b)) return b;
     for (let i = 2; i < 100; i++) {
-      const c = base + i;
+      const suffix = String(i);
+      const c = b.slice(0, MAX_SHORTCUT_LEN - suffix.length) + suffix;
       if (!exists(c)) return c;
     }
-    return base + Date.now().toString(36).slice(-3);
+    return b.slice(0, MAX_SHORTCUT_LEN - 3) + Date.now().toString(36).slice(-3);
+  }
+
+  function _normalizeWord(w) {
+    return (w || '').toLowerCase().replace(/[^a-zа-яё0-9]/gi, '');
   }
 
   function generateSmartShortName(text) {
@@ -132,21 +179,24 @@ const TextExpander = (() => {
 
     // L1: первое значимое слово (без предлогов/союзов)
     for (const w of words) {
-      const lower = w.toLowerCase().replace(/[^a-zа-яё0-9]/gi, '');
-      if (lower.length > 0 && !STOP_WORDS.has(lower) && lower.length <= maxLen) {
-        return _nextCandidate(lower);
+      const lower = _normalizeWord(w);
+      if (lower.length > 0 && !STOP_WORDS.has(lower)) {
+        return _nextCandidate(lower.slice(0, maxLen));
       }
     }
 
     // L2: акроним из первых букв значимых слов
-    const sigWords = words.filter(w => !STOP_WORDS.has(w.toLowerCase().replace(/[^a-zа-яё]/gi, '')));
+    const sigWords = words.filter(w => !STOP_WORDS.has(_normalizeWord(w)));
     if (sigWords.length >= 2) {
-      const acr = sigWords.map(w => w[0]).join('').toLowerCase().slice(0, maxLen);
+      const acr = sigWords.map(w => {
+        const n = _normalizeWord(w);
+        return n ? n[0] : '';
+      }).filter(Boolean).join('').slice(0, maxLen);
       if (acr.length >= 2) return _nextCandidate(acr);
     }
 
     // L3: первые N букв из склеенных слов
-    const joined = words.join('').toLowerCase().replace(/[^a-zа-яё0-9]/gi, '');
+    const joined = words.map(w => _normalizeWord(w)).filter(Boolean).join('');
     const candidate = joined.slice(0, maxLen) || 'txt';
     return _nextCandidate(candidate);
   }
@@ -155,23 +205,27 @@ const TextExpander = (() => {
   // TOKEN ENGINE
   // ========================
 
+  // Sync: replaces all tokens EXCEPT {{clipboard}} (needs async read)
   function expandDynamicTokens(text) {
     if (!text) return text;
     const now = new Date();
     return text
       .replace(/\{\{date\}\}/g, () => now.toLocaleDateString('ru-RU'))
       .replace(/\{\{time\}\}/g, () => now.toLocaleTimeString('ru-RU'))
-      .replace(/\{\{clipboard\}\}/g, () => '')
       .replace(/\{\{url\}\}/g, () => window.location.href)
       .replace(/\{\{email\}\}/g, () => _settings.email || '');
+    // NOTE: {{clipboard}} is intentionally NOT replaced here — see expandDynamicTokensAsync
   }
 
   async function expandDynamicTokensAsync(text) {
     if (!text) return text;
     let result = expandDynamicTokens(text);
+    // Only attempt clipboard read if token is still present
     if (result.includes('{{clipboard}}')) {
       try {
-        const clip = await navigator.clipboard.readText();
+        const clip = (typeof navigator !== 'undefined' && navigator.clipboard?.readText)
+          ? await navigator.clipboard.readText()
+          : '';
         result = result.replace(/\{\{clipboard\}\}/g, clip || '');
       } catch (_) {
         result = result.replace(/\{\{clipboard\}\}/g, '');
@@ -185,7 +239,13 @@ const TextExpander = (() => {
   // ========================
 
   function openPanel() {
-    if (_panelEl) { _panelEl.style.display = 'flex'; return; }
+    if (_panelEl) {
+      _panelEl.style.display = 'flex';
+      // Refresh table in case shortcuts changed externally
+      const body = _panelEl.querySelector('.te-body');
+      if (body) _refreshPanelTable(body);
+      return;
+    }
     _buildPanel();
   }
 
@@ -199,10 +259,15 @@ const TextExpander = (() => {
     panel.style.minWidth = PANEL_MIN_W + 'px';
     panel.style.minHeight = PANEL_MIN_H + 'px';
 
-    // Восстановление позиции и размера
+    // Восстановление позиции и размера (нормализация)
+    const _cssSize = (val, fallback) => {
+      if (typeof val === 'number') return val + 'px';
+      if (typeof val === 'string' && val) return val;
+      return fallback + 'px';
+    };
     if (_settings.panelSize) {
-      panel.style.width = _settings.panelSize.w || PANEL_DEFAULT_W + 'px';
-      panel.style.height = _settings.panelSize.h || PANEL_DEFAULT_H + 'px';
+      panel.style.width = _cssSize(_settings.panelSize.w, PANEL_DEFAULT_W);
+      panel.style.height = _cssSize(_settings.panelSize.h, PANEL_DEFAULT_H);
     } else {
       panel.style.width = PANEL_DEFAULT_W + 'px';
       panel.style.height = PANEL_DEFAULT_H + 'px';
@@ -215,10 +280,23 @@ const TextExpander = (() => {
       panel.style.top = Math.max(20, (window.innerHeight - PANEL_DEFAULT_H) / 2) + 'px';
     }
 
+    // Clamp panel position to viewport
+    requestAnimationFrame(() => {
+      if (!_panelEl) return;
+      const rect = panel.getBoundingClientRect();
+      const maxLeft = Math.max(0, window.innerWidth - rect.width);
+      const maxTop = Math.max(0, window.innerHeight - rect.height);
+      if (rect.left > maxLeft) panel.style.left = maxLeft + 'px';
+      if (rect.top > maxTop) panel.style.top = maxTop + 'px';
+    });
+
     // Header (drag handle)
     const header = document.createElement('div');
     header.className = 'te-header';
-    header.innerHTML = '<span class="te-title">Text Expander</span>';
+    const title = document.createElement('span');
+    title.className = 'te-title';
+    title.textContent = 'Text Expander';
+    header.appendChild(title);
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -378,13 +456,11 @@ const TextExpander = (() => {
     });
 
     // Filter logic
-    let _activeFilter = 'All';
     filterRow.addEventListener('click', e => {
       const btn = e.target.closest('.te-filter-btn');
       if (!btn) return;
       filterRow.querySelectorAll('.te-filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      _activeFilter = btn.textContent;
       _refreshPanelTable(body);
     });
 
@@ -433,7 +509,11 @@ const TextExpander = (() => {
     // Table header
     const thead = document.createElement('div');
     thead.className = 'te-table-head';
-    thead.innerHTML = '<span>Enabled</span><span>Shortcut</span><span>Category</span><span>Preview</span><span></span>';
+    ['Enabled', 'Shortcut', 'Category', 'Preview', ''].forEach(label => {
+      const span = document.createElement('span');
+      span.textContent = label;
+      thead.appendChild(span);
+    });
     container.appendChild(thead);
 
     items.forEach(s => {
@@ -469,9 +549,9 @@ const TextExpander = (() => {
       // Preview
       const preview = document.createElement('span');
       preview.className = 'te-table-preview';
-      const previewText = s.text.length > 25 ? s.text.slice(0, 25) + '...' : s.text;
+      const previewText = (s.text || '').length > 25 ? s.text.slice(0, 25) + '...' : (s.text || '');
       preview.textContent = previewText;
-      preview.title = s.text;
+      preview.title = s.text || '';
 
       // Delete
       const del = document.createElement('button');
@@ -511,10 +591,11 @@ const TextExpander = (() => {
     const pos = ta.selectionStart;
     if (pos === undefined || pos === null) return;
 
-    // Проверяем что перед курсором нет текста (начало строки или пробел)
+    // Проверяем что перед курсором нет текста (начало строки, пробел, или открытие скобки/кавычки)
     const before = ta.value.slice(0, pos);
     const lastChar = before.slice(-1);
-    if (lastChar && lastChar !== ' ' && lastChar !== '\n' && lastChar !== '\t') return;
+    const triggerChars = new Set([' ', '\n', '\t', '(', '[', '{', '"', "'", '\u2014', ':']);
+    if (lastChar && !triggerChars.has(lastChar)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -550,16 +631,40 @@ const TextExpander = (() => {
     const onInput = () => {
       const curPos = ta.selectionStart;
       const textAfter = ta.value.slice(_dropdownStart, curPos);
-      // Если ввели не-trIGGER-символ — обновляем query
-      if (_dropdownStart <= curPos) {
-        _dropdownQuery = textAfter;
+
+      // Close on whitespace after trigger
+      if (/\s/.test(ta.value.slice(pos, curPos)) && _dropdownQuery.length > 0) {
+        _hideDropdown();
+        return;
       }
+
+      // Close if cursor moved before dropdown start
+      if (curPos < _dropdownStart) {
+        _hideDropdown();
+        return;
+      }
+
+      _dropdownQuery = textAfter;
       _dropdownFocusedIdx = 0;
       _renderDropdownItems();
+      _positionDropdownAtCaret(ta, dd);
+    };
+
+    // Close on blur (with small delay to allow click on dropdown)
+    const onBlur = () => {
+      setTimeout(() => {
+        if (_dropdownEl && !_dropdownEl.contains(document.activeElement)) {
+          _hideDropdown();
+        }
+      }, 150);
     };
 
     ta.addEventListener('input', onInput);
-    dd._cleanupInput = () => ta.removeEventListener('input', onInput);
+    ta.addEventListener('blur', onBlur);
+    dd._cleanupInput = () => {
+      ta.removeEventListener('input', onInput);
+      ta.removeEventListener('blur', onBlur);
+    };
   }
 
   function _hideDropdown() {
@@ -568,6 +673,7 @@ const TextExpander = (() => {
       _dropdownEl.remove();
       _dropdownEl = null;
     }
+    _dropdownItems = [];
     _activeTa = null;
     _activeBlockId = null;
   }
@@ -577,10 +683,11 @@ const TextExpander = (() => {
     const items = [..._shortcuts.values()].filter(s => s.enabled);
     if (!q) return items.slice(0, MAX_DROPDOWN_ITEMS);
 
-    // startsWith first, then includes
-    const starts = items.filter(s => s.trigger.toLowerCase().startsWith(q));
+    // exact match first, then startsWith, then includes
+    const exact = items.filter(s => s.trigger.toLowerCase() === q);
+    const starts = items.filter(s => s.trigger.toLowerCase().startsWith(q) && s.trigger.toLowerCase() !== q);
     const includes = items.filter(s => !s.trigger.toLowerCase().startsWith(q) && s.trigger.toLowerCase().includes(q));
-    return [...starts, ...includes].slice(0, MAX_DROPDOWN_ITEMS);
+    return [...exact, ...starts, ...includes].slice(0, MAX_DROPDOWN_ITEMS);
   }
 
   function _renderDropdownItems() {
@@ -588,9 +695,16 @@ const TextExpander = (() => {
     const dd = _dropdownEl;
     dd.innerHTML = '';
 
-    const items = _filterDropdownItems(_dropdownQuery);
+    _dropdownItems = _filterDropdownItems(_dropdownQuery);
 
-    if (!items.length) {
+    // Clamp focused index
+    if (_dropdownItems.length === 0) {
+      _dropdownFocusedIdx = 0;
+    } else {
+      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx, _dropdownItems.length - 1);
+    }
+
+    if (!_dropdownItems.length) {
       const empty = document.createElement('div');
       empty.className = 'te-dd-empty';
       empty.textContent = 'Нет совпадений';
@@ -598,9 +712,9 @@ const TextExpander = (() => {
       return;
     }
 
-    const visibleCount = Math.min(items.length, VISIBLE_DROPDOWN_ITEMS);
+    const visibleCount = Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS);
 
-    items.forEach((item, idx) => {
+    _dropdownItems.forEach((item, idx) => {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'te-dd-item' + (idx === _dropdownFocusedIdx ? ' focused' : '');
@@ -617,7 +731,7 @@ const TextExpander = (() => {
 
       const preview = document.createElement('span');
       preview.className = 'te-dd-preview';
-      const previewText = item.text.length > 40 ? item.text.slice(0, 40) + '...' : item.text;
+      const previewText = (item.text || '').length > 40 ? item.text.slice(0, 40) + '...' : (item.text || '');
       preview.textContent = previewText;
 
       row.appendChild(shortcut);
@@ -632,7 +746,7 @@ const TextExpander = (() => {
       dd.appendChild(row);
     });
 
-    if (items.length > visibleCount) {
+    if (_dropdownItems.length > visibleCount) {
       dd.style.maxHeight = (visibleCount * 36 + 10) + 'px';
     } else {
       dd.style.maxHeight = '';
@@ -701,28 +815,36 @@ const TextExpander = (() => {
     const ta = _activeTa;
     if (!ta) return;
 
-    const trigger = _settings.triggerCode === 'Backquote' ? '`' : _settings.triggerCode;
     const startPos = _dropdownStart;
     const endPos = ta.selectionStart;
+
+    // Snapshot BEFORE change for proper undo
+    if (_activeBlockId && typeof State !== 'undefined') {
+      State.blockSnapshot(_activeBlockId);
+    }
 
     // Готовим текст
     let expansion = await expandDynamicTokensAsync(item.text);
 
-    // Обработка регистра: если query начинается с заглавной → expansion с заглавной
-    if (_dropdownQuery && _dropdownQuery[0] === _dropdownQuery[0].toUpperCase() && expansion[0]) {
-      expansion = expansion[0].toUpperCase() + expansion.slice(1);
+    // Обработка регистра
+    if (_dropdownQuery) {
+      const q0 = _dropdownQuery[0];
+      if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
+        // Capitalized or UPPER — capitalize first alphabetic char
+        const idx = expansion.search(/[a-zа-яё]/i);
+        if (idx >= 0) {
+          expansion = expansion.slice(0, idx) + expansion[idx].toUpperCase() + expansion.slice(idx + 1);
+        }
+      }
     }
 
     // Вставка через setRangeText
     ta.setRangeText(expansion + ' ', startPos, endPos, 'end');
-    ta.dispatchEvent(new Event('input'));
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
 
-    // Undo: blockSnapshot + snapshot
-    if (_activeBlockId) {
-      if (typeof State !== 'undefined') {
-        State.blockSnapshot(_activeBlockId);
-        State.snapshot();
-      }
+    // Snapshot AFTER change
+    if (_activeBlockId && typeof State !== 'undefined') {
+      State.snapshot();
     }
 
     _hideDropdown();
@@ -734,43 +856,50 @@ const TextExpander = (() => {
   // ========================
 
   function _setupLongPress(btn, ta, blockId) {
-    let state = 'IDLE';
+    // Prevent duplicate listeners
+    if (btn.dataset.teLongPressAttached === '1') return;
+    btn.dataset.teLongPressAttached = '1';
+
     let timer = null;
+    let longFired = false;
     let startX = 0, startY = 0;
 
     btn.addEventListener('pointerdown', e => {
-      state = 'PRESSING';
+      longFired = false;
       startX = e.clientX;
       startY = e.clientY;
-      timer = setTimeout(() => { state = 'LONG_PRESS_FIRED'; }, LONG_PRESS_MS);
+
+      timer = setTimeout(() => {
+        longFired = true;
+        openPanel();
+      }, LONG_PRESS_MS);
     });
 
     btn.addEventListener('pointermove', e => {
-      if (state !== 'PRESSING') return;
+      if (!timer) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-        state = 'CANCELLED';
         clearTimeout(timer);
+        timer = null;
       }
     });
 
     btn.addEventListener('pointerup', () => {
       clearTimeout(timer);
-      if (state === 'LONG_PRESS_FIRED') {
-        openPanel();
-      }
-      state = 'IDLE';
+      timer = null;
     });
 
-    btn.addEventListener('pointercancel', () => { clearTimeout(timer); state = 'IDLE'; });
-    btn.addEventListener('pointerleave', () => { clearTimeout(timer); state = 'IDLE'; });
+    btn.addEventListener('pointercancel', () => {
+      clearTimeout(timer);
+      timer = null;
+    });
 
     btn.addEventListener('click', e => {
-      if (state === 'LONG_PRESS_FIRED') {
+      if (longFired) {
         e.preventDefault();
         e.stopPropagation();
-        state = 'IDLE';
+        longFired = false;
         return;
       }
       // Short click — create from selection
@@ -917,23 +1046,30 @@ const TextExpander = (() => {
 
   function _handleDropdownKeydown(e) {
     if (!_dropdownEl) return;
-    const items = _dropdownEl.querySelectorAll('.te-dd-item');
-    if (!items.length) return;
+    if (!_dropdownItems.length) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        _hideDropdown();
+      }
+      return;
+    }
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       e.stopPropagation();
-      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx + 1, items.length - 1);
-      _updateDropdownFocus(items);
+      _dropdownFocusedIdx = Math.min(_dropdownFocusedIdx + 1, _dropdownItems.length - 1);
+      _updateDropdownFocus();
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       e.stopPropagation();
       _dropdownFocusedIdx = Math.max(_dropdownFocusedIdx - 1, 0);
-      _updateDropdownFocus(items);
+      _updateDropdownFocus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
-      items[_dropdownFocusedIdx]?.dispatchEvent(new MouseEvent('mousedown'));
+      const item = _dropdownItems[_dropdownFocusedIdx];
+      if (item) _insertExpansion(item);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -941,7 +1077,9 @@ const TextExpander = (() => {
     }
   }
 
-  function _updateDropdownFocus(items) {
+  function _updateDropdownFocus() {
+    if (!_dropdownEl) return;
+    const items = _dropdownEl.querySelectorAll('.te-dd-item');
     items.forEach((el, i) => {
       el.classList.toggle('focused', i === _dropdownFocusedIdx);
       el.setAttribute('aria-selected', i === _dropdownFocusedIdx ? 'true' : 'false');
@@ -956,28 +1094,28 @@ const TextExpander = (() => {
   function serialize() {
     return {
       shortcuts: [..._shortcuts.values()],
-      settings: _settings
+      settings: JSON.parse(JSON.stringify(_settings))
     };
   }
 
   function load(data) {
     if (!data || typeof data !== 'object') return;
     if (Array.isArray(data.shortcuts)) {
-      // mergeById
       for (const s of data.shortcuts) {
-        if (!s || typeof s.id !== 'string') continue;
-        const existing = _shortcuts.get(s.id);
+        const normalized = _normalizeShortcut(s);
+        if (!normalized) continue;
+        const existing = _shortcuts.get(normalized.id);
         if (existing) {
-          if ((s.updatedAt || 0) > (existing.updatedAt || 0)) {
-            Object.assign(existing, s);
+          if ((normalized.updatedAt || 0) > (existing.updatedAt || 0)) {
+            Object.assign(existing, normalized);
           }
         } else {
-          _shortcuts.set(s.id, s);
+          _shortcuts.set(normalized.id, normalized);
         }
       }
     }
     if (data.settings && typeof data.settings === 'object') {
-      Object.assign(_settings, data.settings);
+      Object.assign(_settings, _normalizeSettings(data.settings));
     }
     _save();
   }
@@ -987,39 +1125,54 @@ const TextExpander = (() => {
   // ========================
 
   function init() {
+    if (_inited) return;
+    _inited = true;
+
     _load();
 
     // Глобальный keydown для trigger
-    document.addEventListener('keydown', _handleTrigger, true);
+    _triggerHandler = _handleTrigger;
+    document.addEventListener('keydown', _triggerHandler, true);
 
     // Глобальный keydown для dropdown навигации
-    document.addEventListener('keydown', _handleDropdownKeydown, true);
+    _dropdownKeyHandler = _handleDropdownKeydown;
+    document.addEventListener('keydown', _dropdownKeyHandler, true);
 
     // Закрытие dropdown по клику вне
-    document.addEventListener('mousedown', e => {
+    _outsideClickHandler = e => {
       if (_dropdownEl && !_dropdownEl.contains(e.target)) {
         _hideDropdown();
       }
-    });
+    };
+    document.addEventListener('mousedown', _outsideClickHandler);
 
     // Закрытие panel по Escape
-    document.addEventListener('keydown', e => {
+    _escapePanelHandler = e => {
       if (e.key === 'Escape' && _panelEl) {
         closePanel();
       }
-    });
+    };
+    document.addEventListener('keydown', _escapePanelHandler);
+  }
 
-    // Интеграция с GistSync — при pull обновляем
-    if (typeof GistSync !== 'undefined') {
-      const origPull = GistSync.pull;
-      if (typeof origPull === 'function') {
-        // Патч не нужен — mergeById в load() работает
-      }
-    }
+  function destroy() {
+    if (!_inited) return;
+    _inited = false;
+    if (_triggerHandler) document.removeEventListener('keydown', _triggerHandler, true);
+    if (_dropdownKeyHandler) document.removeEventListener('keydown', _dropdownKeyHandler, true);
+    if (_outsideClickHandler) document.removeEventListener('mousedown', _outsideClickHandler);
+    if (_escapePanelHandler) document.removeEventListener('keydown', _escapePanelHandler);
+    _triggerHandler = null;
+    _dropdownKeyHandler = null;
+    _outsideClickHandler = null;
+    _escapePanelHandler = null;
+    _hideDropdown();
+    closePanel();
   }
 
   return {
     init,
+    destroy,
     openPanel,
     closePanel,
     createFromSelection,
