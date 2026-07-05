@@ -67,6 +67,8 @@ const TextExpander = (() => {
   let _panelDragging = false;
   let _panelResizing = false;
   let _caretMirrorEl = null;
+  let _caretMirrorSource = null;
+  let _caretMirrorSignature = '';
 
   // Stored listener refs for cleanup
   let _triggerHandler = null;
@@ -80,13 +82,23 @@ const TextExpander = (() => {
   // STORAGE
   // ========================
 
+  function _normalizeTrigger(value) {
+    return String(value || '')
+      .trim()
+      .replace(/^\/+/, '')
+      .replace(/[\u0000-\u001F\u007F\s]+/g, '')
+      .slice(0, MAX_SHORTCUT_LEN);
+  }
+
   function _normalizeShortcut(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     if (typeof raw.id !== 'string' || !raw.id) return null;
-    if (typeof raw.trigger !== 'string' || !raw.trigger) return null;
+    if (typeof raw.trigger !== 'string') return null;
+    const trigger = _normalizeTrigger(raw.trigger);
+    if (!trigger) return null;
     return {
       id: raw.id,
-      trigger: raw.trigger.slice(0, MAX_SHORTCUT_LEN),
+      trigger,
       category: typeof raw.category === 'string' && raw.category ? raw.category : 'General',
       text: typeof raw.text === 'string' ? raw.text : '',
       enabled: raw.enabled !== false,
@@ -102,7 +114,12 @@ const TextExpander = (() => {
     if (Number.isFinite(Number(raw.autoLength))) out.autoLength = Math.max(2, Math.min(20, Number(raw.autoLength)));
     if (typeof raw.email === 'string') out.email = raw.email;
     if (Array.isArray(raw.categories) && raw.categories.length) {
-      out.categories = [...new Set(raw.categories.filter(c => typeof c === 'string' && c.trim()))];
+      const categories = [...new Set(
+        raw.categories
+          .filter(c => typeof c === 'string' && c.trim())
+          .map(c => c.trim().slice(0, 80))
+      )];
+      if (categories.length) out.categories = categories;
     }
     if (raw.panelPosition && typeof raw.panelPosition === 'object' && !Array.isArray(raw.panelPosition)) {
       const left = parseFloat(raw.panelPosition.left);
@@ -190,30 +207,17 @@ const TextExpander = (() => {
   function generateSmartShortName(text) {
     const words = (text || '').split(/\s+/).filter(w => w.length > 0);
     if (!words.length) return _nextCandidate('txt');
-
     const maxLen = _settings.autoLength;
-
-    // L1: первое значимое слово
     for (const w of words) {
       const lower = _normalizeWord(w);
-      if (lower.length > 0 && !STOP_WORDS.has(lower)) {
-        return _nextCandidate(lower.slice(0, maxLen));
-      }
+      if (lower.length > 0 && !STOP_WORDS.has(lower)) return _nextCandidate(lower.slice(0, maxLen));
     }
-
-    // L2: акроним
     const sigWords = words.filter(w => !STOP_WORDS.has(_normalizeWord(w)));
     if (sigWords.length >= 2) {
-      const acr = sigWords.map(w => {
-        const n = _normalizeWord(w);
-        return n ? n[0] : '';
-      }).filter(Boolean).join('').slice(0, maxLen);
+      const acr = sigWords.map(w => { const n = _normalizeWord(w); return n ? n[0] : ''; }).filter(Boolean).join('').slice(0, maxLen);
       if (acr.length >= 2) return _nextCandidate(acr);
     }
-
-    // L3: склейка
-    const joined = words.map(w => _normalizeWord(w)).filter(Boolean).join('');
-    return _nextCandidate(joined.slice(0, maxLen) || 'txt');
+    return _nextCandidate(words.map(w => _normalizeWord(w)).filter(Boolean).join('').slice(0, maxLen) || 'txt');
   }
 
   // ========================
@@ -228,7 +232,6 @@ const TextExpander = (() => {
       .replace(/\{\{time\}\}/g, () => now.toLocaleTimeString('ru-RU'))
       .replace(/\{\{url\}\}/g, () => window.location.href)
       .replace(/\{\{email\}\}/g, () => _settings.email || '');
-    // {{clipboard}} intentionally NOT replaced here — see expandDynamicTokensAsync
   }
 
   async function expandDynamicTokensAsync(text) {
@@ -237,8 +240,7 @@ const TextExpander = (() => {
     if (result.includes('{{clipboard}}')) {
       try {
         const clip = (typeof navigator !== 'undefined' && navigator.clipboard?.readText)
-          ? await navigator.clipboard.readText()
-          : '';
+          ? await navigator.clipboard.readText() : '';
         result = result.replace(/\{\{clipboard\}\}/g, clip || '');
       } catch (_) {
         result = result.replace(/\{\{clipboard\}\}/g, '');
@@ -260,28 +262,33 @@ const TextExpander = (() => {
   }
 
   function _addShortcut(trigger, text, category) {
-    trigger = String(trigger || '').trim().replace(/^\/+/, '').slice(0, MAX_SHORTCUT_LEN);
+    trigger = _normalizeTrigger(trigger);
     text = String(text || '').trim();
     category = category || 'General';
     if (!trigger || !text) return { ok: false, reason: 'empty' };
     for (const s of _shortcuts.values()) {
-      if (s.trigger === trigger && s.category === category) {
-        return { ok: false, reason: 'duplicate' };
-      }
+      if (s.trigger === trigger && s.category === category) return { ok: false, reason: 'duplicate' };
     }
     const id = _generateId();
-    const item = {
-      id, trigger, category, text,
-      enabled: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
+    const item = { id, trigger, category, text, enabled: true, createdAt: Date.now(), updatedAt: Date.now() };
     _shortcuts.set(id, item);
-    if (!_save()) {
-      _shortcuts.delete(id);
-      return { ok: false, reason: 'save' };
-    }
+    if (!_save()) { _shortcuts.delete(id); return { ok: false, reason: 'save' }; }
     return { ok: true, item };
+  }
+
+  function _clampPanelToViewport(panel) {
+    const rect = panel.getBoundingClientRect();
+    const maxW = Math.max(PANEL_MIN_W, window.innerWidth - 8);
+    const maxH = Math.max(PANEL_MIN_H, window.innerHeight - 8);
+    if (rect.width > maxW) panel.style.width = maxW + 'px';
+    if (rect.height > maxH) panel.style.height = maxH + 'px';
+    const nextRect = panel.getBoundingClientRect();
+    const maxLeft = Math.max(0, window.innerWidth - nextRect.width);
+    const maxTop = Math.max(0, window.innerHeight - nextRect.height);
+    const left = parseFloat(panel.style.left) || 0;
+    const top = parseFloat(panel.style.top) || 0;
+    panel.style.left = Math.max(0, Math.min(maxLeft, left)) + 'px';
+    panel.style.top = Math.max(0, Math.min(maxTop, top)) + 'px';
   }
 
   // ========================
@@ -330,11 +337,7 @@ const TextExpander = (() => {
 
     requestAnimationFrame(() => {
       if (!_panelEl) return;
-      const rect = panel.getBoundingClientRect();
-      const maxLeft = Math.max(0, window.innerWidth - rect.width);
-      const maxTop = Math.max(0, window.innerHeight - rect.height);
-      if (rect.left > maxLeft) panel.style.left = maxLeft + 'px';
-      if (rect.top > maxTop) panel.style.top = maxTop + 'px';
+      _clampPanelToViewport(panel);
     });
 
     // Header
@@ -344,7 +347,6 @@ const TextExpander = (() => {
     title.className = 'te-title';
     title.textContent = 'Text Expander';
     header.appendChild(title);
-
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'te-close-btn';
@@ -356,7 +358,6 @@ const TextExpander = (() => {
     const body = document.createElement('div');
     body.className = 'te-body';
 
-    // Shortcut input
     const shortcutRow = document.createElement('div');
     shortcutRow.className = 'te-row';
     const shortcutLabel = document.createElement('span');
@@ -370,7 +371,6 @@ const TextExpander = (() => {
     shortcutRow.appendChild(shortcutLabel);
     shortcutRow.appendChild(shortcutInput);
 
-    // Category select
     const catRow = document.createElement('div');
     catRow.className = 'te-row';
     const catLabel = document.createElement('span');
@@ -387,7 +387,6 @@ const TextExpander = (() => {
     catRow.appendChild(catLabel);
     catRow.appendChild(catSelect);
 
-    // Add button
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'te-add-btn';
@@ -415,13 +414,11 @@ const TextExpander = (() => {
     inputRow.appendChild(catRow);
     inputRow.appendChild(addBtn);
 
-    // Textarea
     const textarea = document.createElement('textarea');
     textarea.className = 'te-textarea';
     textarea.placeholder = 'Текст сокращения... Поддерживает {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}';
     textarea.rows = 5;
 
-    // Token buttons
     const tokenBar = document.createElement('div');
     tokenBar.className = 'te-token-bar';
     [
@@ -440,7 +437,6 @@ const TextExpander = (() => {
       tokenBar.appendChild(btn);
     });
 
-    // Auto length
     const autoRow = document.createElement('div');
     autoRow.className = 'te-row te-auto-row';
     const autoLabel = document.createElement('span');
@@ -464,7 +460,6 @@ const TextExpander = (() => {
     autoRow.appendChild(autoSlider);
     autoRow.appendChild(autoValue);
 
-    // Category filter
     const filterRow = document.createElement('div');
     filterRow.className = 'te-filter-row';
     const filterAll = document.createElement('button');
@@ -487,7 +482,6 @@ const TextExpander = (() => {
       _refreshPanelTable(body);
     });
 
-    // Table
     const tableContainer = document.createElement('div');
     tableContainer.className = 'te-table-container';
 
@@ -597,7 +591,6 @@ const TextExpander = (() => {
 
     const ta = document.activeElement;
     if (!ta || ta.tagName !== 'TEXTAREA') return;
-
     const pos = ta.selectionStart;
     if (pos === undefined || pos === null) return;
 
@@ -636,19 +629,15 @@ const TextExpander = (() => {
     const onInput = () => {
       const curPos = ta.selectionStart;
 
-      // Close on whitespace after trigger
-      if (/\s/.test(ta.value.slice(_dropdownStart, curPos)) && _dropdownQuery.length > 0) {
-        _hideDropdown();
-        return;
-      }
-
       // Close if cursor moved before dropdown start
-      if (curPos < _dropdownStart) {
-        _hideDropdown();
-        return;
-      }
+      if (curPos < _dropdownStart) { _hideDropdown(); return; }
 
-      _dropdownQuery = ta.value.slice(_dropdownStart, curPos);
+      const typed = ta.value.slice(_dropdownStart, curPos);
+
+      // Close on whitespace — always, including first char after trigger
+      if (/\s/.test(typed)) { _hideDropdown(); return; }
+
+      _dropdownQuery = typed;
       _dropdownFocusedIdx = 0;
       _renderDropdownItems();
       _positionDropdownAtCaret(ta, dd);
@@ -656,19 +645,14 @@ const TextExpander = (() => {
 
     const onBlur = () => {
       setTimeout(() => {
-        if (_dropdownEl && !_dropdownEl.contains(document.activeElement)) {
-          _hideDropdown();
-        }
+        if (_dropdownEl && !_dropdownEl.contains(document.activeElement)) _hideDropdown();
       }, 150);
     };
 
     const onSelectionChange = () => {
       if (!_dropdownEl || document.activeElement !== ta) return;
       const curPos = ta.selectionStart;
-      if (curPos < _dropdownStart) {
-        _hideDropdown();
-        return;
-      }
+      if (curPos < _dropdownStart) { _hideDropdown(); return; }
       _positionDropdownAtCaret(ta, dd);
     };
 
@@ -694,20 +678,33 @@ const TextExpander = (() => {
     _dropdownItems = [];
     _activeTa = null;
     _activeBlockId = null;
+    _dropdownQuery = '';
+    _dropdownStart = 0;
+    _dropdownFocusedIdx = 0;
   }
 
   function _filterDropdownItems(query) {
     const q = (query || '').toLowerCase();
-    const items = [..._shortcuts.values()]
-      .filter(s => s.enabled)
-      .map(s => ({ item: s, tl: s.trigger.toLowerCase() }));
-    if (!q) return items.map(x => x.item).slice(0, MAX_DROPDOWN_ITEMS);
+    const values = _shortcuts.values();
+
+    if (!q) {
+      const out = [];
+      for (const s of values) {
+        if (!s.enabled) continue;
+        out.push(s);
+        if (out.length >= MAX_DROPDOWN_ITEMS) break;
+      }
+      return out;
+    }
 
     const exact = [], starts = [], includes = [];
-    for (const x of items) {
-      if (x.tl === q) exact.push(x.item);
-      else if (x.tl.startsWith(q)) starts.push(x.item);
-      else if (x.tl.includes(q)) includes.push(x.item);
+    for (const s of _shortcuts.values()) {
+      if (!s.enabled) continue;
+      const tl = s.trigger.toLowerCase();
+      if (tl === q) exact.push(s);
+      else if (tl.startsWith(q)) starts.push(s);
+      else if (tl.includes(q)) includes.push(s);
+      if (exact.length + starts.length + includes.length >= MAX_DROPDOWN_ITEMS * 2) break;
     }
     return [...exact, ...starts, ...includes].slice(0, MAX_DROPDOWN_ITEMS);
   }
@@ -733,9 +730,7 @@ const TextExpander = (() => {
       return;
     }
 
-    const renderItems = _dropdownItems.slice(0, VISIBLE_DROPDOWN_ITEMS);
-
-    renderItems.forEach((item, idx) => {
+    _dropdownItems.slice(0, VISIBLE_DROPDOWN_ITEMS).forEach((item, idx) => {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'te-dd-item' + (idx === _dropdownFocusedIdx ? ' focused' : '');
@@ -759,18 +754,12 @@ const TextExpander = (() => {
       row.appendChild(catBadge);
       row.appendChild(preview);
 
-      row.onmousedown = e => {
-        e.preventDefault();
-        _insertExpansion(item);
-      };
-
+      row.onmousedown = e => { e.preventDefault(); _insertExpansion(item); };
       dd.appendChild(row);
     });
 
     const visibleCount = Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS);
-    dd.style.maxHeight = _dropdownItems.length > visibleCount
-      ? (visibleCount * 36 + 10) + 'px'
-      : '';
+    dd.style.maxHeight = _dropdownItems.length > visibleCount ? (visibleCount * 36 + 10) + 'px' : '';
   }
 
   function _positionDropdownAtCaret(ta, dd) {
@@ -792,13 +781,21 @@ const TextExpander = (() => {
       document.body.appendChild(m);
     }
     m.innerHTML = '';
+
     const syncProps = [
       'borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth',
       'paddingTop','paddingRight','paddingBottom','paddingLeft',
       'fontFamily','fontSize','fontWeight','fontStyle','letterSpacing',
       'lineHeight','textTransform','textIndent','wordBreak','overflowWrap','tabSize'
     ];
-    syncProps.forEach(p => { m.style[p] = cs[p]; });
+
+    const signature = syncProps.map(p => cs[p]).join('\x01') + '\x01' + ta.clientWidth;
+    if (_caretMirrorSource !== ta || _caretMirrorSignature !== signature) {
+      syncProps.forEach(p => { m.style[p] = cs[p]; });
+      _caretMirrorSource = ta;
+      _caretMirrorSignature = signature;
+    }
+
     m.style.boxSizing = 'content-box';
     m.style.width = (ta.clientWidth - pl - pr) + 'px';
 
@@ -843,19 +840,13 @@ const TextExpander = (() => {
     const expectedQuery = _dropdownQuery;
     const expectedBlockId = _activeBlockId;
 
-    // Готовим текст (async — может читать clipboard)
     let expansion = await expandDynamicTokensAsync(item.text);
 
-    // Check state is still valid after async
     if (!_dropdownEl || _activeTa !== ta || _activeBlockId !== expectedBlockId) return;
     if (ta.selectionStart !== endPos || ta.value.slice(startPos, endPos) !== expectedQuery) return;
 
-    // Snapshot AFTER validation, BEFORE mutation
-    if (expectedBlockId && typeof State !== 'undefined') {
-      State.blockSnapshot(expectedBlockId);
-    }
+    if (expectedBlockId && typeof State !== 'undefined') State.blockSnapshot(expectedBlockId);
 
-    // Case handling
     if (_dropdownQuery) {
       const letters = _dropdownQuery.match(/[a-zа-яё]/gi) || [];
       const isUpper = letters.length > 0 && letters.every(ch => ch === ch.toUpperCase());
@@ -864,23 +855,17 @@ const TextExpander = (() => {
         expansion = expansion.toUpperCase();
       } else if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
         const idx = expansion.search(/[a-zа-яё]/i);
-        if (idx >= 0) {
-          expansion = expansion.slice(0, idx) + expansion[idx].toUpperCase() + expansion.slice(idx + 1);
-        }
+        if (idx >= 0) expansion = expansion.slice(0, idx) + expansion[idx].toUpperCase() + expansion.slice(idx + 1);
       }
     }
 
-    // Smart space: add space only if expansion doesn't end with space AND next char is not punctuation/space
     const nextChar = ta.value[endPos] || '';
     const needsSpace = expansion && !/\s$/.test(expansion) && nextChar && !/[\s.,;:!?)]/.test(nextChar);
 
     ta.setRangeText(expansion + (needsSpace ? ' ' : ''), startPos, endPos, 'end');
     ta.dispatchEvent(new Event('input', { bubbles: true }));
 
-    // Snapshot AFTER mutation
-    if (expectedBlockId && typeof State !== 'undefined') {
-      State.snapshot();
-    }
+    if (expectedBlockId && typeof State !== 'undefined') State.snapshot();
 
     _hideDropdown();
     ta.focus();
@@ -903,33 +888,29 @@ const TextExpander = (() => {
       longFired = false;
       startX = e.clientX;
       startY = e.clientY;
-      timer = setTimeout(() => {
-        longFired = true;
-        openPanel();
-      }, LONG_PRESS_MS);
+      try { btn.setPointerCapture?.(e.pointerId); } catch (_) {}
+      timer = setTimeout(() => { longFired = true; openPanel(); }, LONG_PRESS_MS);
     });
 
     btn.addEventListener('pointermove', e => {
       if (!timer) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
-        clearTimeout(timer);
-        timer = null;
-      }
+      if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) { clearTimeout(timer); timer = null; }
     });
 
-    btn.addEventListener('pointerup', () => { clearTimeout(timer); timer = null; });
-    btn.addEventListener('pointercancel', () => { clearTimeout(timer); timer = null; });
-    btn.addEventListener('pointerleave', () => { clearTimeout(timer); timer = null; });
+    btn.addEventListener('pointerup', e => {
+      clearTimeout(timer); timer = null;
+      try { btn.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    });
+
+    btn.addEventListener('pointercancel', e => {
+      clearTimeout(timer); timer = null; longFired = false;
+      try { btn.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    });
 
     btn.addEventListener('click', e => {
-      if (longFired) {
-        e.preventDefault();
-        e.stopPropagation();
-        longFired = false;
-        return;
-      }
+      if (longFired) { e.preventDefault(); e.stopPropagation(); longFired = false; return; }
       if (ta && ta.selectionStart !== ta.selectionEnd) {
         const selected = ta.value.slice(ta.selectionStart, ta.selectionEnd);
         if (selected.length > 0) createFromSelection(selected, ta, blockId);
@@ -950,10 +931,7 @@ const TextExpander = (() => {
     const trigger = generateSmartShortName(selectedText);
     const category = _settings.categories[0] || 'General';
     const id = _generateId();
-    _shortcuts.set(id, {
-      id, trigger, category, text: selectedText,
-      enabled: true, createdAt: Date.now(), updatedAt: Date.now()
-    });
+    _shortcuts.set(id, { id, trigger, category, text: selectedText, enabled: true, createdAt: Date.now(), updatedAt: Date.now() });
     if (!_save()) { _shortcuts.delete(id); return; }
     if (typeof Toast !== 'undefined') Toast.show('TextExpander: создано "' + trigger + '"', 'success');
   }
@@ -967,11 +945,17 @@ const TextExpander = (() => {
     if (!_dropdownEl || _activeTa !== ta) return;
     const pos = ta.selectionStart;
     if (pos === undefined) return;
+
+    if (pos < _dropdownStart) { _hideDropdown(); return; }
+
     const textAfter = ta.value.slice(_dropdownStart, pos);
-    if (textAfter.length === 0 && _dropdownStart >= pos) { _hideDropdown(); return; }
+
+    if (/\s/.test(textAfter)) { _hideDropdown(); return; }
+
     _dropdownQuery = textAfter;
     _dropdownFocusedIdx = 0;
     _renderDropdownItems();
+    _positionDropdownAtCaret(ta, _dropdownEl);
   }
 
   // ========================
@@ -1047,6 +1031,11 @@ const TextExpander = (() => {
 
   function _handleDropdownKeydown(e) {
     if (!_dropdownEl) return;
+
+    const ae = document.activeElement;
+    const isDropdownContext = ae === _activeTa || (_dropdownEl && _dropdownEl.contains(ae));
+    if (!isDropdownContext) return;
+
     if (!_dropdownItems.length) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _hideDropdown(); }
       return;
@@ -1093,37 +1082,35 @@ const TextExpander = (() => {
 
   function load(data) {
     if (!data || typeof data !== 'object') return;
+    _hideDropdown();
     if (Array.isArray(data.shortcuts)) {
       for (const s of data.shortcuts) {
         const normalized = _normalizeShortcut(s);
         if (!normalized) continue;
         const existing = _shortcuts.get(normalized.id);
         if (existing) {
-          if ((normalized.updatedAt || 0) > (existing.updatedAt || 0)) {
-            Object.assign(existing, normalized);
-          }
+          if ((normalized.updatedAt || 0) > (existing.updatedAt || 0)) Object.assign(existing, normalized);
         } else {
           _shortcuts.set(normalized.id, normalized);
         }
       }
-      // Deduplicate by trigger + category (keep newer)
       const seen = new Map();
       for (const [id, s] of _shortcuts) {
         const key = s.category + '\u0000' + s.trigger;
         const prev = seen.get(key);
         if (!prev) { seen.set(key, { id, updatedAt: s.updatedAt || 0 }); continue; }
-        if ((s.updatedAt || 0) > prev.updatedAt) {
-          _shortcuts.delete(prev.id);
-          seen.set(key, { id, updatedAt: s.updatedAt || 0 });
-        } else {
-          _shortcuts.delete(id);
-        }
+        if ((s.updatedAt || 0) > prev.updatedAt) { _shortcuts.delete(prev.id); seen.set(key, { id, updatedAt: s.updatedAt || 0 }); }
+        else _shortcuts.delete(id);
       }
     }
     if (data.settings && typeof data.settings === 'object') {
       Object.assign(_settings, _normalizeSettings(data.settings));
     }
     _save();
+    if (_panelEl) {
+      const body = _panelEl.querySelector('.te-body');
+      if (body) _refreshPanelTable(body);
+    }
   }
 
   // ========================
@@ -1133,7 +1120,6 @@ const TextExpander = (() => {
   function init() {
     if (_inited) return;
     _inited = true;
-
     _load();
 
     _triggerHandler = _handleTrigger;
@@ -1143,15 +1129,11 @@ const TextExpander = (() => {
     document.addEventListener('keydown', _dropdownKeyHandler, true);
 
     _outsideClickHandler = e => {
-      if (_dropdownEl && !_dropdownEl.contains(e.target) && e.target !== _activeTa) {
-        _hideDropdown();
-      }
+      if (_dropdownEl && !_dropdownEl.contains(e.target) && e.target !== _activeTa) _hideDropdown();
     };
     document.addEventListener('mousedown', _outsideClickHandler);
 
-    _escapePanelHandler = e => {
-      if (e.key === 'Escape' && _panelEl) closePanel();
-    };
+    _escapePanelHandler = e => { if (e.key === 'Escape' && _panelEl) closePanel(); };
     document.addEventListener('keydown', _escapePanelHandler);
 
     _windowBlurHandler = () => _hideDropdown();
@@ -1179,6 +1161,8 @@ const TextExpander = (() => {
     _hideDropdown();
     closePanel();
     if (_caretMirrorEl) { _caretMirrorEl.remove(); _caretMirrorEl = null; }
+    _caretMirrorSource = null;
+    _caretMirrorSignature = '';
   }
 
   return {
