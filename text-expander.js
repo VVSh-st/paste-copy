@@ -70,6 +70,11 @@ const TextExpander = (() => {
   let _caretMirrorSource = null;
   let _caretMirrorSignature = '';
   let _editingId = null; // ID shortcut в режиме редактирования
+  let _formShortcutInput = null;
+  let _formTextarea = null;
+  let _formCatSelect = null;
+  let _formAddBtn = null;
+  let _formBody = null;
 
   // Stored listener refs for cleanup
   let _triggerHandler = null;
@@ -366,7 +371,7 @@ const TextExpander = (() => {
     shortcutInput.className = 'te-input te-input-wide';
     shortcutInput.placeholder = 'shortcut';
     shortcutInput.maxLength = MAX_SHORTCUT_LEN;
-    shortcutInput.value = '\u0419'; // Ё по умолчанию
+    shortcutInput.value = '\u0401'; // Ё по умолчанию
     shortcutRow.appendChild(shortcutInput);
 
     const catRow = document.createElement('div');
@@ -392,10 +397,10 @@ const TextExpander = (() => {
 
     function _clearForm() {
       _editingId = null;
-      shortcutInput.value = '\u0419';
-      textarea.value = '';
-      catSelect.value = _settings.categories[0] || 'General';
-      addBtn.textContent = 'Add Key';
+      if (_formShortcutInput) _formShortcutInput.value = '\u0401';
+      if (_formTextarea) _formTextarea.value = '';
+      if (_formCatSelect) _formCatSelect.value = _settings.categories[0] || 'General';
+      if (_formAddBtn) _formAddBtn.textContent = 'Add Key';
     }
 
     addBtn.onclick = () => {
@@ -527,6 +532,13 @@ const TextExpander = (() => {
     body.appendChild(filterRow);
     body.appendChild(tableContainer);
 
+    // Store form references for edit mode
+    _formShortcutInput = shortcutInput;
+    _formTextarea = textarea;
+    _formCatSelect = catSelect;
+    _formAddBtn = addBtn;
+    _formBody = body;
+
     panel.appendChild(header);
     panel.appendChild(body);
     document.body.appendChild(panel);
@@ -595,12 +607,11 @@ const TextExpander = (() => {
       preview.style.cursor = 'pointer';
       preview.onclick = () => {
         _editingId = s.id;
-        shortcutInput.value = s.trigger;
-        textarea.value = s.text || '';
-        catSelect.value = s.category;
-        addBtn.textContent = 'Save';
-        // Scroll to top of body
-        body.scrollTop = 0;
+        if (_formShortcutInput) _formShortcutInput.value = s.trigger;
+        if (_formTextarea) _formTextarea.value = s.text || '';
+        if (_formCatSelect) _formCatSelect.value = s.category;
+        if (_formAddBtn) _formAddBtn.textContent = 'Save';
+        if (_formBody) _formBody.scrollTop = 0;
       };
 
       const del = document.createElement('button');
@@ -889,7 +900,7 @@ const TextExpander = (() => {
   // INSERTION ENGINE
   // ========================
 
-  async function _insertExpansion(item) {
+  function _insertExpansion(item) {
     const ta = _activeTa;
     if (!ta) return;
 
@@ -898,17 +909,30 @@ const TextExpander = (() => {
     const expectedQuery = _dropdownQuery;
     const expectedBlockId = _activeBlockId;
 
-    let expansion = await expandDynamicTokensAsync(item.text);
+    // Синхронная вставка для быстрых токенов
+    let expansion = expandDynamicTokens(item.text);
 
+    // Для clipboard — async fallback
+    if (expansion.includes('{{clipboard}}')) {
+      expandDynamicTokensAsync(item.text).then(result => {
+        _doInsert(ta, result, startPos, endPos, expectedQuery, expectedBlockId);
+      });
+      return;
+    }
+
+    _doInsert(ta, expansion, startPos, endPos, expectedQuery, expectedBlockId);
+  }
+
+  function _doInsert(ta, expansion, startPos, endPos, expectedQuery, expectedBlockId) {
     if (!_dropdownEl || _activeTa !== ta || _activeBlockId !== expectedBlockId) return;
     if (ta.selectionStart !== endPos || ta.value.slice(startPos, endPos) !== expectedQuery) return;
 
     if (expectedBlockId && typeof State !== 'undefined') State.blockSnapshot(expectedBlockId);
 
-    if (_dropdownQuery) {
-      const letters = _dropdownQuery.match(/[a-zа-яё]/gi) || [];
+    if (expectedQuery) {
+      const letters = expectedQuery.match(/[a-zа-яё]/gi) || [];
       const isUpper = letters.length > 0 && letters.every(ch => ch === ch.toUpperCase());
-      const q0 = _dropdownQuery[0];
+      const q0 = expectedQuery[0];
       if (isUpper) {
         expansion = expansion.toUpperCase();
       } else if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
