@@ -494,6 +494,32 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 16. ✅ **Аудит R3 (12 fix)** — dropdown whitespace закрывает сразу (без length check), keydown перехват только в dropdown context (activeElement check), handleInput whitespace/cursor проверки, load() закрывает dropdown перед мутацией+обновляет панель, categories fallback если все невалидны, _normalizeTrigger единый хелпер (trim/control chars), pointer capture вместо pointerleave, _filterDropdownItems без .map() с early break, mirror signature cache, _clampPanelToViewport хелпер, _hideDropdown сброс transient state
 17. ✅ **UI/UX** — edit mode (клик по preview заполняет форму, кнопка Save), нет совпадений → закрыть dropdown (без "Нет совпадений"), exact match + пробел → авто-вставка, поле shortcut шире (120px min) с дефолтом "Ё", убрана надпись "Shortcut"
 18. ✅ **Refactor trigger** — триггер через input handler (как slash "/"), regex `(^|[\n\s])Ё([^\s\n]*)$`, символ "Ё" вводится в textarea, при выборе заменяется на expansion. Убран глобальный keydown handler. Синхронная вставка для не-clipboard токенов
+19. ✅ **Fix auto-insert** — `_doInsert` использует `actualText.trimEnd()` для сравнения с expectedText ( trailing space при "Ёвесь" + пробел больше не ломает вставку)
+
+### Text Expander — текущий статус
+
+**Файлы:**
+- `text-expander.js` (~1233 строк) — основной модуль
+- `styles.css` — CSS для `.te-*` классов
+- `blocks.js` — кнопка в footer + `handleInput` в input handler
+- `state.js` — serialize/load интеграция
+- `app.js` — `TextExpander.init()`
+
+**Работает:**
+- Триггер "Ё" через input handler (regex-based, как slash "/")
+- Dropdown с фильтрацией (exact→startsWith→includes)
+- Авто-вставка при точном совпадении + пробел
+- Edit mode (клик по preview → заполнение формы)
+- Категории: General, AI Prompts, Scripts, Outreach
+- Динамические токены: {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}
+- Auto shortener (L1 слово, L2 акроним, L3 склейка, L4 коллизии)
+- Gist sync через State.serialize/load
+- Панель: draggable, resizable, сохраняет позицию/размер
+
+**Известные проблемы (отложить):**
+- Edit mode может не работать (замыкание на form refs)
+- Panel CSS может требовать доработки
+- Тестирование в реальном браузере не проводилось
 
 ## Ранее выполнено (архив)
 
