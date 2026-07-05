@@ -1510,7 +1510,7 @@ const Ember = (() => {
     const el = acquireEl('ember-spark ember-spark-anomaly');
     if (!el) return;
 
-    const size = Math.random() < 0.68 ? rand(1.4, 2.2) : rand(2.3, 3.4);
+    const size = Math.random() < 0.6 ? rand(1.4, 2.2) : rand(2.3, 3.8);
     el.style.width = size.toFixed(1) + 'px';
     el.style.height = (size * rand(1.2, 2.2)).toFixed(1) + 'px';
 
@@ -1520,20 +1520,20 @@ const Ember = (() => {
     el.style.top = startY + '%';
     activeSparks++;
 
-    const travel = rand(100, 250);
-    const angle = rand(Math.PI * 0.58, Math.PI * 0.88);
+    const travel = rand(100, 400);
+    const angle = rand(Math.PI * 0.45, Math.PI * 1.0);
     const drift = Math.cos(angle) * travel;
     const rise = Math.sin(angle) * travel;
 
     particles.push({
       el, born: performance.now(),
       startX, startY,
-      dur: rand(850, 1650),
+      dur: rand(850, 1900),
       rise, drift,
       sway: rand(1, 8),
       isSpark: true,
       type: 'anomaly',
-      trail: size > 2.25 ? Math.random() < 0.22 : Math.random() < 0.1,
+      trail: size > 2.25 ? Math.random() < 0.3 : Math.random() < 0.15,
       gravity: rand(0.003, 0.014),
       windInfluence: 0.18,
       rot: rand(-35, 20),
@@ -1588,7 +1588,7 @@ const Ember = (() => {
     if (now < nextAnomalySparkAt) return;
 
     nextAnomalySparkAt = now + rand(12000, 32000);
-    if (Math.random() > 0.32) return;
+    if (Math.random() > 0.384) return;
 
     const count = Math.random() < 0.78 ? 1 : 2;
     for (let i = 0; i < count; i++) {
@@ -2341,7 +2341,11 @@ const Ember = (() => {
     if (eggCharCount >= EGG_CHARS_THRESHOLD) {
       egg.triggeredToday = true;
       eggTriggeredDay = today;
-      try { localStorage.setItem(EGG_STORAGE_KEY, today); } catch {}
+      try {
+        localStorage.setItem(EGG_STORAGE_KEY, today);
+      } catch {
+        eggTriggeredDay = today;
+      }
       return true;
     }
     return false;
