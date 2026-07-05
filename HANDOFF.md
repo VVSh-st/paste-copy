@@ -476,17 +476,20 @@ eb8c01f feat: flowchart query menu — 5 presets, custom input, history with FIF
 
 ### Text Expander (2026-07-05)
 
-1. ✅ **text-expander.js** — модуль в одном файле (~1035 строк). IIFE object-modular, секции CONFIG/STATE/STORAGE/AUTO SHORTENER/TOKEN ENGINE/UI PANEL/TRIGGER ENGINE/DROPDOWN/INSERTION/LONG PRESS FSM/INIT
+1. ✅ **text-expander.js** — модуль в одном файле (~1130 строк). IIFE object-modular, секции CONFIG/STATE/STORAGE/AUTO SHORTENER/TOKEN ENGINE/UI PANEL/TRIGGER ENGINE/DROPDOWN/INSERTION/LONG PRESS FSM/INIT
 2. ✅ **Кнопка** — SVG-иконка в footer текстового блока перед AI-трансформацией. Short click → createFromSelection, long press → openPanel
-3. ✅ **Long Press FSM** — pointerdown/pointermove/pointerup/pointercancel/pointerleave. Состояния: IDLE→PRESSING→LONG_PRESS_FIRED|CANCELLED. Порог 450ms, отмена >10px
-4. ✅ **Trigger** — KeyboardEvent.code === Backquote (работает RU/EN ё/`)
-5. ✅ **Dropdown** — positioned at caret, startsWith→includes фильтрация, навигация ↑↓EnterEscape, 8 visible / 100 max
-6. ✅ **Вставка** — setRangeText + trigger removal + expansion + space. Undo через blockSnapshot + snapshot. Регистр сохраняется
-7. ✅ **Панель управления** — 400x600, draggable, resizable, сохраняет позицию/размер. Shortcut input, category select, textarea, token buttons (date/time/clipboard/url/email), auto-length slider (2-20), category filter, таблица с toggle/delete
+3. ✅ **Long Press FSM** — pointerdown/pointermove/pointerup/pointercancel. Панель открывается прямо по таймеру (не на pointerup). suppressClick предотвращает double-fire. Дедуп listeners через data-te-longpress-attached
+4. ✅ **Trigger** — KeyboardEvent.code === Backquote (работает RU/EN ё/`). Расширенный список trigger chars: пробел, скобки, кавычки, двоеточие
+5. ✅ **Dropdown** — positioned at caret, exact→startsWith→includes фильтрация, навигация ↑↓EnterEscape, 8 visible / 100 max. Закрытие по blur/whitespace/Escape/клику вне. Clamp _dropdownFocusedIdx. Прямой вызов _insertExpansion через _dropdownItems[]
+6. ✅ **Вставка** — setRangeText + trigger removal + expansion + space. Undo: blockSnapshot ДО изменения + snapshot ПОСЛЕ. input с { bubbles: true }. Регистр: capitalize first alphabetic char
+7. ✅ **Панель управления** — 400x600, draggable, resizable, сохраняет позицию/размер. openPanel() обновляет таблицу при повторном открытии. Нормализация panelSize/panelPosition. Clamp позиции к viewport
 8. ✅ **Категории** — General, AI Prompts, Scripts, Outreach (из скриншота). Фильтрация в панели
-9. ✅ **Динамические токены** — {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}. Без рекурсии
-10. ✅ **Auto Shortener** — generateSmartShortName: L1 значимое слово, L2 акроним, L3 первые N букв, L4 коллизии. Stop words фильтр
+9. ✅ **Динамические токены** — {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}. {{clipboard}} читается async через navigator.clipboard.readText(). Без рекурсии
+10. ✅ **Auto Shortener** — generateSmartShortName: L1 значимое слово (slice 0..maxLen), L2 акроним, L3 первые N букв, L4 коллизии. _normalizeWord единый. _nextCandidate проверяет MAX_SHORTCUT_LEN
 11. ✅ **Gist Sync** — State.serialize() включает textExpander, State.load() восстанавливает. mergeById при pull
+12. ✅ **Storage** — _normalizeShortcut/_normalizeSettings при load(). Валидация всех полей. serialize() возвращает clone (JSON parse/stringify)
+13. ✅ **Init/destroy** — _inited guard, idempotent init(). destroy() снимает listeners, закрывает dropdown/panel
+14. ✅ **Аудит** — исправлены: {{clipboard}} баг, long press UX, idempotent init, storage validation, input bubbles, dropdown lifecycle, _nextCandidate length, serialize clone, unused variable
 
 ## Ранее выполнено (архив)
 
