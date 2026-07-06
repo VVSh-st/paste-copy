@@ -33,34 +33,33 @@
 - Статус: модуль значительно укреплён. Приватностьclipboard/history, lifecycle guardы, data-private/data-no-loom boundary, localStorage resilience, State API robustness — все закрыты.
 
 ### gist-sync.js
-- **~1835 строк**. Промпт-задание для аудитора создано (`gist-sync-audit-prompt.md`).
-- Ожидает результатов аудита.
-- Ключевые зоны: GitHub OAuth Device Flow + PAT, AES-GCM шифрование (PBKDF2), deflate сжатие, localStorage для токенов/паролей, Gist push/pull с retry, cloud history с immortal entries, local backups (IndexedDB), modal UI с innerHTML.
-
-### ember.js
-- **Патч от аудитора (Ответ 2.txt)**. Коммит `46b9d51`.
-- Egg localStorage fallback: `catch` фиксирует `eggTriggeredDay` в памяти при переполнении квоты.
-- Anomaly spark: +150px дальность (100→400), шире угол (0.45π→1.0π), +20% частота (0.32→0.384), longer dur (1900ms), выше trail chance.
+- **~1835 строк**, 1 раунд аудита, **14 фиксов**. Коммит `3de0814`.
+- Аудит #1 (14): push() race condition fix (null return check), hash from snapshot (not current state), sync lock for push/pull/restore, saveCloudHistory quota try/catch, backup metadata normalization (safeNum), cloud history data attribute normalization, duplicate id -> class for backup buttons, loadSettings explicit type normalization with clampNum, CompressionStream await write/close, Cipher.decrypt buffer validation, _quickHash with string length, withRetry for 502/503/504, raw_url removed from console.log, revokeObjectURL delayed.
+- Статус: первый раунд аудита завершён. Ожидает повторного аудита для проверки.
 
 ## Следующий шаг
-1. Провести аудит `gist-sync.js` по промпту `gist-sync-audit-prompt.md`
-2. Применить результаты аудита `gist-sync.js`
-3. Браузерное тестирование `text-expander.js`:
+1. Провести повторный аудит `gist-sync.js` (проверка оставшихся 18 пунктов из #11-#32)
+2. Браузерное тестирование `text-expander.js`:
    - `Ёabc` + пробел → expansion БЕЗ открытого dropdown
    - Ё + query + Enter → вставка через dropdown
    - Long press → панель, Escape → закрыта
    - Clipboard expansion → pending state, однократная вставка
-4. Браузерное тестирование `user-memory.js`:
+3. Браузерное тестирование `user-memory.js`:
    - Импорт повреждённого профиля → нормализация
    - `importData()` с некорректным объектом → try/catch
    - `getProfile()` → deepClone, не mutable reference
-5. Браузерное тестирование `smart-suggestions.js`:
+4. Браузерное тестирование `smart-suggestions.js`:
    - Escape → закрывает только верхний modal
    - Retention inputs → валидация границ
    - Strip при отсутствии `#preview-bar` → fallback в body
-6. Браузерное тестирование `prompt-loom.js`:
+5. Браузерное тестирование `prompt-loom.js`:
    - Copy/paste в [data-private] поле → НЕ записывается в историю
    - Вставка из палитры в [data-no-loom] → fallback в clipboard
    - При закрытой панели record() → НЕ перерисовывает 500 карточек
    - OAuth Device Flow → clipboard с user_code
    - Ctrl+S → immediate push в Gist
+6. Браузерное тестирование `gist-sync.js`:
+   - Push/Pull/Restore параллельно → sync lock блокирует вторую операцию
+   - Push во время активного push → dirty остаётся true
+   - Пароль шифрования → session-only по умолчанию
+   - Quota ошибка localStorage → push не падает
