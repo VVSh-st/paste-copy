@@ -840,7 +840,7 @@ const MindMap = (() => {
     'one', 'two', 'out', 'our', 'its', 'his', 'her', 'she', 'him',
   ]);
 
-  function _mergeLinks(localLinks = [], llmLinks = [], maxLinks = 100) {
+  function _mergeLinks(localLinks = [], llmLinks = [], maxLinks = 45) {
     localLinks = Array.isArray(localLinks) ? localLinks : [];
     llmLinks = Array.isArray(llmLinks) ? llmLinks : [];
     const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -925,7 +925,7 @@ const MindMap = (() => {
     }));
   }
 
-  function _buildLocalLinks(text, words, maxLinks = 100) {
+  function _buildLocalLinks(text, words, maxLinks = 45) {
     if (!words.length || !text) return [];
     const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     const wordSet = new Map(words.map(w => [key(w.w), w.w]));
@@ -1109,6 +1109,14 @@ const MindMap = (() => {
           let force = 800 / (dist * dist);
           a.vx += (dx / dist) * force;
           a.vy += (dy / dist) * force;
+          const minDist = (a.r || 16) + (b.r || 16) + 24;
+          if (dist < minDist) {
+            const push = (minDist - dist) * 0.03;
+            a.vx += (dx / dist) * push;
+            a.vy += (dy / dist) * push;
+            b.vx -= (dx / dist) * push;
+            b.vy -= (dy / dist) * push;
+          }
         });
       });
       links.forEach(l => {
@@ -1117,7 +1125,7 @@ const MindMap = (() => {
         const a = nodes[ai], b = nodes[bi];
         let dx = b.x - a.x, dy = b.y - a.y;
         let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        let force = (dist - 100) * 0.005;
+        let force = (dist - 150) * 0.005;
         a.vx += (dx / dist) * force;
         a.vy += (dy / dist) * force;
         b.vx -= (dx / dist) * force;
@@ -1147,8 +1155,8 @@ const MindMap = (() => {
       const a = nodes[ai], b = nodes[bi];
       const start = edgePoint(a, b, a.r + 2);
       const end = edgePoint(b, a, b.r + 2);
-      const mx = (start.x + end.x) / 2 + (end.y - start.y) * 0.15;
-      const my = (start.y + end.y) / 2 - (end.x - start.x) * 0.15;
+      const mx = (start.x + end.x) / 2 + (end.y - start.y) * 0.25;
+      const my = (start.y + end.y) / 2 - (end.x - start.x) * 0.25;
       const path = document.createElementNS(SVG_NS, 'path');
       path.setAttribute('d', `M ${start.x} ${start.y} Q ${mx} ${my} ${end.x} ${end.y}`);
       path.setAttribute('fill', 'none');
