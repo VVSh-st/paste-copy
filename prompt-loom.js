@@ -65,6 +65,7 @@
   let clearTimer = null;
   let patchedClipboard = false;
   let originalWriteText = null;
+  let lastStorageToastAt = 0;
   let lastInputEl = null;
   let lastExternalInputEl = null;
 
@@ -85,10 +86,36 @@
   let mirrorBefore = null;
   let mirrorMarker = null;
 
+  const VALID_SOURCES = Object.keys(TYPE_META);
+  const VALID_KINDS = Object.keys(CLASS_META);
+
+  function normalizeItem(item) {
+    if (!item || typeof item !== 'object') return null;
+    if (!item.id || typeof item.id !== 'string') item.id = uid();
+    item.text = String(item.text || '').slice(0, 300000);
+    if (!item.text) return null;
+    item.source = VALID_SOURCES.includes(item.source) ? item.source : 'manual';
+    item.kind = VALID_KINDS.includes(item.kind) ? item.kind : 'text';
+    item.hash = String(item.hash || hashText(item.text));
+    item.sig = String(item.sig || '');
+    item.variants = Array.isArray(item.variants) ? item.variants.slice(0, 5) : [];
+    item.lastSource = String(item.lastSource || item.source);
+    item.createdAt = Number(item.createdAt) || Date.now();
+    item.updatedAt = Number(item.updatedAt) || item.createdAt;
+    item.usedAt = Number(item.usedAt) || 0;
+    item.uses = Math.min(999, Math.max(0, Number(item.uses) || 0));
+    item.seen = Math.min(999, Math.max(1, Number(item.seen) || 1));
+    item.pinned = !!item.pinned;
+    item.meta = (item.meta && typeof item.meta === 'object') ? sanitizeMeta(item.meta) : {};
+    return item;
+  }
+
   function loadState() {
     try {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      return { items: Array.isArray(parsed.items) ? parsed.items : [] };
+      const raw = Array.isArray(parsed.items) ? parsed.items : [];
+      const items = raw.map(normalizeItem).filter(Boolean).slice(0, MAX_ITEMS);
+      return { items };
     } catch (_) {
       return { items: [] };
     }
@@ -107,7 +134,11 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
     } catch (err) {
-      toast('Не удалось сохранить историю Prompt Loom', 'error');
+      const now = Date.now();
+      if (now - lastStorageToastAt > 30000) {
+        lastStorageToastAt = now;
+        toast('Не удалось сохранить историю Prompt Loom', 'error');
+      }
       return false;
     }
   }
@@ -117,7 +148,11 @@
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
       return true;
     } catch (err) {
-      toast('Не удалось сохранить настройки Prompt Loom', 'error');
+      const now = Date.now();
+      if (now - lastStorageToastAt > 30000) {
+        lastStorageToastAt = now;
+        toast('Не удалось сохранить настройки Prompt Loom', 'error');
+      }
       return false;
     }
   }
@@ -241,12 +276,27 @@
     if (/\bxox[baprs]-[A-Za-z0-9\-]{10,}/.test(t)) return true;
     if (/\b(sk|pk)_(live|test)_[A-Za-z0-9]{16,}/.test(t)) return true;
     if (/\b[A-Za-z][A-Za-z0-9+.\-]*:\/\/[^:\s/]+:[^@\s/]+@/.test(t)) return true;
-    if (/^\s*[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|KEY)[A-Z0-9_]*\s*=/im.test(t)) return true;
+    if (/^\s*[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*.{8,}/im.test(t)) return true;
     return false;
+  }
+
+  const META_WHITELIST = ['via', 'lastVia', 'lastSeenBumpAt', 'featureKey', 'mode', 'blockId', 'prompt'];
+
+  function sanitizeMeta(meta) {
+    if (!meta || typeof meta !== 'object') return {};
+    const out = {};
+    for (const key of META_WHITELIST) {
+      if (key in meta) {
+        const val = meta[key];
+        out[key] = typeof val === 'string' ? val.slice(0, 500) : typeof val === 'number' ? val : String(val).slice(0, 500);
+      }
+    }
+    return out;
   }
 
   function record(text, source = 'manual', meta = {}) {
     const safeSource = TYPE_META[source] ? source : 'manual';
+    const safeMeta = sanitizeMeta(meta);
     const clean = String(text || '').replace(/\r\n/g, '\n').replace(/\s+$/u, '');
     const kind = classify(clean, safeSource);
     if (shouldSkip(clean, safeSource, kind)) return null;
@@ -256,7 +306,7 @@
     const recentSame = state.items.find(x => x.hash === hash && now - (x.updatedAt || x.createdAt) < 15000);
     if (recentSame) {
       const lastSeenBumpAt = Number(recentSame.meta?.lastSeenBumpAt || 0);
-      const nextMeta = { ...(recentSame.meta || {}), lastVia: meta?.via || safeSource };
+      const nextMeta = { ...(recentSame.meta || {}), lastVia: safeMeta?.via || safeSource };
       if (now - lastSeenBumpAt > 1000) {
         recentSame.seen = Math.min(999, Number(recentSame.seen || 1) + 1);
         nextMeta.lastSeenBumpAt = now;
@@ -271,7 +321,7 @@
 
     const mergeTarget = findMergeTarget(clean, safeSource, kind, hash, now);
     if (mergeTarget) {
-      mergeSimilarItem(mergeTarget, clean, safeSource, meta, now);
+      mergeSimilarItem(mergeTarget, clean, safeSource, safeMeta, now);
       saveState();
       renderPanelList();
       maybeSuggestSnippet(mergeTarget);
@@ -293,12 +343,12 @@
       uses: 0,
       seen: 1,
       pinned: false,
-      meta: meta || {}
+      meta: safeMeta
     };
 
     state.items.unshift(item);
     if (state.items.length > MAX_ITEMS) {
-      const pinned = state.items.filter(x => x.pinned);
+      const pinned = state.items.filter(x => x.pinned).slice(0, MAX_ITEMS);
       const rest = state.items.filter(x => !x.pinned).slice(0, Math.max(0, MAX_ITEMS - pinned.length));
       state.items = [...pinned, ...rest];
     }
@@ -486,12 +536,22 @@
       if (!isInsidePromptLoom(e.target)) lastExternalInputEl = e.target;
     });
 
-    document.addEventListener('copy', () => {
+    document.addEventListener('copy', e => {
+      if (isInsidePromptLoom(e.target)) return;
+      if (e.target?.closest?.('[data-private], [data-no-loom]')) return;
       const sel = String(window.getSelection?.() || '').trim();
       if (sel && !isLoomInternalCopy(sel)) record(sel, 'copy', { via: 'copy-event' });
     });
 
     document.addEventListener('paste', e => {
+      const target = e.target;
+      if (target?.closest?.('[data-private], [data-no-loom]')) return;
+      if (target?.tagName === 'INPUT') {
+        const t = (target.type || 'text').toLowerCase();
+        if (t === 'password' || t === 'hidden') return;
+        if (target.autocomplete === 'current-password' || target.autocomplete === 'new-password' || target.autocomplete === 'one-time-code') return;
+      }
+      if (isInsidePromptLoom(target)) return;
       const text = e.clipboardData?.getData('text/plain') || '';
       if (text && !isLoomInternalPaste(text)) record(text, 'paste', { via: 'paste-event' });
     }, true);
@@ -893,7 +953,8 @@
       }
       const snapshot = makeAcceptSnapshot(target, item.text);
       markInternalPaste(item.text);
-      insertIntoEditable(target, item.text, null, null, { smartSpacing: false });
+      const ok = insertIntoEditable(target, item.text, null, null, { smartSpacing: false });
+      if (!ok) { toast('Не удалось вставить', 'error'); return; }
       markItemUsed(item, 'loom-insert');
       playAcceptEffect(snapshot, item.text);
     });
@@ -1265,11 +1326,13 @@
     const start = inlineSession.start;
     const end = inlineSession.end;
     const snapshot = makeAcceptSnapshot(target, item.text, start);
-    // Для inline-палитры важно не добавлять авто-переносы:
-    // пользователь либо заменяет команду "\\\\...", либо вставляет точно в позицию курсора.
     markInternalPaste(item.text);
-    insertIntoEditable(target, item.text, start, end, { smartSpacing: false });
-
+    const ok = insertIntoEditable(target, item.text, start, end, { smartSpacing: false });
+    if (!ok) {
+      toast('Не удалось вставить', 'error');
+      closePalette();
+      return;
+    }
     markItemUsed(item, 'loom-quick');
     playAcceptEffect(snapshot, item.text);
     closePalette();
@@ -1328,11 +1391,13 @@
     const insertOptions = pretty ? { smartSpacing: true, blockSpacing: true } : { smartSpacing: false };
     const snapshot = makeAcceptSnapshot(target, text, null, insertOptions);
     markInternalPaste(text);
-    insertIntoEditable(target, text, null, null, insertOptions);
+    const ok = insertIntoEditable(target, text, null, null, insertOptions);
+    if (!ok) {
+      toast('Не удалось вставить', 'error');
+      return;
+    }
     markItemUsed(item, pretty ? 'loom-pretty' : 'loom-insert');
-
     playAcceptEffect(snapshot, text);
-    record(text, 'snippet', { via: pretty ? 'loom-pretty' : 'loom-insert' });
   }
 
   function getInsertTarget(options = {}) {
@@ -1853,7 +1918,14 @@
   }
 
   function isEditable(el) {
-    return !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    if (el.tagName === 'TEXTAREA') return !el.disabled && !el.readOnly;
+    if (el.tagName === 'INPUT') {
+      const type = (el.type || 'text').toLowerCase();
+      return ['text', 'search', 'url', 'tel', 'email', 'number'].includes(type) && !el.disabled && !el.readOnly;
+    }
+    return false;
   }
 
   function getEditableValue(el) {
