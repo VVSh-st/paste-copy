@@ -20,6 +20,78 @@ const MindMap = (() => {
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
+  let _requestSeq = 0;
+  let _depthEls = [];
+
+  function _num(value, fallback, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function _normalizeData(raw) {
+    const data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+
+    const words = Array.isArray(data.words) ? data.words : [];
+    const links = Array.isArray(data.links) ? data.links : [];
+    const clusters = Array.isArray(data.clusters) ? data.clusters : [];
+    const evidence = Array.isArray(data.evidence) ? data.evidence : [];
+    const steps = Array.isArray(data.steps) ? data.steps : [];
+
+    return {
+      words: words.slice(0, 120).map(w => ({
+        w: String(w?.w ?? '').slice(0, 80),
+        weight: _num(w?.weight, 1, 1, 10),
+        role: ['topic', 'action', 'modifier', 'entity'].includes(w?.role) ? w.role : 'topic',
+      })).filter(w => w.w.trim()),
+
+      links: links.slice(0, 200).map(l => ({
+        from: String(l?.from ?? '').slice(0, 80),
+        to: String(l?.to ?? '').slice(0, 80),
+        strength: _num(l?.strength, 0.3, 0, 1),
+      })),
+
+      claim: String(data.claim ?? '').slice(0, 500),
+      conclusion: String(data.conclusion ?? '').slice(0, 500),
+
+      evidence: evidence.slice(0, 20).map(e => ({
+        text: String(e?.text ?? '').slice(0, 500),
+        supports: Boolean(e?.supports),
+      })),
+
+      clusters: clusters.slice(0, 12).map(cl => ({
+        topic: String(cl?.topic ?? '').slice(0, 100),
+        words: Array.isArray(cl?.words)
+          ? cl.words.slice(0, 20).map(w => String(w).slice(0, 80))
+          : [],
+      })),
+
+      hierarchy: normalizeHierarchy(data.hierarchy),
+      steps: steps.slice(0, 20).map((s, i) => ({
+        order: _num(s?.order, i + 1, 1, 100),
+        title: String(s?.title ?? '').slice(0, 150),
+        desc: String(s?.desc ?? '').slice(0, 500),
+      })),
+    };
+  }
+
+  function normalizeHierarchy(node, depth = 0, counter = { n: 0 }) {
+    if (!node || typeof node !== 'object') return null;
+    if (depth > 5 || counter.n > 120) return null;
+    counter.n++;
+
+    const children = Array.isArray(node.children)
+      ? node.children.slice(0, 8)
+          .map(child => normalizeHierarchy(child, depth + 1, counter))
+          .filter(Boolean)
+      : [];
+
+    return {
+      label: String(node.label ?? '').slice(0, 100),
+      children,
+    };
+  }
+
   function _resetTransform() {
     _zoom = 1; _panX = 0; _panY = 0;
     if (_viewport) _viewport.setAttribute('transform', 'translate(0,0) scale(1)');
@@ -35,13 +107,6 @@ const MindMap = (() => {
     _overlay.className = 'mindmap-overlay';
     _overlay.innerHTML = `
       <div class="mindmap-panel">
-        <div class="mindmap-queries">
-          <input class="mindmap-query-input" placeholder="Запрос... (Enter)">
-          <div class="mindmap-query-sep"></div>
-          <div class="mindmap-query-presets"></div>
-          <div class="mindmap-query-sep"></div>
-          <div class="mindmap-query-history"></div>
-        </div>
         <div class="mindmap-controls">
           <button class="mindmap-btn" data-mode="words" title="Облако слов">W</button>
           <button class="mindmap-btn" data-mode="graph" title="Граф связей">G</button>
@@ -95,87 +160,8 @@ const MindMap = (() => {
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
       _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
       _overlay.querySelector('.mindmap-refresh').classList.add('spinning');
-      _fetchWithQuery(text, null);
+      _fetch(text);
     });
-
-    // ── Query menu: presets, history, input ─────────────────────
-    const PRESETS = [
-      'Структура документа',
-      'Ключевые понятия',
-      'Поток действий',
-      'Связи между блоками',
-      'Краткое резюме',
-    ];
-    const HISTORY_KEY = 'mindmap-history';
-    const MAX_HISTORY = 5;
-
-    function _loadHistory() {
-      try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
-      catch { return []; }
-    }
-    function _saveHistory(query) {
-      const hist = _loadHistory().filter(h => h !== query);
-      hist.unshift(query);
-      if (hist.length > MAX_HISTORY) hist.length = MAX_HISTORY;
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(hist));
-      _renderHistory();
-    }
-    function _deleteHistory(query) {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(_loadHistory().filter(h => h !== query)));
-      _renderHistory();
-    }
-    function _renderPresets() {
-      const container = _overlay.querySelector('.mindmap-query-presets');
-      container.innerHTML = '';
-      PRESETS.forEach(p => {
-        const el = document.createElement('div');
-        el.className = 'mindmap-query-item';
-        el.textContent = p;
-        el.addEventListener('click', () => _runQuery(p));
-        container.appendChild(el);
-      });
-    }
-    function _renderHistory() {
-      const container = _overlay.querySelector('.mindmap-query-history');
-      container.innerHTML = '';
-      _loadHistory().forEach(h => {
-        const el = document.createElement('div');
-        el.className = 'mindmap-history-item';
-        const span = document.createElement('span');
-        span.textContent = h.length > 30 ? h.slice(0, 30) + '...' : h;
-        span.title = h;
-        const del = document.createElement('span');
-        del.className = 'mindmap-history-del';
-        del.textContent = '✕';
-        del.addEventListener('click', e => { e.stopPropagation(); _deleteHistory(h); });
-        el.appendChild(span);
-        el.appendChild(del);
-        el.addEventListener('click', () => _runQuery(h));
-        container.appendChild(el);
-      });
-    }
-
-    const queryInput = _overlay.querySelector('.mindmap-query-input');
-    queryInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && queryInput.value.trim()) {
-        _runQuery(queryInput.value.trim());
-        queryInput.value = '';
-      }
-    });
-
-    _renderPresets();
-    _renderHistory();
-    _setupProximityReveal(_overlay.querySelector('.mindmap-queries'), 150);
-
-    function _runQuery(query) {
-      if (_loading) return;
-      const text = window.Preview?.getText?.() ?? '';
-      if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-      _saveHistory(query);
-      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
-      _overlay.querySelector('.mindmap-refresh')?.classList.add('spinning');
-      _fetchWithQuery(text, query);
-    }
 
     function _setupProximityReveal(el, radius) {
       _overlay.addEventListener('mousemove', e => {
@@ -283,28 +269,8 @@ const MindMap = (() => {
     });
   }
 
-  function _enableNodeDrag(el, node, onMove) {
-    let dragging = false, startX, startY, origX, origY;
-    el.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
-      dragging = true;
-      startX = e.clientX; startY = e.clientY;
-      origX = node._pos.x; origY = node._pos.y;
-      e.stopPropagation();
-    });
-    window.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      const dx = (e.clientX - startX) / _zoom;
-      const dy = (e.clientY - startY) / _zoom;
-      node._pos.x = origX + dx;
-      node._pos.y = origY + dy;
-      if (onMove) onMove();
-    });
-    window.addEventListener('mouseup', () => { dragging = false; });
-  }
-
   function _wrapTextLines(text, maxWidth, maxLines) {
-    const words = text.split(' ');
+    const words = String(text ?? '').split(' ');
     const lines = [];
     let line = '';
     words.forEach(w => {
@@ -330,11 +296,13 @@ const MindMap = (() => {
   }
 
   function _jumpToWord(word) {
-    document.dispatchEvent(new CustomEvent('mindmap:jump-word', { detail: { word } }));
+    const safeWord = String(word ?? '').slice(0, 100);
+    document.dispatchEvent(new CustomEvent('mindmap:jump-word', { detail: { word: safeWord } }));
     close();
   }
 
   function _smoothZoomTo(targetX, targetY, targetZoom) {
+    if (!_viewport || !_svg) return;
     cancelAnimationFrame(_inertiaRaf);
     _viewport.style.transition = 'transform 0.4s cubic-bezier(.2,.8,.2,1)';
     const rect = _svg.getBoundingClientRect();
@@ -375,8 +343,7 @@ const MindMap = (() => {
   }
 
   function _applyParallax(nx, ny) {
-    if (!_viewport) return;
-    _viewport.querySelectorAll('[data-depth]').forEach(el => {
+    _depthEls.forEach(el => {
       const depth = parseFloat(el.dataset.depth);
       const px = nx * depth * 40;
       const py = ny * depth * 40;
@@ -386,7 +353,16 @@ const MindMap = (() => {
 
   function open() {
     _ensureOverlay();
-    if (_loading) return;
+    if (_loading) {
+      _overlay.classList.add('visible');
+      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+      return;
+    }
+
+    if (!_data) {
+      const text = window.Preview?.getText?.() ?? '';
+      if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
+    }
 
     _overlay.classList.add('visible');
     _overlay.querySelector('.mindmap-canvas').innerHTML = '';
@@ -409,7 +385,9 @@ const MindMap = (() => {
 
     const text = window.Preview?.getText?.() ?? '';
     if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-    _overlay.querySelector('.mindmap-status').textContent = 'Выберите запрос или введите свой';
+    _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+    _overlay.querySelector('.mindmap-refresh')?.classList.add('spinning');
+    _fetch(text);
   }
 
   function _setupSvgListeners() {
@@ -453,48 +431,46 @@ const MindMap = (() => {
   function close() {
     if (!_overlay) return;
     _overlay.classList.remove('visible');
+    _dragging = false;
+    cancelAnimationFrame(_inertiaRaf);
+    _inertiaRaf = null;
+    _rafPending = false;
+    if (_panel) _panel.style.transform = '';
   }
 
-  async function _fetchWithQuery(text, query) {
+  async function _fetch(text) {
+    const seq = ++_requestSeq;
     _loading = true;
     try {
-      const basePrompt = window.LLMCore.getPrompt('mindmap');
-      const lay = window.State?.getLayout?.() ?? {};
-      const settingLevel = lay.skeletonLevel || 'light';
-      const level = settingLevel === 'off' ? null
-        : settingLevel === 'auto' ? TextSkeletonizer.recommendLevel(text.length)
-        : settingLevel;
-      let processedText;
-      try {
-        processedText = level ? await TextSkeletonizer.processAsync(text, { level }) : text;
-      } catch (skErr) {
-        console.warn('[Mindmap] Skeletonizer error:', skErr);
-        processedText = text;
-      }
-      const userContent = query
-        ? `Запрос: "${query}"\n\n${basePrompt}\n\nТекст:\n${processedText.slice(0, 6000)}`
-        : basePrompt + '\n\n' + processedText.slice(0, 6000);
       const result = await window.LLMCore?.request?.({
-        messages: [{ role: 'user', content: userContent }],
+        messages: [{ role: 'user', content: window.LLMCore.getPrompt('mindmap') + '\n\n' + text.slice(0, 4000) }],
         stream: false,
         maxTokens: 3000,
         featureTag: 'mindmap',
       });
+      if (seq !== _requestSeq) return;
       if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); close(); return; }
       let json;
       try { json = JSON.parse(result.trim()); } catch {
-        const m = result.match(/\{[\s\S]*\}/);
-        if (m) json = JSON.parse(m[0]);
-        else { window.Toast?.show('Не удалось распарсить JSON', 'error'); close(); return; }
+        const first = result.indexOf('{');
+        const last = result.lastIndexOf('}');
+        if (first !== -1 && last > first) {
+          try { json = JSON.parse(result.slice(first, last + 1)); } catch (_) {}
+        }
+        if (!json) { window.Toast?.show('Не удалось распарсить JSON', 'error'); close(); return; }
       }
-      _data = json;
-      _overlay.querySelector('.mindmap-status').textContent = '';
-      _render();
+      _data = _normalizeData(json);
+      if (_overlay?.classList.contains('visible')) {
+        _overlay.querySelector('.mindmap-status').textContent = '';
+        _render();
+      }
     } catch (e) {
+      if (seq !== _requestSeq) return;
       if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
+      _data = null;
       close();
     } finally {
-      _loading = false;
+      if (seq === _requestSeq) _loading = false;
       _overlay?.querySelector('.mindmap-refresh')?.classList.remove('spinning');
     }
   }
@@ -564,6 +540,7 @@ const MindMap = (() => {
     }
     _applyDepthBlur();
     _applyTransform();
+    _depthEls = Array.from(_viewport.querySelectorAll('[data-depth]'));
   }
 
   function _drawWords(W, H) {
@@ -639,8 +616,8 @@ const MindMap = (() => {
       vx: 0, vy: 0
     }));
 
-    const nodeMap = {};
-    dedup.forEach((w, i) => { nodeMap[w.w] = i; });
+    const nodeMap = new Map();
+    dedup.forEach((w, i) => { nodeMap.set(w.w, i); });
 
     for (let iter = 0; iter < 60; iter++) {
       nodes.forEach(a => {
@@ -654,7 +631,7 @@ const MindMap = (() => {
         });
       });
       links.forEach(l => {
-        const ai = nodeMap[l.from], bi = nodeMap[l.to];
+        const ai = nodeMap.get(l.from), bi = nodeMap.get(l.to);
         if (ai == null || bi == null) return;
         const a = nodes[ai], b = nodes[bi];
         let dx = b.x - a.x, dy = b.y - a.y;
@@ -714,6 +691,7 @@ const MindMap = (() => {
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
       circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
       circle.addEventListener('dblclick', () => _smoothZoomTo(n.x, n.y, 2));
+      _attachWordInteractions(circle, n.w, n.x, n.y);
       depthG.appendChild(circle);
 
       const text = document.createElementNS(SVG_NS, 'text');
@@ -884,46 +862,31 @@ const MindMap = (() => {
       _viewport.appendChild(_emptyMsg('Нет иерархии тем в тексте'));
       return;
     }
+    const cx = W / 2, cy = H / 2;
     const palette = ['#4f8ef7', '#a070f7', '#3ec98f', '#f7a13f', '#f76d6d'];
-    const levelGap = 90;
-    const nodeR = 18;
 
-    // Count nodes per level for sizing
-    function countNodes(node) {
-      let count = 1;
-      if (node.children) node.children.forEach(c => { count += countNodes(c); });
-      return count;
-    }
-    function maxDepth(node, d = 0) {
-      if (!node.children?.length) return d;
-      return Math.max(...node.children.map(c => maxDepth(c, d + 1)));
-    }
-
-    const depth = maxDepth(_data.hierarchy);
-    const totalH = (depth + 1) * levelGap + 80;
-    const startY = (H - totalH) / 2 + 40;
-
-    // Layout: each level gets horizontal space proportional to subtree size
-    function layoutTree(node, depth, xStart, xEnd, color) {
-      const x = (xStart + xEnd) / 2;
-      const y = startY + depth * levelGap;
+    function layout(node, depth, angleStart, angleEnd, color) {
+      const angle = (angleStart + angleEnd) / 2;
+      const radius = depth === 0 ? 0 : depth * Math.min(W, H) * 0.16 + 40;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
       node._pos = { x, y, depth, color };
-      if (!node.children?.length) return;
-      const total = node.children.reduce((s, c) => s + countNodes(c), 0);
-      let cursor = xStart;
-      node.children.forEach((child, i) => {
-        const childW = (countNodes(child) / total) * (xEnd - xStart);
-        const childColor = depth === 0 ? palette[i % palette.length] : color;
-        layoutTree(child, depth + 1, cursor, cursor + childW, childColor);
-        cursor += childW;
-      });
+
+      if (node.children && node.children.length) {
+        const span = (angleEnd - angleStart) / node.children.length;
+        node.children.forEach((child, i) => {
+          const childColor = depth === 0 ? palette[i % palette.length] : color;
+          layout(child, depth + 1, angleStart + i * span, angleStart + (i + 1) * span, childColor);
+        });
+      }
     }
-    layoutTree(_data.hierarchy, 0, 40, W - 40, palette[0]);
+    layout(_data.hierarchy, 0, 0, Math.PI * 2, palette[0]);
 
     function drawLink(a, b, opacity) {
+      const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.12;
+      const my = (a.y + b.y) / 2 - (b.x - a.x) * 0.12;
       const path = document.createElementNS(SVG_NS, 'path');
-      const midY = (a.y + b.y) / 2;
-      path.setAttribute('d', `M ${a.x} ${a.y} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y}`);
+      path.setAttribute('d', `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', `rgba(255,255,255,${opacity})`);
       path.setAttribute('stroke-width', '1.5');
@@ -936,9 +899,9 @@ const MindMap = (() => {
         drawLink(node._pos, child._pos, 1 - node._pos.depth * 0.15);
         renderNode(child);
       });
-      const { x, y, depth: d, color } = node._pos;
-      const r = Math.max(8, nodeR - d * 4);
-      const depthVal = (0.32 - d * 0.08).toFixed(2);
+      const { x, y, depth, color } = node._pos;
+      const r = Math.max(8, 22 - depth * 6);
+      const depthVal = (0.32 - depth * 0.08).toFixed(2);
 
       _ensureGradient(color);
 
@@ -953,19 +916,18 @@ const MindMap = (() => {
       circle.setAttribute('cx', x); circle.setAttribute('cy', y); circle.setAttribute('r', r);
       circle.setAttribute('fill', `url(#${_gradIdFor(color)})`);
       circle.setAttribute('opacity', '0.85');
-      if (d === 0) circle.setAttribute('filter', 'url(#bloom)');
+      if (depth === 0) circle.setAttribute('filter', 'url(#bloom)');
       circle.style.cursor = 'pointer';
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
       circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
-      _enableNodeDrag(circle, node, () => _render());
       depthG.appendChild(circle);
 
       const label = document.createElementNS(SVG_NS, 'text');
       label.setAttribute('x', x); label.setAttribute('y', y + r + 14);
       label.setAttribute('text-anchor', 'middle');
       label.setAttribute('fill', color); label.setAttribute('font-family', 'var(--mono)');
-      label.setAttribute('font-size', d === 0 ? '12' : '10');
+      label.setAttribute('font-size', depth === 0 ? '12' : '10');
       label.textContent = node.label;
       _attachWordInteractions(label, node.label, x, y);
       depthG.appendChild(label);
