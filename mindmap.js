@@ -91,6 +91,8 @@ const MindMap = (() => {
     if (/^(get|set|add|remove|update|render|handle|apply|create|query|focus|blur|persist|reduce|request|observe|resize)[A-Z]/.test(s)) return true;
     if (/(El|Ref|Ctx|Tmp|Idx|Id|Map|State|Cache|Offsets|Ratios)$/i.test(s) && s.length > 8) return true;
     if (/^(CPU|GPU|rAF|RAF)$/i.test(s)) return true;
+    if (/^[A-Za-z]+(?:[A-Z][a-z0-9]+){2,}$/.test(s) && s.length > 12) return true;
+    if (/(Effect|Handler|Listener|Manager|Controller|Service|Provider|Renderer)$/i.test(s) && s.length > 12) return true;
     return false;
   }
 
@@ -128,8 +130,11 @@ const MindMap = (() => {
 
       clusters: clusters.slice(0, 10).map(cl => {
         const words = Array.isArray(cl?.words)
-          ? cl.words.map(w => String(w).slice(0, 80).trim()).filter(Boolean)
-              .filter(w => !_isClusterNoiseWord(w)).slice(0, 9)
+          ? cl.words
+              .map(w => String(w).slice(0, 32).trim())
+              .filter(Boolean)
+              .filter(w => !_isClusterNoiseWord(w))
+              .slice(0, 8)
           : [];
         return {
           topic: String(cl?.topic ?? '').slice(0, 100).trim(),
@@ -506,6 +511,33 @@ const MindMap = (() => {
 
     if (line.trim() && lines.length < maxLines) lines.push(line.trim());
     return lines;
+  }
+
+  function _clusterTextLines(text, maxChars = 14, maxLines = 2) {
+    const s = String(text ?? '').trim();
+    if (!s) return [];
+    const parts = s.split(/[\s-]+/).filter(Boolean);
+    if (parts.length > 1) {
+      const lines = [];
+      let line = '';
+      parts.forEach(part => {
+        if (lines.length >= maxLines) return;
+        const test = line ? `${line} ${part}` : part;
+        if (test.length > maxChars && line) { lines.push(line); line = part; }
+        else { line = test; }
+      });
+      if (line && lines.length < maxLines) lines.push(line);
+      return lines.slice(0, maxLines);
+    }
+    return [s];
+  }
+
+  function _clusterWordFontSize(word, baseSize) {
+    const len = String(word ?? '').trim().length;
+    if (len > 22) return Math.max(10, baseSize - 3);
+    if (len > 17) return Math.max(10, baseSize - 2);
+    if (len > 13) return Math.max(10, baseSize - 1);
+    return baseSize;
   }
 
   function _emptyMsg(msg) {
@@ -1432,7 +1464,10 @@ const MindMap = (() => {
     const cx = W / 2, cy = H / 2;
 
     function clusterRadius(cl) {
-      return Math.min(190, Math.max(125, (72 + Math.max(4, cl.words.length) * 11) * 1.08));
+      const words = Array.isArray(cl.words) ? cl.words : [];
+      const longest = words.reduce((m, w) => Math.max(m, String(w).length), 0);
+      const longBoost = longest > 18 ? 18 : longest > 13 ? 10 : 0;
+      return Math.min(200, Math.max(130, (72 + Math.max(4, words.length) * 11) * 1.08 + longBoost));
     }
 
     const angleStep = (Math.PI * 2) / clusters.length;
@@ -1484,20 +1519,23 @@ const MindMap = (() => {
       ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('fill-opacity', '0.8'); ellipse.setAttribute('stroke', color + '55'); ellipse.setAttribute('stroke-width', '1.2'); ellipse.classList.remove('mm-pulse'); });
       depthG.appendChild(ellipse);
 
-      const title = document.createElementNS(SVG_NS, 'text');
-      title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.40);
-      title.setAttribute('text-anchor', 'middle');
-      title.setAttribute('font-size', '14'); title.setAttribute('font-weight', '700');
-      title.setAttribute('fill', color); title.setAttribute('font-family', 'var(--mono)');
-      title.setAttribute('paint-order', 'stroke');
-      title.setAttribute('stroke', 'rgba(0,0,0,0.45)'); title.setAttribute('stroke-width', '3');
-      title.setAttribute('stroke-linejoin', 'round');
-      title.textContent = cl.topic;
-      depthG.appendChild(title);
+      const titleLines = _clusterTextLines(cl.topic, 22, 2);
+      titleLines.forEach((line, li) => {
+        const title = document.createElementNS(SVG_NS, 'text');
+        title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.42 + li * 16);
+        title.setAttribute('text-anchor', 'middle');
+        title.setAttribute('font-size', '14'); title.setAttribute('font-weight', '700');
+        title.setAttribute('fill', color); title.setAttribute('font-family', 'var(--mono)');
+        title.setAttribute('paint-order', 'stroke');
+        title.setAttribute('stroke', 'rgba(0,0,0,0.45)'); title.setAttribute('stroke-width', '3');
+        title.setAttribute('stroke-linejoin', 'round');
+        title.textContent = line;
+        depthG.appendChild(title);
+      });
 
       const wordsG = document.createElementNS(SVG_NS, 'g');
       wordsG.dataset.depth = '0.18';
-      const visibleWords = cl.words.slice(0, 9);
+      const visibleWords = cl.words.slice(0, 8).sort((a, b) => String(a).length - String(b).length);
       const wordCount = Math.max(1, visibleWords.length);
 
       visibleWords.forEach((w, wi) => {
@@ -1529,18 +1567,28 @@ const MindMap = (() => {
             wy = ccy + Math.sin(a) * wr * 0.62 + 10;
           }
         }
+        const baseFontSize = wi < 3 ? 13 : 12;
+        const fontSize = _clusterWordFontSize(w, baseFontSize);
+        const wordLines = _clusterTextLines(w, fontSize >= 13 ? 12 : 14, 2);
         const t = document.createElementNS(SVG_NS, 'text');
-        t.setAttribute('x', wx); t.setAttribute('y', wy);
+        t.setAttribute('x', wx);
+        t.setAttribute('y', wy - (wordLines.length - 1) * fontSize * 0.45);
         t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
-        t.setAttribute('font-size', wi < 3 ? '13' : '12');
+        t.setAttribute('font-size', String(fontSize));
         t.setAttribute('font-weight', wi < 2 ? '600' : '400');
         t.setAttribute('fill', wi < 3 ? 'var(--text0)' : 'var(--text1)');
         t.setAttribute('font-family', 'var(--mono)');
         t.setAttribute('opacity', wi < 3 ? '0.96' : '0.82');
         t.setAttribute('paint-order', 'stroke');
-        t.setAttribute('stroke', 'rgba(0,0,0,0.35)'); t.setAttribute('stroke-width', '1.8');
+        t.setAttribute('stroke', 'rgba(0,0,0,0.35)'); t.setAttribute('stroke-width', '1.7');
         t.setAttribute('stroke-linejoin', 'round');
-        t.textContent = w;
+        wordLines.forEach((line, li) => {
+          const span = document.createElementNS(SVG_NS, 'tspan');
+          span.setAttribute('x', wx);
+          span.setAttribute('dy', li === 0 ? '0' : String(fontSize * 1.05));
+          span.textContent = line;
+          t.appendChild(span);
+        });
         _attachWordInteractions(t, w, wx, wy);
         wordsG.appendChild(t);
       });
