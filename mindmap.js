@@ -34,23 +34,10 @@ const MindMap = (() => {
     return Math.max(min, Math.min(max, n));
   }
 
-  function _normalizeData(raw) {
+  function _normalizeData(raw, forcedWords) {
     const data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
-    const words = Array.isArray(data.words) ? data.words : [];
-    const rawWords = words.slice(0, 120).map(w => ({
-      w: String(w?.w ?? '').slice(0, 80),
-      weight: _num(w?.weight, 1, 1, 10),
-      role: ['topic', 'action', 'modifier', 'entity'].includes(w?.role) ? w.role : 'topic',
-    })).filter(w => w.w.trim());
-
-    const wordMap = new Map();
-    rawWords.forEach(w => {
-      const key = _wordKey(w.w);
-      const existing = wordMap.get(key);
-      if (!existing || w.weight > existing.weight) wordMap.set(key, w);
-    });
-    const dedupedWords = [...wordMap.values()];
+    const dedupedWords = Array.isArray(forcedWords) ? forcedWords : [];
     const links = Array.isArray(data.links) ? data.links : [];
     const clusters = Array.isArray(data.clusters) ? data.clusters : [];
     const evidence = Array.isArray(data.evidence) ? data.evidence : [];
@@ -243,9 +230,16 @@ const MindMap = (() => {
       if (_loading) return;
       const text = window.Preview?.getText?.() ?? '';
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую новый текст...';
+
+      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую структуру...';
       _overlay.querySelector('.mindmap-refresh').classList.add('spinning');
-      _data = null;
+
+      const localWords = _buildLocalWords(text);
+      _data = {
+        words: localWords, links: [], claim: '', conclusion: '',
+        evidence: [], clusters: [], hierarchy: null, steps: [], localOnly: true,
+      };
+
       _render();
       _fetch(text);
     });
@@ -408,18 +402,36 @@ const MindMap = (() => {
     if (!safeWord) return;
 
     const sourceText = window.Preview?.getText?.() ?? '';
-    const escaped = safeWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu');
-    const exists = re.test(sourceText);
+    const occurrences = _findWordOccurrences(sourceText, safeWord);
 
-    if (!exists) {
+    if (!occurrences.length) {
       window.Toast?.show(`"${safeWord}" не найдено в тексте`, 'info');
       return;
     }
 
+    const key = _wordKey(safeWord);
+    const prev = _jumpCursors.get(key) ?? -1;
+    const next = (prev + 1) % occurrences.length;
+    _jumpCursors.set(key, next);
+
+    const target = occurrences[next];
+
     document.dispatchEvent(new CustomEvent('mindmap:jump-word', {
-      detail: { word: safeWord, source: 'mindmap', exact: true }
+      detail: {
+        word: safeWord,
+        source: 'mindmap',
+        exact: true,
+        occurrenceIndex: next,
+        occurrenceCount: occurrences.length,
+        charIndex: target.index,
+        length: target.length,
+      }
     }));
+
+    if (occurrences.length > 1) {
+      window.Toast?.show(`"${safeWord}": вхождение ${next + 1} из ${occurrences.length}`, 'info');
+    }
+
     close();
   }
 
@@ -476,40 +488,52 @@ const MindMap = (() => {
 
   function open() {
     _ensureOverlay();
-    if (_loading) {
-      _overlay.classList.add('visible');
-      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+
+    const text = window.Preview?.getText?.() ?? '';
+
+    if (!_data && !text.trim()) {
+      window.Toast?.show('Превью пустое', 'info');
       return;
     }
 
-    if (!_data) {
-      const text = window.Preview?.getText?.() ?? '';
-      if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-    }
-
     _overlay.classList.add('visible');
-    _overlay.querySelector('.mindmap-canvas').innerHTML = '';
-    _svg = document.createElementNS(SVG_NS, 'svg');
-    _svg.setAttribute('width', '100%');
-    _svg.setAttribute('height', '100%');
-    _svg.style.display = 'block';
-    _overlay.querySelector('.mindmap-canvas').appendChild(_svg);
-    _overlay.querySelectorAll('.mindmap-btn[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === _mode));
+    _overlay.querySelectorAll('.mindmap-btn[data-mode]').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === _mode);
+    });
     _resetTransform();
     _syncZoomSlider();
-    _setupSvgListeners();
 
-    if (_data) {
+    if (_data && !_data.localOnly) {
       _overlay.querySelector('.mindmap-status').textContent = '';
       _overlay.querySelector('.mindmap-refresh')?.classList.remove('spinning');
       _render();
       return;
     }
 
-    const text = window.Preview?.getText?.() ?? '';
-    if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-    _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+    if (_loading) {
+      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+      _render();
+      return;
+    }
+
+    const localWords = _buildLocalWords(text);
+
+    _data = {
+      words: localWords,
+      links: [],
+      claim: '',
+      conclusion: '',
+      evidence: [],
+      clusters: [],
+      hierarchy: null,
+      steps: [],
+      localOnly: true,
+    };
+
+    _overlay.querySelector('.mindmap-status').textContent = 'Анализирую структуру...';
     _overlay.querySelector('.mindmap-refresh')?.classList.add('spinning');
+
+    _render();
     _fetch(text);
   }
 
@@ -571,38 +595,70 @@ const MindMap = (() => {
       const prompt = window.LLMCore?.getPrompt?.('mindmap');
       if (!prompt || !window.LLMCore?.request) {
         window.Toast?.show('LLMCore недоступен', 'error');
-        close();
+        if (_data?.words?.length) {
+          _overlay.querySelector('.mindmap-status').textContent = '';
+        } else {
+          close();
+        }
         return;
       }
 
+      const localWordsForPrompt = (_data?.words || []).slice(0, 60).map(w => w.w);
+
       const result = await window.LLMCore.request({
-        messages: [{ role: 'user', content: prompt + '\n\n' + text.slice(0, 4000) }],
+        messages: [{
+          role: 'user',
+          content: prompt +
+            '\n\nСписок слов уже рассчитан локально. Не добавляй новые words. ' +
+            'Если строишь links/clusters, используй только эти слова:\n' +
+            JSON.stringify(localWordsForPrompt) +
+            '\n\nТекст:\n' + text.slice(0, 4000)
+        }],
         stream: false,
         maxTokens: 7500,
         featureTag: 'mindmap',
         signal: _abortController.signal,
       });
       if (seq !== _requestSeq) return;
-      if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); close(); return; }
+      if (!result?.trim()) {
+        window.Toast?.show('Нет результата', 'info');
+        if (_data?.words?.length) {
+          _overlay.querySelector('.mindmap-status').textContent = '';
+        } else { close(); }
+        return;
+      }
 
       const json = _extractJsonObject(result);
       if (!json || typeof json !== 'object' || Array.isArray(json)) {
         console.warn('[MindMap] Unexpected JSON shape:', json);
         window.Toast?.show('Ответ mind map имеет неверный формат', 'error');
+        if (_data?.words?.length) {
+          _overlay.querySelector('.mindmap-status').textContent = '';
+        } else { close(); }
+        return;
+      }
+
+      const localWords = _data?.words?.length ? _data.words : _buildLocalWords(text);
+      const payload = json.mindmap && typeof json.mindmap === 'object' ? json.mindmap : json;
+      const normalized = _normalizeData(payload, localWords);
+
+      if (
+        !normalized.clusters.length && !normalized.hierarchy &&
+        !normalized.steps.length && !normalized.claim &&
+        !normalized.evidence.length && !normalized.conclusion
+      ) {
+        if (localWords.length) {
+          window.Toast?.show('LLM не вернул структуру, оставлено облако слов', 'info');
+          _overlay.querySelector('.mindmap-status').textContent = '';
+          return;
+        }
+        window.Toast?.show('LLM вернул пустую mind map', 'info');
         close();
         return;
       }
 
-      const payload = json.mindmap && typeof json.mindmap === 'object' ? json.mindmap : json;
-      const normalized = _normalizeData(payload);
-      if (
-        !normalized.words.length && !normalized.clusters.length &&
-        !normalized.hierarchy && !normalized.steps.length &&
-        !normalized.claim && !normalized.evidence.length && !normalized.conclusion
-      ) {
-        window.Toast?.show('LLM вернул пустую mind map', 'info'); close(); return;
-      }
       _data = normalized;
+      _data.localOnly = false;
       if (_overlay?.classList.contains('visible')) {
         _overlay.querySelector('.mindmap-status').textContent = '';
         _render();
@@ -610,8 +666,7 @@ const MindMap = (() => {
     } catch (e) {
       if (seq !== _requestSeq) return;
       if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
-      _data = null;
-      close();
+      if (!_data?.words?.length) close();
     } finally {
       if (seq === _requestSeq) _loading = false;
       _overlay?.querySelector('.mindmap-refresh')?.classList.remove('spinning');
@@ -697,27 +752,96 @@ const MindMap = (() => {
     return ((wide * 0.68 + narrow * 0.58) * fontSize) * weightFactor;
   }
 
-  function _countOccurrences(text, word) {
-    const w = String(word ?? '').trim();
-    if (!w || w.length < 2) return 0;
-    const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'giu');
-    return [...String(text ?? '').matchAll(re)].length;
+  const STOP_WORDS_RU = new Set([
+    'и', 'в', 'во', 'не', 'что', 'он', 'на', 'я', 'с', 'со', 'как',
+    'а', 'то', 'все', 'она', 'так', 'его', 'но', 'да', 'ты', 'к',
+    'у', 'же', 'вы', 'за', 'бы', 'по', 'только', 'ее', 'мне', 'было',
+    'вот', 'от', 'меня', 'еще', 'нет', 'о', 'из', 'ему', 'теперь',
+    'когда', 'даже', 'ну', 'вдруг', 'ли', 'если', 'уже', 'или',
+    'ни', 'быть', 'был', 'него', 'до', 'вас', 'нибудь', 'опять',
+    'уж', 'вам', 'ведь', 'там', 'потом', 'себя', 'ничего', 'ей',
+    'может', 'они', 'тут', 'где', 'есть', 'надо', 'ней', 'для',
+    'мы', 'тебя', 'их', 'чем', 'была', 'сам', 'чтоб', 'без',
+    'будто', 'чего', 'раз', 'тоже', 'себе', 'под', 'будет', 'ж',
+    'тогда', 'кто', 'этот', 'того', 'потому', 'этого', 'какой',
+    'совсем', 'ним', 'здесь', 'этом', 'один', 'почти', 'мой',
+    'тем', 'чтобы', 'нее', 'сейчас', 'были', 'куда', 'зачем',
+    'сказать', 'всех', 'никогда', 'сегодня', 'можно', 'при',
+    'наконец', 'два', 'об', 'другой', 'хоть', 'после', 'над',
+    'больше', 'тот', 'через', 'эти', 'нас', 'про', 'всего',
+    'них', 'какая', 'много', 'разве', 'три', 'эту', 'моя',
+  ]);
+
+  const STOP_WORDS_EN = new Set([
+    'the', 'and', 'for', 'are', 'but', 'not', 'you', 'your', 'with',
+    'this', 'that', 'from', 'have', 'has', 'was', 'were', 'will',
+    'would', 'could', 'should', 'there', 'their', 'they', 'them',
+    'then', 'than', 'into', 'about', 'because', 'what', 'when',
+    'where', 'which', 'while', 'who', 'how', 'can', 'all', 'any',
+    'one', 'two', 'out', 'our', 'its', 'his', 'her', 'she', 'him',
+  ]);
+
+  function _buildLocalWords(text, limit = 90) {
+    const source = String(text ?? '');
+    if (source.length < 30) return [];
+
+    const counts = new Map();
+    const re = /[\p{L}\p{N}][\p{L}\p{N}_-]{1,}/giu;
+
+    for (const m of source.matchAll(re)) {
+      const raw = m[0];
+      const key = raw.toLowerCase();
+      if (key.length < 3) continue;
+      if (STOP_WORDS_RU.has(key) || STOP_WORDS_EN.has(key)) continue;
+      if (/^\d+$/.test(key)) continue;
+
+      const item = counts.get(key) || { w: raw, key, count: 0, firstIndex: m.index };
+      item.count++;
+      counts.set(key, item);
+    }
+
+    const items = [...counts.values()]
+      .sort((a, b) => b.count !== a.count ? b.count - a.count : a.firstIndex - b.firstIndex)
+      .slice(0, limit);
+
+    if (!items.length) return [];
+    const maxCount = Math.max(1, items[0].count);
+
+    return items.map((x, i) => ({
+      w: x.w,
+      count: x.count,
+      firstIndex: x.firstIndex,
+      weight: Math.max(1, Math.min(10, 1 + Math.log2(x.count + 1) / Math.log2(maxCount + 1) * 9)),
+      role: 'topic',
+      colorIndex: i,
+    }));
+  }
+
+  let _jumpCursors = new Map();
+
+  function _findWordOccurrences(text, word) {
+    const safeWord = String(word ?? '').slice(0, 100).trim();
+    if (!safeWord) return [];
+    const escaped = safeWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}_])(${escaped})(?=$|[^\\p{L}\\p{N}_])`, 'giu');
+    const out = [];
+    for (const m of String(text ?? '').matchAll(re)) {
+      const prefix = m[1] || '';
+      const matchedWord = m[2] || safeWord;
+      out.push({ word: matchedWord, index: m.index + prefix.length, length: matchedWord.length });
+    }
+    return out;
   }
 
   function _drawWords(W, H) {
     const words = _data.words || [];
     if (!words.length) return;
-    const fullText = window.Preview?.getText?.() ?? '';
-    const sourceText = fullText.slice(0, 4000);
 
-    const enriched = words.map(item => {
-      const count = _countOccurrences(sourceText, item.w);
-      const visualWeight = count > 0
-        ? Math.min(10, Math.max(1, item.weight * 0.5 + Math.log2(count + 1) * 2))
-        : Math.min(4, item.weight);
-      return { ...item, count, visualWeight };
-    });
+    const enriched = words.map(item => ({
+      ...item,
+      count: Number.isFinite(item.count) ? item.count : 0,
+      visualWeight: Math.max(1, Math.min(10, Number(item.weight) || 1)),
+    }));
 
     const maxW = Math.max(...enriched.map(w => w.visualWeight));
     const placed = [];
@@ -726,7 +850,7 @@ const MindMap = (() => {
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     sorted.forEach((item, i) => {
       let fontSize = 10 + (item.visualWeight / maxW) * 28;
-      const color = ROLE_COLORS[item.role] || PALETTE[i % PALETTE.length];
+      const color = PALETTE[i % PALETTE.length];
       const maxTextW = Math.max(40, W - padding * 2);
       let tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
       if (tw > maxTextW) {
