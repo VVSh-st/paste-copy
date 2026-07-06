@@ -28,6 +28,33 @@ const MindMap = (() => {
     return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
   }
 
+  const STOP_WORDS_CODE = new Set([
+    'string', 'object', 'undefined', 'typeof', 'return', 'null',
+    'true', 'false', 'function', 'const', 'let', 'var',
+    'date', 'math', 'json', 'number', 'boolean', 'error',
+    'promise', 'class', 'async', 'await', 'new', 'this',
+  ]);
+
+  function _isGraphNoiseWord(w) {
+    return STOP_WORDS_CODE.has(_wordKey(w));
+  }
+
+  function _hashString(s) {
+    let h = 2166136261;
+    s = String(s ?? '');
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function _rand01(seed) {
+    seed = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    seed ^= seed + Math.imul(seed ^ (seed >>> 7), 61 | seed);
+    return ((seed ^ (seed >>> 14)) >>> 0) / 4294967296;
+  }
+
   function _num(value, fallback, min, max) {
     const n = Number(value);
     if (!Number.isFinite(n)) return fallback;
@@ -611,8 +638,11 @@ const MindMap = (() => {
         messages: [{
           role: 'user',
           content: prompt +
-            '\n\nСписок слов уже рассчитан локально. Не добавляй новые words. ' +
-            'Если строишь links/clusters, используй только эти слова:\n' +
+            '\n\nСписок words уже рассчитан локально и будет использован для облака слов. ' +
+            'Не возвращай words. Для links/clusters используй только слова из этого списка. ' +
+            'Верни links только между действительно связанными понятиями. ' +
+            'Не связывай служебные токены кода без смысловой причины. ' +
+            'Если подходящих связей мало, верни меньше links, не заполняй искусственно.\n' +
             JSON.stringify(localWordsForPrompt) +
             '\n\nТекст:\n' + text.slice(0, 4000)
         }],
@@ -660,10 +690,13 @@ const MindMap = (() => {
         return;
       }
 
+      const mergedLinks = _mergeLinks(localLinks, normalized.links);
+
       _data = {
+        ..._data,
         ...normalized,
-        words: localWords,
-        links: normalized.links.length ? normalized.links : localLinks,
+        words: _data?.words?.length ? _data.words : localWords,
+        links: mergedLinks,
         localOnly: false,
       };
       if (_overlay?.classList.contains('visible')) {
@@ -788,6 +821,55 @@ const MindMap = (() => {
     'one', 'two', 'out', 'our', 'its', 'his', 'her', 'she', 'him',
   ]);
 
+  function _mergeLinks(localLinks, llmLinks, maxLinks = 100) {
+    const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const map = new Map();
+    function add(link, sourceBoost = 0) {
+      const a = key(link?.from), b = key(link?.to);
+      if (!a || !b || a === b) return;
+      const pairKey = a < b ? `${a}|${b}` : `${b}|${a}`;
+      const strength = Math.max(0, Math.min(1, Number(link?.strength) || 0.3));
+      const existing = map.get(pairKey);
+      if (!existing || strength + sourceBoost > existing._score) {
+        map.set(pairKey, { from: link.from, to: link.to, strength, _score: strength + sourceBoost, synthetic: link.synthetic });
+      }
+    }
+    localLinks.forEach(l => add(l, 0));
+    llmLinks.forEach(l => add(l, 0.25));
+    return [...map.values()].sort((a, b) => b._score - a._score).slice(0, maxLinks).map(({ _score, ...l }) => l);
+  }
+
+  function _selectGraphWords(words, links, maxNodes = 45) {
+    const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const linked = new Set();
+    links.forEach(l => {
+      if (l?.from) linked.add(key(l.from));
+      if (l?.to) linked.add(key(l.to));
+    });
+    const linkedWords = words.filter(w => linked.has(key(w.w)) && !_isGraphNoiseWord(w.w));
+    if (linkedWords.length >= 8) return linkedWords.slice(0, maxNodes);
+    return [...words].filter(w => !_isGraphNoiseWord(w.w))
+      .sort((a, b) => (Number(b.weight) || 0) - (Number(a.weight) || 0))
+      .slice(0, maxNodes);
+  }
+
+  function _ensureMinimumGraphLinks(words, links, minLinks = 12) {
+    if (links.length >= minLinks) return links;
+    const existing = new Set(links.map(l => {
+      const a = _wordKey(l.from), b = _wordKey(l.to);
+      return a < b ? `${a}|${b}` : `${b}|${a}`;
+    }));
+    const top = [...words].sort((a, b) => (Number(b.weight) || 0) - (Number(a.weight) || 0)).slice(0, 12);
+    const extra = [];
+    for (let i = 0; i < top.length - 1 && links.length + extra.length < minLinks; i++) {
+      const from = top[i].w, to = top[i + 1].w;
+      const a = _wordKey(from), b = _wordKey(to);
+      const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (!existing.has(k)) { existing.add(k); extra.push({ from, to, strength: 0.15, synthetic: true }); }
+    }
+    return links.concat(extra);
+  }
+
   function _buildLocalWords(text, limit = 90) {
     const source = String(text ?? '');
     if (source.length < 30) return [];
@@ -824,21 +906,29 @@ const MindMap = (() => {
     }));
   }
 
-  function _buildLocalLinks(text, words, maxLinks = 80) {
+  function _buildLocalLinks(text, words, maxLinks = 100) {
     if (!words.length || !text) return [];
-    const source = String(text).toLowerCase();
-    const sentences = source.split(/[.!?;:\n]+/).filter(s => s.length > 20);
-    const wordSet = new Map(words.map(w => [_wordKey(w.w), w.w]));
+    const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const wordSet = new Map(words.map(w => [key(w.w), w.w]));
+    const chunks = String(text).split(/(?:[.!?]+|\n{2,})+/).map(s => s.trim()).filter(s => s.length > 30);
     const pairCounts = new Map();
 
-    for (const sentence of sentences) {
-      const found = [];
-      for (const [key, w] of wordSet) {
-        if (sentence.includes(key)) found.push(key);
+    for (const chunk of chunks) {
+      const foundSet = new Set();
+      for (const m of chunk.matchAll(/[\p{L}\p{N}][\p{L}\p{N}_-]{1,}/giu)) {
+        const k = key(m[0]);
+        if (wordSet.has(k)) foundSet.add(k);
       }
+      const found = [...foundSet].sort((a, b) => {
+        const wa = words.find(w => key(w.w) === a);
+        const wb = words.find(w => key(w.w) === b);
+        return (Number(wb?.weight) || 0) - (Number(wa?.weight) || 0);
+      }).slice(0, 8);
+
       for (let i = 0; i < found.length; i++) {
         for (let j = i + 1; j < found.length; j++) {
-          const pairKey = found[i] < found[j] ? `${found[i]}|${found[j]}` : `${found[j]}|${found[i]}`;
+          const a = found[i], b = found[j];
+          const pairKey = a < b ? `${a}|${b}` : `${b}|${a}`;
           pairCounts.set(pairKey, (pairCounts.get(pairKey) || 0) + 1);
         }
       }
@@ -847,11 +937,10 @@ const MindMap = (() => {
     return [...pairCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, maxLinks)
-      .map(([key, count]) => {
-        const [a, b] = key.split('|');
-        return { from: wordSet.get(a), to: wordSet.get(b), strength: Math.min(1, count / 3) };
-      })
-      .filter(l => l.from && l.to);
+      .map(([pairKey, count]) => {
+        const [a, b] = pairKey.split('|');
+        return { from: wordSet.get(a), to: wordSet.get(b), strength: Math.min(1, 0.25 + count / 4) };
+      });
   }
 
   let _jumpCursors = new Map();
@@ -946,31 +1035,46 @@ const MindMap = (() => {
   }
 
   function _drawGraph(W, H) {
-    const words = _data.words || [];
-    const links = _data.links || [];
+    const allWords = _data.words || [];
+    const allLinks = _data.links || [];
+    if (!allWords.length) return;
+
+    const filteredLinks = _ensureMinimumGraphLinks(allWords, allLinks);
+    const words = _selectGraphWords(allWords, filteredLinks, 45);
     if (!words.length) return;
-    const maxW = Math.max(...words.map(w => w.weight));
+
+    const weights = words.map(w => Number(w.weight) || 1);
+    const maxW = Math.max(1, ...weights);
 
     function graphKey(s) {
       return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     }
 
+    const wordKeys = new Set(words.map(w => graphKey(w.w)));
+    const links = filteredLinks.filter(l =>
+      wordKeys.has(graphKey(l.from)) && wordKeys.has(graphKey(l.to))
+    );
+
     const dedup = [];
     const seen = new Map();
     words.forEach((w, i) => {
-      const key = graphKey(w.w);
-      if (seen.has(key)) { seen.get(key).indices.push(i); return; }
+      const gk = graphKey(w.w);
+      if (seen.has(gk)) { seen.get(gk).indices.push(i); return; }
       const entry = { ...w, indices: [i] };
-      seen.set(key, entry);
+      seen.set(gk, entry);
       dedup.push(entry);
     });
 
-    const nodes = dedup.map((w, i) => ({
-      ...w, idx: i,
-      x: W / 2 + (Math.random() - 0.5) * W * 0.6,
-      y: H / 2 + (Math.random() - 0.5) * H * 0.6,
-      vx: 0, vy: 0
-    }));
+    const nodes = dedup.map((w, i) => {
+      const seed = _hashString(w.w);
+      return {
+        ...w, idx: i,
+        x: W / 2 + (_rand01(seed) - 0.5) * W * 0.6,
+        y: H / 2 + (_rand01(seed ^ 0x9e3779b9) - 0.5) * H * 0.6,
+        vx: 0, vy: 0,
+        weight: Math.max(1, Math.min(10, Number(w.weight) || 1)),
+      };
+    });
 
     const nodeMap = new Map();
     dedup.forEach((w, i) => { nodeMap.set(graphKey(w.w), i); });
@@ -1029,7 +1133,7 @@ const MindMap = (() => {
       const path = document.createElementNS(SVG_NS, 'path');
       path.setAttribute('d', `M ${start.x} ${start.y} Q ${mx} ${my} ${end.x} ${end.y}`);
       path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', 'rgba(255,255,255,0.12)');
+      path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)');
       path.setAttribute('stroke-width', String(0.5 + l.strength * 2.5));
       path.setAttribute('stroke-linecap', 'round');
       linksG.appendChild(path);
@@ -1038,7 +1142,9 @@ const MindMap = (() => {
 
     nodes.forEach((n, i) => {
       const r = 6 + (n.weight / maxW) * 16;
-      const color = ROLE_COLORS[n.role] || PALETTE[i % PALETTE.length];
+      const color = n.role && n.role !== 'topic'
+        ? (ROLE_COLORS[n.role] || PALETTE[i % PALETTE.length])
+        : PALETTE[(Number.isFinite(n.colorIndex) ? n.colorIndex : i) % PALETTE.length];
 
       const enterG = document.createElementNS(SVG_NS, 'g');
       enterG.classList.add('mm-enter');
