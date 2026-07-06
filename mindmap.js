@@ -630,6 +630,12 @@ const MindMap = (() => {
         el.style.filter = blurAmt > 0.75 ? `blur(${blurAmt.toFixed(1)}px)` : '';
         return;
       }
+      if (_mode === 'words') {
+        const depth = parseFloat(el.dataset.depth);
+        const blurAmt = (0.3 - depth) * 1.4;
+        el.style.filter = blurAmt > 0.55 ? `blur(${blurAmt.toFixed(1)}px)` : '';
+        return;
+      }
       const depth = parseFloat(el.dataset.depth);
       const blurAmt = (0.3 - depth) * 3;
       el.style.filter = blurAmt > 0.4 ? `blur(${blurAmt.toFixed(1)}px)` : '';
@@ -642,10 +648,11 @@ const MindMap = (() => {
   }
 
   function _applyParallax(nx, ny) {
+    const mul = _mode === 'words' ? 58 : 40;
     _depthEls.forEach(el => {
       const depth = parseFloat(el.dataset.depth);
-      const px = nx * depth * 40;
-      const py = ny * depth * 40;
+      const px = nx * depth * mul;
+      const py = ny * depth * mul;
       el.style.transform = `translate(${px}px, ${py}px)`;
     });
   }
@@ -1131,21 +1138,25 @@ const MindMap = (() => {
 
     const maxW = Math.max(...enriched.map(w => w.visualWeight));
     const placed = [];
-    const padding = 8;
+    const padding = 6;
+    const collisionPad = 4;
+    const MIN_FONT = 9;
+    const MAX_FONT = 66;
 
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     const animateWords = _wordsAnimatedForHash !== _textHash;
     sorted.forEach((item, i) => {
       const t = item.visualWeight / maxW;
-      let fontSize = 10 + Math.pow(t, 3.9) * 48;
+      let fontSize = MIN_FONT + Math.pow(t, 4.4) * (MAX_FONT - MIN_FONT);
       const color = PALETTE[i % PALETTE.length];
       const maxTextW = Math.max(40, W - padding * 2);
       let tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
       if (tw > maxTextW) {
-        fontSize = Math.max(8, (maxTextW / (item.w.length * 0.6)));
+        fontSize = Math.max(MIN_FONT, (maxTextW / (item.w.length * 0.6)));
         tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
       }
       const th = fontSize * 1.3;
+      const maxTries = fontSize <= 12 ? 150 : 95;
       let x, y, tries = 0, collides = false;
       do {
         const rangeX = Math.max(1, W - tw - padding * 2);
@@ -1154,11 +1165,11 @@ const MindMap = (() => {
         x = padding + _rand01(seed) * rangeX;
         y = padding + th + _rand01(seed ^ 0x9e3779b9) * rangeY;
         collides = placed.some(p =>
-          Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + padding) &&
-          Math.abs(y - th / 2 - p.cy) < (th / 2 + p.hh + padding)
+          Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + collisionPad) &&
+          Math.abs(y - th / 2 - p.cy) < (th / 2 + p.hh + collisionPad)
         );
         tries++;
-      } while (tries < 80 && collides);
+      } while (tries < maxTries && collides);
       if (collides) return;
       placed.push({ cx: x + tw / 2, cy: y - th / 2, hw: tw / 2, hh: th / 2 });
 
@@ -1168,8 +1179,9 @@ const MindMap = (() => {
         enterG.style.animationDelay = `${Math.min(i * 18, 450)}ms`;
       }
 
+      const depth = 0.08 + Math.pow(t, 1.8) * 0.28;
       const depthG = document.createElementNS(SVG_NS, 'g');
-      depthG.dataset.depth = item.visualWeight > 7 ? '0.3' : '0.12';
+      depthG.dataset.depth = depth.toFixed(2);
 
       const text = document.createElementNS(SVG_NS, 'text');
       text.setAttribute('x', x);
@@ -1186,6 +1198,15 @@ const MindMap = (() => {
         text.setAttribute('stroke-width', '0.4');
       } else if (item.visualWeight > 7) {
         text.setAttribute('filter', 'url(#bloom)');
+        text.setAttribute('paint-order', 'stroke');
+        text.setAttribute('stroke', 'rgba(0,0,0,0.35)');
+        text.setAttribute('stroke-width', '1.2');
+        text.setAttribute('stroke-linejoin', 'round');
+      } else if (item.visualWeight > 4) {
+        text.setAttribute('paint-order', 'stroke');
+        text.setAttribute('stroke', 'rgba(0,0,0,0.25)');
+        text.setAttribute('stroke-width', '0.8');
+        text.setAttribute('stroke-linejoin', 'round');
       }
       text.textContent = item.w;
       text.style.transition = 'opacity 0.2s, font-size 0.2s';
