@@ -12,6 +12,7 @@
   const MAX_STRUCTURES = 20;
   const MAX_MAP_KEYS = 300;
   const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+  const ALLOWED_OUTCOMES = new Set(['shown', 'accepted', 'dismissed', 'ignored']);
 
   function now() { return Date.now(); }
 
@@ -77,6 +78,12 @@
     for (let i = 0; i < keys.length - maxKeys; i++) {
       delete obj[keys[i]];
     }
+  }
+
+  function sanitizeKey(value, max) {
+    const key = String(value || '').trim().slice(0, max || 80);
+    if (!key || FORBIDDEN_KEYS.has(key)) return '';
+    return key;
   }
 
   function createDefaultProfile() {
@@ -203,7 +210,7 @@
   function sanitizeEvent(type, payload = {}) {
     const ts = Number(payload.ts) || now();
     const event = {
-      type: String(type || 'unknown'),
+      type: String(type || 'unknown').slice(0, 64),
       ts,
       tabId: payload.tabId == null ? null : String(payload.tabId).slice(0, 80),
       blockId: payload.blockId == null ? null : String(payload.blockId).slice(0, 80),
@@ -340,12 +347,11 @@
   }
 
   function updateFeatureScore(type, outcome, contextKey) {
-    // Без типа нечего оценивать — избегаем мусорных ключей вида "undefined"
-    if (!type) return null;
-    const typeKey = String(type);
+    const typeKey = sanitizeKey(type, 64);
+    if (!typeKey) return null;
 
     const stats = ensureFeatureStats(typeKey);
-    const key = String(outcome || 'shown');
+    const key = ALLOWED_OUTCOMES.has(outcome) ? outcome : 'shown';
     stats[key] = (stats[key] || 0) + 1;
 
     if (key === 'shown') stats.lastShownAt = now();
@@ -354,22 +360,26 @@
     if (key === 'ignored') profile.counters.ignoredSuggestions += 1;
 
     stats.score = calculateSuggestionScore(stats);
+    pruneObjectKeys(profile.suggestions.byType, MAX_MAP_KEYS);
 
     if (contextKey) {
-      const ctxKey = String(contextKey);
-      const ctx = profile.behavior.contextScores[ctxKey] || {
-        shown: 0, accepted: 0, dismissed: 0, ignored: 0, score: 0.5
-      };
-      ctx[key] = (ctx[key] || 0) + 1;
-      ctx.score = calculateSuggestionScore(ctx);
-      profile.behavior.contextScores[ctxKey] = ctx;
-      pruneObjectKeys(profile.behavior.contextScores, MAX_MAP_KEYS);
+      const ctxKey = sanitizeKey(contextKey, 80);
+      if (ctxKey) {
+        const ctx = profile.behavior.contextScores[ctxKey] || {
+          shown: 0, accepted: 0, dismissed: 0, ignored: 0, score: 0.5
+        };
+        ctx[key] = (ctx[key] || 0) + 1;
+        ctx.score = calculateSuggestionScore(ctx);
+        profile.behavior.contextScores[ctxKey] = ctx;
+        pruneObjectKeys(profile.behavior.contextScores, MAX_MAP_KEYS);
+      }
     }
 
     // Автоотключение: только когда пользователь реально видел тип хотя бы 3 раза
     // и стабильно отклонял без принятий
     if (stats.shown >= 3 && stats.dismissed >= 3 && stats.accepted === 0) {
       profile.suggestions.disabledTypes[typeKey] = true;
+      pruneObjectKeys(profile.suggestions.disabledTypes, MAX_MAP_KEYS);
     }
 
     saveSoon();
@@ -377,15 +387,16 @@
   }
 
   function dismiss(type, ms = 24 * 60 * 60 * 1000) {
-    if (!type) return;
-    const typeKey = String(type);
+    const typeKey = sanitizeKey(type, 64);
+    if (!typeKey) return;
     profile.suggestions.dismissedUntil[typeKey] = now() + Math.max(60_000, Number(ms) || 0);
+    pruneObjectKeys(profile.suggestions.dismissedUntil, MAX_MAP_KEYS);
     updateFeatureScore(typeKey, 'dismissed');
   }
 
   function isSuggestionAllowed(type) {
-    if (!type) return false;
-    const typeKey = String(type);
+    const typeKey = sanitizeKey(type, 64);
+    if (!typeKey) return false;
     if (profile.suggestions.disabledTypes[typeKey]) return false;
     const until = Number(profile.suggestions.dismissedUntil[typeKey] || 0);
     return !until || until < now();
@@ -393,7 +404,13 @@
 
   function addSuccessfulStructure(structure) {
     if (!structure || typeof structure !== 'object') return;
-    profile.promptPatterns.successfulStructures.push({ ...structure, ts: now() });
+    const clean = {
+      name: String(structure.name || '').slice(0, 80),
+      kind: String(structure.kind || '').slice(0, 32),
+      blocks: Math.max(0, Number(structure.blocks) || 0),
+      ts: now()
+    };
+    profile.promptPatterns.successfulStructures.push(clean);
     if (profile.promptPatterns.successfulStructures.length > MAX_STRUCTURES) {
       profile.promptPatterns.successfulStructures.splice(
         0,
@@ -404,7 +421,7 @@
   }
 
   function getProfile() {
-    return profile;
+    return deepClone(profile);
   }
 
   function resetSuggestionLearning() {
@@ -421,8 +438,8 @@
   }
 
   function enableSuggestionType(type) {
-    if (!type) return profile;
-    const typeKey = String(type);
+    const typeKey = sanitizeKey(type, 64);
+    if (!typeKey) return profile;
     delete profile.suggestions.disabledTypes[typeKey];
     delete profile.suggestions.dismissedUntil[typeKey];
     const stats = profile.suggestions.byType[typeKey];
