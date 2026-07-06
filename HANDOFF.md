@@ -33,11 +33,12 @@
 - Статус: модуль значительно укреплён. Приватностьclipboard/history, lifecycle guardы, data-private/data-no-loom boundary, localStorage resilience, State API robustness — все закрыты.
 
 ### gist-sync.js
-- **~1900 строк**, 3 раунда аудита, **21 фикс**. Коммиты `3de0814`, `6189feb`, `0c76597`.
+- **~1910 строк**, 4 раунда аудита, **27 фиксов**. Коммиты `3de0814`, `6189feb`, `0c76597`, `8559ece`.
 - Аудит #1 (14): push() race condition fix (null return check), hash from snapshot (not current state), sync lock for push/pull/restore, saveCloudHistory quota try/catch, backup metadata normalization (safeNum), cloud history data attribute normalization, duplicate id -> class for backup buttons, loadSettings explicit type normalization with clampNum, CompressionStream await write/close, Cipher.decrypt buffer validation, _quickHash with string length, withRetry for 502/503/504, raw_url removed from console.log, revokeObjectURL delayed.
 - Аудит #2 (4): AES-GCM block push when password empty, _lastPushedHash persisted across reload (K_LAST_HASH), K_DIRTY cleared only if hash matches pushed, PAT input autocomplete='off'.
 - Аудит #3 (3): pull() split into fetch + markPulledSynced (no premature sync marking), decompress() DecompressionStream check, schedulePush() K_DIRTY try/catch.
-- Статус: третий раунд завершён. Модуль укреплён. Готов к браузерному тестированию.
+- Аудит #4 (6): Compress.supported checks both streams, schedulePush _hasChanges before dirty, _doPush sync lock reschedule, _quickHash dual hash (djb2+FNV-1a), parseBody form-encoded check, Storage.save before State.load in all handlers.
+- Статус: четвёртый раунд завершён. Модуль укреплён. Готов к браузерному тестированию.
 
 ### memory-sync.js
 - **~847 строк**, 1 раунд аудита, **0 фиксов**. Аудитор запутал модули — все 6 пунктов относились к gist-sync.js.
