@@ -22,9 +22,10 @@
       .trim();
   }
 
-  function getTextBlocks(tab) {
+  function getTextBlocks(tab, _depth = 0) {
+    if (_depth > 20) return [];
     const out = [];
-    const walk = blocks => (blocks || []).forEach(block => {
+    const walk = (blocks, depth) => (blocks || []).forEach(block => {
       if (!block || block.previewDisabled === true) return;
       if (block.type === 'text') {
         const idx = Number.isInteger(block.activeSubtab) ? block.activeSubtab : 0;
@@ -39,10 +40,10 @@
           });
         }
       } else if (block.type === 'group' && block.enabled !== false) {
-        walk(block.children || []);
+        if (depth < 20) walk(block.children || [], depth + 1);
       }
     });
-    walk(tab?.blocks || []);
+    walk(tab?.blocks || [], _depth);
     return out;
   }
 
@@ -58,11 +59,18 @@
     return 'text';
   }
 
-  function similarity(a, b) {
-    if (window.PromptLoom?.similarityScore) return window.PromptLoom.similarityScore(a, b);
+  function makeTokenSet(text) {
+    return new Set(normalize(text).split(' ').filter(w => w.length > 2));
+  }
 
-    const at = new Set(normalize(a).split(' ').filter(w => w.length > 2));
-    const bt = new Set(normalize(b).split(' ').filter(w => w.length > 2));
+  function similarityFromTokenSets(a, b) {
+    if (window.PromptLoom?.similarityScore) {
+      const score = Number(window.PromptLoom.similarityScore(a, b));
+      if (Number.isFinite(score)) return Math.max(0, Math.min(1, score));
+    }
+
+    const at = makeTokenSet(a);
+    const bt = makeTokenSet(b);
     if (!at.size || !bt.size) return 0;
     let hits = 0;
     at.forEach(t => { if (bt.has(t)) hits += 1; });
@@ -72,15 +80,32 @@
     return Math.max(jaccard, containment * 0.82);
   }
 
-  function findDuplicates(tab) {
-    const blocks = getTextBlocks(tab).filter(b => normalize(b.value).length > 80);
+  function findDuplicatesFromBlocks(blocks) {
+    const filtered = blocks
+      .filter(b => normalize(b.value).length > 80)
+      .map(b => ({ ...b, tokenSet: makeTokenSet(b.value) }));
     const duplicates = [];
 
-    for (let i = 0; i < blocks.length; i += 1) {
-      for (let j = i + 1; j < blocks.length; j += 1) {
-        const a = blocks[i];
-        const b = blocks[j];
-        const score = similarity(a.value, b.value);
+    for (let i = 0; i < filtered.length; i += 1) {
+      for (let j = i + 1; j < filtered.length; j += 1) {
+        const a = filtered[i];
+        const b = filtered[j];
+
+        let score;
+        if (window.PromptLoom?.similarityScore) {
+          const raw = Number(window.PromptLoom.similarityScore(a.value, b.value));
+          score = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+        } else {
+          const at = a.tokenSet;
+          const bt = b.tokenSet;
+          let hits = 0;
+          at.forEach(t => { if (bt.has(t)) hits += 1; });
+          const denom = at.size + bt.size - hits;
+          const jaccard = denom ? hits / denom : 0;
+          const containment = hits / Math.min(at.size, bt.size);
+          score = Math.max(jaccard, containment * 0.82);
+        }
+
         if (score >= 0.72) {
           duplicates.push({
             a: { id: a.id, title: a.title, chars: a.chars },
@@ -133,11 +158,14 @@
     return conflicts;
   }
 
-  function estimateStructure(tab) {
-    const blocks = getTextBlocks(tab);
+  function estimateStructureFromBlocks(blocks) {
     const titles = blocks.map(b => b.title).join('\n').toLowerCase();
-    const text = blocks.map(b => b.value).join('\n').toLowerCase();
-    const joined = titles + '\n' + text.slice(0, 20000);
+    let text = '';
+    for (const b of blocks) {
+      if (text.length >= 20000) break;
+      text += '\n' + b.value.toLowerCase().slice(0, 20000 - text.length);
+    }
+    const joined = titles + '\n' + text;
 
     const structure = {
       hasRole: /(роль|role|ты\s+[—-]|you are|выступи)/i.test(joined),
@@ -163,8 +191,7 @@
     return 'mixed';
   }
 
-  function detectPromptDiscipline(tab) {
-    const blocks = getTextBlocks(tab);
+  function detectPromptDisciplineFromBlocks(blocks) {
     const filled = blocks.length;
     const named = blocks.filter(b => b.title && b.title !== 'Блок').length;
     const longBlocks = blocks.filter(b => b.chars > 3500).length;
@@ -179,8 +206,8 @@
     return Number(Math.max(0, Math.min(1, score)).toFixed(2));
   }
 
-  function getHeavyBlocks(tab) {
-    return getTextBlocks(tab)
+  function getHeavyBlocksFromBlocks(blocks) {
+    return blocks
       .sort((a, b) => b.chars - a.chars)
       .slice(0, 5)
       .map(b => ({ id: b.id, title: b.title, chars: b.chars, tokens: estimateTokens(b.value), kind: b.kind }));
@@ -281,10 +308,10 @@
   function analyzePreview(text, tab) {
     const raw = String(text || '');
     const blocks = getTextBlocks(tab);
-    const duplicates = findDuplicates(tab);
+    const duplicates = findDuplicatesFromBlocks(blocks);
     const placeholders = findPlaceholders(raw);
     const conflicts = findFormatConflicts(raw);
-    const structure = estimateStructure(tab);
+    const structure = estimateStructureFromBlocks(blocks);
 
     return {
       previewChars: raw.length,
@@ -295,10 +322,26 @@
       duplicates,
       conflicts,
       placeholders,
-      heavyBlocks: getHeavyBlocks(tab),
+      heavyBlocks: getHeavyBlocksFromBlocks([...blocks]),
       structure,
-      promptDiscipline: detectPromptDiscipline(tab)
+      promptDiscipline: detectPromptDisciplineFromBlocks(blocks)
     };
+  }
+
+  function findDuplicates(tab) {
+    return findDuplicatesFromBlocks(getTextBlocks(tab));
+  }
+
+  function estimateStructure(tab) {
+    return estimateStructureFromBlocks(getTextBlocks(tab));
+  }
+
+  function detectPromptDiscipline(tab) {
+    return detectPromptDisciplineFromBlocks(getTextBlocks(tab));
+  }
+
+  function getHeavyBlocks(tab) {
+    return getHeavyBlocksFromBlocks(getTextBlocks(tab));
   }
 
   window.QualityDetectors = {
