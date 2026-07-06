@@ -76,6 +76,9 @@ async function compress(str) {
 
 async function decompress({ data, compressed }) {
   if (!compressed) return data;
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('Распаковка недоступна: DecompressionStream не поддерживается');
+  }
   const ds     = new DecompressionStream('deflate-raw');
   const writer = ds.writable.getWriter();
   await writer.write(b64ToBytes(data));
@@ -727,19 +730,17 @@ async function pull({ useVersion = null } = {}) {
   _syncOperation = 'pull';
   try {
     return await withRetry(async () => {
-      const stateData = await _fetchAndDecodeGist(null, useVersion);
-      
-      const hash = _quickHash(JSON.stringify(stateData));
-      setLastPushedHash(hash);
-      _lastPushAt     = Date.now();
-      
-      localStorage.setItem(K_LAST_SYNC, Date.now().toString());
-      localStorage.setItem(K_DIRTY, 'false');
-      updateBadge();
-      
-      return stateData;
+      return await _fetchAndDecodeGist(null, useVersion);
     }, 'Pull', MAX_RETRIES);
   } finally { _syncOperation = null; }
+}
+function markPulledSynced(stateData) {
+  const hash = _quickHash(JSON.stringify(stateData));
+  setLastPushedHash(hash);
+  _lastPushAt = Date.now();
+  try { localStorage.setItem(K_LAST_SYNC, Date.now().toString()); } catch {}
+  try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
+  updateBadge();
 }
 
 // ═══ Restore version ══════════════════════════════════════════════════════
@@ -759,9 +760,9 @@ async function restoreVersion(sha) {
       const hash = _quickHash(JSON.stringify(stateData));
       setLastPushedHash(hash);
       _lastPushAt     = Date.now();
-      
-      localStorage.setItem(K_LAST_SYNC, Date.now().toString());
-      localStorage.setItem(K_DIRTY, 'false');
+
+      try { localStorage.setItem(K_LAST_SYNC, Date.now().toString()); } catch {}
+      try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
       updateBadge();
     }, 'Restore', MAX_RETRIES);
   } finally { _syncOperation = null; }
@@ -940,7 +941,7 @@ if (_hasChanges()) _doPush(label);
 }
 function schedulePush() {
 const settings = loadSettings();
-localStorage.setItem(K_DIRTY, 'true');
+try { localStorage.setItem(K_DIRTY, 'true'); } catch {}
 updateBadge();
 if (!isConnected() || !settings.autoSave || !_hasChanges()) return;
 _pendingCount++;
@@ -1609,6 +1610,7 @@ body.querySelector('#gs-btn-pull')?.addEventListener('click', async e => {
     const data = await pull();
     State.load(data);
     Storage.save(data);
+    markPulledSynced(data);
     Toast.show('☁ Данные загружены из Gist ✓', 'success');
     closeDialog();
   } catch (err) {
@@ -1871,6 +1873,7 @@ push:          label => push(label),
 		const data = await pull();
 		State.load(data);
 		Storage.save(data);
+		markPulledSynced(data);
 	},
 isConnected,
 getStatus:     getStats,
