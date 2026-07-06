@@ -641,6 +641,7 @@ const MindMap = (() => {
       }
 
       const localWords = _data?.words?.length ? _data.words : _buildLocalWords(text);
+      const localLinks = _data?.links?.length ? _data.links : _buildLocalLinks(text, localWords);
       const payload = json.mindmap && typeof json.mindmap === 'object' ? json.mindmap : json;
       const normalized = _normalizeData(payload, localWords);
 
@@ -659,11 +660,15 @@ const MindMap = (() => {
         return;
       }
 
-      _data = normalized;
-      _data.localOnly = false;
+      _data = {
+        ...normalized,
+        words: localWords,
+        links: normalized.links.length ? normalized.links : localLinks,
+        localOnly: false,
+      };
       if (_overlay?.classList.contains('visible')) {
         _overlay.querySelector('.mindmap-status').textContent = '';
-        _render();
+        if (_mode !== 'words') _render();
       }
     } catch (e) {
       if (seq !== _requestSeq) return;
@@ -882,7 +887,7 @@ const MindMap = (() => {
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     sorted.forEach((item, i) => {
       const t = item.visualWeight / maxW;
-      let fontSize = 10 + Math.pow(t, 1.6) * 34;
+      let fontSize = 10 + Math.pow(t, 3.9) * 48;
       const color = PALETTE[i % PALETTE.length];
       const maxTextW = Math.max(40, W - padding * 2);
       let tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
