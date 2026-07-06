@@ -66,14 +66,15 @@ const MindMap = (() => {
   function _isClusterNoiseWord(w) {
     const s = String(w ?? '').trim();
     const key = _wordKey(s);
-    if (!s || s.length < 3) return true;
+    if (!s || s.length < 2) return true;
     if (STOP_WORDS_CODE.has(key)) return true;
     if (/^[._$]/.test(s)) return true;
-    if (/[.()[\]{}=;<>]/.test(s)) return true;
-    if (/_/.test(s)) return true;
-    if (/^[a-z]+[A-Z][A-Za-z0-9]*$/.test(s)) return true;
-    if (/^[A-Z]{2,5}$/.test(s)) return true;
-    if (/^(get|set|add|remove|update|render|handle|apply|create|query|focus|blur)[A-Z_-]/.test(s)) return true;
+    if (/[()[\]{}=;<>]/.test(s)) return true;
+    if (s.includes('.')) return true;
+    if (s.length > 24 && /^[A-Za-z0-9_$-]+$/.test(s)) return true;
+    if (/^(setAttribute|getAttribute|querySelector|addEventListener|removeEventListener)$/i.test(s)) return true;
+    if (/^(console|document|window|localStorage|sessionStorage)$/i.test(s)) return true;
+    if (/(El|Ref|Ctx|Tmp|Idx|Id)$/i.test(s) && s.length > 10) return true;
     return false;
   }
 
@@ -112,13 +113,13 @@ const MindMap = (() => {
       clusters: clusters.slice(0, 10).map(cl => {
         const words = Array.isArray(cl?.words)
           ? cl.words.map(w => String(w).slice(0, 80).trim()).filter(Boolean)
-              .filter(w => !_isClusterNoiseWord(w)).slice(0, 8)
+              .filter(w => !_isClusterNoiseWord(w)).slice(0, 10)
           : [];
         return {
           topic: String(cl?.topic ?? '').slice(0, 100).trim(),
           words,
         };
-      }).filter(cl => cl.topic && cl.words.length >= 2),
+      }).filter(cl => cl.topic || cl.words.length),
 
       hierarchy: normalizeHierarchy(data.hierarchy),
       steps: steps.slice(0, 20)
@@ -737,10 +738,10 @@ const MindMap = (() => {
             'Не возвращай words. Для links/clusters используй только слова из этого списка. ' +
             'Верни links только между действительно связанными понятиями. ' +
             'Не связывай служебные токены кода без смысловой причины. ' +
-            'Для clusters возвращай не токены кода, а смысловые темы текста. ' +
-            'Не используй имена переменных, DOM/API методы, camelCase identifiers, свойства объектов как words. ' +
-            'Если текст технический, группируй по человеческим понятиям: производительность, состояние, интерфейс, хранение данных, события. ' +
-            'В каждом cluster.words оставляй 4-8 коротких понятных слов, без кода. ' +
+            'Для clusters группируй слова в смысловые темы. ' +
+            'Избегай случайных кусков кода, одиночных свойств объектов и служебных методов, если они не являются важными для смысла. ' +
+            'Но сохраняй полезные технические термины, названия компонентов и доменные понятия. ' +
+            'В каждом cluster.words возвращай 5-10 коротких слов или фраз. ' +
             'Если подходящих связей мало, верни меньше links, не заполняй искусственно.\n' +
             JSON.stringify(localWordsForPrompt) +
             '\n\nТекст:\n' + text.slice(0, 4000)
@@ -1407,23 +1408,28 @@ const MindMap = (() => {
   }
 
   function _drawClusters(W, H) {
-    const clusters = (_data.clusters || []).slice(0, 6);
+    const clusters = (_data.clusters || []).slice(0, 7);
     if (!clusters.length) return;
     const cx = W / 2, cy = H / 2;
+
+    function clusterRadius(cl) {
+      return Math.max(120, (70 + Math.max(4, cl.words.length) * 13) * 1.12);
+    }
+
     const angleStep = (Math.PI * 2) / clusters.length;
-    const maxR = Math.max(...clusters.map(cl => 50 + Math.max(1, cl.words.length) * 12));
-    const safeDistX = Math.max(0, W / 2 - maxR - 20);
-    const safeDistY = Math.max(0, H / 2 - maxR * 0.7 - 20);
+    const maxR = Math.max(...clusters.map(clusterRadius));
+    const safeDistX = Math.max(0, W / 2 - maxR - 16);
+    const safeDistY = Math.max(0, H / 2 - maxR * 0.7 - 16);
     const safeDist = Math.min(safeDistX, safeDistY);
-    const desiredDist = Math.max(Math.min(W, H) * 0.28, maxR * 1.1);
-    const dist = Math.min(desiredDist, safeDist);
+    const desiredDist = Math.max(Math.min(W, H) * 0.24, maxR * 0.78);
+    const dist = Math.min(desiredDist, safeDist * 1.08);
 
     clusters.forEach((cl, ci) => {
       const angle = angleStep * ci - Math.PI / 2;
       const ccx = cx + Math.cos(angle) * dist;
       const ccy = cy + Math.sin(angle) * dist;
       const color = PALETTE[ci % PALETTE.length];
-      const r = (58 + cl.words.length * 13) * 1.08;
+      const r = clusterRadius(cl);
 
       const enterG = document.createElementNS(SVG_NS, 'g');
       enterG.classList.add('mm-enter');
@@ -1436,13 +1442,13 @@ const MindMap = (() => {
       const cgradSeed = _hashString(`${cl.topic}:${ci}`);
       const cgrad = document.createElementNS(SVG_NS, 'radialGradient');
       cgrad.setAttribute('id', cgradId);
-      cgrad.setAttribute('cx', `${20 + _rand01(cgradSeed) * 60}%`);
-      cgrad.setAttribute('cy', `${20 + _rand01(cgradSeed ^ 0x9e3779b9) * 60}%`);
-      cgrad.setAttribute('r', '70%');
+      cgrad.setAttribute('cx', `${24 + _rand01(cgradSeed) * 52}%`);
+      cgrad.setAttribute('cy', `${24 + _rand01(cgradSeed ^ 0x9e3779b9) * 52}%`);
+      cgrad.setAttribute('r', '72%');
       cgrad.innerHTML = `
-        <stop offset="0%" stop-color="${color}" stop-opacity="0.42"/>
-        <stop offset="48%" stop-color="${color}" stop-opacity="0.22"/>
-        <stop offset="100%" stop-color="${color}" stop-opacity="0.06"/>
+        <stop offset="0%" stop-color="#fff" stop-opacity="0.34"/>
+        <stop offset="34%" stop-color="${color}" stop-opacity="0.48"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0.10"/>
       `;
       _svg.querySelector('defs').appendChild(cgrad);
 
@@ -1450,17 +1456,17 @@ const MindMap = (() => {
       ellipse.setAttribute('cx', ccx); ellipse.setAttribute('cy', ccy);
       ellipse.setAttribute('rx', r); ellipse.setAttribute('ry', r * 0.7);
       ellipse.setAttribute('fill', `url(#${cgradId})`);
-      ellipse.setAttribute('fill-opacity', '0.9');
+      ellipse.setAttribute('fill-opacity', '0.8');
       ellipse.setAttribute('stroke', color + '55');
       ellipse.setAttribute('stroke-width', '1.2');
       ellipse.setAttribute('filter', 'url(#shadow)');
-      ellipse.style.transition = 'stroke 0.3s, stroke-width 0.3s';
-      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('stroke', color + '90'); ellipse.setAttribute('stroke-width', '1.6'); ellipse.classList.add('mm-pulse'); });
-      ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('stroke', color + '55'); ellipse.setAttribute('stroke-width', '1.2'); ellipse.classList.remove('mm-pulse'); });
+      ellipse.style.transition = 'fill-opacity 0.25s, stroke 0.25s, stroke-width 0.25s';
+      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('fill-opacity', '0.95'); ellipse.setAttribute('stroke', color + '90'); ellipse.setAttribute('stroke-width', '1.6'); ellipse.classList.add('mm-pulse'); });
+      ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('fill-opacity', '0.8'); ellipse.setAttribute('stroke', color + '55'); ellipse.setAttribute('stroke-width', '1.2'); ellipse.classList.remove('mm-pulse'); });
       depthG.appendChild(ellipse);
 
       const title = document.createElementNS(SVG_NS, 'text');
-      title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.42);
+      title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.40);
       title.setAttribute('text-anchor', 'middle');
       title.setAttribute('font-size', '13'); title.setAttribute('font-weight', '700');
       title.setAttribute('fill', color); title.setAttribute('font-family', 'var(--mono)');
@@ -1472,22 +1478,49 @@ const MindMap = (() => {
 
       const wordsG = document.createElementNS(SVG_NS, 'g');
       wordsG.dataset.depth = '0.18';
-      const visibleWords = cl.words.slice(0, 8);
+      const visibleWords = cl.words.slice(0, 10);
+      const wordCount = Math.max(1, visibleWords.length);
+
       visibleWords.forEach((w, wi) => {
-        const golden = Math.PI * (3 - Math.sqrt(5));
-        const a = wi * golden + ci * 0.7;
-        const spread = wi === 0 ? 0 : Math.sqrt(wi / visibleWords.length);
-        const wr = r * 0.48 * spread;
-        const wx = ccx + Math.cos(a) * wr;
-        const wy = ccy + Math.sin(a) * wr * 0.58 + 12;
+        let wx, wy;
+        if (wordCount <= 3) {
+          const smallAngles = [-Math.PI / 2, Math.PI * 0.15, Math.PI * 0.85];
+          const a = smallAngles[wi] ?? (wi / wordCount) * Math.PI * 2;
+          const wr = wi === 0 && wordCount === 1 ? 0 : r * 0.28;
+          wx = ccx + Math.cos(a) * wr;
+          wy = ccy + Math.sin(a) * wr * 0.55 + 8;
+        } else if (wordCount <= 7) {
+          const a = (wi / wordCount) * Math.PI * 2 - Math.PI / 2;
+          const wr = r * 0.43;
+          wx = ccx + Math.cos(a) * wr;
+          wy = ccy + Math.sin(a) * wr * 0.62 + 10;
+        } else {
+          const innerCount = 3;
+          if (wi < innerCount) {
+            const a = (wi / innerCount) * Math.PI * 2 - Math.PI / 2;
+            const wr = r * 0.24;
+            wx = ccx + Math.cos(a) * wr;
+            wy = ccy + Math.sin(a) * wr * 0.55 + 8;
+          } else {
+            const outerIndex = wi - innerCount;
+            const outerCount = wordCount - innerCount;
+            const a = (outerIndex / outerCount) * Math.PI * 2 - Math.PI / 2;
+            const wr = r * 0.50;
+            wx = ccx + Math.cos(a) * wr;
+            wy = ccy + Math.sin(a) * wr * 0.62 + 10;
+          }
+        }
         const t = document.createElementNS(SVG_NS, 'text');
         t.setAttribute('x', wx); t.setAttribute('y', wy);
-        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
         t.setAttribute('font-size', wi < 3 ? '12' : '11');
         t.setAttribute('font-weight', wi < 2 ? '600' : '400');
         t.setAttribute('fill', wi < 3 ? 'var(--text0)' : 'var(--text1)');
         t.setAttribute('font-family', 'var(--mono)');
-        t.setAttribute('opacity', wi < 3 ? '0.95' : '0.78');
+        t.setAttribute('opacity', wi < 3 ? '0.96' : '0.82');
+        t.setAttribute('paint-order', 'stroke');
+        t.setAttribute('stroke', 'rgba(0,0,0,0.35)'); t.setAttribute('stroke-width', '2');
+        t.setAttribute('stroke-linejoin', 'round');
         t.textContent = w;
         _attachWordInteractions(t, w, wx, wy);
         wordsG.appendChild(t);
