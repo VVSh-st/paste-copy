@@ -10,6 +10,8 @@
   const SCHEMA_VERSION = 1;
   const MAX_RECENT_EVENTS = 120;
   const MAX_STRUCTURES = 20;
+  const MAX_MAP_KEYS = 300;
+  const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
   function now() { return Date.now(); }
 
@@ -35,6 +37,16 @@
     return Math.max(0, Math.min(1, n));
   }
 
+  function calculateSuggestionScore(stats) {
+    const total = Math.max(1, stats.shown || 0);
+    return clamp01(
+      0.5 +
+      (stats.accepted || 0) / (total + 2) * 0.45 -
+      (stats.dismissed || 0) / (total + 2) * 0.35 -
+      (stats.ignored || 0) / (total + 3) * 0.2
+    );
+  }
+
   // Безопасный глубокий клон с откатом на пустой объект
   function deepClone(value) {
     try { return JSON.parse(JSON.stringify(value)); }
@@ -43,6 +55,27 @@
         try { return structuredClone(value); } catch (_) {}
       }
       return Array.isArray(value) ? [] : {};
+    }
+  }
+
+  function safePlainObject(obj, maxKeys) {
+    const out = Object.create(null);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
+    let count = 0;
+    for (const key of Object.keys(obj)) {
+      if (FORBIDDEN_KEYS.has(key)) continue;
+      if (maxKeys && ++count > maxKeys) break;
+      out[key] = obj[key];
+    }
+    return out;
+  }
+
+  function pruneObjectKeys(obj, maxKeys) {
+    if (!obj || typeof obj !== 'object') return;
+    const keys = Object.keys(obj);
+    if (keys.length <= maxKeys) return;
+    for (let i = 0; i < keys.length - maxKeys; i++) {
+      delete obj[keys[i]];
     }
   }
 
@@ -109,9 +142,9 @@
       behavior: {
         ...base.behavior,
         ...(p.behavior || {}),
-        actionTransitions: { ...(p.behavior?.actionTransitions || {}) },
-        contextScores: { ...(p.behavior?.contextScores || {}) },
-        featureScores: { ...(p.behavior?.featureScores || {}) },
+        actionTransitions: safePlainObject(p.behavior?.actionTransitions, MAX_MAP_KEYS),
+        contextScores: safePlainObject(p.behavior?.contextScores, MAX_MAP_KEYS),
+        featureScores: safePlainObject(p.behavior?.featureScores, MAX_MAP_KEYS),
         recentEvents: Array.isArray(p.behavior?.recentEvents)
           ? p.behavior.recentEvents.slice(-MAX_RECENT_EVENTS)
           : []
@@ -125,14 +158,14 @@
         successfulStructures: Array.isArray(p.promptPatterns?.successfulStructures)
           ? p.promptPatterns.successfulStructures.slice(-MAX_STRUCTURES)
           : [],
-        frequentBlockTitles: { ...(p.promptPatterns?.frequentBlockTitles || {}) },
-        frequentSnippetHashes: { ...(p.promptPatterns?.frequentSnippetHashes || {}) }
+        frequentBlockTitles: safePlainObject(p.promptPatterns?.frequentBlockTitles, MAX_MAP_KEYS),
+        frequentSnippetHashes: safePlainObject(p.promptPatterns?.frequentSnippetHashes, MAX_MAP_KEYS)
       },
       personalScores: { ...base.personalScores, ...(p.personalScores || {}) },
       suggestions: {
-        byType: { ...(p.suggestions?.byType || {}) },
-        dismissedUntil: { ...(p.suggestions?.dismissedUntil || {}) },
-        disabledTypes: { ...(p.suggestions?.disabledTypes || {}) }
+        byType: safePlainObject(p.suggestions?.byType, MAX_MAP_KEYS),
+        dismissedUntil: safePlainObject(p.suggestions?.dismissedUntil, MAX_MAP_KEYS),
+        disabledTypes: safePlainObject(p.suggestions?.disabledTypes, MAX_MAP_KEYS)
       }
     };
   }
@@ -142,6 +175,11 @@
   profile.updatedAt = now();
 
   let saveTimer = null;
+
+  window.addEventListener('beforeunload', saveNow);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
 
   function saveSoon(delay = 300) {
     clearTimeout(saveTimer);
@@ -167,8 +205,8 @@
     const event = {
       type: String(type || 'unknown'),
       ts,
-      tabId: payload.tabId || null,
-      blockId: payload.blockId || null,
+      tabId: payload.tabId == null ? null : String(payload.tabId).slice(0, 80),
+      blockId: payload.blockId == null ? null : String(payload.blockId).slice(0, 80),
       title: String(payload.title || '').slice(0, 80),
       kind: String(payload.kind || '').slice(0, 32),
       chars: Math.max(0, Number(payload.chars) || 0),
@@ -202,15 +240,18 @@
     if (/[а-яё]/i.test(langText)) profile.style.language.ru += 1;
     if (/[a-z]/i.test(langText)) profile.style.language.en += 1;
 
-    if (event.chars > 0 && event.chars < 600) profile.style.verbosity.short += 1;
-    else if (event.chars < 2400) profile.style.verbosity.balanced += 1;
-    else profile.style.verbosity.detailed += 1;
+    if (event.chars > 0) {
+      if (event.chars < 600) profile.style.verbosity.short += 1;
+      else if (event.chars < 2400) profile.style.verbosity.balanced += 1;
+      else profile.style.verbosity.detailed += 1;
+    }
 
     if (event.title) {
       const key = event.title.trim().toLowerCase();
       if (key) {
         profile.promptPatterns.frequentBlockTitles[key] =
           (profile.promptPatterns.frequentBlockTitles[key] || 0) + 1;
+        pruneObjectKeys(profile.promptPatterns.frequentBlockTitles, MAX_MAP_KEYS);
       }
     }
   }
@@ -221,10 +262,12 @@
     if (prev.type === event.type) {
       const key = event.type + ' -> repeat';
       profile.behavior.actionTransitions[key] = (profile.behavior.actionTransitions[key] || 0) + 1;
+      pruneObjectKeys(profile.behavior.actionTransitions, MAX_MAP_KEYS);
       return;
     }
     const key = prev.type + ' -> ' + event.type;
     profile.behavior.actionTransitions[key] = (profile.behavior.actionTransitions[key] || 0) + 1;
+    pruneObjectKeys(profile.behavior.actionTransitions, MAX_MAP_KEYS);
   }
 
   function updatePersonalScores(event) {
@@ -281,7 +324,13 @@
   }
 
   function getFeatureStats(type) {
-    const key = String(type || 'unknown');
+    if (!type) return null;
+    return profile.suggestions.byType[String(type)] || null;
+  }
+
+  function ensureFeatureStats(type) {
+    if (!type) return null;
+    const key = String(type);
     if (!profile.suggestions.byType[key]) {
       profile.suggestions.byType[key] = {
         shown: 0, accepted: 0, dismissed: 0, ignored: 0, score: 0.5, lastShownAt: 0
@@ -295,7 +344,7 @@
     if (!type) return null;
     const typeKey = String(type);
 
-    const stats = getFeatureStats(typeKey);
+    const stats = ensureFeatureStats(typeKey);
     const key = String(outcome || 'shown');
     stats[key] = (stats[key] || 0) + 1;
 
@@ -304,16 +353,7 @@
     if (key === 'dismissed') profile.counters.dismissedSuggestions += 1;
     if (key === 'ignored') profile.counters.ignoredSuggestions += 1;
 
-    const total = Math.max(1, (stats.shown || 0));
-    const accepted = stats.accepted || 0;
-    const dismissed = stats.dismissed || 0;
-    const ignored = stats.ignored || 0;
-    stats.score = clamp01(
-      0.5 +
-      accepted / (total + 2) * 0.45 -
-      dismissed / (total + 2) * 0.35 -
-      ignored / (total + 3) * 0.2
-    );
+    stats.score = calculateSuggestionScore(stats);
 
     if (contextKey) {
       const ctxKey = String(contextKey);
@@ -321,14 +361,9 @@
         shown: 0, accepted: 0, dismissed: 0, ignored: 0, score: 0.5
       };
       ctx[key] = (ctx[key] || 0) + 1;
-      const ctxTotal = Math.max(1, ctx.shown || 0);
-      ctx.score = clamp01(
-        0.5 +
-        (ctx.accepted || 0) / (ctxTotal + 2) * 0.45 -
-        (ctx.dismissed || 0) / (ctxTotal + 2) * 0.35 -
-        (ctx.ignored || 0) / (ctxTotal + 3) * 0.2
-      );
+      ctx.score = calculateSuggestionScore(ctx);
       profile.behavior.contextScores[ctxKey] = ctx;
+      pruneObjectKeys(profile.behavior.contextScores, MAX_MAP_KEYS);
     }
 
     // Автоотключение: только когда пользователь реально видел тип хотя бы 3 раза
