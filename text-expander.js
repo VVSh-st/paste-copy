@@ -72,6 +72,7 @@ const TextExpander = (() => {
   let _caretMirrorSignature = '';
   let _caretMirrorBefore = null;
   let _caretMirrorMarker = null;
+  let _lastSavedPayload = '';
   let _editingId = null; // ID shortcut в режиме редактирования
   let _formShortcutInput = null;
   let _formTextarea = null;
@@ -197,6 +198,7 @@ const TextExpander = (() => {
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (!raw) return;
+      _lastSavedPayload = raw;
       const data = JSON.parse(raw);
       if (!data || typeof data !== 'object') return;
       _shortcuts.clear();
@@ -220,7 +222,9 @@ const TextExpander = (() => {
         shortcuts: [..._shortcuts.values()],
         settings: _settings
       });
+      if (payload === _lastSavedPayload) return true;
       localStorage.setItem(STORE_KEY, payload);
+      _lastSavedPayload = payload;
       return true;
     } catch (err) {
       if (typeof Toast !== 'undefined') Toast.show('TextExpander: ошибка сохранения', 'error');
@@ -339,6 +343,14 @@ const TextExpander = (() => {
     return { ok: true, item };
   }
 
+  function _showAddShortcutError(result) {
+    if (!result || result.ok) return;
+    if (typeof Toast === 'undefined') return;
+    if (result.reason === 'empty') Toast.show('TextExpander: введите shortcut и текст', 'error');
+    else if (result.reason === 'duplicate') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
+    else if (result.reason === 'save') Toast.show('TextExpander: ошибка сохранения', 'error');
+  }
+
   function _clampPanelToViewport(panel) {
     const rect = panel.getBoundingClientRect();
     const maxW = Math.max(PANEL_MIN_W, window.innerWidth - 8);
@@ -391,7 +403,7 @@ const TextExpander = (() => {
 
   function _clearPanelForm() {
     _editingId = null;
-    if (_formShortcutInput) _formShortcutInput.value = '\u0401';
+    if (_formShortcutInput) _formShortcutInput.value = '';
     if (_formTextarea) _formTextarea.value = '';
     if (_formCatSelect) _formCatSelect.value = _settings.categories[0] || 'General';
     if (_formAddBtn) _formAddBtn.textContent = 'Add Key';
@@ -453,7 +465,7 @@ const TextExpander = (() => {
     shortcutInput.className = 'te-input te-input-wide';
     shortcutInput.placeholder = 'trigger';
     shortcutInput.maxLength = MAX_SHORTCUT_LEN;
-    shortcutInput.value = '\u0401'; // Ё по умолчанию
+    shortcutInput.value = '';
     shortcutRow.appendChild(shortcutInput);
 
     const catRow = document.createElement('div');
@@ -519,15 +531,10 @@ const TextExpander = (() => {
       }
       // Режим добавления
       const result = _addShortcut(shortcutInput.value, textarea.value, catSelect.value);
-      if (!result.ok && result.reason === 'empty') {
-        if (typeof Toast !== 'undefined') Toast.show('TextExpander: введите shortcut и текст', 'error');
+      if (!result.ok) {
+        _showAddShortcutError(result);
         return;
       }
-      if (!result.ok && result.reason === 'duplicate') {
-        if (typeof Toast !== 'undefined') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
-        return;
-      }
-      if (!result.ok) return;
       _clearPanelForm();
       _refreshPanelTable(body);
       if (typeof Toast !== 'undefined') Toast.show('TextExpander: добавлено "' + result.item.trigger + '"', 'success');
@@ -1123,6 +1130,7 @@ const TextExpander = (() => {
 
   function _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId) {
     if (!ta || !ta.isConnected) return false;
+    if (ta !== _activeTa) return false;
     if (ta.selectionStart !== endPos) return false;
 
     const actualText = ta.value.slice(startPos, endPos);
@@ -1138,7 +1146,9 @@ const TextExpander = (() => {
       const isUpper = letters.length > 0 && letters.every(ch => ch === ch.toUpperCase());
       const q0 = String(expectedQuery)[0];
       if (isUpper) {
-        expansion = expansion.toUpperCase();
+        if (expansion.length <= 120 && !/[\n\r]/.test(expansion)) {
+          expansion = expansion.toUpperCase();
+        }
       } else if (q0 === q0.toUpperCase() && q0 !== q0.toLowerCase()) {
         const idx = expansion.search(/[a-zа-яё]/i);
         if (idx >= 0) expansion = expansion.slice(0, idx) + expansion[idx].toUpperCase() + expansion.slice(idx + 1);
@@ -1479,7 +1489,12 @@ const TextExpander = (() => {
     };
     document.addEventListener('focusin', _focusInHandler);
 
-    _escapePanelHandler = e => { if (e.key === 'Escape' && _panelEl) closePanel(); };
+    _escapePanelHandler = e => {
+      if (e.key !== 'Escape' || !_panelEl) return;
+      const ae = document.activeElement;
+      if (ae && _panelEl.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+      closePanel();
+    };
     document.addEventListener('keydown', _escapePanelHandler);
 
     _windowBlurHandler = () => {
