@@ -22,6 +22,7 @@ const K_PWD        = 'gs_pwd';
 const K_SETTINGS   = 'gs_settings';
 const K_CLOUD_HIST = 'gs_cloud_hist';
 const K_HIST_FILTER = 'gs_history_filter';
+const K_LAST_HASH   = 'gs_last_hash';
 const MIN_COOLDOWN_MS = 30_000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -545,7 +546,10 @@ const { data, compressed } = settings.compress
   ? await Compress.compress(raw)
   : { data: raw, compressed: false };
 
-const shouldEncrypt = settings.encrypt && Cipher.isEnabled();
+const shouldEncrypt = settings.encrypt;
+if (shouldEncrypt && !Cipher.isEnabled()) {
+  throw new Error('Шифрование включено, но пароль не задан');
+}
 const payload = shouldEncrypt ? await Cipher.encrypt(data) : data;
 
 const stats = {
@@ -601,7 +605,13 @@ const entry = { ts: Date.now(), ...stats, label, gistVersion: sha, immortal: !!i
 hist.unshift(entry);
 saveCloudHistory(hist, settings.historyDepth);
   try { localStorage.setItem(K_LAST_SYNC, Date.now().toString()); } catch {}
-  try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
+  const currentHash = (() => { try { return _quickHash(JSON.stringify(State.serialize())); } catch { return null; } })();
+  if (currentHash === pushedHash) {
+    try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
+    setLastPushedHash(pushedHash);
+  } else {
+    try { localStorage.setItem(K_DIRTY, 'true'); } catch {}
+  }
   try { await LocalBackup.save(state); } catch (e) { console.warn('LocalBackup failed:', e); }
 return entry;
 }
@@ -719,7 +729,8 @@ async function pull({ useVersion = null } = {}) {
     return await withRetry(async () => {
       const stateData = await _fetchAndDecodeGist(null, useVersion);
       
-      _lastPushedHash = _quickHash(JSON.stringify(stateData));
+      const hash = _quickHash(JSON.stringify(stateData));
+      setLastPushedHash(hash);
       _lastPushAt     = Date.now();
       
       localStorage.setItem(K_LAST_SYNC, Date.now().toString());
@@ -745,7 +756,8 @@ async function restoreVersion(sha) {
       State.load(stateData);
       Storage.save(stateData);
       
-      _lastPushedHash = _quickHash(JSON.stringify(stateData));
+      const hash = _quickHash(JSON.stringify(stateData));
+      setLastPushedHash(hash);
       _lastPushAt     = Date.now();
       
       localStorage.setItem(K_LAST_SYNC, Date.now().toString());
@@ -787,7 +799,7 @@ const ok = confirm(
 if (!ok) return false;
 const protectedEntry = await push(`☠ Перед ${actionName}`, { immortal: true });
 if (!protectedEntry) throw new Error('Сейчас уже идёт Push — попробуйте ещё раз');
-try { _lastPushedHash = _quickHash(JSON.stringify(State.serialize())); } catch { /* ok */ }
+setLastPushedHash(protectedEntry.pushedHash || _quickHash(JSON.stringify(State.serialize())));
 _lastPushAt = Date.now();
 return true;
 }
@@ -880,7 +892,7 @@ _clearDebounce();
 _pendingCount   = 0;
 _lastPushAt     = 0;
 _lastPushedHash = '';
-[K_TOKEN, K_GIST_ID, K_LAST_SYNC, K_DIRTY, K_CLOUD_HIST, K_PWD, K_SETTINGS, K_HIST_FILTER]
+[K_TOKEN, K_GIST_ID, K_LAST_SYNC, K_DIRTY, K_CLOUD_HIST, K_PWD, K_SETTINGS, K_HIST_FILTER, K_LAST_HASH]
 .forEach(k => localStorage.removeItem(k));
 }
 // ═══ Auto-push ════════════════════════════════════════════════════════════
@@ -888,12 +900,19 @@ let _pendingCount   = 0;
 let _debounceTimer  = null;
 let _debounceUntil  = 0;
 let _lastPushAt     = 0;
-let _lastPushedHash = '';
+let _lastPushedHash = localStorage.getItem(K_LAST_HASH) || '';
 function _quickHash(str) {
 let h = 5381;
 for (let i = 0; i < str.length; i++)
 h = (Math.imul(h, 33) ^ str.charCodeAt(i)) >>> 0;
 return `${str.length}:${h.toString(36)}`;
+}
+function setLastPushedHash(hash) {
+_lastPushedHash = hash || '';
+try {
+  if (_lastPushedHash) localStorage.setItem(K_LAST_HASH, _lastPushedHash);
+  else localStorage.removeItem(K_LAST_HASH);
+} catch {}
 }
 function _hasChanges() {
 try { return _quickHash(JSON.stringify(State.serialize())) !== _lastPushedHash; }
@@ -961,10 +980,6 @@ try {
     _scheduleDebounce(_cooldownLeft() || MIN_COOLDOWN_MS, label);
     return;
   }
-  try {
-    const raw = JSON.stringify(State.serialize());
-    _lastPushedHash = result.pushedHash || _quickHash(raw);
-  } catch { /* ok */ }
   _lastPushAt = Date.now();
   updateBadge();
 } catch (e) {
@@ -1306,7 +1321,7 @@ if (!st.isConnected && _connectingCode) {
          <div class="gs-field-row">
            <input type="password" id="gs-pat-input" name="github-token"
                  class="gs-input-pwd" placeholder="ghp_... или github_pat_..."
-                 autocomplete="current-password" spellcheck="false"
+                 autocomplete="off" spellcheck="false"
                  autocapitalize="off" style="flex:1">
            <button type="submit" class="gs-btn gs-btn-primary gs-btn-sm" id="gs-btn-pat-connect">
             🔗 Подключить
@@ -1560,7 +1575,6 @@ const runManualPush = async ({ immortal = false } = {}) => {
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
   try {
     await push(label, { immortal });
-    try { _lastPushedHash = _quickHash(JSON.stringify(State.serialize())); } catch { /* ok */ }
     _lastPushAt = Date.now();
     _manualPushOpen = false;
     Toast.show(immortal ? '☠ Сохранено в Gist и защищено ✓' : '☁ Сохранено в Gist ✓', 'success');
