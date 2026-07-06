@@ -1600,6 +1600,7 @@ const MindMap = (() => {
     text.setAttribute('x', x); text.setAttribute('y', y);
     text.setAttribute('text-anchor', opts.anchor || 'start');
     _setReadableText(text, opts.color || 'var(--text1)', fontSize, opts.weight || '400');
+    if (opts.strokeWidth != null) text.setAttribute('stroke-width', String(opts.strokeWidth));
     lines.forEach((line, i) => {
       const span = document.createElementNS(SVG_NS, 'tspan');
       span.setAttribute('x', x);
@@ -1609,6 +1610,31 @@ const MindMap = (() => {
     });
     parent.appendChild(text);
     return text;
+  }
+
+  function _wrapTreeTextLines(text, maxWidth, maxLines) {
+    const approxCharW = 7.6;
+    const maxChars = Math.max(8, Math.floor(maxWidth / approxCharW));
+    const tokens = String(text ?? '').split(/\s+/).flatMap(token => {
+      if (token.length <= maxChars) return [token];
+      const chunks = [];
+      const chunkSize = Math.max(8, maxChars - 2);
+      for (let i = 0; i < token.length; i += chunkSize) {
+        const part = token.slice(i, i + chunkSize);
+        chunks.push(i + chunkSize < token.length ? part + '...' : part);
+      }
+      return chunks;
+    });
+    const lines = [];
+    let line = '';
+    tokens.forEach(w => {
+      if (lines.length >= maxLines) return;
+      const test = line ? `${line} ${w}` : w;
+      if (test.length > maxChars && line) { lines.push(line.trim()); line = w; }
+      else { line = test; }
+    });
+    if (line.trim() && lines.length < maxLines) lines.push(line.trim());
+    return lines;
   }
 
   function _drawTree(W, H) {
@@ -1626,6 +1652,8 @@ const MindMap = (() => {
 
     const pad = 36, gap = 18;
     const colW = W - pad * 2;
+    const textX = pad + 22;
+    const textW = colW - 44;
     const supportCount = evidence.filter(e => e.supports).length;
     const counterCount = evidence.filter(e => !e.supports).length;
 
@@ -1644,8 +1672,8 @@ const MindMap = (() => {
     const visibleRows = rows.slice(0, maxRows);
 
     const prepared = visibleRows.map(row => {
-      const lines = _wrapTextLines(row.text, colW - 44, 3);
-      const h = Math.max(76, 34 + lines.length * 18 + 18);
+      const lines = _wrapTreeTextLines(row.text, textW, 3);
+      const h = Math.max(78, 36 + lines.length * 19 + 18);
       return { ...row, lines, h };
     });
 
@@ -1661,6 +1689,8 @@ const MindMap = (() => {
       ? `${supportCount} доказательств · ${counterCount} контраргументов`
       : `${supportCount} доказательств`;
     _viewport.appendChild(summary);
+
+    const defs = _svg?.querySelector('defs');
 
     prepared.forEach((r, i) => {
       const enterG = document.createElementNS(SVG_NS, 'g');
@@ -1680,24 +1710,53 @@ const MindMap = (() => {
       rect.setAttribute('filter', 'url(#shadow)');
       depthG.appendChild(rect);
 
-      const stripe = document.createElementNS(SVG_NS, 'rect');
-      stripe.setAttribute('x', String(pad)); stripe.setAttribute('y', String(y));
-      stripe.setAttribute('width', '4'); stripe.setAttribute('height', String(r.h));
-      stripe.setAttribute('rx', '2'); stripe.setAttribute('fill', r.color);
-      stripe.setAttribute('opacity', '0.75');
-      depthG.appendChild(stripe);
+      const markerClipId = `tree-mclip-${_requestSeq}-${i}`;
+      const clipId = `tree-clip-${_requestSeq}-${i}`;
+      if (defs) {
+        const mc = document.createElementNS(SVG_NS, 'clipPath');
+        mc.setAttribute('id', markerClipId);
+        const mcR = document.createElementNS(SVG_NS, 'rect');
+        mcR.setAttribute('x', String(pad)); mcR.setAttribute('y', String(y));
+        mcR.setAttribute('width', String(colW)); mcR.setAttribute('height', String(r.h));
+        mcR.setAttribute('rx', '10');
+        mc.appendChild(mcR); defs.appendChild(mc);
+        const tc = document.createElementNS(SVG_NS, 'clipPath');
+        tc.setAttribute('id', clipId);
+        const tcR = document.createElementNS(SVG_NS, 'rect');
+        tcR.setAttribute('x', String(pad + 12)); tcR.setAttribute('y', String(y + 8));
+        tcR.setAttribute('width', String(colW - 24)); tcR.setAttribute('height', String(r.h - 14));
+        tcR.setAttribute('rx', '8');
+        tc.appendChild(tcR); defs.appendChild(tc);
+      }
+
+      const marker = document.createElementNS(SVG_NS, 'rect');
+      marker.setAttribute('x', String(pad)); marker.setAttribute('y', String(y));
+      marker.setAttribute('width', '8'); marker.setAttribute('height', String(r.h));
+      marker.setAttribute('fill', r.color); marker.setAttribute('opacity', '0.72');
+      if (defs) marker.setAttribute('clip-path', `url(#${markerClipId})`);
+      depthG.appendChild(marker);
+
+      const markerSep = document.createElementNS(SVG_NS, 'line');
+      markerSep.setAttribute('x1', String(pad + 8)); markerSep.setAttribute('y1', String(y + 8));
+      markerSep.setAttribute('x2', String(pad + 8)); markerSep.setAttribute('y2', String(y + r.h - 8));
+      markerSep.setAttribute('stroke', 'rgba(255,255,255,0.06)'); markerSep.setAttribute('stroke-width', '1');
+      depthG.appendChild(markerSep);
+
+      const textG = document.createElementNS(SVG_NS, 'g');
+      if (defs) textG.setAttribute('clip-path', `url(#${clipId})`);
+      depthG.appendChild(textG);
 
       const label = document.createElementNS(SVG_NS, 'text');
-      label.setAttribute('x', String(pad + 16)); label.setAttribute('y', String(y + 22));
+      label.setAttribute('x', String(textX)); label.setAttribute('y', String(y + 22));
       _setReadableText(label, r.color, 10, '800');
       label.setAttribute('stroke-width', '1.4');
       label.textContent = r.label;
-      depthG.appendChild(label);
+      textG.appendChild(label);
 
-      _appendTextLines(depthG, r.lines, pad + 16, y + 46, {
-        color: 'var(--text0)', fontSize: 14,
+      _appendTextLines(textG, r.lines, textX, y + 48, {
+        color: 'var(--text0)', fontSize: 13.5,
         weight: r.kind === 'claim' || r.kind === 'conclusion' ? '600' : '400',
-        lineH: 18,
+        lineH: 18, strokeWidth: 1.6,
       });
 
       if (i > 0) {
