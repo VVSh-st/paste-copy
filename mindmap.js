@@ -708,7 +708,8 @@ const MindMap = (() => {
   function _drawWords(W, H) {
     const words = _data.words || [];
     if (!words.length) return;
-    const sourceText = window.Preview?.getText?.() ?? '';
+    const fullText = window.Preview?.getText?.() ?? '';
+    const sourceText = fullText.slice(0, 4000);
 
     const enriched = words.map(item => {
       const count = _countOccurrences(sourceText, item.w);
