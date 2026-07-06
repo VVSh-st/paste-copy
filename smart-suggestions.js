@@ -29,13 +29,17 @@
       strip.hidden = true;
       strip.setAttribute('aria-live', 'polite');
       strip.setAttribute('aria-label', 'Умные подсказки');
-      previewBar?.insertAdjacentElement('afterend', strip);
+      if (previewBar) {
+        previewBar.insertAdjacentElement('afterend', strip);
+      } else {
+        document.body.appendChild(strip);
+      }
     }
     return strip;
   }
 
-  function esc(s) {
-    return String(s || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  function esc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
   function formatDate(ts) {
@@ -56,6 +60,24 @@
     if (n < 1024) return `${Math.round(n)} Б`;
     if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
     return `${(n / 1024 / 1024).toFixed(2)} МБ`;
+  }
+
+  function readNumberInput(id, fallback, min, max) {
+    const n = Number(document.getElementById(id)?.value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(n)));
+  }
+
+  function readRetentionFromReport() {
+    return {
+      maxSnapshots: readNumberInput('pg-retention-snapshots', 80, 20, 500),
+      maxBlockNodes: readNumberInput('pg-retention-blocks', 240, 80, 2000),
+      maxRelations: readNumberInput('pg-retention-relations', 300, 80, 3000),
+      maxAgeDays: readNumberInput('pg-retention-age', 0, 0, 365),
+      preserveNamed: !!document.getElementById('pg-retention-preserve-named')?.checked,
+      preserveBaselines: !!document.getElementById('pg-retention-preserve-baselines')?.checked,
+      pruneUnreferencedBlocks: !!document.getElementById('pg-retention-prune-blocks')?.checked
+    };
   }
 
   function trackShownKey(key) {
@@ -979,15 +1001,7 @@
           label: 'Применить retention',
           className: 'primary',
           onClick: () => {
-            const next = {
-              maxSnapshots: Number(document.getElementById('pg-retention-snapshots')?.value || 80),
-              maxBlockNodes: Number(document.getElementById('pg-retention-blocks')?.value || 240),
-              maxRelations: Number(document.getElementById('pg-retention-relations')?.value || 300),
-              maxAgeDays: Number(document.getElementById('pg-retention-age')?.value || 0),
-              preserveNamed: !!document.getElementById('pg-retention-preserve-named')?.checked,
-              preserveBaselines: !!document.getElementById('pg-retention-preserve-baselines')?.checked,
-              pruneUnreferencedBlocks: !!document.getElementById('pg-retention-prune-blocks')?.checked
-            };
+            const next = readRetentionFromReport();
             const result = window.ProjectGraph.cleanup({ retention: next });
             window.Intelligence?.track?.('projectGraph.cleanup.applied', {
               chars: 0,
@@ -1002,15 +1016,7 @@
           label: 'Только сохранить настройки',
           className: 'secondary',
           onClick: () => {
-            window.ProjectGraph.setRetention?.({
-              maxSnapshots: Number(document.getElementById('pg-retention-snapshots')?.value || 80),
-              maxBlockNodes: Number(document.getElementById('pg-retention-blocks')?.value || 240),
-              maxRelations: Number(document.getElementById('pg-retention-relations')?.value || 300),
-              maxAgeDays: Number(document.getElementById('pg-retention-age')?.value || 0),
-              preserveNamed: !!document.getElementById('pg-retention-preserve-named')?.checked,
-              preserveBaselines: !!document.getElementById('pg-retention-preserve-baselines')?.checked,
-              pruneUnreferencedBlocks: !!document.getElementById('pg-retention-prune-blocks')?.checked
-            });
+            window.ProjectGraph.setRetention?.(readRetentionFromReport());
             window.Toast?.show?.('Retention настройки сохранены', 'success');
             return true;
           }
