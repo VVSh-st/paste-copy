@@ -387,8 +387,10 @@ const MindMap = (() => {
     const fontWeight = sourceEl?.getAttribute?.('font-weight') || '700';
 
     const g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'mm-count-pop');
     g.setAttribute('transform', `translate(${svgX}, ${svgY})`);
+
+    const anim = document.createElementNS(SVG_NS, 'g');
+    anim.setAttribute('class', 'mm-count-pop');
 
     const halo = document.createElementNS(SVG_NS, 'circle');
     halo.setAttribute('cx', '0'); halo.setAttribute('cy', '0');
@@ -405,9 +407,10 @@ const MindMap = (() => {
     t.setAttribute('filter', 'url(#glow)');
     t.textContent = String(count);
 
-    g.appendChild(halo); g.appendChild(t);
+    anim.appendChild(halo); anim.appendChild(t);
+    g.appendChild(anim);
     _viewport.appendChild(g);
-    setTimeout(() => { if (g.isConnected) g.classList.add('vanish'); }, 3000);
+    setTimeout(() => { if (anim.isConnected) anim.classList.add('vanish'); }, 3000);
     setTimeout(() => { g.remove(); }, 3700);
   }
 
