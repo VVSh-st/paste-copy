@@ -40,20 +40,18 @@
 - Статус: третий раунд завершён. Модуль укреплён. Готов к браузерному тестированию.
 
 ### memory-sync.js
-- **~847 строк**. Промпт-задание для аудитора создано (`memory-sync-audit-prompt.md`).
-- Ожидает результатов аудита.
-- Ключевые зоны: приватная синхронизация метаданных (хэши, титулы, роли, счётчики) в Gist, rate limiting (6 req/hr), auto-push/pull, обёртка save-хуков UserMemory/ProjectGraph, innerHTML модалка, escapeHtml XSS защита, FNV-1a хэш, suppressSchedule для предотвращения sync-циклов.
+- **~847 строк**, 1 раунд аудита, **0 фиксов**. Аудитор запутал модули — все 6 пунктов относились к gist-sync.js.
+- Собственный аудит: файл чистый. escapeHtml для innerHTML OK, suppressSchedule предотвращает sync-циклы, pushInFlight/pullInFlight блокируют параллельные операции, rate limiting корректен, try/catch на localStorage, wrapSaveHooks с guard.
+- Статус: аудит завершён, фиксов не требуется. Готов к браузерному тестированию.
 
 ## Следующий шаг
-1. Провести аудит `memory-sync.js` по промпту `memory-sync-audit-prompt.md`
-2. Применить результаты аудита `memory-sync.js`
-3. Браузерное тестирование `gist-sync.js`:
+1. Браузерское тестирование `gist-sync.js`:
    - Push/Pull/Restore параллельно → sync lock блокирует вторую операцию
    - Push во время активного push → dirty остаётся true
    - Pull → State.load() упадёт → dirty НЕ очищается (markPulledSynced не вызван)
    - AES-GCM без пароля → push блокируется с ошибкой
    - Quota ошибка localStorage → push не падает
-2. Браузерное тестирование `text-expander.js`:
+2. Браузерское тестирование `text-expander.js`:
    - `Ёabc` + пробел → expansion БЕЗ открытого dropdown
    - Ё + query + Enter → вставка через dropdown
    - Long press → панель, Escape → закрыта
