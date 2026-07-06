@@ -301,7 +301,7 @@ const MindMap = (() => {
       const text = window.Preview?.getText?.() ?? '';
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
 
-      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую структуру...';
+      _overlay.querySelector('.mindmap-status').textContent = '';
       _overlay.querySelector('.mindmap-refresh').classList.add('spinning');
 
       const localWords = _buildLocalWords(text);
@@ -695,7 +695,7 @@ const MindMap = (() => {
     _syncZoomSlider();
 
     if (_loading) {
-      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+      _overlay.querySelector('.mindmap-status').textContent = '';
       _render();
       return;
     }
@@ -716,7 +716,7 @@ const MindMap = (() => {
     };
     _textHash = currentHash;
 
-    _overlay.querySelector('.mindmap-status').textContent = 'Анализирую структуру...';
+    _overlay.querySelector('.mindmap-status').textContent = '';
     _overlay.querySelector('.mindmap-refresh')?.classList.add('spinning');
 
     _render();
@@ -1138,16 +1138,15 @@ const MindMap = (() => {
 
     const maxW = Math.max(...enriched.map(w => w.visualWeight));
     const placed = [];
-    const padding = 6;
-    const collisionPad = 4;
+    const padding = 4;
     const MIN_FONT = 9;
-    const MAX_FONT = 66;
+    const MAX_FONT = 74;
 
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     const animateWords = _wordsAnimatedForHash !== _textHash;
     sorted.forEach((item, i) => {
       const t = item.visualWeight / maxW;
-      let fontSize = MIN_FONT + Math.pow(t, 4.4) * (MAX_FONT - MIN_FONT);
+      let fontSize = MIN_FONT + Math.pow(t, 4.25) * (MAX_FONT - MIN_FONT);
       const color = PALETTE[i % PALETTE.length];
       const maxTextW = Math.max(40, W - padding * 2);
       let tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
@@ -1155,8 +1154,9 @@ const MindMap = (() => {
         fontSize = Math.max(MIN_FONT, (maxTextW / (item.w.length * 0.6)));
         tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
       }
-      const th = fontSize * 1.3;
-      const maxTries = fontSize <= 12 ? 150 : 95;
+      const th = fontSize * 1.14;
+      const itemPad = fontSize > 42 ? 5 : fontSize > 24 ? 3 : 1;
+      const maxTries = fontSize <= 12 ? 260 : fontSize <= 18 ? 190 : 110;
       let x, y, tries = 0, collides = false;
       do {
         const rangeX = Math.max(1, W - tw - padding * 2);
@@ -1165,8 +1165,8 @@ const MindMap = (() => {
         x = padding + _rand01(seed) * rangeX;
         y = padding + th + _rand01(seed ^ 0x9e3779b9) * rangeY;
         collides = placed.some(p =>
-          Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + collisionPad) &&
-          Math.abs(y - th / 2 - p.cy) < (th / 2 + p.hh + collisionPad)
+          Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + itemPad) &&
+          Math.abs(y - th / 2 - p.cy) < (th / 2 + p.hh + itemPad)
         );
         tries++;
       } while (tries < maxTries && collides);
