@@ -1257,25 +1257,30 @@ const MindMap = (() => {
       .slice(0, 2).map(n => String(n.w || '').trim()).filter(Boolean).join(' / ');
   }
 
+  function _shortGraphLabel(s, max = 28) {
+    s = String(s ?? '').trim();
+    return s.length > max ? s.slice(0, max - 3) + '...' : s;
+  }
+
   function _drawGraphComponentBackdrops(comps, nodes) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.depth = '0.06';
     g.setAttribute('class', 'mm-graph-backdrops');
     comps.forEach((comp, ci) => {
-      if (comp.length < 2) return;
+      if (comp.length < 3) return;
       const color = PALETTE[ci % PALETTE.length];
       const items = comp.map(i => nodes[i]);
       const minX = Math.min(...items.map(n => n.x - n.r));
       const maxX = Math.max(...items.map(n => n.x + n.r));
       const minY = Math.min(...items.map(n => n.y - n.r));
       const maxY = Math.max(...items.map(n => n.y + n.r));
-      const pad = 22;
+      const pad = 18;
       const rect = document.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('x', String(minX - pad)); rect.setAttribute('y', String(minY - pad));
       rect.setAttribute('width', String(maxX - minX + pad * 2)); rect.setAttribute('height', String(maxY - minY + pad * 2));
       rect.setAttribute('rx', '16');
-      rect.setAttribute('fill', color + '09'); rect.setAttribute('stroke', color + '1C');
-      rect.setAttribute('stroke-width', '1'); rect.setAttribute('stroke-dasharray', '5 7');
+      rect.setAttribute('fill', color + '06'); rect.setAttribute('stroke', color + '16');
+      rect.setAttribute('stroke-width', '1'); rect.setAttribute('stroke-dasharray', '4 8');
       g.appendChild(rect);
       const label = document.createElementNS(SVG_NS, 'text');
       label.setAttribute('x', String(minX - pad + 14)); label.setAttribute('y', String(minY - pad + 20));
@@ -1283,7 +1288,7 @@ const MindMap = (() => {
       label.setAttribute('font-family', 'var(--mono)');
       label.setAttribute('paint-order', 'stroke');
       label.setAttribute('stroke', 'rgba(0,0,0,0.42)'); label.setAttribute('stroke-width', '2');
-      label.textContent = _graphComponentLabel(comp, nodes);
+      label.textContent = _shortGraphLabel(_graphComponentLabel(comp, nodes), 30);
       g.appendChild(label);
     });
     _viewport.appendChild(g);
@@ -1293,41 +1298,33 @@ const MindMap = (() => {
     const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.depth = '0.04';
     g.setAttribute('class', 'mm-graph-legend');
-    g.style.cursor = 'default';
-    const x = 18, y = 18;
-    const compactW = 86, compactH = 28, fullW = 232, fullH = 70;
-    const box = document.createElementNS(SVG_NS, 'rect');
-    box.setAttribute('x', String(x)); box.setAttribute('y', String(y));
-    box.setAttribute('width', String(compactW)); box.setAttribute('height', String(compactH));
-    box.setAttribute('rx', '9');
-    box.setAttribute('fill', 'rgba(0,0,0,0.34)'); box.setAttribute('stroke', 'rgba(255,255,255,0.10)');
-    box.setAttribute('stroke-width', '1');
-    g.appendChild(box);
-    const title = document.createElementNS(SVG_NS, 'text');
-    title.setAttribute('x', String(x + 11)); title.setAttribute('y', String(y + 18));
-    title.setAttribute('fill', 'var(--text0)'); title.setAttribute('font-size', '10');
-    title.setAttribute('font-weight', '700'); title.setAttribute('font-family', 'var(--mono)');
-    title.textContent = 'Карта';
-    g.appendChild(title);
-    const hint = document.createElementNS(SVG_NS, 'text');
-    hint.setAttribute('x', String(x + 51)); hint.setAttribute('y', String(y + 18));
-    hint.setAttribute('fill', 'var(--text2)'); hint.setAttribute('font-size', '10');
-    hint.setAttribute('font-family', 'var(--mono)');
-    hint.textContent = '?';
-    g.appendChild(hint);
+    g.style.cursor = 'help';
+    const x = 12, y = 12, hotW = 44, hotH = 44, fullW = 232, fullH = 70;
+    const hot = document.createElementNS(SVG_NS, 'rect');
+    hot.setAttribute('x', String(x)); hot.setAttribute('y', String(y));
+    hot.setAttribute('width', String(hotW)); hot.setAttribute('height', String(hotH));
+    hot.setAttribute('rx', '10');
+    hot.setAttribute('fill', 'rgba(255,255,255,0.001)'); hot.setAttribute('stroke', 'none');
+    g.appendChild(hot);
+    const mark = document.createElementNS(SVG_NS, 'path');
+    mark.setAttribute('d', `M ${x + 10} ${y + 8} H ${x + 24} M ${x + 8} ${y + 10} V ${y + 24}`);
+    mark.setAttribute('fill', 'none');
+    mark.setAttribute('stroke', 'rgba(255,255,255,0.14)'); mark.setAttribute('stroke-width', '1.2');
+    mark.setAttribute('stroke-linecap', 'round');
+    g.appendChild(mark);
     const details = document.createElementNS(SVG_NS, 'g');
     details.setAttribute('opacity', '0'); details.style.pointerEvents = 'none';
     details.style.transition = 'opacity 0.16s ease';
     const detailBox = document.createElementNS(SVG_NS, 'rect');
-    detailBox.setAttribute('x', String(x)); detailBox.setAttribute('y', String(y));
+    detailBox.setAttribute('x', String(x + 4)); detailBox.setAttribute('y', String(y + 4));
     detailBox.setAttribute('width', String(fullW)); detailBox.setAttribute('height', String(fullH));
     detailBox.setAttribute('rx', '10');
-    detailBox.setAttribute('fill', 'rgba(0,0,0,0.48)'); detailBox.setAttribute('stroke', 'rgba(255,255,255,0.12)');
+    detailBox.setAttribute('fill', 'rgba(0,0,0,0.52)'); detailBox.setAttribute('stroke', 'rgba(255,255,255,0.12)');
     detailBox.setAttribute('stroke-width', '1');
     details.appendChild(detailBox);
     ['шар = термин, размер = важность', 'цвет = тема, линия = связь', `${nodeCount} терминов · ${linkCount} связей`].forEach((line, i) => {
       const t = document.createElementNS(SVG_NS, 'text');
-      t.setAttribute('x', String(x + 12)); t.setAttribute('y', String(y + 20 + i * 15));
+      t.setAttribute('x', String(x + 16)); t.setAttribute('y', String(y + 24 + i * 15));
       t.setAttribute('fill', i === 0 ? 'var(--text0)' : 'var(--text2)');
       t.setAttribute('font-size', '10'); t.setAttribute('font-family', 'var(--mono)');
       if (i === 0) t.setAttribute('font-weight', '700');
@@ -1335,16 +1332,8 @@ const MindMap = (() => {
       details.appendChild(t);
     });
     g.appendChild(details);
-    g.addEventListener('mouseenter', () => {
-      box.setAttribute('width', String(fullW)); box.setAttribute('height', String(fullH));
-      title.setAttribute('opacity', '0'); hint.setAttribute('opacity', '0');
-      details.setAttribute('opacity', '1');
-    });
-    g.addEventListener('mouseleave', () => {
-      box.setAttribute('width', String(compactW)); box.setAttribute('height', String(compactH));
-      title.setAttribute('opacity', '1'); hint.setAttribute('opacity', '1');
-      details.setAttribute('opacity', '0');
-    });
+    g.addEventListener('mouseenter', () => { mark.setAttribute('stroke', 'rgba(255,255,255,0.34)'); details.setAttribute('opacity', '1'); });
+    g.addEventListener('mouseleave', () => { mark.setAttribute('stroke', 'rgba(255,255,255,0.14)'); details.setAttribute('opacity', '0'); });
     _viewport.appendChild(g);
   }
 
@@ -1358,7 +1347,7 @@ const MindMap = (() => {
     }
 
     const filteredLinks = _ensureMinimumGraphLinks(allWords, allLinks);
-    const graphMaxNodes = W < 900 ? 28 : 34;
+    const graphMaxNodes = W < 900 ? 24 : 30;
     const words = _selectGraphWords(allWords, filteredLinks, graphMaxNodes);
     if (!words.length) return;
 
@@ -1396,7 +1385,7 @@ const MindMap = (() => {
 
     nodes.forEach(n => { n.r = 6 + (n.weight / maxW) * 16; });
 
-    const maxGraphLinks = W < 900 ? 22 : 28;
+    const maxGraphLinks = W < 900 ? 18 : 24;
     links = _pruneGraphLinks(links, nodes, graphKey, maxGraphLinks, 3);
 
     const comps = _graphComponents(nodes, links, nodeMap, graphKey);
@@ -1525,15 +1514,16 @@ const MindMap = (() => {
         const end = edgePoint(b, a, b.r + EDGE_GAP);
         const mid = curvedMidpoint(start, end, `${l.from}|${l.to}`);
         const strength = Math.max(0, Math.min(1, Number(l.strength) || 0.3));
+        const alpha = l.source === 'llm' ? 0.075 + strength * 0.10 : 0.045 + strength * 0.065;
         const path = document.createElementNS(SVG_NS, 'path');
         path.setAttribute('d', `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`);
         path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.035)' : `rgba(255,255,255,${(0.07 + strength * 0.11).toFixed(3)})`);
-        path.setAttribute('stroke-width', String(0.8 + strength * 1.4));
+        path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.025)' : `rgba(255,255,255,${alpha.toFixed(3)})`);
+        path.setAttribute('stroke-width', String(l.source === 'llm' ? 0.75 + strength * 1.25 : 0.65 + strength * 0.95));
         path.setAttribute('stroke-linecap', 'round');
         path.setAttribute('vector-effect', 'non-scaling-stroke');
         if (l.synthetic) path.setAttribute('stroke-dasharray', '4 6');
-        else if (l.source === 'local') path.setAttribute('stroke-dasharray', '5 6');
+        else if (l.source === 'local') path.setAttribute('stroke-dasharray', '6 9');
         const edgeTitle = document.createElementNS(SVG_NS, 'title');
         const srcLabel = l.source === 'llm' ? 'смысловая связь' : 'часто рядом в тексте';
         edgeTitle.textContent = `${l.from} ↔ ${l.to} · ${srcLabel} · ${(strength * 100).toFixed(0)}%`;
@@ -1562,12 +1552,12 @@ const MindMap = (() => {
       circle.setAttribute('cx', n.x); circle.setAttribute('cy', n.y);
       circle.setAttribute('r', r);
       circle.setAttribute('fill', `url(#${gradId})`);
-      circle.setAttribute('opacity', isIsolated ? '0.35' : '0.85');
-      if (n.weight > 7 && !isIsolated) circle.setAttribute('filter', 'url(#bloom)');
+      circle.setAttribute('opacity', isIsolated ? '0.22' : '0.85');
+      if (n.weight > 8.5 && !isIsolated) circle.setAttribute('filter', 'url(#glow)');
       circle.style.cursor = 'pointer';
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
-      circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', isIsolated ? '0.35' : '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
+      circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', isIsolated ? '0.22' : '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
       _attachWordInteractions(circle, n.w, n.x, n.y);
       const nodeTitle = document.createElementNS(SVG_NS, 'title');
       nodeTitle.textContent = `${n.w}\nважность: ${(Number(n.weight) || 0).toFixed(1)}\nклик: показать количество`;
@@ -1580,7 +1570,7 @@ const MindMap = (() => {
       text.setAttribute('font-size', n.weight > 7 ? '11' : '10');
       text.setAttribute('fill', 'var(--text2)');
       text.setAttribute('font-family', 'var(--mono)');
-      text.setAttribute('opacity', isIsolated ? '0.45' : '1');
+      text.setAttribute('opacity', isIsolated ? '0.28' : '1');
       text.setAttribute('paint-order', 'stroke');
       text.setAttribute('stroke', 'rgba(0,0,0,0.48)'); text.setAttribute('stroke-width', '2');
       text.setAttribute('stroke-linejoin', 'round');
