@@ -48,6 +48,22 @@
     );
   }
 
+  function safeNumber(value, fallback, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function safeDuration(ms, fallback) {
+    return safeNumber(ms, fallback || 24 * 60 * 60 * 1000, 60_000, 30 * 24 * 60 * 60 * 1000);
+  }
+
+  function safeCounter(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(Math.min(n, Number.MAX_SAFE_INTEGER));
+  }
+
   // Безопасный глубокий клон с откатом на пустой объект
   function deepClone(value) {
     try { return JSON.parse(JSON.stringify(value)); }
@@ -145,7 +161,13 @@
       ...base,
       ...p,
       schemaVersion: SCHEMA_VERSION,
-      counters: { ...base.counters, ...(p.counters || {}) },
+      counters: {
+        events: safeCounter(p.counters?.events),
+        sessions: safeCounter(p.counters?.sessions),
+        acceptedSuggestions: safeCounter(p.counters?.acceptedSuggestions),
+        dismissedSuggestions: safeCounter(p.counters?.dismissedSuggestions),
+        ignoredSuggestions: safeCounter(p.counters?.ignoredSuggestions)
+      },
       behavior: {
         ...base.behavior,
         ...(p.behavior || {}),
@@ -199,16 +221,17 @@
     try {
       profile.updatedAt = now();
       const payload = JSON.stringify(profile);
-      if (!safeStorageSet(STORAGE_KEY, payload)) {
-        console.warn('[UserMemory] save skipped: storage unavailable');
-      }
+      const ok = safeStorageSet(STORAGE_KEY, payload);
+      if (!ok) console.warn('[UserMemory] save skipped: storage unavailable');
+      return ok;
     } catch (err) {
       console.warn('[UserMemory] save failed:', err);
+      return false;
     }
   }
 
   function sanitizeEvent(type, payload = {}) {
-    const ts = Number(payload.ts) || now();
+    const ts = safeNumber(payload.ts, now(), 0, now() + 365 * 24 * 60 * 60 * 1000);
     const event = {
       type: String(type || 'unknown').slice(0, 64),
       ts,
@@ -216,8 +239,8 @@
       blockId: payload.blockId == null ? null : String(payload.blockId).slice(0, 80),
       title: String(payload.title || '').slice(0, 80),
       kind: String(payload.kind || '').slice(0, 32),
-      chars: Math.max(0, Number(payload.chars) || 0),
-      tokens: Math.max(0, Number(payload.tokens) || 0),
+      chars: safeNumber(payload.chars, 0, 0, 10_000_000),
+      tokens: safeNumber(payload.tokens, 0, 0, 10_000_000),
       textHash: payload.textHash ? String(payload.textHash).slice(0, 80) : ''
     };
 
@@ -230,10 +253,14 @@
     if (payload.role) event.role = String(payload.role).slice(0, 64);
     if (payload.sourceTitle) event.sourceTitle = String(payload.sourceTitle).slice(0, 80);
     if (payload.placementMode) event.placementMode = String(payload.placementMode).slice(0, 64);
-    if (Number.isFinite(Number(payload.outputChars))) event.outputChars = Math.max(0, Number(payload.outputChars));
-    if (Number.isFinite(Number(payload.inputTokens))) event.inputTokens = Math.max(0, Number(payload.inputTokens));
-    if (Number.isFinite(Number(payload.outputTokens))) event.outputTokens = Math.max(0, Number(payload.outputTokens));
-    if (Number.isFinite(Number(payload.sectionCount))) event.sectionCount = Math.max(0, Number(payload.sectionCount));
+    const oc = safeNumber(payload.outputChars, null, 0, 10_000_000);
+    if (oc !== null) event.outputChars = oc;
+    const it = safeNumber(payload.inputTokens, null, 0, 10_000_000);
+    if (it !== null) event.inputTokens = it;
+    const ot = safeNumber(payload.outputTokens, null, 0, 10_000_000);
+    if (ot !== null) event.outputTokens = ot;
+    const sc = safeNumber(payload.sectionCount, null, 0, 10_000);
+    if (sc !== null) event.sectionCount = sc;
 
     return event;
   }
@@ -254,10 +281,10 @@
     }
 
     if (event.title) {
-      const key = event.title.trim().toLowerCase();
+      const key = sanitizeKey(event.title.trim().toLowerCase(), 80);
       if (key) {
         profile.promptPatterns.frequentBlockTitles[key] =
-          (profile.promptPatterns.frequentBlockTitles[key] || 0) + 1;
+          (Number(profile.promptPatterns.frequentBlockTitles[key]) || 0) + 1;
         pruneObjectKeys(profile.promptPatterns.frequentBlockTitles, MAX_MAP_KEYS);
       }
     }
@@ -327,12 +354,13 @@
 
   function getLastEvent() {
     const arr = profile.behavior.recentEvents;
-    return arr.length ? arr[arr.length - 1] : null;
+    return arr.length ? deepClone(arr[arr.length - 1]) : null;
   }
 
   function getFeatureStats(type) {
     if (!type) return null;
-    return profile.suggestions.byType[String(type)] || null;
+    const stats = profile.suggestions.byType[String(type)] || null;
+    return stats ? deepClone(stats) : null;
   }
 
   function ensureFeatureStats(type) {
@@ -386,10 +414,10 @@
     return stats;
   }
 
-  function dismiss(type, ms = 24 * 60 * 60 * 1000) {
+  function dismiss(type, ms) {
     const typeKey = sanitizeKey(type, 64);
     if (!typeKey) return;
-    profile.suggestions.dismissedUntil[typeKey] = now() + Math.max(60_000, Number(ms) || 0);
+    profile.suggestions.dismissedUntil[typeKey] = now() + safeDuration(ms);
     pruneObjectKeys(profile.suggestions.dismissedUntil, MAX_MAP_KEYS);
     updateFeatureScore(typeKey, 'dismissed');
   }
@@ -407,7 +435,7 @@
     const clean = {
       name: String(structure.name || '').slice(0, 80),
       kind: String(structure.kind || '').slice(0, 32),
-      blocks: Math.max(0, Number(structure.blocks) || 0),
+      blocks: safeNumber(structure.blocks, 0, 0, 10_000),
       ts: now()
     };
     profile.promptPatterns.successfulStructures.push(clean);
@@ -434,12 +462,12 @@
     profile.counters.dismissedSuggestions = 0;
     profile.counters.ignoredSuggestions = 0;
     saveNow();
-    return profile;
+    return getProfile();
   }
 
   function enableSuggestionType(type) {
     const typeKey = sanitizeKey(type, 64);
-    if (!typeKey) return profile;
+    if (!typeKey) return getProfile();
     delete profile.suggestions.disabledTypes[typeKey];
     delete profile.suggestions.dismissedUntil[typeKey];
     const stats = profile.suggestions.byType[typeKey];
@@ -448,13 +476,13 @@
       stats.ignored = 0;
     }
     saveSoon();
-    return profile;
+    return getProfile();
   }
 
   function reset() {
     profile = createDefaultProfile();
     saveNow();
-    return profile;
+    return getProfile();
   }
 
   function getDiagnostics() {
