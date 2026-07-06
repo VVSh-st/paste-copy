@@ -120,6 +120,14 @@
     return localStorage.getItem('gs_gist_id') || '';
   }
 
+  function getValidatedGistId() {
+    const gistId = getGistId().trim();
+    if (!/^[a-f0-9]{20,64}$/i.test(gistId)) {
+      throw new Error('Некорректный Gist ID');
+    }
+    return gistId;
+  }
+
   function isConnected() {
     return Boolean(getToken() && getGistId());
   }
@@ -193,6 +201,15 @@
     renderModal();
   }
 
+  function rollbackRequestCount() {
+    settings.requestCount = Math.max(0, Number(settings.requestCount || 0) - 1);
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (err) {
+      console.warn('[MemorySync] request budget rollback failed:', err);
+    }
+  }
+
   function request(method, path, body) {
     const token = getToken();
     if (!token) throw new Error('not_connected');
@@ -236,7 +253,10 @@
       return parsed;
     }).catch(err => {
       clearTimeout(timer);
-      if (err?.name === 'AbortError') throw new Error('Таймаут запроса (15 с)');
+      if (err?.name === 'AbortError') {
+        rollbackRequestCount();
+        throw new Error('Таймаут запроса (15 с)');
+      }
       throw err;
     });
   }
@@ -261,9 +281,6 @@
       createdAt: settings.lastPullAt || settings.lastPushAt || now(),
       updatedAt: now(),
       source: 'memory-sync',
-      app: {
-        title: document.title || 'paste\\copy'
-      },
       userMemory,
       projectGraph
     };
@@ -302,9 +319,6 @@
       schemaVersion: stable.schemaVersion,
       source: 'memory-sync',
       updatedAt: now(),
-      app: {
-        title: document.title || 'paste\\copy'
-      },
       userMemory: stable.userMemory,
       projectGraph: stable.projectGraph
     };
@@ -339,7 +353,7 @@
     return Math.max(0, Number(settings.rateLimitedUntil || 0) - now());
   }
 
-  function pauseAfterRateLimit(err) {
+  function pauseAfterRateLimit(err, operation = 'push') {
     const resetMs = Number(err?.rateLimitReset || 0) * 1000;
     const until = resetMs && resetMs > now() ? Math.max(resetMs, now() + 5 * 60_000) : now() + RATE_LIMIT_PAUSE_MS;
     const message = 'GitHub API rate limit. Автоотправка памяти поставлена на паузу до ' + formatTime(until) + '.';
@@ -348,7 +362,7 @@
     saveSettings({
       rateLimitedUntil: until,
       lastError: message,
-      dirty: true
+      dirty: operation === 'push' ? true : settings.dirty
     });
     return { ok: false, error: err?.message || 'rate_limited', rateLimitedUntil: until };
   }
@@ -541,7 +555,9 @@
   }
 
   function escapeHtml(value) {
-    return String(value || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    return String(value || '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
   }
 
   function openDialog() {
@@ -605,9 +621,9 @@
       }
 
       try {
-        const gistId = getGistId();
+        const gistId = getValidatedGistId();
         const payload = createSyncPayload(bundle);
-        await request('PATCH', `/gists/${gistId}`, {
+        await request('PATCH', `/gists/${encodeURIComponent(gistId)}`, {
           files: {
             [FILE_NAME]: {
               content: JSON.stringify(payload)
@@ -637,7 +653,7 @@
           return handleLocalBudgetError(err, 'push', options);
         }
         if (isRateLimitError(err)) {
-          const result = pauseAfterRateLimit(err);
+          const result = pauseAfterRateLimit(err, 'push');
           if (!options.silent) window.Toast?.show?.('MemorySync: GitHub rate limit, автоотправка временно на паузе', 'warn');
           return result;
         }
@@ -676,8 +692,8 @@
       }
 
       try {
-        const gistId = getGistId();
-        const gist = await request('GET', `/gists/${gistId}`);
+        const gistId = getValidatedGistId();
+        const gist = await request('GET', `/gists/${encodeURIComponent(gistId)}`);
         const raw = gist?.files?.[FILE_NAME]?.content;
         if (!raw) throw new Error('Файл памяти не найден в gist');
 
@@ -709,8 +725,13 @@
         return { ok: true, hash };
       } catch (err) {
         suppressSchedule = false;
+
+        if (err?.localBudget) {
+          return handleLocalBudgetError(err, 'pull', options);
+        }
+
         if (isRateLimitError(err)) {
-          const result = pauseAfterRateLimit(err);
+          const result = pauseAfterRateLimit(err, 'pull');
           if (!options.silent) window.Toast?.show?.('MemorySync: GitHub rate limit, загрузка временно на паузе', 'warn');
           return result;
         }
