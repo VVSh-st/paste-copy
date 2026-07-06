@@ -52,6 +52,7 @@
 
   let settings = loadSettings();
   let pushTimer = null;
+  let autoPullTimer = null;
   let modal = null;
   let wrapped = false;
   let suppressSchedule = false;
@@ -60,6 +61,15 @@
 
   function now() {
     return Date.now();
+  }
+
+  const MAX_SYNC_PAYLOAD_BYTES = 1_500_000;
+
+  function assertPayloadSize(raw) {
+    const size = String(raw || '').length;
+    if (size > MAX_SYNC_PAYLOAD_BYTES) {
+      throw new Error(`Файл памяти слишком большой: ${Math.round(size / 1024)} KB`);
+    }
   }
 
   function safeParse(raw) {
@@ -78,12 +88,18 @@
       console.warn('[MemorySync] save settings failed:', err);
     }
     renderModal();
+    scheduleAutoPullCheck();
     return getSettings();
   }
 
   function loadSettings() {
-    const raw = safeParse(localStorage.getItem(SETTINGS_KEY));
-    return normalizeSettings(raw || {});
+    try {
+      const raw = safeParse(localStorage.getItem(SETTINGS_KEY));
+      return normalizeSettings(raw || {});
+    } catch (err) {
+      console.warn('[MemorySync] load settings failed:', err);
+      return normalizeSettings({});
+    }
   }
 
   function normalizeSettings(raw = {}) {
@@ -113,11 +129,19 @@
   }
 
   function getToken() {
-    return localStorage.getItem('gs_token') || '';
+    try {
+      return localStorage.getItem('gs_token') || '';
+    } catch (_) {
+      return '';
+    }
   }
 
   function getGistId() {
-    return localStorage.getItem('gs_gist_id') || '';
+    try {
+      return localStorage.getItem('gs_gist_id') || '';
+    } catch (_) {
+      return '';
+    }
   }
 
   function getValidatedGistId() {
@@ -226,39 +250,41 @@
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15_000);
 
-    return fetch('https://api.github.com' + path, {
-      method,
-      signal: ctrl.signal,
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28'
-      },
-      ...(body ? { body: JSON.stringify(body) } : {})
-    }).then(async res => {
+    try {
+      return fetch('https://api.github.com' + path, {
+        method,
+        signal: ctrl.signal,
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-GitHub-Api-Version': '2022-11-28'
+        },
+        ...(body ? { body: JSON.stringify(body) } : {})
+      }).then(async res => {
+        const text = await res.text();
+        let parsed = null;
+        try { parsed = text ? JSON.parse(text) : null; } catch (_) { parsed = null; }
+        if (!res.ok) {
+          const message = parsed?.message || text || `GitHub HTTP ${res.status}`;
+          const error = new Error(message);
+          error.status = res.status;
+          error.body = parsed || text;
+          error.rateLimitRemaining = res.headers.get('x-ratelimit-remaining');
+          error.rateLimitReset = res.headers.get('x-ratelimit-reset');
+          throw error;
+        }
+        return parsed;
+      }).catch(err => {
+        if (err?.name === 'AbortError') {
+          rollbackRequestCount();
+          throw new Error('Таймаут запроса (15 с)');
+        }
+        throw err;
+      });
+    } finally {
       clearTimeout(timer);
-      const text = await res.text();
-      let parsed = null;
-      try { parsed = text ? JSON.parse(text) : null; } catch (_) { parsed = null; }
-      if (!res.ok) {
-        const message = parsed?.message || text || `GitHub HTTP ${res.status}`;
-        const error = new Error(message);
-        error.status = res.status;
-        error.body = parsed || text;
-        error.rateLimitRemaining = res.headers.get('x-ratelimit-remaining');
-        error.rateLimitReset = res.headers.get('x-ratelimit-reset');
-        throw error;
-      }
-      return parsed;
-    }).catch(err => {
-      clearTimeout(timer);
-      if (err?.name === 'AbortError') {
-        rollbackRequestCount();
-        throw new Error('Таймаут запроса (15 с)');
-      }
-      throw err;
-    });
+    }
   }
 
   function hashText(text) {
@@ -324,9 +350,15 @@
     };
   }
 
+  function stableStringify(value) {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+    const keys = Object.keys(value).sort();
+    return '{' + keys.map(key => JSON.stringify(key) + ':' + stableStringify(value[key])).join(',') + '}';
+  }
+
   function bundleHash(bundle) {
-    // Хэш должен зависеть от содержательных данных, а не от служебных дат и телеметрии.
-    return hashText(JSON.stringify(stableBundleForSync(bundle)));
+    return hashText(stableStringify(stableBundleForSync(bundle)));
   }
 
   function setLastError(message) {
@@ -336,6 +368,12 @@
 
   function isRateLimitError(err) {
     const message = String(err?.message || '').toLowerCase();
+    const remaining = err?.rateLimitRemaining;
+
+    if ((err?.status === 403 || err?.status === 429) && String(remaining) === '0') {
+      return true;
+    }
+
     return (err?.status === 403 || err?.status === 429) && (
       message.includes('rate limit') ||
       message.includes('secondary rate') ||
@@ -607,28 +645,29 @@
         return { skipped: true, reason: 'rate_limited', retryAfterMs: rateLeft };
       }
 
-      const bundle = getBundle();
-      const hash = bundleHash(bundle);
-      const isManual = options.force === true || options.reason === 'manual';
-      if (!isManual && settings.lastFailedPushHash === hash && settings.lastFailedPushAt && now() - settings.lastFailedPushAt < FAILED_HASH_PAUSE_MS) {
-        return { skipped: true, reason: 'failed_hash_cooldown' };
-      }
-      if (hash === settings.lastPushHash) {
-        if (settings.dirty) {
-          saveSettings({ dirty: false });
-        }
-        return { skipped: true, reason: 'unchanged' };
-      }
+      let bundle;
+      let hash;
 
       try {
+        bundle = getBundle();
+        hash = bundleHash(bundle);
+
+        const isManual = options.force === true || options.reason === 'manual';
+        if (!isManual && settings.lastFailedPushHash === hash && settings.lastFailedPushAt && now() - settings.lastFailedPushAt < FAILED_HASH_PAUSE_MS) {
+          return { skipped: true, reason: 'failed_hash_cooldown' };
+        }
+        if (hash === settings.lastPushHash) {
+          if (settings.dirty) saveSettings({ dirty: false });
+          return { skipped: true, reason: 'unchanged' };
+        }
+
         const gistId = getValidatedGistId();
         const payload = createSyncPayload(bundle);
+        const content = JSON.stringify(payload);
+        assertPayloadSize(content);
+
         await request('PATCH', `/gists/${encodeURIComponent(gistId)}`, {
-          files: {
-            [FILE_NAME]: {
-              content: JSON.stringify(payload)
-            }
-          }
+          files: { [FILE_NAME]: { content } }
         });
 
         saveSettings({
@@ -644,7 +683,7 @@
           window.Toast?.show?.('MemorySync: метаданные отправлены ✓', 'success');
         }
         trackSyncEvent('memory.sync.push', {
-          chars: JSON.stringify(bundle).length,
+          chars: content.length,
           action: options.reason || 'push'
         });
         return { ok: true, hash };
@@ -658,12 +697,12 @@
           return result;
         }
         setLastError(err?.message || 'Ошибка отправки');
-        saveSettings({
-          lastFailedPushHash: hash,
-          lastFailedPushAt: now(),
-          dirty: true
-        });
-        if (!options.silent) window.Toast?.show?.(`MemorySync: ${err.message}`, 'error');
+        if (hash) {
+          saveSettings({ lastFailedPushHash: hash, lastFailedPushAt: now(), dirty: true });
+        } else {
+          saveSettings({ dirty: true });
+        }
+        if (!options.silent) window.Toast?.show?.(`MemorySync: ${err?.message || 'Ошибка отправки'}`, 'error');
         return { ok: false, error: err?.message || 'push_failed' };
       }
     })();
@@ -694,16 +733,43 @@
       try {
         const gistId = getValidatedGistId();
         const gist = await request('GET', `/gists/${encodeURIComponent(gistId)}`);
-        const raw = gist?.files?.[FILE_NAME]?.content;
+
+        const file = gist?.files?.[FILE_NAME];
+        if (!file) throw new Error('Файл памяти не найден в gist');
+        if (file.truncated) {
+          throw new Error('Файл памяти в gist слишком большой или усечён GitHub API');
+        }
+
+        const raw = file.content;
         if (!raw) throw new Error('Файл памяти не найден в gist');
+
+        assertPayloadSize(raw);
 
         const bundle = safeParse(raw);
         if (!bundle || typeof bundle !== 'object') throw new Error('Некорректный формат памяти');
 
+        if (bundle.schemaVersion !== SCHEMA_VERSION) {
+          throw new Error(`Неподдерживаемая версия памяти: ${bundle.schemaVersion || '—'}`);
+        }
+
         suppressSchedule = true;
+        let importedUserMemory = false;
+        let importedProjectGraph = false;
+
         try {
-          if (bundle.userMemory) window.UserMemory?.importData?.(bundle.userMemory);
-          if (bundle.projectGraph) window.ProjectGraph?.importData?.(bundle.projectGraph);
+          if (bundle.userMemory) {
+            window.UserMemory?.importData?.(bundle.userMemory);
+            importedUserMemory = true;
+          }
+          if (bundle.projectGraph) {
+            window.ProjectGraph?.importData?.(bundle.projectGraph);
+            importedProjectGraph = true;
+          }
+        } catch (importErr) {
+          if (importedUserMemory || importedProjectGraph) {
+            markDirty('MemorySync: pull применён частично, требуется проверка состояния');
+          }
+          throw importErr;
         } finally {
           suppressSchedule = false;
         }
@@ -785,6 +851,28 @@
     return push({ force: true, reason: 'flush' });
   }
 
+  function scheduleAutoPullCheck() {
+    clearTimeout(autoPullTimer);
+    autoPullTimer = null;
+
+    if (!settings.enabled || !settings.autoPull || !isConnected()) return;
+
+    const elapsed = settings.lastAutoPullAt ? now() - settings.lastAutoPullAt : Infinity;
+    const delay = elapsed >= AUTO_PULL_MIN_INTERVAL_MS
+      ? 5_000
+      : AUTO_PULL_MIN_INTERVAL_MS - elapsed;
+
+    autoPullTimer = setTimeout(async () => {
+      try {
+        await pull({ reason: 'auto-pull', silent: true });
+      } catch (_) {
+        // pull() сам пишет lastError
+      } finally {
+        scheduleAutoPullCheck();
+      }
+    }, delay);
+  }
+
   function wrapSaveHooks() {
     if (wrapped) return;
     wrapped = true;
@@ -833,6 +921,7 @@
     if (settings.enabled && settings.autoPull && isConnected()) {
       setTimeout(() => pull({ reason: 'init-auto-pull' }).catch(() => {}), 1000);
     }
+    scheduleAutoPullCheck();
   }
 
   function getDiagnostics() {
