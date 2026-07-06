@@ -117,9 +117,9 @@
       document.addEventListener('click', closeMenu);
       document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
+          if (diagnosticsModal && !diagnosticsModal.hidden) { closeDiagnostics(); return; }
+          if (reportModal && !reportModal.hidden) { closeReport(); return; }
           closeMenu();
-          closeReport();
-          closeDiagnostics();
           return;
         }
         // Enter в инпутах модала отправляет primary-действие, но только если модал реально виден
@@ -353,8 +353,18 @@
     });
   }
 
-  window.addEventListener('resize', positionMenu);
-  window.addEventListener('scroll', positionMenu, true);
+  let positionMenuScheduled = false;
+  function schedulePositionMenu() {
+    if (positionMenuScheduled) return;
+    positionMenuScheduled = true;
+    requestAnimationFrame(() => {
+      positionMenuScheduled = false;
+      positionMenu();
+    });
+  }
+
+  window.addEventListener('resize', schedulePositionMenu);
+  window.addEventListener('scroll', schedulePositionMenu, true);
 
   function ensureReportModal() {
     if (reportModal?.isConnected) return reportModal;
@@ -433,8 +443,9 @@
     footer.appendChild(button('Закрыть', 'secondary', closeReport));
 
     // запоминаем фокус, чтобы вернуть его после закрытия модала
-    if (modal.hidden) {
-      lastFocusedBeforeReport = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const activeEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!activeEl || !modal.contains(activeEl)) {
+      lastFocusedBeforeReport = activeEl;
     }
     modal.hidden = false;
     modal.querySelector('.intelligence-report-close')?.focus();
@@ -555,7 +566,7 @@
         row.innerHTML = `
           <div>
             <strong>${esc(item.type)}</strong>
-            <span>shown ${item.shown || 0} · accepted ${item.accepted || 0} · dismissed ${item.dismissed || 0} · ignored ${item.ignored || 0}</span>
+            <span>shown ${esc(Number(item.shown) || 0)} · accepted ${esc(Number(item.accepted) || 0)} · dismissed ${esc(Number(item.dismissed) || 0)} · ignored ${esc(Number(item.ignored) || 0)}</span>
           </div>
           <div class="intelligence-diagnostics-row-actions">
             <span class="${disabled ? 'is-disabled' : ''}">${disabled ? 'disabled' : 'score ' + pct(item.score)}</span>
