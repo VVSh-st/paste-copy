@@ -23,9 +23,19 @@
 - Статус: XSS-защита усилена, retention input валидирован, lifecycle улучшен.
 
 ### prompt-loom.js
-- **~2350 строк**, промпт-задание для аудитора создано (`prompt-loom-audit-prompt.md`).
+- **~2480 строк**, 6 раундов аудита, **53 фикса**. Коммиты `12df6f0`, `e1b44fe`, `428ba7b`, `97e9ae2`, `a2ecebb`, `32a70d2`, `cdd20a6`.
+- Аудит #1 (13): looksSensitive расширена, renderUltraLightCard whitespace bug, hoverOpenTimer shadowing, patchClipboard try/catch + save original, execCommand Range fallback, saveState toast + cooldown, inlineSession document.contains guard, TOKEN_SYNONYMS/STOP_WORDS на уровень модуля, getInsertTarget clipboard fallback, mergeSimilarItem pinned guard, tooltip 2000 chars, ultraWrapText удалена, dataset.plTip.
+- Аудит #2 (11): MAX_ITEMS pinned cap, insertIntoEditable return check, insertItem remove record('snippet'), paste handler password/private/autocomplete, copy handler target check, isEditable stricter types, looksSensitive env regex fix, storage toast cooldown, meta whitelist, loadState normalizeItem, loadSettings normalization.
+- Аудит #3 (8): renderPanelList skip when closed, isEditable remove number, contenteditable success flag, loadSettings explicit normalization, looksSensitive cookie/session/JWT, suggest/created toast dedup, undoSnippet extracted.
+- Аудит #4 (7): mergeSimilarItem save old text to variants, patchClipboard record after writeText resolves, paste handler check defaultPrevented, isEditable remove email, acceptPaletteIndex verify trigger range, addSnippet global first then fallback, showVariableTip track block IDs.
+- Аудит #5 (5): openPanel renderPanelList, findMergeTarget snippet source guard, patchClipboard activeElement context check, normalizeItem variants normalization, toggleVariants check insert result.
+- Аудит #6 (6): getAllBlocks safe access, isExistingSnippetValue safe access, isLoomExcluded helper, focusin/input exclude private elements, getInsertTarget block-textarea excluded check, patchClipboard document.hasFocus.
+- Статус: модуль значительно укреплён. Приватностьclipboard/history, lifecycle guardы, data-private/data-no-loom boundary, localStorage resilience, State API robustness — все закрыты.
+
+### gist-sync.js
+- **~1835 строк**. Промпт-задание для аудитора создано (`gist-sync-audit-prompt.md`).
 - Ожидает результатов аудита.
-- Ключевые зоны: XSS через innerHTML (6 мест), clipboard patching, execCommand deprecated, similarity performance, CSS injection ~200 строк.
+- Ключевые зоны: GitHub OAuth Device Flow + PAT, AES-GCM шифрование (PBKDF2), deflate сжатие, localStorage для токенов/паролей, Gist push/pull с retry, cloud history с immortal entries, local backups (IndexedDB), modal UI с innerHTML.
 
 ### ember.js
 - **Патч от аудитора (Ответ 2.txt)**. Коммит `46b9d51`.
@@ -33,17 +43,24 @@
 - Anomaly spark: +150px дальность (100→400), шире угол (0.45π→1.0π), +20% частота (0.32→0.384), longer dur (1900ms), выше trail chance.
 
 ## Следующий шаг
-1. Применить результаты аудита `prompt-loom.js`
-2. Браузерное тестирование `text-expander.js`:
+1. Провести аудит `gist-sync.js` по промпту `gist-sync-audit-prompt.md`
+2. Применить результаты аудита `gist-sync.js`
+3. Браузерное тестирование `text-expander.js`:
    - `Ёabc` + пробел → expansion БЕЗ открытого dropdown
    - Ё + query + Enter → вставка через dropdown
    - Long press → панель, Escape → закрыта
    - Clipboard expansion → pending state, однократная вставка
-3. Браузерное тестирование `user-memory.js`:
+4. Браузерное тестирование `user-memory.js`:
    - Импорт повреждённого профиля → нормализация
    - `importData()` с некорректным объектом → try/catch
    - `getProfile()` → deepClone, не mutable reference
-4. Браузерное тестирование `smart-suggestions.js`:
+5. Браузерное тестирование `smart-suggestions.js`:
    - Escape → закрывает только верхний modal
    - Retention inputs → валидация границ
    - Strip при отсутствии `#preview-bar` → fallback в body
+6. Браузерное тестирование `prompt-loom.js`:
+   - Copy/paste в [data-private] поле → НЕ записывается в историю
+   - Вставка из палитры в [data-no-loom] → fallback в clipboard
+   - При закрытой панели record() → НЕ перерисовывает 500 карточек
+   - OAuth Device Flow → clipboard с user_code
+   - Ctrl+S → immediate push в Gist
