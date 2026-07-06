@@ -68,8 +68,8 @@ async function compress(str) {
   const encoded = new TextEncoder().encode(str);
   const cs      = new CompressionStream('deflate-raw');
   const writer  = cs.writable.getWriter();
-  writer.write(encoded);
-  writer.close();
+  await writer.write(encoded);
+  await writer.close();
   return { data: bytesToB64(await _readStream(cs.readable)), compressed: true };
 }
 
@@ -77,8 +77,8 @@ async function decompress({ data, compressed }) {
   if (!compressed) return data;
   const ds     = new DecompressionStream('deflate-raw');
   const writer = ds.writable.getWriter();
-  writer.write(b64ToBytes(data));
-  writer.close();
+  await writer.write(b64ToBytes(data));
+  await writer.close();
   return new TextDecoder().decode(await _readStream(ds.readable));
 }
 
@@ -123,7 +123,9 @@ return {
     if (!parsed?._enc) return raw;
     const pwd = this.getPassword();
     if (!pwd) throw new Error('Установите пароль шифрования для расшифровки');
-    const buf  = b64ToBytes(parsed.d);
+    if (typeof parsed.d !== 'string') throw new Error('Данные шифрования повреждены: отсутствует ciphertext');
+    const buf = b64ToBytes(parsed.d);
+    if (buf.length < 29) throw new Error('Данные шифрования повреждены: слишком короткий буфер');
     const salt = buf.slice(0, 16);
     const iv   = buf.slice(16, 28);
     const data = buf.slice(28);
@@ -281,10 +283,22 @@ const raw = localStorage.getItem(K_SETTINGS);
 if (!raw) return { ...DEFAULT_SETTINGS };
 const saved = JSON.parse(raw);
 if (saved.debounceMs !== undefined && saved.debounceMin === undefined) {
-saved.debounceMin = Math.max(1, Math.round(saved.debounceMs / 60_000)) || DEFAULT_SETTINGS.debounceMin;
-delete saved.debounceMs;
+  saved.debounceMin = Math.max(1, Math.round(saved.debounceMs / 60_000)) || DEFAULT_SETTINGS.debounceMin;
+  delete saved.debounceMs;
 }
-return { ...DEFAULT_SETTINGS, ...saved };
+const clampNum = (v, min, max, def) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n))) : def;
+};
+return {
+  autoSave:     typeof saved.autoSave === 'boolean' ? saved.autoSave : DEFAULT_SETTINGS.autoSave,
+  debounceMin:  clampNum(saved.debounceMin, 1, 1440, DEFAULT_SETTINGS.debounceMin),
+  batchMax:     clampNum(saved.batchMax, 1, 100, DEFAULT_SETTINGS.batchMax),
+  compress:     typeof saved.compress === 'boolean' ? saved.compress : DEFAULT_SETTINGS.compress,
+  encrypt:      typeof saved.encrypt === 'boolean' ? saved.encrypt : DEFAULT_SETTINGS.encrypt,
+  historyDepth: clampNum(saved.historyDepth, 1, 50, DEFAULT_SETTINGS.historyDepth),
+  saveOnCtrlS:  typeof saved.saveOnCtrlS === 'boolean' ? saved.saveOnCtrlS : DEFAULT_SETTINGS.saveOnCtrlS,
+};
 } catch { return { ...DEFAULT_SETTINGS }; }
 }
 function saveSettings(patch) {
@@ -307,8 +321,9 @@ if (!entry || typeof entry !== 'object') continue;
 if (entry.immortal) { out.push(entry); continue; }
 if (normalCount < limit) { out.push(entry); normalCount++; }
 }
-localStorage.setItem(K_CLOUD_HIST, JSON.stringify(out));
-return out;
+  try { localStorage.setItem(K_CLOUD_HIST, JSON.stringify(out)); }
+  catch (e) { console.warn('GistSync: cannot save cloud history:', e); }
+  return out;
 }
 function toggleHistoryImmortal(ts) {
 const hist = getCloudHistory();
@@ -475,7 +490,7 @@ async function _getFullContent(files, fileName) {
     if (!fileObj.raw_url) {
       throw new Error(`Файл "${fileName}" обрезан, но raw_url недоступен. Размер: ${fileObj.size || '?'} байт`);
     }
-    console.log(`${fileName}: контент обрезан API (${fileObj.size} байт), загружаю полностью из ${fileObj.raw_url}`);
+    console.log(`${fileName}: контент обрезан API (${fileObj.size} байт), загружаю полностью через raw_url`);
     return await GithubApi.fetchRaw(fileObj.raw_url);
   }
   
@@ -491,10 +506,11 @@ async function withRetry(fn, operation = 'операция', maxRetries = MAX_RE
       return await fn();
     } catch (error) {
       lastError = error;
-      const isRetryable = 
+      const isRetryable =
         error.message.includes('Таймаут') ||
         error.message.includes('Ошибка сети') ||
-        error.message.includes('Failed to fetch');
+        error.message.includes('Failed to fetch') ||
+        /^GitHub HTTP (502|503|504)$/.test(error.message);
       
       if (!isRetryable || attempt === maxRetries) {
         break;
@@ -511,16 +527,20 @@ async function withRetry(fn, operation = 'операция', maxRetries = MAX_RE
 
 // ═══ Push ═════════════════════════════════════════════════════════════════
 let _pushing = false;
+let _syncOperation = null;
 async function push(label = 'Автосохранение', options = {}) {
 if (_pushing) return null;
+if (_syncOperation) throw new Error(`Уже выполняется операция: ${_syncOperation}`);
+_syncOperation = 'push';
 _pushing = true;
 try { return await _pushImpl(label, options); }
-finally { _pushing = false; }
+finally { _pushing = false; _syncOperation = null; }
 }
 async function _pushImpl(label, { immortal = false } = {}) {
 const settings = loadSettings();
 const state    = State.serialize();
 const raw      = JSON.stringify(state);
+const pushedHash = _quickHash(raw);
 const { data, compressed } = settings.compress
   ? await Compress.compress(raw)
   : { data: raw, compressed: false };
@@ -577,12 +597,12 @@ if (id) {
 
 const sha  = response?.history?.[0]?.version ?? '';
 const hist = getCloudHistory();
-const entry = { ts: Date.now(), ...stats, label, gistVersion: sha, immortal: !!immortal };
+const entry = { ts: Date.now(), ...stats, label, gistVersion: sha, immortal: !!immortal, pushedHash };
 hist.unshift(entry);
 saveCloudHistory(hist, settings.historyDepth);
-localStorage.setItem(K_LAST_SYNC, Date.now().toString());
-localStorage.setItem(K_DIRTY, 'false');
-try { await LocalBackup.save(state); } catch (e) { console.warn('LocalBackup failed:', e); }
+  try { localStorage.setItem(K_LAST_SYNC, Date.now().toString()); } catch {}
+  try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
+  try { await LocalBackup.save(state); } catch (e) { console.warn('LocalBackup failed:', e); }
 return entry;
 }
 // ═══ Wordlist Gist sync ═══════════════════════════════════════════════════
@@ -693,38 +713,46 @@ async function _fetchAndDecodeGist(gistIdOrNull, version = null) {
 
 // ═══ Pull ═════════════════════════════════════════════════════════════════
 async function pull({ useVersion = null } = {}) {
-  return withRetry(async () => {
-    const stateData = await _fetchAndDecodeGist(null, useVersion);
-    
-    _lastPushedHash = _quickHash(JSON.stringify(stateData));
-    _lastPushAt     = Date.now();
-    
-    localStorage.setItem(K_LAST_SYNC, Date.now().toString());
-    localStorage.setItem(K_DIRTY, 'false');
-    updateBadge();
-    
-    return stateData;
-  }, 'Pull', MAX_RETRIES);
+  if (_syncOperation) throw new Error(`Уже выполняется операция: ${_syncOperation}`);
+  _syncOperation = 'pull';
+  try {
+    return await withRetry(async () => {
+      const stateData = await _fetchAndDecodeGist(null, useVersion);
+      
+      _lastPushedHash = _quickHash(JSON.stringify(stateData));
+      _lastPushAt     = Date.now();
+      
+      localStorage.setItem(K_LAST_SYNC, Date.now().toString());
+      localStorage.setItem(K_DIRTY, 'false');
+      updateBadge();
+      
+      return stateData;
+    }, 'Pull', MAX_RETRIES);
+  } finally { _syncOperation = null; }
 }
 
 // ═══ Restore version ══════════════════════════════════════════════════════
 async function restoreVersion(sha) {
-  return withRetry(async () => {
-    const gistId = localStorage.getItem(K_GIST_ID);
-    if (!gistId) throw new Error('Нет сохранённого Gist ID');
-    
-    const stateData = await _fetchAndDecodeGist(gistId, sha);
-    
-    State.load(stateData);
-    Storage.save(stateData);
-    
-    _lastPushedHash = _quickHash(JSON.stringify(stateData));
-    _lastPushAt     = Date.now();
-    
-    localStorage.setItem(K_LAST_SYNC, Date.now().toString());
-    localStorage.setItem(K_DIRTY, 'false');
-    updateBadge();
-  }, 'Restore', MAX_RETRIES);
+  if (_syncOperation) throw new Error(`Уже выполняется операция: ${_syncOperation}`);
+  _syncOperation = 'restore';
+  try {
+    return await withRetry(async () => {
+      const gistId = localStorage.getItem(K_GIST_ID);
+      if (!gistId) throw new Error('Нет сохранённого Gist ID');
+      
+      const stateData = await _fetchAndDecodeGist(gistId, sha);
+      
+      State.load(stateData);
+      Storage.save(stateData);
+      
+      _lastPushedHash = _quickHash(JSON.stringify(stateData));
+      _lastPushAt     = Date.now();
+      
+      localStorage.setItem(K_LAST_SYNC, Date.now().toString());
+      localStorage.setItem(K_DIRTY, 'false');
+      updateBadge();
+    }, 'Restore', MAX_RETRIES);
+  } finally { _syncOperation = null; }
 }
 function _formatStateStats(state) {
 const tabs = state?.tabs?.length ?? 0;
@@ -865,7 +893,7 @@ function _quickHash(str) {
 let h = 5381;
 for (let i = 0; i < str.length; i++)
 h = (Math.imul(h, 33) ^ str.charCodeAt(i)) >>> 0;
-return h.toString(36);
+return `${str.length}:${h.toString(36)}`;
 }
 function _hasChanges() {
 try { return _quickHash(JSON.stringify(State.serialize())) !== _lastPushedHash; }
@@ -926,8 +954,17 @@ const left = _cooldownLeft();
 if (left > 0) { _scheduleDebounce(left, label); return; }
 
 try {
-  await push(label);
-  try { _lastPushedHash = _quickHash(JSON.stringify(State.serialize())); } catch { /* ok */ }
+  const result = await push(label);
+  if (!result) {
+    localStorage.setItem(K_DIRTY, 'true');
+    updateBadge();
+    _scheduleDebounce(_cooldownLeft() || MIN_COOLDOWN_MS, label);
+    return;
+  }
+  try {
+    const raw = JSON.stringify(State.serialize());
+    _lastPushedHash = result.pushedHash || _quickHash(raw);
+  } catch { /* ok */ }
   _lastPushAt = Date.now();
   updateBadge();
 } catch (e) {
@@ -977,6 +1014,10 @@ const fmtBytes = n => {
   if (size >= 1024) return `${Math.round(size / 1024)} KB`;
   return `${size} B`;
 };
+function safeNum(v, def = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
+}
 function updateBadge() {
 const btn = document.getElementById('btn-gist-sync');
 if (!btn) return;
@@ -1074,12 +1115,13 @@ function _renderBackupsHTML(backups) {
   let h = `<div class="backup-list">`;
   const now = Date.now();
   for (let i = 0; i < backups.length; i++) {
-    const entry = backups[i];
-    const d = new Date(entry.ts);
+    const entry = backups[i] || {};
+    const ts = Number.isFinite(Number(entry.ts)) ? Number(entry.ts) : 0;
+    const d = new Date(ts);
     const timeStr = d.toLocaleString('ru');
-    const relative = _relativeTime(entry.ts, now);
+    const relative = _relativeTime(ts, now);
     const size = fmtBytes(entry.size || 0);
-    const tabs = entry.tabsCount || 0;
+    const tabs = Number.isFinite(Number(entry.tabsCount)) ? Number(entry.tabsCount) : 0;
     const immortal = !!entry.immortal;
     h += `
      <div class="backup-item${immortal ? ' backup-immortal' : ''}">
@@ -1087,11 +1129,11 @@ function _renderBackupsHTML(backups) {
          <span class="backup-dot${immortal ? ' dot-immortal' : ''}">●</span>${esc(relative)} · ${tabs} вклад${tabs === 1 ? 'ка' : tabs < 5 ? 'ки' : 'ок'} · ${size}
        </span>
        <span class="backup-actions">
-         <button type="button" class="gs-btn gs-btn-sm gs-btn-immortal${immortal ? ' active' : ''}" data-ts="${entry.ts}"
+         <button type="button" class="gs-btn gs-btn-sm gs-btn-immortal${immortal ? ' active' : ''}" data-ts="${esc(ts)}"
                  data-tip="${immortal ? 'Снять защиту от вытеснения' : 'Защитить от вытеснения'}">☠</button>
-         <button type="button" class="gs-btn gs-btn-sm gs-tip" id="gs-btn-restore-backup" data-ts="${entry.ts}"
+         <button type="button" class="gs-btn gs-btn-sm gs-tip gs-btn-restore-backup" data-ts="${esc(ts)}"
                  data-tip="Восстановить копию. Текущее состояние будет сохранено автоматически.">↺</button>
-         <button type="button" class="gs-btn gs-btn-sm gs-tip" id="gs-btn-download-backup" data-ts="${entry.ts}"
+         <button type="button" class="gs-btn gs-btn-sm gs-tip gs-btn-download-backup" data-ts="${esc(ts)}"
                  data-tip="Скачать JSON-файл.">⬇</button>
        </span>
      </div>`;
@@ -1117,7 +1159,7 @@ async function _loadBackups(body) {
       head.appendChild(tools);
     }
     section.lastElementChild.outerHTML = _renderBackupsHTML(backups);
-    section.querySelectorAll('#gs-btn-restore-backup').forEach(btn => {
+    section.querySelectorAll('.gs-btn-restore-backup').forEach(btn => {
       btn.addEventListener('click', async () => {
         const ts = Number(btn.dataset.ts);
         const tsStr = new Date(ts).toLocaleString('ru');
@@ -1137,7 +1179,7 @@ async function _loadBackups(body) {
         }
       });
     });
-    section.querySelectorAll('#gs-btn-download-backup').forEach(btn => {
+    section.querySelectorAll('.gs-btn-download-backup').forEach(btn => {
       btn.addEventListener('click', async () => {
         const ts = Number(btn.dataset.ts);
         try {
@@ -1148,8 +1190,10 @@ async function _loadBackups(body) {
           const a = document.createElement('a');
           a.href = url;
           a.download = `paste-copy-backup-${new Date(ts).toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+          document.body.appendChild(a);
           a.click();
-          URL.revokeObjectURL(url);
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
         } catch (err) {
           Toast.show('Ошибка скачивания: ' + err.message, 'error');
         }
@@ -1410,13 +1454,18 @@ if (st.history.length  > 0) {
     for (const entry of visibleHistory) {
       const timeStr = esc(new Date(entry.ts).toLocaleString('ru'));
       const immortal = !!entry.immortal;
-      const targetStats = `${entry.tabsCount || 0} вкл. / ${entry.blocksTotal || 0} бл. / ${fmtNum(entry.charTotal || 0)} симв. / ${entry.anchorCount || 0} ⚓`;
-      const compactStats = `${entry.tabsCount || 0}/${entry.blocksTotal || 0}/${fmtNum(entry.charTotal || 0)}/${entry.anchorCount || 0}⚓`;
+      const ts = safeNum(entry.ts);
+      const tabsCount = safeNum(entry.tabsCount);
+      const blocksTotal = safeNum(entry.blocksTotal);
+      const charTotal = safeNum(entry.charTotal);
+      const anchorCount = safeNum(entry.anchorCount);
+      const targetStats = `${tabsCount} вкл. / ${blocksTotal} бл. / ${fmtNum(charTotal)} симв. / ${anchorCount} ⚓`;
+      const compactStats = `${tabsCount}/${blocksTotal}/${fmtNum(charTotal)}/${anchorCount}⚓`;
       const sizeStats = entry.rawSize ? `JSON ${fmtBytes(entry.rawSize)}${entry.gistSize ? ` · Gist ${fmtBytes(entry.gistSize)}` : ''}` : 'Размер старых записей не сохранён';
       html += `
        <li class="gist-history-row${immortal ? ' gs-history-immortal' : ''}">
-         <button type="button" class="gs-btn gs-btn-sm gs-btn-immortal${immortal ? ' active' : ''}"
-                 data-ts="${entry.ts}" aria-pressed="${immortal ? 'true' : 'false'}"
+          <button type="button" class="gs-btn gs-btn-sm gs-btn-immortal${immortal ? ' active' : ''}"
+                  data-ts="${esc(ts)}" aria-pressed="${immortal ? 'true' : 'false'}"
                  aria-label="${immortal ? 'Снять бессмертность сохранения' : 'Сделать сохранение бессмертным'}"
                  title="${immortal ? 'Снять защиту от вытеснения' : 'Защитить сохранение от вытеснения'}">☠</button>
          <span class="gs-hist-main">
@@ -1424,14 +1473,14 @@ if (st.history.length  > 0) {
            <span class="gs-hist-stats gs-tip" data-tip="${esc(targetStats)} · ${esc(sizeStats)}">${compactStats}</span>
          </span>
          <span class="gs-hist-actions">
-            <button type="button" class="gs-btn gs-btn-sm gs-btn-compare gs-tip"
-                    data-ts="${entry.ts}" data-tabs="${entry.tabsCount || 0}"
-                    data-blocks="${entry.blocksTotal || 0}" data-chars="${entry.charTotal || 0}"
-                    data-anchors="${entry.anchorCount || 0}"
+             <button type="button" class="gs-btn gs-btn-sm gs-btn-compare gs-tip"
+                    data-ts="${esc(ts)}" data-tabs="${tabsCount}"
+                    data-blocks="${blocksTotal}" data-chars="${charTotal}"
+                    data-anchors="${anchorCount}"
                     data-label="${esc(entry.label || 'Сохранение')}" data-time="${timeStr}"
                     data-tip="Показать разницу по вкладкам, блокам, символам и якорям."><span class="gs-btn-ico" aria-hidden="true">≋</span><span></span></button>
           ${entry.gistVersion
-            ? ` <button type="button" class="gs-btn gs-btn-sm gs-btn-restore gs-tip" data-sha="${esc(entry.gistVersion)}" data-ts="${entry.ts}" data-stats="${esc(targetStats)}" data-tip="Восстановить эту версию. Перед опасным откатом будет предложена защита."><span class="gs-btn-ico" aria-hidden="true">↩</span><span></span></button>`
+            ? ` <button type="button" class="gs-btn gs-btn-sm gs-btn-restore gs-tip" data-sha="${esc(entry.gistVersion)}" data-ts="${esc(ts)}" data-stats="${esc(targetStats)}" data-tip="Восстановить эту версию. Перед опасным откатом будет предложена защита."><span class="gs-btn-ico" aria-hidden="true">↩</span><span></span></button>`
             : ' <span class="gs-hist-nosha">—</span>'}
          </span>
        </li>`;
