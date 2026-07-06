@@ -39,8 +39,15 @@
 - Аудит #3 (3): pull() split into fetch + markPulledSynced (no premature sync marking), decompress() DecompressionStream check, schedulePush() K_DIRTY try/catch.
 - Статус: третий раунд завершён. Модуль укреплён. Готов к браузерному тестированию.
 
+### memory-sync.js
+- **~847 строк**. Промпт-задание для аудитора создано (`memory-sync-audit-prompt.md`).
+- Ожидает результатов аудита.
+- Ключевые зоны: приватная синхронизация метаданных (хэши, титулы, роли, счётчики) в Gist, rate limiting (6 req/hr), auto-push/pull, обёртка save-хуков UserMemory/ProjectGraph, innerHTML модалка, escapeHtml XSS защита, FNV-1a хэш, suppressSchedule для предотвращения sync-циклов.
+
 ## Следующий шаг
-1. Браузерное тестирование `gist-sync.js`:
+1. Провести аудит `memory-sync.js` по промпту `memory-sync-audit-prompt.md`
+2. Применить результаты аудита `memory-sync.js`
+3. Браузерное тестирование `gist-sync.js`:
    - Push/Pull/Restore параллельно → sync lock блокирует вторую операцию
    - Push во время активного push → dirty остаётся true
    - Pull → State.load() упадёт → dirty НЕ очищается (markPulledSynced не вызван)
@@ -65,3 +72,8 @@
    - При закрытой панели record() → НЕ перерисовывает 500 карточек
    - OAuth Device Flow → clipboard с user_code
    - Ctrl+S → immediate push в Gist
+6. Браузерское тестирование `memory-sync.js`:
+   - Auto-push → не чаще 1 раза в 3ч
+   - Rate limit → пауза + восстановление
+   - Pull → importData → sync status обновляется
+   - Wrap hooks → UserMemory.save() триггерит schedulePush
