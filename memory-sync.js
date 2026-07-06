@@ -65,8 +65,16 @@
 
   const MAX_SYNC_PAYLOAD_BYTES = 1_500_000;
 
+  function getUtf8ByteLength(value) {
+    const text = String(value || '');
+    if (window.TextEncoder) {
+      return new TextEncoder().encode(text).length;
+    }
+    return unescape(encodeURIComponent(text)).length;
+  }
+
   function assertPayloadSize(raw) {
-    const size = String(raw || '').length;
+    const size = getUtf8ByteLength(raw);
     if (size > MAX_SYNC_PAYLOAD_BYTES) {
       throw new Error(`Файл памяти слишком большой: ${Math.round(size / 1024)} KB`);
     }
@@ -234,7 +242,7 @@
     }
   }
 
-  function request(method, path, body) {
+  async function request(method, path, body) {
     const token = getToken();
     if (!token) throw new Error('not_connected');
 
@@ -251,7 +259,7 @@
     const timer = setTimeout(() => ctrl.abort(), 15_000);
 
     try {
-      return fetch('https://api.github.com' + path, {
+      const res = await fetch('https://api.github.com' + path, {
         method,
         signal: ctrl.signal,
         headers: {
@@ -261,27 +269,29 @@
           'X-GitHub-Api-Version': '2022-11-28'
         },
         ...(body ? { body: JSON.stringify(body) } : {})
-      }).then(async res => {
-        const text = await res.text();
-        let parsed = null;
-        try { parsed = text ? JSON.parse(text) : null; } catch (_) { parsed = null; }
-        if (!res.ok) {
-          const message = parsed?.message || text || `GitHub HTTP ${res.status}`;
-          const error = new Error(message);
-          error.status = res.status;
-          error.body = parsed || text;
-          error.rateLimitRemaining = res.headers.get('x-ratelimit-remaining');
-          error.rateLimitReset = res.headers.get('x-ratelimit-reset');
-          throw error;
-        }
-        return parsed;
-      }).catch(err => {
-        if (err?.name === 'AbortError') {
-          rollbackRequestCount();
-          throw new Error('Таймаут запроса (15 с)');
-        }
-        throw err;
       });
+
+      const text = await res.text();
+      let parsed = null;
+      try { parsed = text ? JSON.parse(text) : null; } catch (_) { parsed = null; }
+
+      if (!res.ok) {
+        const message = parsed?.message || text || `GitHub HTTP ${res.status}`;
+        const error = new Error(message);
+        error.status = res.status;
+        error.body = parsed || text;
+        error.rateLimitRemaining = res.headers.get('x-ratelimit-remaining');
+        error.rateLimitReset = res.headers.get('x-ratelimit-reset');
+        throw error;
+      }
+
+      return parsed;
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        rollbackRequestCount();
+        throw new Error('Таймаут запроса (15 с)');
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
     }
@@ -752,6 +762,7 @@
           throw new Error(`Неподдерживаемая версия памяти: ${bundle.schemaVersion || '—'}`);
         }
 
+        const prevSuppressSchedule = suppressSchedule;
         suppressSchedule = true;
         let importedUserMemory = false;
         let importedProjectGraph = false;
@@ -771,7 +782,7 @@
           }
           throw importErr;
         } finally {
-          suppressSchedule = false;
+          suppressSchedule = prevSuppressSchedule;
         }
 
         const hash = bundleHash(getBundle());
@@ -924,6 +935,12 @@
     scheduleAutoPullCheck();
   }
 
+  function maskGistId(value) {
+    const id = String(value || '');
+    if (id.length <= 8) return id ? '***' : '';
+    return id.slice(0, 4) + '…' + id.slice(-4);
+  }
+
   function getDiagnostics() {
     return {
       storageKey: SETTINGS_KEY,
@@ -931,7 +948,7 @@
       schemaVersion: SCHEMA_VERSION,
       ...summarizeStatus(),
       connected: isConnected(),
-      gistId: getGistId(),
+      gistId: maskGistId(getGistId()),
       tokenPresent: Boolean(getToken()),
       pending: Boolean(pushTimer)
     };
