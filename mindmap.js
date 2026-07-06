@@ -696,22 +696,40 @@ const MindMap = (() => {
     return ((wide * 0.68 + narrow * 0.58) * fontSize) * weightFactor;
   }
 
+  function _countOccurrences(text, word) {
+    const w = String(word ?? '').trim();
+    if (!w || w.length < 2) return 0;
+    const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'giu');
+    return [...String(text ?? '').matchAll(re)].length;
+  }
+
   function _drawWords(W, H) {
     const words = _data.words || [];
     if (!words.length) return;
-    const maxW = Math.max(...words.map(w => w.weight));
+    const sourceText = window.Preview?.getText?.() ?? '';
+
+    const enriched = words.map(item => {
+      const count = _countOccurrences(sourceText, item.w);
+      const visualWeight = count > 0
+        ? Math.min(10, Math.max(1, item.weight * 0.5 + Math.log2(count + 1) * 2))
+        : Math.min(4, item.weight);
+      return { ...item, count, visualWeight };
+    });
+
+    const maxW = Math.max(...enriched.map(w => w.visualWeight));
     const placed = [];
     const padding = 8;
 
-    const sorted = [...words].sort((a, b) => b.weight - a.weight);
+    const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     sorted.forEach((item, i) => {
-      let fontSize = 10 + (item.weight / maxW) * 28;
+      let fontSize = 10 + (item.visualWeight / maxW) * 28;
       const color = ROLE_COLORS[item.role] || PALETTE[i % PALETTE.length];
       const maxTextW = Math.max(40, W - padding * 2);
-      let tw = _estimateTextWidth(item.w, fontSize, item.weight > 6 ? '700' : '400');
+      let tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
       if (tw > maxTextW) {
         fontSize = Math.max(8, (maxTextW / (item.w.length * 0.6)));
-        tw = _estimateTextWidth(item.w, fontSize, item.weight > 6 ? '700' : '400');
+        tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
       }
       const th = fontSize * 1.3;
       let x, y, tries = 0, collides = false;
@@ -734,7 +752,7 @@ const MindMap = (() => {
       enterG.style.animationDelay = `${i * 25}ms`;
 
       const depthG = document.createElementNS(SVG_NS, 'g');
-      depthG.dataset.depth = item.weight > 7 ? '0.3' : '0.12';
+      depthG.dataset.depth = item.visualWeight > 7 ? '0.3' : '0.12';
 
       const text = document.createElementNS(SVG_NS, 'text');
       text.setAttribute('x', x);
@@ -742,13 +760,20 @@ const MindMap = (() => {
       text.setAttribute('font-size', fontSize);
       text.setAttribute('fill', color);
       text.setAttribute('font-family', 'var(--mono)');
-      text.setAttribute('font-weight', item.weight > 6 ? '700' : '400');
-      text.setAttribute('opacity', 0.4 + (item.weight / maxW) * 0.6);
-      if (item.weight > 7) text.setAttribute('filter', 'url(#bloom)');
+      text.setAttribute('font-weight', item.visualWeight > 6 ? '700' : '400');
+      text.setAttribute('opacity', 0.4 + (item.visualWeight / maxW) * 0.6);
+      if (item.count === 0) {
+        text.setAttribute('opacity', '0.35');
+        text.setAttribute('stroke', color);
+        text.setAttribute('stroke-opacity', '0.3');
+        text.setAttribute('stroke-width', '0.4');
+      } else if (item.visualWeight > 7) {
+        text.setAttribute('filter', 'url(#bloom)');
+      }
       text.textContent = item.w;
       text.style.transition = 'opacity 0.2s, font-size 0.2s';
       text.addEventListener('mouseenter', () => { text.setAttribute('opacity', '1'); text.setAttribute('font-size', fontSize + 4); text.classList.add('mm-pulse'); });
-      text.addEventListener('mouseleave', () => { text.setAttribute('opacity', String(0.4 + (item.weight / maxW) * 0.6)); text.setAttribute('font-size', fontSize); text.classList.remove('mm-pulse'); });
+      text.addEventListener('mouseleave', () => { text.setAttribute('opacity', String(0.4 + (item.visualWeight / maxW) * 0.6)); text.setAttribute('font-size', fontSize); text.classList.remove('mm-pulse'); });
       _attachWordInteractions(text, item.w, x + tw / 2, y - th / 2);
       depthG.appendChild(text);
       enterG.appendChild(depthG);
