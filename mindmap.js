@@ -62,18 +62,20 @@ const MindMap = (() => {
       })),
 
       clusters: clusters.slice(0, 12).map(cl => ({
-        topic: String(cl?.topic ?? '').slice(0, 100),
+        topic: String(cl?.topic ?? '').slice(0, 100).trim(),
         words: Array.isArray(cl?.words)
-          ? cl.words.slice(0, 20).map(w => String(w).slice(0, 80))
+          ? cl.words.slice(0, 20).map(w => String(w).slice(0, 80).trim()).filter(Boolean)
           : [],
-      })),
+      })).filter(cl => cl.topic || cl.words.length),
 
       hierarchy: normalizeHierarchy(data.hierarchy),
-      steps: steps.slice(0, 20).map((s, i) => ({
-        order: _num(s?.order, i + 1, 1, 100),
-        title: String(s?.title ?? '').slice(0, 150),
-        desc: String(s?.desc ?? '').slice(0, 500),
-      })),
+      steps: steps.slice(0, 20)
+        .map((s, i) => ({
+          order: _num(s?.order, i + 1, 1, 100),
+          title: String(s?.title ?? '').slice(0, 150).trim(),
+          desc: String(s?.desc ?? '').slice(0, 500).trim(),
+        }))
+        .filter(s => s.title || s.desc),
     };
   }
 
@@ -276,17 +278,34 @@ const MindMap = (() => {
   }
 
   function _wrapTextLines(text, maxWidth, maxLines) {
-    const words = String(text ?? '').split(' ');
+    const approxCharW = 7;
+    const maxChars = Math.max(4, Math.floor(maxWidth / approxCharW));
+
+    const tokens = String(text ?? '')
+      .split(/\s+/)
+      .flatMap(token => {
+        if (token.length <= maxChars) return [token];
+        const chunks = [];
+        for (let i = 0; i < token.length; i += maxChars) {
+          chunks.push(token.slice(i, i + maxChars));
+        }
+        return chunks;
+      });
+
     const lines = [];
     let line = '';
-    words.forEach(w => {
+
+    tokens.forEach(w => {
       if (lines.length >= maxLines) return;
-      const test = line + w + ' ';
-      if (test.length * 7 > maxWidth && line) {
+      const test = line ? `${line} ${w}` : w;
+      if (test.length * approxCharW > maxWidth && line) {
         lines.push(line.trim());
-        line = w + ' ';
-      } else { line = test; }
+        line = w;
+      } else {
+        line = test;
+      }
     });
+
     if (line.trim() && lines.length < maxLines) lines.push(line.trim());
     return lines;
   }
@@ -323,6 +342,7 @@ const MindMap = (() => {
     _panX = rect.width / 2 - targetX * targetZoom;
     _panY = rect.height / 2 - targetY * targetZoom;
     _applyTransform();
+    _syncZoomSlider();
     setTimeout(() => { _viewport.style.transition = ''; }, 400);
   }
 
@@ -527,6 +547,9 @@ const MindMap = (() => {
       <marker id="arrow-head" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
         <path d="M0,0 L6,3 L0,6 Z" fill="rgba(255,255,255,0.3)"/>
       </marker>
+      <marker id="flow-arrow-head" markerWidth="6" markerHeight="6" refX="5" refY="2.5" orient="auto">
+        <path d="M0,0 L5,2.5 L0,5 Z" fill="rgba(255,255,255,0.26)"/>
+      </marker>
     `;
     const seen = new Set();
     PALETTE.forEach(c => {
@@ -597,8 +620,10 @@ const MindMap = (() => {
       const th = fontSize * 1.3;
       let x, y, tries = 0;
       do {
-        x = padding + Math.random() * (W - tw - padding * 2);
-        y = padding + th + Math.random() * (H - th - padding * 2);
+        const rangeX = Math.max(1, W - tw - padding * 2);
+        const rangeY = Math.max(1, H - th - padding * 2);
+        x = padding + Math.random() * rangeX;
+        y = padding + th + Math.random() * rangeY;
         tries++;
       } while (tries < 80 && placed.some(p =>
         Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + padding) &&
@@ -646,9 +671,10 @@ const MindMap = (() => {
     const dedup = [];
     const seen = new Map();
     words.forEach((w, i) => {
-      if (seen.has(w.w)) { seen.get(w.w).indices.push(i); return; }
+      const key = graphKey(w.w);
+      if (seen.has(key)) { seen.get(key).indices.push(i); return; }
       const entry = { ...w, indices: [i] };
-      seen.set(w.w, entry);
+      seen.set(key, entry);
       dedup.push(entry);
     });
 
@@ -662,7 +688,9 @@ const MindMap = (() => {
     const nodeMap = new Map();
     dedup.forEach((w, i) => { nodeMap.set(graphKey(w.w), i); });
 
-    for (let iter = 0; iter < 60; iter++) {
+    const iterCount = nodes.length > 90 ? 35 : 60;
+
+    for (let iter = 0; iter < iterCount; iter++) {
       nodes.forEach(a => {
         nodes.forEach(b => {
           if (a === b) return;
@@ -696,7 +724,7 @@ const MindMap = (() => {
     const linksG = document.createElementNS(SVG_NS, 'g');
     linksG.dataset.depth = '0.12';
     links.forEach(l => {
-      const ai = nodeMap.get(l.from), bi = nodeMap.get(l.to);
+      const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
       if (ai == null || bi == null) return;
       const a = nodes[ai], b = nodes[bi];
       const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.15;
@@ -986,25 +1014,41 @@ const MindMap = (() => {
       _viewport.appendChild(_emptyMsg('Нет последовательности шагов в тексте'));
       return;
     }
-    const cardW = 240, minCardH = 120, gap = 70;
-    // Pre-calculate max card height
+
+    const count = steps.length;
+    const sidePad = 40;
+    const minCardH = 120;
+
+    let cardW = 240;
+    let gap = 70;
+
+    const availableW = W - sidePad * 2;
+    const desiredTotalW = count * cardW + (count - 1) * gap;
+
+    if (desiredTotalW > availableW && count > 1) {
+      gap = Math.max(32, Math.min(70, availableW * 0.08));
+      cardW = Math.max(210, (availableW - (count - 1) * gap) / count);
+    }
+
     let maxCardH = minCardH;
     steps.forEach(step => {
-      const titleLines = _wrapTextLines(step.title || '', cardW - 28, 10);
-      const descLines = _wrapTextLines(step.desc || '', cardW - 28, 10);
+      const titleLines = _wrapTextLines(step.title || '', cardW - 28, 2);
+      const descLines = _wrapTextLines(step.desc || '', cardW - 28, 4);
       const contentH = 36 + titleLines.length * 15 + 4 + descLines.length * 15 + 14;
       if (contentH > maxCardH) maxCardH = contentH;
     });
-    const totalW = steps.length * (cardW + gap) - gap;
-    const startX = (W - totalW) / 2 > 40 ? (W - totalW) / 2 : 40;
-    const y = H / 2 - maxCardH / 2;
+
+    const totalW = count * cardW + (count - 1) * gap;
+    const startX = Math.max(sidePad, (W - totalW) / 2);
+    const y = Math.max(40, H / 2 - maxCardH / 2);
 
     steps.forEach((step, i) => {
       const x = startX + i * (cardW + gap);
       if (i > 0) {
-        _drawFlowArrow(startX + (i - 1) * (cardW + gap) + cardW, y + maxCardH / 2, x, y + maxCardH / 2);
+        const prevRight = startX + (i - 1) * (cardW + gap) + cardW;
+        _drawFlowArrow(prevRight, y + maxCardH / 2, x, y + maxCardH / 2);
       }
-      _drawStepCard(step, x, y, cardW, minCardH, i);
+      _drawStepCard(step, x, y, cardW, maxCardH, i);
     });
   }
 
@@ -1016,10 +1060,9 @@ const MindMap = (() => {
     const depthG = document.createElementNS(SVG_NS, 'g');
     depthG.dataset.depth = '0.25';
 
-    const titleLines = _wrapTextLines(step.title || '', w - 28, 10);
-    const descLines = _wrapTextLines(step.desc || '', w - 28, 10);
-    const contentH = 36 + titleLines.length * 15 + 4 + descLines.length * 15 + 14;
-    const cardH = Math.max(h, contentH);
+    const titleLines = _wrapTextLines(step.title || '', w - 28, 2);
+    const descLines = _wrapTextLines(step.desc || '', w - 28, 4);
+    const cardH = h;
 
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('x', x); rect.setAttribute('y', y);
@@ -1062,12 +1105,19 @@ const MindMap = (() => {
   }
 
   function _drawFlowArrow(x1, y1, x2, y2) {
+    const mid = (x1 + x2) / 2;
+    const available = Math.max(0, x2 - x1);
+    const len = Math.min(34, Math.max(18, available - 28));
+
     const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
-    line.setAttribute('x2', x2 - 6); line.setAttribute('y2', y2);
-    line.setAttribute('stroke', 'rgba(255,255,255,0.25)');
-    line.setAttribute('stroke-width', '1.5');
-    line.setAttribute('marker-end', 'url(#arrow-head)');
+    line.setAttribute('x1', mid - len / 2);
+    line.setAttribute('y1', y1);
+    line.setAttribute('x2', mid + len / 2);
+    line.setAttribute('y2', y2);
+    line.setAttribute('stroke', 'rgba(255,255,255,0.24)');
+    line.setAttribute('stroke-width', '1.3');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('marker-end', 'url(#flow-arrow-head)');
     _viewport.appendChild(line);
   }
 
