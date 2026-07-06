@@ -33,9 +33,10 @@
 - Статус: модуль значительно укреплён. Приватностьclipboard/history, lifecycle guardы, data-private/data-no-loom boundary, localStorage resilience, State API robustness — все закрыты.
 
 ### gist-sync.js
-- **~1835 строк**, 1 раунд аудита, **14 фиксов**. Коммит `3de0814`.
+- **~1895 строк**, 2 раунда аудита, **18 фиксов**. Коммиты `3de0814`, `6189feb`.
 - Аудит #1 (14): push() race condition fix (null return check), hash from snapshot (not current state), sync lock for push/pull/restore, saveCloudHistory quota try/catch, backup metadata normalization (safeNum), cloud history data attribute normalization, duplicate id -> class for backup buttons, loadSettings explicit type normalization with clampNum, CompressionStream await write/close, Cipher.decrypt buffer validation, _quickHash with string length, withRetry for 502/503/504, raw_url removed from console.log, revokeObjectURL delayed.
-- Статус: первый раунд аудита завершён. Ожидает повторного аудита для проверки.
+- Аудит #2 (4): AES-GCM block push when password empty, _lastPushedHash persisted across reload (K_LAST_HASH), K_DIRTY cleared only if hash matches pushed, PAT input autocomplete='off'.
+- Статус: второй раунд завершён. Ожидает повторного аудита.
 
 ## Следующий шаг
 1. Провести повторный аудит `gist-sync.js` (проверка оставшихся 18 пунктов из #11-#32)
