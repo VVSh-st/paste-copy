@@ -21,6 +21,7 @@ const MindMap = (() => {
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
   let _requestSeq = 0;
+  let _textHash = null;
   let _depthEls = [];
   let _abortController = null;
 
@@ -232,6 +233,7 @@ const MindMap = (() => {
     _svg.setAttribute('height', '100%');
     _svg.style.display = 'block';
     canvas.appendChild(_svg);
+    _setupSvgListeners();
 
     _overlay.addEventListener('click', e => {
       if (e.target === _overlay) close();
@@ -286,7 +288,6 @@ const MindMap = (() => {
     const zoomRange = _overlay.querySelector('.mindmap-zoom-range');
     const zoomWrap = _overlay.querySelector('.mindmap-zoom');
     zoomRange.addEventListener('input', () => {
-      if (_loading) return;
       const newZoom = zoomRange.value / 100;
       const rect = _svg.getBoundingClientRect();
       const cx = rect.width / 2, cy = rect.height / 2;
@@ -322,11 +323,15 @@ const MindMap = (() => {
       if (_movedEnough && (Math.abs(_velX) + Math.abs(_velY) > 0.5)) _startInertia();
     });
 
+    let _lastCanvasW = 0, _lastCanvasH = 0;
     _resizeObs = new ResizeObserver(() => {
-      if (_data && _overlay?.classList.contains('visible')) {
-        _resetTransform();
-        _render();
-      }
+      if (!_data || !_overlay?.classList.contains('visible')) return;
+      const rect = _svg.getBoundingClientRect();
+      const w = Math.round(rect.width), h = Math.round(rect.height);
+      if (w === _lastCanvasW && h === _lastCanvasH) return;
+      _lastCanvasW = w; _lastCanvasH = h;
+      _resetTransform();
+      _render();
     });
     _resizeObs.observe(canvas);
 
@@ -519,10 +524,29 @@ const MindMap = (() => {
     _ensureOverlay();
 
     const text = window.Preview?.getText?.() ?? '';
+    const currentHash = _hashString(text);
 
     if (!_data && !text.trim()) {
       window.Toast?.show('Превью пустое', 'info');
       return;
+    }
+
+    if (_data && !_data.localOnly && _textHash === currentHash) {
+      _overlay.classList.add('visible');
+      _overlay.querySelectorAll('.mindmap-btn[data-mode]').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === _mode);
+      });
+      _resetTransform();
+      _syncZoomSlider();
+      _overlay.querySelector('.mindmap-status').textContent = '';
+      _overlay.querySelector('.mindmap-refresh')?.classList.remove('spinning');
+      _render();
+      return;
+    }
+
+    if (_data && _textHash !== currentHash) {
+      _data = null;
+      _jumpCursors.clear();
     }
 
     _overlay.classList.add('visible');
@@ -531,13 +555,6 @@ const MindMap = (() => {
     });
     _resetTransform();
     _syncZoomSlider();
-
-    if (_data && !_data.localOnly) {
-      _overlay.querySelector('.mindmap-status').textContent = '';
-      _overlay.querySelector('.mindmap-refresh')?.classList.remove('spinning');
-      _render();
-      return;
-    }
 
     if (_loading) {
       _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
@@ -559,6 +576,7 @@ const MindMap = (() => {
       steps: [],
       localOnly: true,
     };
+    _textHash = currentHash;
 
     _overlay.querySelector('.mindmap-status').textContent = 'Анализирую структуру...';
     _overlay.querySelector('.mindmap-refresh')?.classList.add('spinning');
@@ -569,7 +587,6 @@ const MindMap = (() => {
 
   function _setupSvgListeners() {
     _svg.addEventListener('wheel', e => {
-      if (_loading) return;
       e.preventDefault();
       const rect = _svg.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -584,7 +601,7 @@ const MindMap = (() => {
     }, { passive: false });
 
     _svg.addEventListener('mousedown', e => {
-      if (e.button !== 0 || _loading) return;
+      if (e.button !== 0) return;
       cancelAnimationFrame(_inertiaRaf);
       _dragging = true; _movedEnough = false;
       _lastX = e.clientX; _lastY = e.clientY;
@@ -607,6 +624,7 @@ const MindMap = (() => {
 
   function close() {
     if (!_overlay) return;
+    _requestSeq++;
     _overlay.classList.remove('visible');
     _dragging = false;
     cancelAnimationFrame(_inertiaRaf);
@@ -859,18 +877,14 @@ const MindMap = (() => {
   }
 
   function _ensureMinimumGraphLinks(words, links, minLinks = 12) {
-    if (links.length >= minLinks) return links;
-    const existing = new Set(links.map(l => {
-      const a = _wordKey(l.from), b = _wordKey(l.to);
-      return a < b ? `${a}|${b}` : `${b}|${a}`;
-    }));
+    if (links.length > 0) return links;
     const top = [...words].sort((a, b) => (Number(b.weight) || 0) - (Number(a.weight) || 0)).slice(0, 12);
     const extra = [];
-    for (let i = 0; i < top.length - 1 && links.length + extra.length < minLinks; i++) {
+    for (let i = 0; i < top.length - 1 && extra.length < minLinks; i++) {
       const from = top[i].w, to = top[i + 1].w;
       const a = _wordKey(from), b = _wordKey(to);
       const k = a < b ? `${a}|${b}` : `${b}|${a}`;
-      if (!existing.has(k)) { existing.add(k); extra.push({ from, to, strength: 0.15, synthetic: true }); }
+      extra.push({ from, to, strength: 0.15, synthetic: true });
     }
     return links.concat(extra);
   }
@@ -915,6 +929,7 @@ const MindMap = (() => {
     if (!words.length || !text) return [];
     const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     const wordSet = new Map(words.map(w => [key(w.w), w.w]));
+    const weightByKey = new Map(words.map(w => [key(w.w), Number(w.weight) || 0]));
     const chunks = String(text).split(/(?:[.!?]+|\n{2,})+/).map(s => s.trim()).filter(s => s.length > 30);
     const pairCounts = new Map();
 
@@ -925,9 +940,7 @@ const MindMap = (() => {
         if (wordSet.has(k)) foundSet.add(k);
       }
       const found = [...foundSet].sort((a, b) => {
-        const wa = words.find(w => key(w.w) === a);
-        const wb = words.find(w => key(w.w) === b);
-        return (Number(wb?.weight) || 0) - (Number(wa?.weight) || 0);
+        return (weightByKey.get(b) || 0) - (weightByKey.get(a) || 0);
       }).slice(0, 8);
 
       for (let i = 0; i < found.length; i++) {
@@ -1431,7 +1444,7 @@ const MindMap = (() => {
       return;
     }
 
-    const count = Math.min(steps.length, 8);
+    const count = Math.min(steps.length, 12);
     const visibleSteps = steps.slice(0, count);
     const sidePad = 40;
     const minCardH = 120;
