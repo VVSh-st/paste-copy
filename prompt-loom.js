@@ -64,6 +64,7 @@
   let clearArmed = false;
   let clearTimer = null;
   let patchedClipboard = false;
+  let originalWriteText = null;
   let lastInputEl = null;
   let lastExternalInputEl = null;
 
@@ -102,11 +103,23 @@
   }
 
   function saveState() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      return true;
+    } catch (err) {
+      toast('Не удалось сохранить историю Prompt Loom', 'error');
+      return false;
+    }
   }
 
   function saveSettings() {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      return true;
+    } catch (err) {
+      toast('Не удалось сохранить настройки Prompt Loom', 'error');
+      return false;
+    }
   }
 
   function uid() {
@@ -123,6 +136,18 @@
     return (h >>> 0).toString(36);
   }
 
+  const TOKEN_SYNONYMS = new Map([
+    ['ответь', 'отвечай'], ['отвечать', 'отвечай'], ['пиши', 'напиши'], ['написать', 'напиши'],
+    ['коротко', 'кратко'], ['лаконично', 'кратко'], ['сжато', 'кратко'],
+    ['конкретные', 'конкретно'], ['конкретными', 'конкретно'], ['воды', 'вода'], ['водичку', 'вода'],
+    ['пример', 'примеры'], ['примерами', 'примеры'], ['примеров', 'примеры'],
+    ['структурируй', 'структура'], ['структурно', 'структура'], ['структурировано', 'структура']
+  ]);
+  const TOKEN_STOP_WORDS = new Set([
+    'и','в','во','на','с','со','к','ко','а','но','или','что','это','как','для','по','при','из','от','до','же','ли','бы','не','ни','то','та','те','за','у','об','о',
+    'the','a','an','to','of','in','on','and','or','is','are','be','with','for'
+  ]);
+
   function normalizeText(text) {
     return String(text || '')
       .toLowerCase()
@@ -137,21 +162,10 @@
   }
 
   function tokenSignature(text) {
-    const synonyms = new Map([
-      ['ответь', 'отвечай'], ['отвечать', 'отвечай'], ['пиши', 'напиши'], ['написать', 'напиши'],
-      ['коротко', 'кратко'], ['лаконично', 'кратко'], ['сжато', 'кратко'],
-      ['конкретные', 'конкретно'], ['конкретными', 'конкретно'], ['воды', 'вода'], ['водичку', 'вода'],
-      ['пример', 'примеры'], ['примерами', 'примеры'], ['примеров', 'примеры'],
-      ['структурируй', 'структура'], ['структурно', 'структура'], ['структурировано', 'структура']
-    ]);
-    const stop = new Set([
-      'и','в','во','на','с','со','к','ко','а','но','или','что','это','как','для','по','при','из','от','до','же','ли','бы','не','ни','то','та','те','за','у','об','о',
-      'the','a','an','to','of','in','on','and','or','is','are','be','with','for'
-    ]);
     return normalizeText(text)
       .split(' ')
-      .map(w => synonyms.get(w) || w)
-      .filter(w => w.length > 2 && !stop.has(w));
+      .map(w => TOKEN_SYNONYMS.get(w) || w)
+      .filter(w => w.length > 2 && !TOKEN_STOP_WORDS.has(w));
   }
 
   function similarityScore(a, b) {
@@ -221,7 +235,13 @@
     if (/\b(api[_-]?key|access[_-]?token|auth[_-]?token|bearer|password|passwd|secret)\b\s*[:=]\s*['"]?[A-Za-z0-9._\-+/=]{12,}/i.test(t)) return true;
     if (/\bauthorization\s*:\s*bearer\s+[A-Za-z0-9._\-+/=]{12,}/i.test(t)) return true;
     if (/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\s*:\s*[^\s]{8,}/.test(t)) return true;
-    if (/-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----/i.test(t)) return true;
+    if (/-----BEGIN\s+(RSA|OPENSSH|EC|DSA)?\s*PRIVATE\s+KEY-----/i.test(t)) return true;
+    if (/\b(AKIA|ASIA)[A-Z0-9]{16}\b/.test(t)) return true;
+    if (/\bAIza[0-9A-Za-z_-]{35}\b/.test(t)) return true;
+    if (/\bxox[baprs]-[A-Za-z0-9\-]{10,}/.test(t)) return true;
+    if (/\b(sk|pk)_(live|test)_[A-Za-z0-9]{16,}/.test(t)) return true;
+    if (/\b[A-Za-z][A-Za-z0-9+.\-]*:\/\/[^:\s/]+:[^@\s/]+@/.test(t)) return true;
+    if (/^\s*[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|KEY)[A-Z0-9_]*\s*=/im.test(t)) return true;
     return false;
   }
 
@@ -328,7 +348,7 @@
     item.lastSource = source;
     item.meta = { ...(item.meta || {}), lastVia: meta?.via || source };
 
-    if (String(text).length > String(item.text || '').length && String(text).length <= 500) {
+    if (!item.pinned && String(text).length > String(item.text || '').length && String(text).length <= 500) {
       item.text = text;
       item.hash = hash;
     }
@@ -447,14 +467,16 @@
 
   function patchClipboard() {
     if (patchedClipboard || !navigator.clipboard?.writeText) return;
-    patchedClipboard = true;
-    const original = navigator.clipboard.writeText.bind(navigator.clipboard);
-    navigator.clipboard.writeText = function patchedWriteText(text) {
-      try {
-        if (!isLoomInternalCopy(text)) record(text, 'copy', { via: 'clipboard.writeText' });
-      } catch (_) {}
-      return original(text);
-    };
+    try {
+      originalWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
+      navigator.clipboard.writeText = function patchedWriteText(text) {
+        try {
+          if (!isLoomInternalCopy(text)) record(text, 'copy', { via: 'clipboard.writeText' });
+        } catch (_) {}
+        return originalWriteText(text);
+      };
+      patchedClipboard = true;
+    } catch (_) {}
   }
 
   function bindGlobalEvents() {
@@ -490,7 +512,6 @@
       closePalette();
     });
 
-    let hoverOpenTimer = null;
     document.addEventListener('mousemove', e => {
       const btn = document.getElementById('prompt-loom-toggle');
       if (!btn || document.body.classList.contains('prompt-loom-open')) return;
@@ -746,12 +767,11 @@
     card.style.setProperty('--pl-color', source.color);
     card.setAttribute('role', 'listitem');
     const cardTip = buildItemTitle(item);
-    const sourceTip = cardTip ? ` data-pl-tip="${escapeHtml(cardTip)}"` : '';
     const timeLabel = formatTime(item.updatedAt || item.createdAt);
     const hasMoreSuggestions = Array.isArray(item.variants) && item.variants.length > 0;
     card.innerHTML = `
       <div class="pl-card-top">
-        <span class="pl-source"><span class="pl-source-icon"${sourceTip}>${source.icon}</span><b>${source.label}</b></span>
+        <span class="pl-source"><span class="pl-source-icon">${source.icon}</span><b>${source.label}</b></span>
         <span class="pl-kind" style="--kind-color:${kind.color}">${escapeHtml(kind.label)}</span>
         ${item.seen > 1 ? `<span class="pl-seen" title="Похожее встречалось ${item.seen} раз">≈${item.seen}</span>` : ''}
         ${item.uses ? `<span class="pl-uses" title="Использовано ${item.uses} раз">×${item.uses}</span>` : ''}
@@ -774,6 +794,7 @@
         <button type="button" data-pl-variants ${Array.isArray(item.variants) && item.variants.length ? '' : 'hidden'}>${iconLayers()}<span>Варианты</span></button>
       </div>
     `;
+    if (cardTip) card.querySelector('.pl-source-icon').dataset.plTip = cardTip;
     const preview = card.querySelector('.pl-preview');
     const previewValue = previewLines(item.text, item.kind, 3, 260);
     preview.textContent = previewValue.text;
@@ -827,47 +848,6 @@
     });
   }
 
-  function ultraWrapText(text, maxChars) {
-    const raw = String(text || '').replace(/\t/g, '  ').replace(/\s+/g, ' ').trim();
-    const words = raw.split(' ');
-    const result = [];
-    let curLine = '';
-    for (const word of words) {
-      if (!word) continue;
-      if (!curLine) {
-        if (word.length > maxChars) {
-          let rem = word;
-          while (rem.length > maxChars) {
-            result.push(rem.slice(0, maxChars - 1) + '-');
-            rem = rem.slice(maxChars - 1);
-          }
-          curLine = rem;
-        } else {
-          curLine = word;
-        }
-        continue;
-      }
-      const trial = curLine + ' ' + word;
-      if (trial.length <= maxChars) {
-        curLine = trial;
-      } else {
-        result.push(curLine);
-        if (word.length > maxChars) {
-          let rem = word;
-          while (rem.length > maxChars) {
-            result.push(rem.slice(0, maxChars - 1) + '-');
-            rem = rem.slice(maxChars - 1);
-          }
-          curLine = rem;
-        } else {
-          curLine = word;
-        }
-      }
-    }
-    if (curLine) result.push(curLine);
-    return result.join('\n');
-  }
-
   function renderUltraLightCard(item, source) {
     const card = document.createElement('article');
     card.className = 'pl-card pl-ultra-card pl-kind-' + item.kind;
@@ -875,10 +855,10 @@
     card.setAttribute('role', 'listitem');
     card.setAttribute('tabindex', '0');
 
-    const raw = String(item.text || '').replace(/\t/g, '  ').replace(/\s+/g, ' ').trim();
+    const raw = String(item.text || '').replace(/\t/g, '  ').replace(/[ \f\v]+/g, ' ').trim();
     const lines = raw.split('\n');
-    const displayText = lines.length > 3 ? lines.slice(0, 3).join('\n') + '...' : lines.join('\n');
     const clipped = lines.length > 3;
+    const displayText = clipped ? lines.slice(0, 3).join('\n') + '...' : lines.join('\n');
     const textEl = document.createElement('div');
     textEl.className = 'pl-ultra-text';
     textEl.textContent = displayText;
@@ -1153,6 +1133,7 @@
 
   function positionPalette() {
     if (!palette || !inlineSession?.el) return;
+    if (!document.contains(inlineSession.el)) { closePalette(); return; }
     const r = inlineSession.el.getBoundingClientRect();
     let left = r.left + 12;
     let top = r.top + 36;
@@ -1278,6 +1259,7 @@
   function acceptPaletteIndex(idx) {
     const item = inlineSession?.items[inlineSession.page * PAGE_SIZE + idx];
     if (!item) return;
+    if (!inlineSession?.el || !document.contains(inlineSession.el)) { closePalette(); return; }
 
     const target = inlineSession.el;
     const start = inlineSession.start;
@@ -1361,10 +1343,11 @@
     if (isEditable(lastInputEl) && document.contains(lastInputEl) && !isInsidePromptLoom(lastInputEl)) return lastInputEl;
     const focusedBlock = document.querySelector('.block-textarea:focus');
     if (focusedBlock) return focusedBlock;
+    if (!preferExternal) return null;
     return [...document.querySelectorAll('.block-textarea')].find(el => {
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && r.bottom >= 0 && r.top <= window.innerHeight;
-    }) || document.querySelector('.block-textarea');
+    }) || null;
   }
 
   function isInsidePromptLoom(el) {
@@ -1396,7 +1379,20 @@
 
     const prefix = smartSpacing && needsSpacingBefore(value, s) ? (blockSpacing ? '\n\n' : '\n') : '';
     const suffix = smartSpacing && needsSpacingAfter(value, e) ? (blockSpacing ? '\n\n' : '\n') : '';
-    document.execCommand('insertText', false, prefix + text + suffix);
+    const fullText = prefix + text + suffix;
+    if (!document.execCommand('insertText', false, fullText)) {
+      const sel = window.getSelection();
+      if (sel?.rangeCount) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const node = document.createTextNode(fullText);
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.setEndAfter(node);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   }
@@ -2056,7 +2052,7 @@
       const text = String(el?.dataset?.plTip || '').trim();
       if (!text) return hide();
       active = el;
-      tip.textContent = text;
+      tip.textContent = text.length > 2000 ? text.slice(0, 2000) + '…' : text;
       const r = el.getBoundingClientRect();
       requestAnimationFrame(() => {
         const tr = tip.getBoundingClientRect();
