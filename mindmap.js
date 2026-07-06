@@ -617,7 +617,7 @@ const MindMap = (() => {
 
   function _applyDepthBlur() {
     if (!_viewport) return;
-    const noBlur = _mode === 'hierarchy' || _mode === 'timeline';
+    const noBlur = _mode === 'hierarchy' || _mode === 'timeline' || _mode === 'tree';
     _viewport.querySelectorAll('[data-depth]').forEach(el => {
       if (noBlur) { el.style.filter = ''; return; }
       if (_mode === 'graph') {
@@ -1582,6 +1582,35 @@ const MindMap = (() => {
     _drawGraphLegend(W, H, nodes.length, links.length);
   }
 
+  function _setReadableText(t, color = 'var(--text1)', size = 12, weight = '400') {
+    t.setAttribute('fill', color);
+    t.setAttribute('font-size', String(size));
+    t.setAttribute('font-weight', weight);
+    t.setAttribute('font-family', 'Segoe UI, system-ui, -apple-system, BlinkMacSystemFont, sans-serif');
+    t.setAttribute('paint-order', 'stroke');
+    t.setAttribute('stroke', 'rgba(0,0,0,0.55)');
+    t.setAttribute('stroke-width', '2');
+    t.setAttribute('stroke-linejoin', 'round');
+  }
+
+  function _appendTextLines(parent, lines, x, y, opts = {}) {
+    const fontSize = opts.fontSize || 12;
+    const lineH = opts.lineH || fontSize * 1.35;
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', x); text.setAttribute('y', y);
+    text.setAttribute('text-anchor', opts.anchor || 'start');
+    _setReadableText(text, opts.color || 'var(--text1)', fontSize, opts.weight || '400');
+    lines.forEach((line, i) => {
+      const span = document.createElementNS(SVG_NS, 'tspan');
+      span.setAttribute('x', x);
+      span.setAttribute('dy', i === 0 ? '0' : String(lineH));
+      span.textContent = line;
+      text.appendChild(span);
+    });
+    parent.appendChild(text);
+    return text;
+  }
+
   function _drawTree(W, H) {
     const claim = _data.claim || '';
     const evidence = _data.evidence || [];
@@ -1595,22 +1624,45 @@ const MindMap = (() => {
       return;
     }
 
-    const pad = 30;
+    const pad = 36, gap = 18;
     const colW = W - pad * 2;
-    const rows = [];
-    if (claim) rows.push({ text: claim, color: '#4f8ef7', label: 'ТЕЗИС' });
-    evidence.forEach(e => rows.push({ text: e.text, color: e.supports ? '#5cb87a' : '#e05c6a', label: e.supports ? 'ДОКАЗАТЕЛЬСТВО' : 'КОНТР-АРГУМЕНТ' }));
-    if (conclusion) rows.push({ text: conclusion, color: '#fbbf24', label: 'ВЫВОД' });
+    const supportCount = evidence.filter(e => e.supports).length;
+    const counterCount = evidence.filter(e => !e.supports).length;
 
-    const maxRows = Math.max(3, Math.floor((H - pad * 2) / 72));
+    const rows = [];
+    if (claim) rows.push({ text: claim, color: '#4f8ef7', label: 'ТЕЗИС', kind: 'claim' });
+    evidence.forEach((e, i) => {
+      rows.push({
+        text: e.text, color: e.supports ? '#5cb87a' : '#e05c6a',
+        label: e.supports ? `ДОКАЗАТЕЛЬСТВО ${i + 1}` : `КОНТР-АРГУМЕНТ ${i + 1}`,
+        kind: e.supports ? 'support' : 'counter',
+      });
+    });
+    if (conclusion) rows.push({ text: conclusion, color: '#fbbf24', label: 'ВЫВОД', kind: 'conclusion' });
+
+    const maxRows = Math.max(3, Math.floor((H - pad * 2) / 78));
     const visibleRows = rows.slice(0, maxRows);
 
-    const rowH = Math.min(80, (H - pad * 2) / visibleRows.length);
-    const startY = pad + 20;
+    const prepared = visibleRows.map(row => {
+      const lines = _wrapTextLines(row.text, colW - 44, 3);
+      const h = Math.max(76, 34 + lines.length * 18 + 18);
+      return { ...row, lines, h };
+    });
 
-    visibleRows.forEach((r, i) => {
-      const y = startY + i * (rowH + 16);
+    const totalH = prepared.reduce((sum, r) => sum + r.h, 0) + gap * (prepared.length - 1);
+    let y = Math.max(46, H / 2 - totalH / 2);
 
+    const summary = document.createElementNS(SVG_NS, 'text');
+    summary.setAttribute('x', String(W - pad)); summary.setAttribute('y', '28');
+    summary.setAttribute('text-anchor', 'end');
+    _setReadableText(summary, 'var(--text2)', 11, '600');
+    summary.setAttribute('stroke-width', '1.6');
+    summary.textContent = counterCount
+      ? `${supportCount} доказательств · ${counterCount} контраргументов`
+      : `${supportCount} доказательств`;
+    _viewport.appendChild(summary);
+
+    prepared.forEach((r, i) => {
       const enterG = document.createElementNS(SVG_NS, 'g');
       enterG.classList.add('mm-enter');
       enterG.style.animationDelay = `${i * 50}ms`;
@@ -1619,44 +1671,60 @@ const MindMap = (() => {
       depthG.dataset.depth = i === 0 ? '0.3' : '0.18';
 
       const rect = document.createElementNS(SVG_NS, 'rect');
-      rect.setAttribute('x', pad); rect.setAttribute('y', y);
-      rect.setAttribute('width', colW); rect.setAttribute('height', rowH - 8);
-      rect.setAttribute('rx', '12');
-      rect.setAttribute('fill', r.color + '12');
-      rect.setAttribute('stroke', r.color + '35');
+      rect.setAttribute('x', String(pad)); rect.setAttribute('y', String(y));
+      rect.setAttribute('width', String(colW)); rect.setAttribute('height', String(r.h));
+      rect.setAttribute('rx', '10');
+      rect.setAttribute('fill', r.color + '10');
+      rect.setAttribute('stroke', r.color + '38');
       rect.setAttribute('stroke-width', '1');
       rect.setAttribute('filter', 'url(#shadow)');
       depthG.appendChild(rect);
 
+      const stripe = document.createElementNS(SVG_NS, 'rect');
+      stripe.setAttribute('x', String(pad)); stripe.setAttribute('y', String(y));
+      stripe.setAttribute('width', '4'); stripe.setAttribute('height', String(r.h));
+      stripe.setAttribute('rx', '2'); stripe.setAttribute('fill', r.color);
+      stripe.setAttribute('opacity', '0.75');
+      depthG.appendChild(stripe);
+
       const label = document.createElementNS(SVG_NS, 'text');
-      label.setAttribute('x', pad + 12); label.setAttribute('y', y + 16);
-      label.setAttribute('font-size', '9'); label.setAttribute('fill', r.color);
-      label.setAttribute('font-weight', '700'); label.setAttribute('font-family', 'var(--mono)');
+      label.setAttribute('x', String(pad + 16)); label.setAttribute('y', String(y + 22));
+      _setReadableText(label, r.color, 10, '800');
+      label.setAttribute('stroke-width', '1.4');
       label.textContent = r.label;
       depthG.appendChild(label);
 
-      const wrappedLines = _wrapTextLines(r.text, colW - 24, 3);
-      wrappedLines.forEach((ln, li) => {
-        const t = document.createElementNS(SVG_NS, 'text');
-        t.setAttribute('x', pad + 12); t.setAttribute('y', y + 32 + li * 16);
-        t.setAttribute('font-size', '12'); t.setAttribute('fill', 'var(--text1)');
-        t.setAttribute('font-family', 'var(--mono)');
-        t.textContent = ln;
-        depthG.appendChild(t);
+      _appendTextLines(depthG, r.lines, pad + 16, y + 46, {
+        color: 'var(--text0)', fontSize: 14,
+        weight: r.kind === 'claim' || r.kind === 'conclusion' ? '600' : '400',
+        lineH: 18,
       });
 
       if (i > 0) {
-        const arrow = document.createElementNS(SVG_NS, 'line');
-        arrow.setAttribute('x1', W / 2); arrow.setAttribute('y1', y - 14);
-        arrow.setAttribute('x2', W / 2); arrow.setAttribute('y2', y);
-        arrow.setAttribute('stroke', 'rgba(255,255,255,0.2)');
-        arrow.setAttribute('stroke-width', '1.5');
-        arrow.setAttribute('stroke-dasharray', '4,3');
-        _viewport.appendChild(arrow);
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('x1', String(W / 2)); line.setAttribute('y1', String(y - gap + 4));
+        line.setAttribute('x2', String(W / 2)); line.setAttribute('y2', String(y - 4));
+        line.setAttribute('stroke', 'rgba(255,255,255,0.18)');
+        line.setAttribute('stroke-width', '1.2');
+        line.setAttribute('stroke-dasharray', '3 5');
+        line.setAttribute('stroke-linecap', 'round');
+        _viewport.appendChild(line);
       }
+
       enterG.appendChild(depthG);
       _viewport.appendChild(enterG);
+      y += r.h + gap;
     });
+
+    if (rows.length > visibleRows.length) {
+      const more = document.createElementNS(SVG_NS, 'text');
+      more.setAttribute('x', String(W / 2)); more.setAttribute('y', String(H - 18));
+      more.setAttribute('text-anchor', 'middle');
+      _setReadableText(more, 'var(--text2)', 11, '600');
+      more.setAttribute('stroke-width', '1.5');
+      more.textContent = `Показано ${visibleRows.length} из ${rows.length}`;
+      _viewport.appendChild(more);
+    }
   }
 
   function _drawClusters(W, H) {
