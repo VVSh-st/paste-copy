@@ -398,7 +398,6 @@
   }
 
   function mergeSimilarItem(item, text, source, meta, now) {
-    // Похожие короткие инструкции не плодятся карточками: обновляем одну живую карточку.
     const hash = hashText(text);
     const variants = Array.isArray(item.variants) ? item.variants : [];
     const alreadyKnown = item.hash === hash || variants.some(v => v.hash === hash);
@@ -415,6 +414,12 @@
     item.meta = { ...(item.meta || {}), lastVia: meta?.via || source };
 
     if (!item.pinned && String(text).length > String(item.text || '').length && String(text).length <= 500) {
+      const oldText = item.text;
+      const oldHash = item.hash;
+      if (oldText && oldHash !== hash && !variants.some(v => v.hash === oldHash)) {
+        variants.unshift({ text: oldText, hash: oldHash, source: item.source, createdAt: item.createdAt || now });
+        item.variants = variants.slice(0, 5);
+      }
       item.text = text;
       item.hash = hash;
     }
@@ -536,10 +541,15 @@
     try {
       originalWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
       navigator.clipboard.writeText = function patchedWriteText(text) {
+        const p = originalWriteText(text);
         try {
-          if (!isLoomInternalCopy(text)) record(text, 'copy', { via: 'clipboard.writeText' });
+          if (!isLoomInternalCopy(text)) {
+            Promise.resolve(p).then(() => {
+              record(text, 'copy', { via: 'clipboard.writeText' });
+            }).catch(() => {});
+          }
         } catch (_) {}
-        return originalWriteText(text);
+        return p;
       };
       patchedClipboard = true;
     } catch (_) {}
@@ -569,7 +579,10 @@
       }
       if (isInsidePromptLoom(target)) return;
       const text = e.clipboardData?.getData('text/plain') || '';
-      if (text && !isLoomInternalPaste(text)) record(text, 'paste', { via: 'paste-event' });
+      if (!text || isLoomInternalPaste(text)) return;
+      setTimeout(() => {
+        if (!e.defaultPrevented) record(text, 'paste', { via: 'paste-event' });
+      }, 0);
     }, true);
 
     document.addEventListener('input', e => {
@@ -1339,6 +1352,12 @@
     if (!item) return;
     if (!inlineSession?.el || !document.contains(inlineSession.el)) { closePalette(); return; }
 
+    if (inlineSession.mode === 'trigger') {
+      const val = getEditableValue(inlineSession.el);
+      const range = val.slice(inlineSession.start, inlineSession.end);
+      if (range !== '\\' + inlineSession.query) { closePalette(); return; }
+    }
+
     const target = inlineSession.el;
     const start = inlineSession.start;
     const end = inlineSession.end;
@@ -1667,9 +1686,9 @@
         close();
         return;
       }
+      const beforeIds = new Set(getActiveBlocks().filter(b => b.type === 'variable').map(b => b.id));
       State.addBlock('variable');
-      const blocks = getActiveBlocks();
-      const block = [...blocks].reverse().find(b => b.type === 'variable');
+      const block = getActiveBlocks().filter(b => b.type === 'variable').find(b => !beforeIds.has(b.id));
       if (block) {
         State.update(() => {
           block.variableName = normalize(input.value);
@@ -1705,6 +1724,13 @@
   }
 
   function addSnippet(title, value) {
+    const globalSnippet = window.State?.addGlobalSnippet?.(title, value, { via: 'prompt-loom' });
+    if (globalSnippet) {
+      lastCreatedSnippet = { global: true, snippetId: globalSnippet.id, blockTitle: 'Глобальные сниппеты', title, value };
+      window.GistSync?.schedulePush?.();
+      return true;
+    }
+
     const activeBlocks = getActiveBlocks();
     const blocks = getAllBlocks();
     let snipBlock = activeBlocks.find(b => b.type === 'snippets') || blocks.find(b => b.type === 'snippets');
@@ -1713,13 +1739,6 @@
       snipBlock = getActiveBlocks().find(b => b.type === 'snippets') || getAllBlocks().find(b => b.type === 'snippets');
     }
     if (!snipBlock) return false;
-
-    const globalSnippet = window.State?.addGlobalSnippet?.(title, value, { via: 'prompt-loom' });
-    if (globalSnippet) {
-      lastCreatedSnippet = { global: true, snippetId: globalSnippet.id, blockTitle: 'Глобальные сниппеты', title, value };
-      window.GistSync?.schedulePush?.();
-      return true;
-    }
 
     const snippet = { id: uid(), title, value, enabled: false };
     State.update(() => {
@@ -1948,7 +1967,7 @@
     if (el.tagName === 'TEXTAREA') return !el.disabled && !el.readOnly;
     if (el.tagName === 'INPUT') {
       const type = (el.type || 'text').toLowerCase();
-      return ['text', 'search', 'url', 'tel', 'email'].includes(type) && !el.disabled && !el.readOnly;
+      return ['text', 'search', 'url', 'tel'].includes(type) && !el.disabled && !el.readOnly;
     }
     return false;
   }
