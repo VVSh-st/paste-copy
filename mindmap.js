@@ -71,10 +71,26 @@ const MindMap = (() => {
     if (/^[._$]/.test(s)) return true;
     if (/[()[\]{}=;<>]/.test(s)) return true;
     if (s.includes('.')) return true;
-    if (s.length > 24 && /^[A-Za-z0-9_$-]+$/.test(s)) return true;
-    if (/^(setAttribute|getAttribute|querySelector|addEventListener|removeEventListener)$/i.test(s)) return true;
-    if (/^(console|document|window|localStorage|sessionStorage)$/i.test(s)) return true;
-    if (/(El|Ref|Ctx|Tmp|Idx|Id)$/i.test(s) && s.length > 10) return true;
+
+    const CLUSTER_NOISE = new Set([
+      'raf', 'rafid', 'requestanimationframe',
+      'settimeout', 'cleartimeout', 'setinterval', 'clearinterval',
+      'setattribute', 'getattribute', 'setproperty', 'removeproperty',
+      'queryselector', 'queryselectorall',
+      'addeventlistener', 'removeeventlistener',
+      'getboundingclientrect', 'textcontent', 'innerhtml',
+      'classlist', 'foreach', 'onclick', 'oninput', 'onkeydown',
+      'console', 'document', 'window', 'localstorage', 'sessionstorage',
+      'browserfocused', 'reduceemotion', 'focusstate',
+      'persistmergedstate', 'applyremotestate', 'lastedittime',
+      'subtaboffsets', 'observermap', 'pendingratios',
+    ]);
+    if (CLUSTER_NOISE.has(key.replace(/\s+/g, '').toLowerCase())) return true;
+
+    if (s.length > 20 && /^[A-Za-z0-9_$-]+$/.test(s)) return true;
+    if (/^(get|set|add|remove|update|render|handle|apply|create|query|focus|blur|persist|reduce|request|observe|resize)[A-Z]/.test(s)) return true;
+    if (/(El|Ref|Ctx|Tmp|Idx|Id|Map|State|Cache|Offsets|Ratios)$/i.test(s) && s.length > 8) return true;
+    if (/^(CPU|GPU|rAF|RAF)$/i.test(s)) return true;
     return false;
   }
 
@@ -113,7 +129,7 @@ const MindMap = (() => {
       clusters: clusters.slice(0, 10).map(cl => {
         const words = Array.isArray(cl?.words)
           ? cl.words.map(w => String(w).slice(0, 80).trim()).filter(Boolean)
-              .filter(w => !_isClusterNoiseWord(w)).slice(0, 10)
+              .filter(w => !_isClusterNoiseWord(w)).slice(0, 9)
           : [];
         return {
           topic: String(cl?.topic ?? '').slice(0, 100).trim(),
@@ -739,9 +755,12 @@ const MindMap = (() => {
             'Верни links только между действительно связанными понятиями. ' +
             'Не связывай служебные токены кода без смысловой причины. ' +
             'Для clusters группируй слова в смысловые темы. ' +
-            'Избегай случайных кусков кода, одиночных свойств объектов и служебных методов, если они не являются важными для смысла. ' +
-            'Но сохраняй полезные технические термины, названия компонентов и доменные понятия. ' +
-            'В каждом cluster.words возвращай 5-10 коротких слов или фраз. ' +
+            'cluster.topic должен быть человеческим названием темы, не именем функции или переменной. ' +
+            'cluster.words должны быть понятными терминами из текста, но не случайными идентификаторами кода. ' +
+            'Не используй camelCase/PascalCase имена функций и переменных, DOM/API методы, свойства объектов, event handler names, storage keys. ' +
+            'Не используй rAF, rafId, setTimeout, querySelector, classList, textContent, localStorage, state/cache/id/map/offset/ratio tokens как cluster.words. ' +
+            'Если текст технический, обобщай identifiers в понятия: анимация, производительность, состояние, синхронизация, память, DOM, события, редактор, вкладки, скролл, ошибки. ' +
+            'В каждом cluster.words возвращай 5-9 коротких понятных слов или фраз. ' +
             'Если подходящих связей мало, верни меньше links, не заполняй искусственно.\n' +
             JSON.stringify(localWordsForPrompt) +
             '\n\nТекст:\n' + text.slice(0, 4000)
@@ -1413,7 +1432,7 @@ const MindMap = (() => {
     const cx = W / 2, cy = H / 2;
 
     function clusterRadius(cl) {
-      return Math.max(120, (70 + Math.max(4, cl.words.length) * 13) * 1.12);
+      return Math.min(190, Math.max(125, (72 + Math.max(4, cl.words.length) * 11) * 1.08));
     }
 
     const angleStep = (Math.PI * 2) / clusters.length;
@@ -1421,8 +1440,8 @@ const MindMap = (() => {
     const safeDistX = Math.max(0, W / 2 - maxR - 16);
     const safeDistY = Math.max(0, H / 2 - maxR * 0.7 - 16);
     const safeDist = Math.min(safeDistX, safeDistY);
-    const desiredDist = Math.max(Math.min(W, H) * 0.24, maxR * 0.78);
-    const dist = Math.min(desiredDist, safeDist * 1.08);
+    const desiredDist = Math.max(Math.min(W, H) * 0.28, maxR * 0.98);
+    const dist = Math.min(desiredDist, safeDist);
 
     clusters.forEach((cl, ci) => {
       const angle = angleStep * ci - Math.PI / 2;
@@ -1468,7 +1487,7 @@ const MindMap = (() => {
       const title = document.createElementNS(SVG_NS, 'text');
       title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.40);
       title.setAttribute('text-anchor', 'middle');
-      title.setAttribute('font-size', '13'); title.setAttribute('font-weight', '700');
+      title.setAttribute('font-size', '14'); title.setAttribute('font-weight', '700');
       title.setAttribute('fill', color); title.setAttribute('font-family', 'var(--mono)');
       title.setAttribute('paint-order', 'stroke');
       title.setAttribute('stroke', 'rgba(0,0,0,0.45)'); title.setAttribute('stroke-width', '3');
@@ -1478,7 +1497,7 @@ const MindMap = (() => {
 
       const wordsG = document.createElementNS(SVG_NS, 'g');
       wordsG.dataset.depth = '0.18';
-      const visibleWords = cl.words.slice(0, 10);
+      const visibleWords = cl.words.slice(0, 9);
       const wordCount = Math.max(1, visibleWords.length);
 
       visibleWords.forEach((w, wi) => {
@@ -1491,7 +1510,7 @@ const MindMap = (() => {
           wy = ccy + Math.sin(a) * wr * 0.55 + 8;
         } else if (wordCount <= 7) {
           const a = (wi / wordCount) * Math.PI * 2 - Math.PI / 2;
-          const wr = r * 0.43;
+          const wr = r * 0.40;
           wx = ccx + Math.cos(a) * wr;
           wy = ccy + Math.sin(a) * wr * 0.62 + 10;
         } else {
@@ -1505,7 +1524,7 @@ const MindMap = (() => {
             const outerIndex = wi - innerCount;
             const outerCount = wordCount - innerCount;
             const a = (outerIndex / outerCount) * Math.PI * 2 - Math.PI / 2;
-            const wr = r * 0.50;
+            const wr = r * 0.46;
             wx = ccx + Math.cos(a) * wr;
             wy = ccy + Math.sin(a) * wr * 0.62 + 10;
           }
@@ -1513,13 +1532,13 @@ const MindMap = (() => {
         const t = document.createElementNS(SVG_NS, 'text');
         t.setAttribute('x', wx); t.setAttribute('y', wy);
         t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
-        t.setAttribute('font-size', wi < 3 ? '12' : '11');
+        t.setAttribute('font-size', wi < 3 ? '13' : '12');
         t.setAttribute('font-weight', wi < 2 ? '600' : '400');
         t.setAttribute('fill', wi < 3 ? 'var(--text0)' : 'var(--text1)');
         t.setAttribute('font-family', 'var(--mono)');
         t.setAttribute('opacity', wi < 3 ? '0.96' : '0.82');
         t.setAttribute('paint-order', 'stroke');
-        t.setAttribute('stroke', 'rgba(0,0,0,0.35)'); t.setAttribute('stroke-width', '2');
+        t.setAttribute('stroke', 'rgba(0,0,0,0.35)'); t.setAttribute('stroke-width', '1.8');
         t.setAttribute('stroke-linejoin', 'round');
         t.textContent = w;
         _attachWordInteractions(t, w, wx, wy);
