@@ -22,6 +22,7 @@ const MindMap = (() => {
 
   let _requestSeq = 0;
   let _depthEls = [];
+  let _abortController = null;
 
   function _num(value, fallback, min, max) {
     const n = Number(value);
@@ -96,6 +97,44 @@ const MindMap = (() => {
     };
   }
 
+  function _findBalancedJsonObjects(s) {
+    const out = [];
+    for (let start = s.indexOf('{'); start !== -1; start = s.indexOf('{', start + 1)) {
+      let depth = 0;
+      let inStr = false;
+      let esc = false;
+      for (let i = start; i < s.length; i++) {
+        const ch = s[i];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (ch === '\\') esc = true;
+          else if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') inStr = true;
+        else if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) { out.push(s.slice(start, i + 1)); break; }
+        }
+      }
+    }
+    return out;
+  }
+
+  function _extractJsonObject(raw) {
+    const s = String(raw ?? '').trim();
+    try { return JSON.parse(s); } catch {}
+    const fences = [...s.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
+    for (const m of fences) {
+      try { return JSON.parse(m[1].trim()); } catch {}
+    }
+    for (const c of _findBalancedJsonObjects(s)) {
+      try { return JSON.parse(c); } catch {}
+    }
+    return null;
+  }
+
   function _resetTransform() {
     _zoom = 1; _panX = 0; _panY = 0;
     if (_viewport) _viewport.setAttribute('transform', 'translate(0,0) scale(1)');
@@ -162,8 +201,10 @@ const MindMap = (() => {
       if (_loading) return;
       const text = window.Preview?.getText?.() ?? '';
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую...';
+      _overlay.querySelector('.mindmap-status').textContent = 'Анализирую новый текст...';
       _overlay.querySelector('.mindmap-refresh').classList.add('spinning');
+      _data = null;
+      _render();
       _fetch(text);
     });
 
@@ -327,8 +368,13 @@ const MindMap = (() => {
     const sourceText = window.Preview?.getText?.() ?? '';
     const exists = sourceText.toLowerCase().includes(safeWord.toLowerCase());
 
+    if (!exists) {
+      window.Toast?.show(`"${safeWord}" не найдено в тексте`, 'info');
+      return;
+    }
+
     document.dispatchEvent(new CustomEvent('mindmap:jump-word', {
-      detail: { word: safeWord, source: 'mindmap', exact: exists }
+      detail: { word: safeWord, source: 'mindmap', exact: true }
     }));
     close();
   }
@@ -469,10 +515,13 @@ const MindMap = (() => {
     _inertiaRaf = null;
     _rafPending = false;
     if (_panel) _panel.style.transform = '';
+    if (_loading) _abortController?.abort();
   }
 
   async function _fetch(text) {
     const seq = ++_requestSeq;
+    _abortController?.abort();
+    _abortController = new AbortController();
     _loading = true;
     try {
       const prompt = window.LLMCore?.getPrompt?.('mindmap');
@@ -485,27 +534,23 @@ const MindMap = (() => {
       const result = await window.LLMCore.request({
         messages: [{ role: 'user', content: prompt + '\n\n' + text.slice(0, 4000) }],
         stream: false,
-        maxTokens: 3000,
+        maxTokens: 4500,
         featureTag: 'mindmap',
+        signal: _abortController.signal,
       });
       if (seq !== _requestSeq) return;
       if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); close(); return; }
-      let json;
-      try { json = JSON.parse(result.trim()); } catch {
-        const code = result.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (code) {
-          try { json = JSON.parse(code[1]); } catch (_) {}
-        }
-        if (!json) {
-          const first = result.indexOf('{');
-          const last = result.lastIndexOf('}');
-          if (first !== -1 && last > first) {
-            try { json = JSON.parse(result.slice(first, last + 1)); } catch (_) {}
-          }
-        }
-        if (!json) { window.Toast?.show('Не удалось распарсить JSON', 'error'); close(); return; }
+
+      const json = _extractJsonObject(result);
+      if (!json || typeof json !== 'object' || Array.isArray(json)) {
+        console.warn('[MindMap] Unexpected JSON shape:', json);
+        window.Toast?.show('Ответ mind map имеет неверный формат', 'error');
+        close();
+        return;
       }
-      const normalized = _normalizeData(json);
+
+      const payload = json.mindmap && typeof json.mindmap === 'object' ? json.mindmap : json;
+      const normalized = _normalizeData(payload);
       if (
         !normalized.words.length && !normalized.clusters.length &&
         !normalized.hierarchy && !normalized.steps.length &&
@@ -1124,11 +1169,15 @@ const MindMap = (() => {
   function _drawStarfield(W, H) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.depth = '0.05';
-    const count = Math.floor((W * H) / 9000);
+    const marginX = W * 0.5;
+    const marginY = H * 0.5;
+    const totalW = W + marginX * 2;
+    const totalH = H + marginY * 2;
+    const count = Math.floor((totalW * totalH) / 9000);
     for (let i = 0; i < count; i++) {
       const dot = document.createElementNS(SVG_NS, 'circle');
-      dot.setAttribute('cx', Math.random() * W);
-      dot.setAttribute('cy', Math.random() * H);
+      dot.setAttribute('cx', -marginX + Math.random() * totalW);
+      dot.setAttribute('cy', -marginY + Math.random() * totalH);
       dot.setAttribute('r', (Math.random() * 1.2 + 0.3).toFixed(1));
       dot.setAttribute('fill', 'rgba(255,255,255,0.25)');
       g.appendChild(dot);
