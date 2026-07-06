@@ -1206,25 +1206,63 @@ const MindMap = (() => {
       return { x: from.x + (dx / dist) * offset, y: from.y + (dy / dist) * offset };
     }
 
-    const linksG = document.createElementNS(SVG_NS, 'g');
-    linksG.dataset.depth = '0.12';
-    links.forEach(l => {
-      const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
-      if (ai == null || bi == null) return;
-      const a = nodes[ai], b = nodes[bi];
-      const start = edgePoint(a, b, a.r + 2);
-      const end = edgePoint(b, a, b.r + 2);
-      const mx = (start.x + end.x) / 2 + (end.y - start.y) * 0.25;
-      const my = (start.y + end.y) / 2 - (end.x - start.x) * 0.25;
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', `M ${start.x} ${start.y} Q ${mx} ${my} ${end.x} ${end.y}`);
-      path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)');
-      path.setAttribute('stroke-width', String(0.5 + l.strength * 2.5));
-      path.setAttribute('stroke-linecap', 'round');
-      linksG.appendChild(path);
-    });
-    _viewport.appendChild(linksG);
+    function curvedMidpoint(a, b, seedBase) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const nx = -dy / dist, ny = dx / dist;
+      const side = (_hashString(seedBase) % 2) ? 1 : -1;
+      const bend = Math.min(44, Math.max(12, dist * 0.14)) * side;
+      return { x: (a.x + b.x) / 2 + nx * bend, y: (a.y + b.y) / 2 + ny * bend };
+    }
+
+    const defs = _svg?.querySelector('defs');
+    if (defs) {
+      const maskId = `graph-mask-${_requestSeq}`;
+      const mask = document.createElementNS(SVG_NS, 'mask');
+      mask.setAttribute('id', maskId);
+      mask.setAttribute('maskUnits', 'userSpaceOnUse');
+      mask.setAttribute('maskContentUnits', 'userSpaceOnUse');
+      mask.setAttribute('x', '0'); mask.setAttribute('y', '0');
+      mask.setAttribute('width', String(W)); mask.setAttribute('height', String(H));
+      const bg = document.createElementNS(SVG_NS, 'rect');
+      bg.setAttribute('x', '0'); bg.setAttribute('y', '0');
+      bg.setAttribute('width', String(W)); bg.setAttribute('height', String(H));
+      bg.setAttribute('fill', 'white');
+      mask.appendChild(bg);
+      nodes.forEach(n => {
+        const cut = document.createElementNS(SVG_NS, 'circle');
+        cut.setAttribute('cx', String(n.x)); cut.setAttribute('cy', String(n.y));
+        cut.setAttribute('r', String((n.r || 16) + 5));
+        cut.setAttribute('fill', 'black');
+        mask.appendChild(cut);
+      });
+      defs.appendChild(mask);
+
+      const EDGE_GAP = 6;
+      const linksG = document.createElementNS(SVG_NS, 'g');
+      linksG.dataset.depth = '0.12';
+      linksG.setAttribute('mask', `url(#${maskId})`);
+
+      links.forEach(l => {
+        const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
+        if (ai == null || bi == null) return;
+        const a = nodes[ai], b = nodes[bi];
+        const start = edgePoint(a, b, a.r + EDGE_GAP);
+        const end = edgePoint(b, a, b.r + EDGE_GAP);
+        const mid = curvedMidpoint(start, end, `${l.from}|${l.to}`);
+        const strength = Math.max(0, Math.min(1, Number(l.strength) || 0.3));
+        const path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('d', `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.045)' : `rgba(255,255,255,${(0.055 + strength * 0.095).toFixed(3)})`);
+        path.setAttribute('stroke-width', String(0.6 + strength * 1.8));
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('vector-effect', 'non-scaling-stroke');
+        if (l.synthetic) path.setAttribute('stroke-dasharray', '4 6');
+        linksG.appendChild(path);
+      });
+      _viewport.appendChild(linksG);
+    }
 
     nodes.forEach((n, i) => {
       const r = 6 + (n.weight / maxW) * 16;
