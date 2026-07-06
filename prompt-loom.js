@@ -550,6 +550,7 @@
       navigator.clipboard.writeText = function patchedWriteText(text) {
         const p = originalWriteText(text);
         try {
+          if (!document.hasFocus?.()) return p;
           const active = document.activeElement;
           if (active?.closest?.('[data-private], [data-no-loom]')) return p;
           if (!isLoomInternalCopy(text)) {
@@ -566,7 +567,7 @@
 
   function bindGlobalEvents() {
     document.addEventListener('focusin', e => {
-      if (!isEditable(e.target)) return;
+      if (!isEditable(e.target) || isLoomExcluded(e.target)) return;
       lastInputEl = e.target;
       if (!isInsidePromptLoom(e.target)) lastExternalInputEl = e.target;
     });
@@ -595,7 +596,7 @@
     }, true);
 
     document.addEventListener('input', e => {
-      if (!isEditable(e.target)) return;
+      if (!isEditable(e.target) || isLoomExcluded(e.target)) return;
       lastInputEl = e.target;
       if (!isInsidePromptLoom(e.target)) lastExternalInputEl = e.target;
       if (!e.isTrusted) return;
@@ -1458,6 +1459,7 @@
     if (focusedBlock) return focusedBlock;
     if (!preferExternal) return null;
     return [...document.querySelectorAll('.block-textarea')].find(el => {
+      if (!isEditable(el) || isLoomExcluded(el)) return false;
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0 && r.bottom >= 0 && r.top <= window.innerHeight;
     }) || null;
@@ -1465,6 +1467,10 @@
 
   function isInsidePromptLoom(el) {
     return !!el?.closest?.('#prompt-loom-panel, #prompt-loom-toggle, .pl-palette, .pl-suggest-toast, .pl-created-toast, .pl-variable-tip');
+  }
+
+  function isLoomExcluded(el) {
+    return !!el?.closest?.('[data-private], [data-no-loom]');
   }
 
   function insertIntoEditable(el, text, start = null, end = null, options = {}) {
@@ -1727,7 +1733,8 @@
   function isExistingSnippetValue(value) {
     const needle = normalizeText(value);
     if (!needle) return false;
-    if (window.State?.getGlobalSnippets?.().some(item => normalizeText(item?.value || '') === needle)) return true;
+    const globalSnippets = window.State?.getGlobalSnippets?.() || [];
+    if (globalSnippets.some(item => normalizeText(item?.value || '') === needle)) return true;
     return getAllBlocks().some(block =>
       block.type === 'snippets' &&
       Array.isArray(block.items) &&
@@ -1793,7 +1800,8 @@
       out.push(b);
       if (b.children) walk(b.children);
     });
-    window.State?.getAll?.().forEach(tab => walk(tab.blocks));
+    const tabs = window.State?.getAll?.() || [];
+    tabs.forEach(tab => walk(tab?.blocks));
     return out;
   }
 
