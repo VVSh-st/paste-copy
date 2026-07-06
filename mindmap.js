@@ -45,11 +45,13 @@ const MindMap = (() => {
         role: ['topic', 'action', 'modifier', 'entity'].includes(w?.role) ? w.role : 'topic',
       })).filter(w => w.w.trim()),
 
-      links: links.slice(0, 200).map(l => ({
-        from: String(l?.from ?? '').slice(0, 80),
-        to: String(l?.to ?? '').slice(0, 80),
-        strength: _num(l?.strength, 0.3, 0, 1),
-      })),
+      links: links.slice(0, 200)
+        .map(l => ({
+          from: String(l?.from ?? '').slice(0, 80).trim(),
+          to: String(l?.to ?? '').slice(0, 80).trim(),
+          strength: _num(l?.strength, 0.3, 0, 1),
+        }))
+        .filter(l => l.from && l.to && l.from !== l.to),
 
       claim: String(data.claim ?? '').slice(0, 500),
       conclusion: String(data.conclusion ?? '').slice(0, 500),
@@ -260,7 +262,11 @@ const MindMap = (() => {
     let clickTimer = null;
     el.addEventListener('click', () => {
       clearTimeout(clickTimer);
-      clickTimer = setTimeout(() => { clickTimer = null; _jumpToWord(word); }, 220);
+      clickTimer = setTimeout(() => {
+        clickTimer = null;
+        if (!_overlay?.classList.contains('visible')) return;
+        _jumpToWord(word);
+      }, 220);
     });
     el.addEventListener('dblclick', () => {
       clearTimeout(clickTimer);
@@ -296,8 +302,15 @@ const MindMap = (() => {
   }
 
   function _jumpToWord(word) {
-    const safeWord = String(word ?? '').slice(0, 100);
-    document.dispatchEvent(new CustomEvent('mindmap:jump-word', { detail: { word: safeWord } }));
+    const safeWord = String(word ?? '').slice(0, 100).trim();
+    if (!safeWord) return;
+
+    const sourceText = window.Preview?.getText?.() ?? '';
+    const exists = sourceText.toLowerCase().includes(safeWord.toLowerCase());
+
+    document.dispatchEvent(new CustomEvent('mindmap:jump-word', {
+      detail: { word: safeWord, source: 'mindmap', exact: exists }
+    }));
     close();
   }
 
@@ -442,8 +455,15 @@ const MindMap = (() => {
     const seq = ++_requestSeq;
     _loading = true;
     try {
-      const result = await window.LLMCore?.request?.({
-        messages: [{ role: 'user', content: window.LLMCore.getPrompt('mindmap') + '\n\n' + text.slice(0, 4000) }],
+      const prompt = window.LLMCore?.getPrompt?.('mindmap');
+      if (!prompt || !window.LLMCore?.request) {
+        window.Toast?.show('LLMCore недоступен', 'error');
+        close();
+        return;
+      }
+
+      const result = await window.LLMCore.request({
+        messages: [{ role: 'user', content: prompt + '\n\n' + text.slice(0, 4000) }],
         stream: false,
         maxTokens: 3000,
         featureTag: 'mindmap',
@@ -452,14 +472,28 @@ const MindMap = (() => {
       if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); close(); return; }
       let json;
       try { json = JSON.parse(result.trim()); } catch {
-        const first = result.indexOf('{');
-        const last = result.lastIndexOf('}');
-        if (first !== -1 && last > first) {
-          try { json = JSON.parse(result.slice(first, last + 1)); } catch (_) {}
+        const code = result.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (code) {
+          try { json = JSON.parse(code[1]); } catch (_) {}
+        }
+        if (!json) {
+          const first = result.indexOf('{');
+          const last = result.lastIndexOf('}');
+          if (first !== -1 && last > first) {
+            try { json = JSON.parse(result.slice(first, last + 1)); } catch (_) {}
+          }
         }
         if (!json) { window.Toast?.show('Не удалось распарсить JSON', 'error'); close(); return; }
       }
-      _data = _normalizeData(json);
+      const normalized = _normalizeData(json);
+      if (
+        !normalized.words.length && !normalized.clusters.length &&
+        !normalized.hierarchy && !normalized.steps.length &&
+        !normalized.claim && !normalized.evidence.length && !normalized.conclusion
+      ) {
+        window.Toast?.show('LLM вернул пустую mind map', 'info'); close(); return;
+      }
+      _data = normalized;
       if (_overlay?.classList.contains('visible')) {
         _overlay.querySelector('.mindmap-status').textContent = '';
         _render();
@@ -552,9 +586,14 @@ const MindMap = (() => {
 
     const sorted = [...words].sort((a, b) => b.weight - a.weight);
     sorted.forEach((item, i) => {
-      const fontSize = 10 + (item.weight / maxW) * 28;
+      let fontSize = 10 + (item.weight / maxW) * 28;
       const color = ROLE_COLORS[item.role] || PALETTE[i % PALETTE.length];
-      const tw = item.w.length * fontSize * 0.6;
+      const maxTextW = Math.max(40, W - padding * 2);
+      let tw = item.w.length * fontSize * 0.6;
+      if (tw > maxTextW) {
+        fontSize = Math.max(8, (maxTextW / (item.w.length * 0.6)));
+        tw = item.w.length * fontSize * 0.6;
+      }
       const th = fontSize * 1.3;
       let x, y, tries = 0;
       do {
@@ -600,6 +639,10 @@ const MindMap = (() => {
     if (!words.length) return;
     const maxW = Math.max(...words.map(w => w.weight));
 
+    function graphKey(s) {
+      return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
     const dedup = [];
     const seen = new Map();
     words.forEach((w, i) => {
@@ -617,7 +660,7 @@ const MindMap = (() => {
     }));
 
     const nodeMap = new Map();
-    dedup.forEach((w, i) => { nodeMap.set(w.w, i); });
+    dedup.forEach((w, i) => { nodeMap.set(graphKey(w.w), i); });
 
     for (let iter = 0; iter < 60; iter++) {
       nodes.forEach(a => {
@@ -631,7 +674,7 @@ const MindMap = (() => {
         });
       });
       links.forEach(l => {
-        const ai = nodeMap.get(l.from), bi = nodeMap.get(l.to);
+        const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
         if (ai == null || bi == null) return;
         const a = nodes[ai], b = nodes[bi];
         let dx = b.x - a.x, dy = b.y - a.y;
@@ -653,7 +696,7 @@ const MindMap = (() => {
     const linksG = document.createElementNS(SVG_NS, 'g');
     linksG.dataset.depth = '0.12';
     links.forEach(l => {
-      const ai = nodeMap[l.from], bi = nodeMap[l.to];
+      const ai = nodeMap.get(l.from), bi = nodeMap.get(l.to);
       if (ai == null || bi == null) return;
       const a = nodes[ai], b = nodes[bi];
       const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.15;
@@ -690,7 +733,6 @@ const MindMap = (() => {
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
       circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
-      circle.addEventListener('dblclick', () => _smoothZoomTo(n.x, n.y, 2));
       _attachWordInteractions(circle, n.w, n.x, n.y);
       depthG.appendChild(circle);
 
@@ -939,7 +981,7 @@ const MindMap = (() => {
   }
 
   function _drawTimeline(W, H) {
-    const steps = _data.steps;
+    const steps = _data.steps ? [..._data.steps].sort((a, b) => a.order - b.order) : [];
     if (!steps || !steps.length) {
       _viewport.appendChild(_emptyMsg('Нет последовательности шагов в тексте'));
       return;
