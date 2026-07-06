@@ -47,7 +47,7 @@ return btoa(bin);
 const b64ToBytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 // ═══ Compress ═════════════════════════════════════════════════════════════
 const Compress = (() => {
-const supported = typeof CompressionStream !== 'undefined';
+const supported = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
 async function _readStream(readable) {
   const chunks = [];
   const reader = readable.getReader();
@@ -76,9 +76,6 @@ async function compress(str) {
 
 async function decompress({ data, compressed }) {
   if (!compressed) return data;
-  if (typeof DecompressionStream === 'undefined') {
-    throw new Error('Распаковка недоступна: DecompressionStream не поддерживается');
-  }
   const ds     = new DecompressionStream('deflate-raw');
   const writer = ds.writable.getWriter();
   await writer.write(b64ToBytes(data));
@@ -148,7 +145,9 @@ function getToken() { return localStorage.getItem(K_TOKEN) || ''; }
 function parseBody(text) {
   if (!text) return {};
   try { return JSON.parse(text); } catch { /* not JSON */ }
-  try { return Object.fromEntries(new URLSearchParams(text)); } catch  { /* not form-encoded */ }
+  if (/[=&]/.test(text)) {
+    try { return Object.fromEntries(new URLSearchParams(text)); } catch { /* not form-encoded */ }
+  }
   return {};
 }
 
@@ -753,9 +752,9 @@ async function restoreVersion(sha) {
       if (!gistId) throw new Error('Нет сохранённого Gist ID');
       
       const stateData = await _fetchAndDecodeGist(gistId, sha);
-      
-      State.load(stateData);
+
       Storage.save(stateData);
+      State.load(stateData);
       
       const hash = _quickHash(JSON.stringify(stateData));
       setLastPushedHash(hash);
@@ -903,10 +902,14 @@ let _debounceUntil  = 0;
 let _lastPushAt     = 0;
 let _lastPushedHash = localStorage.getItem(K_LAST_HASH) || '';
 function _quickHash(str) {
-let h = 5381;
-for (let i = 0; i < str.length; i++)
-h = (Math.imul(h, 33) ^ str.charCodeAt(i)) >>> 0;
-return `${str.length}:${h.toString(36)}`;
+let h1 = 5381;
+let h2 = 2166136261;
+for (let i = 0; i < str.length; i++) {
+  const c = str.charCodeAt(i);
+  h1 = (Math.imul(h1, 33) ^ c) >>> 0;
+  h2 = Math.imul(h2 ^ c, 16777619) >>> 0;
+}
+return `${str.length}:${h1.toString(36)}:${h2.toString(36)}`;
 }
 function setLastPushedHash(hash) {
 _lastPushedHash = hash || '';
@@ -941,9 +944,14 @@ if (_hasChanges()) _doPush(label);
 }
 function schedulePush() {
 const settings = loadSettings();
+if (!_hasChanges()) {
+  try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
+  updateBadge();
+  return;
+}
 try { localStorage.setItem(K_DIRTY, 'true'); } catch {}
 updateBadge();
-if (!isConnected() || !settings.autoSave || !_hasChanges()) return;
+if (!isConnected() || !settings.autoSave) return;
 _pendingCount++;
 
 if (_pendingCount >= settings.batchMax) {
@@ -987,6 +995,10 @@ try {
   localStorage.setItem(K_DIRTY, 'true');
   updateBadge();
   const msg = String(e?.message ?? '');
+  if (msg.startsWith('Уже выполняется операция:')) {
+    _scheduleDebounce(MIN_COOLDOWN_MS, label);
+    return;
+  }
   if      (msg === 'token_expired')       Toast.show('☁ Gist: токен истёк, переподключитесь', 'error');
   else if (msg === 'size_limit')          Toast.show('☁ Gist: данные превышают лимит 10 MB', 'error');
   else if (msg === 'not_connected')       { /* silent */ }
@@ -1185,8 +1197,8 @@ async function _loadBackups(body) {
         try {
           const data = await LocalBackup.restore(ts);
           if (!data) throw new Error('Копия не найдена');
-          State.load(data);
           Storage.save(data);
+          State.load(data);
           Toast.show('Локальная копия восстановлена ✓', 'success');
           closeDialog();
         } catch (err) {
@@ -1608,8 +1620,8 @@ body.querySelector('#gs-btn-pull')?.addEventListener('click', async e => {
   try {
     if (_needsOverwriteProtection()) await createEmergencySnapshot('Перед Pull из Gist');
     const data = await pull();
-    State.load(data);
     Storage.save(data);
+    State.load(data);
     markPulledSynced(data);
     Toast.show('☁ Данные загружены из Gist ✓', 'success');
     closeDialog();
@@ -1770,8 +1782,8 @@ body.querySelector('#gs-btn-restore-emergency')?.addEventListener('click', async
     await createEmergencySnapshot('Перед восстановлением аварийного снимка');
     const data = await Storage.loadEmergencySnapshot?.(latest.id);
     if (!data) throw new Error('Снимок не найден или повреждён');
-    State.load(data);
     Storage.save(data);
+    State.load(data);
     localStorage.setItem(K_DIRTY, 'true');
     _historyMenuOpen = false;
     updateBadge();
@@ -1871,8 +1883,8 @@ push:          label => push(label),
 	pull:          async () => {
 		if (_needsOverwriteProtection()) await createEmergencySnapshot('Перед Pull из внешнего вызова');
 		const data = await pull();
-		State.load(data);
 		Storage.save(data);
+		State.load(data);
 		markPulledSynced(data);
 	},
 isConnected,
