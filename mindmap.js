@@ -37,6 +37,7 @@ const MindMap = (() => {
   function _normalizeData(raw) {
     const data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
+    const words = Array.isArray(data.words) ? data.words : [];
     const rawWords = words.slice(0, 120).map(w => ({
       w: String(w?.w ?? '').slice(0, 80),
       weight: _num(w?.weight, 1, 1, 10),
