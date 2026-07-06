@@ -383,8 +383,9 @@ const MindMap = (() => {
     const svgX = (evt.clientX - rect.left - _panX) / _zoom;
     const svgY = (evt.clientY - rect.top - _panY) / _zoom;
     const color = sourceEl?.getAttribute?.('fill') || '#ffffff';
-    const fontSize = Number(sourceEl?.getAttribute?.('font-size')) || 18;
-    const fontWeight = sourceEl?.getAttribute?.('font-weight') || '700';
+    const srcFontSize = Number(sourceEl?.getAttribute?.('font-size')) || 18;
+    const fontSize = srcFontSize * 1.3;
+    const fontWeight = '700';
 
     const g = document.createElementNS(SVG_NS, 'g');
     g.setAttribute('transform', `translate(${svgX}, ${svgY})`);
@@ -394,16 +395,17 @@ const MindMap = (() => {
 
     const halo = document.createElementNS(SVG_NS, 'circle');
     halo.setAttribute('cx', '0'); halo.setAttribute('cy', '0');
-    halo.setAttribute('r', String(Math.max(16, fontSize * 0.9)));
-    halo.setAttribute('fill', color); halo.setAttribute('opacity', '0.12');
+    halo.setAttribute('r', String(Math.max(20, fontSize * 0.9)));
+    halo.setAttribute('fill', color); halo.setAttribute('opacity', '0.2');
     halo.setAttribute('filter', 'url(#glow)');
 
     const t = document.createElementNS(SVG_NS, 'text');
     t.setAttribute('x', '0'); t.setAttribute('y', '0');
     t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
     t.setAttribute('font-family', 'var(--mono)');
-    t.setAttribute('font-size', String(Math.max(14, fontSize * 0.8)));
-    t.setAttribute('font-weight', fontWeight); t.setAttribute('fill', color);
+    t.setAttribute('font-size', String(Math.max(18, fontSize)));
+    t.setAttribute('font-weight', fontWeight); t.setAttribute('fill', '#ffffff');
+    t.setAttribute('stroke', color); t.setAttribute('stroke-width', '2');
     t.setAttribute('filter', 'url(#glow)');
     t.textContent = String(count);
 
