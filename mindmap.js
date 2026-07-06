@@ -620,6 +620,16 @@ const MindMap = (() => {
     const noBlur = _mode === 'hierarchy' || _mode === 'timeline';
     _viewport.querySelectorAll('[data-depth]').forEach(el => {
       if (noBlur) { el.style.filter = ''; return; }
+      if (_mode === 'graph') {
+        if (el.classList.contains('mm-graph-legend') || el.classList.contains('mm-graph-backdrops') || el.querySelector?.('text')) {
+          el.style.filter = '';
+          return;
+        }
+        const depth = parseFloat(el.dataset.depth);
+        const blurAmt = (0.3 - depth) * 0.65;
+        el.style.filter = blurAmt > 0.75 ? `blur(${blurAmt.toFixed(1)}px)` : '';
+        return;
+      }
       const depth = parseFloat(el.dataset.depth);
       const blurAmt = (0.3 - depth) * 3;
       el.style.filter = blurAmt > 0.4 ? `blur(${blurAmt.toFixed(1)}px)` : '';
@@ -1250,6 +1260,7 @@ const MindMap = (() => {
   function _drawGraphComponentBackdrops(comps, nodes) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.depth = '0.06';
+    g.setAttribute('class', 'mm-graph-backdrops');
     comps.forEach((comp, ci) => {
       if (comp.length < 2) return;
       const color = PALETTE[ci % PALETTE.length];
@@ -1258,12 +1269,12 @@ const MindMap = (() => {
       const maxX = Math.max(...items.map(n => n.x + n.r));
       const minY = Math.min(...items.map(n => n.y - n.r));
       const maxY = Math.max(...items.map(n => n.y + n.r));
-      const pad = 34;
+      const pad = 22;
       const rect = document.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('x', String(minX - pad)); rect.setAttribute('y', String(minY - pad));
       rect.setAttribute('width', String(maxX - minX + pad * 2)); rect.setAttribute('height', String(maxY - minY + pad * 2));
-      rect.setAttribute('rx', '24');
-      rect.setAttribute('fill', color + '0E'); rect.setAttribute('stroke', color + '24');
+      rect.setAttribute('rx', '16');
+      rect.setAttribute('fill', color + '09'); rect.setAttribute('stroke', color + '1C');
       rect.setAttribute('stroke-width', '1'); rect.setAttribute('stroke-dasharray', '5 7');
       g.appendChild(rect);
       const label = document.createElementNS(SVG_NS, 'text');
@@ -1271,7 +1282,7 @@ const MindMap = (() => {
       label.setAttribute('fill', color); label.setAttribute('font-size', '10'); label.setAttribute('font-weight', '700');
       label.setAttribute('font-family', 'var(--mono)');
       label.setAttribute('paint-order', 'stroke');
-      label.setAttribute('stroke', 'rgba(0,0,0,0.55)'); label.setAttribute('stroke-width', '3');
+      label.setAttribute('stroke', 'rgba(0,0,0,0.42)'); label.setAttribute('stroke-width', '2');
       label.textContent = _graphComponentLabel(comp, nodes);
       g.appendChild(label);
     });
@@ -1281,25 +1292,58 @@ const MindMap = (() => {
   function _drawGraphLegend(W, H, nodeCount, linkCount) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.depth = '0.04';
-    const x = 18, y = 22;
+    g.setAttribute('class', 'mm-graph-legend');
+    g.style.cursor = 'default';
+    const x = 18, y = 18;
+    const compactW = 86, compactH = 28, fullW = 232, fullH = 70;
     const box = document.createElementNS(SVG_NS, 'rect');
     box.setAttribute('x', String(x)); box.setAttribute('y', String(y));
-    box.setAttribute('width', '310'); box.setAttribute('height', '76'); box.setAttribute('rx', '12');
-    box.setAttribute('fill', 'rgba(0,0,0,0.28)'); box.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    box.setAttribute('width', String(compactW)); box.setAttribute('height', String(compactH));
+    box.setAttribute('rx', '9');
+    box.setAttribute('fill', 'rgba(0,0,0,0.34)'); box.setAttribute('stroke', 'rgba(255,255,255,0.10)');
     box.setAttribute('stroke-width', '1');
     g.appendChild(box);
     const title = document.createElementNS(SVG_NS, 'text');
-    title.setAttribute('x', String(x + 12)); title.setAttribute('y', String(y + 20));
-    title.setAttribute('fill', 'var(--text0)'); title.setAttribute('font-size', '11');
+    title.setAttribute('x', String(x + 11)); title.setAttribute('y', String(y + 18));
+    title.setAttribute('fill', 'var(--text0)'); title.setAttribute('font-size', '10');
     title.setAttribute('font-weight', '700'); title.setAttribute('font-family', 'var(--mono)');
-    title.textContent = 'Карта связей понятий';
+    title.textContent = 'Карта';
     g.appendChild(title);
-    [`шар = термин, размер = важность`, `цвет = тема / остров, линия = связь`, `${nodeCount} терминов · ${linkCount} связей`].forEach((line, i) => {
+    const hint = document.createElementNS(SVG_NS, 'text');
+    hint.setAttribute('x', String(x + 51)); hint.setAttribute('y', String(y + 18));
+    hint.setAttribute('fill', 'var(--text2)'); hint.setAttribute('font-size', '10');
+    hint.setAttribute('font-family', 'var(--mono)');
+    hint.textContent = '?';
+    g.appendChild(hint);
+    const details = document.createElementNS(SVG_NS, 'g');
+    details.setAttribute('opacity', '0'); details.style.pointerEvents = 'none';
+    details.style.transition = 'opacity 0.16s ease';
+    const detailBox = document.createElementNS(SVG_NS, 'rect');
+    detailBox.setAttribute('x', String(x)); detailBox.setAttribute('y', String(y));
+    detailBox.setAttribute('width', String(fullW)); detailBox.setAttribute('height', String(fullH));
+    detailBox.setAttribute('rx', '10');
+    detailBox.setAttribute('fill', 'rgba(0,0,0,0.48)'); detailBox.setAttribute('stroke', 'rgba(255,255,255,0.12)');
+    detailBox.setAttribute('stroke-width', '1');
+    details.appendChild(detailBox);
+    ['шар = термин, размер = важность', 'цвет = тема, линия = связь', `${nodeCount} терминов · ${linkCount} связей`].forEach((line, i) => {
       const t = document.createElementNS(SVG_NS, 'text');
-      t.setAttribute('x', String(x + 12)); t.setAttribute('y', String(y + 39 + i * 14));
-      t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '10'); t.setAttribute('font-family', 'var(--mono)');
+      t.setAttribute('x', String(x + 12)); t.setAttribute('y', String(y + 20 + i * 15));
+      t.setAttribute('fill', i === 0 ? 'var(--text0)' : 'var(--text2)');
+      t.setAttribute('font-size', '10'); t.setAttribute('font-family', 'var(--mono)');
+      if (i === 0) t.setAttribute('font-weight', '700');
       t.textContent = line;
-      g.appendChild(t);
+      details.appendChild(t);
+    });
+    g.appendChild(details);
+    g.addEventListener('mouseenter', () => {
+      box.setAttribute('width', String(fullW)); box.setAttribute('height', String(fullH));
+      title.setAttribute('opacity', '0'); hint.setAttribute('opacity', '0');
+      details.setAttribute('opacity', '1');
+    });
+    g.addEventListener('mouseleave', () => {
+      box.setAttribute('width', String(compactW)); box.setAttribute('height', String(compactH));
+      title.setAttribute('opacity', '1'); hint.setAttribute('opacity', '1');
+      details.setAttribute('opacity', '0');
     });
     _viewport.appendChild(g);
   }
@@ -1538,7 +1582,7 @@ const MindMap = (() => {
       text.setAttribute('font-family', 'var(--mono)');
       text.setAttribute('opacity', isIsolated ? '0.45' : '1');
       text.setAttribute('paint-order', 'stroke');
-      text.setAttribute('stroke', 'rgba(0,0,0,0.55)'); text.setAttribute('stroke-width', '3');
+      text.setAttribute('stroke', 'rgba(0,0,0,0.48)'); text.setAttribute('stroke-width', '2');
       text.setAttribute('stroke-linejoin', 'round');
       text.textContent = n.w;
       depthG.appendChild(text);
