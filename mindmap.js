@@ -383,8 +383,11 @@ const MindMap = (() => {
     const svgX = (evt.clientX - rect.left - _panX) / _zoom;
     const svgY = (evt.clientY - rect.top - _panY) / _zoom;
     const color = sourceEl?.getAttribute?.('fill') || '#ffffff';
-    const srcFontSize = Number(sourceEl?.getAttribute?.('font-size')) || 18;
-    const fontSize = srcFontSize * 1.3;
+    const isCircle = sourceEl?.tagName === 'circle';
+    const srcFontSize = isCircle
+      ? (Number(sourceEl?.getAttribute?.('r')) || 16) * 1.2
+      : (Number(sourceEl?.getAttribute?.('font-size')) || 18);
+    const fontSize = srcFontSize * (isCircle ? 1.6 : 1.3);
     const fontWeight = '700';
 
     const g = document.createElementNS(SVG_NS, 'g');
