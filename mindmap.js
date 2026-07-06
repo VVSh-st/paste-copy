@@ -984,11 +984,11 @@ const MindMap = (() => {
       const strength = Math.max(0, Math.min(1, Number(link?.strength) || 0.3));
       const existing = map.get(pairKey);
       if (!existing || strength + sourceBoost > existing._score) {
-        map.set(pairKey, { from: link.from, to: link.to, strength, _score: strength + sourceBoost, synthetic: link.synthetic });
+        map.set(pairKey, { from: link.from, to: link.to, strength, source: link.source || 'local', _score: strength + sourceBoost, synthetic: link.synthetic });
       }
     }
-    localLinks.forEach(l => add(l, 0));
-    llmLinks.forEach(l => add(l, 0.25));
+    localLinks.forEach(l => add({ ...l, source: 'local' }, 0));
+    llmLinks.forEach(l => add({ ...l, source: 'llm' }, 0.25));
     return [...map.values()].sort((a, b) => b._score - a._score).slice(0, maxLinks).map(({ _score, ...l }) => l);
   }
 
@@ -1241,6 +1241,69 @@ const MindMap = (() => {
     return comps.sort((a, b) => b.length - a.length);
   }
 
+  function _graphComponentLabel(comp, nodes) {
+    return comp.map(i => nodes[i])
+      .sort((a, b) => (Number(b.weight) || 0) - (Number(a.weight) || 0))
+      .slice(0, 2).map(n => String(n.w || '').trim()).filter(Boolean).join(' / ');
+  }
+
+  function _drawGraphComponentBackdrops(comps, nodes) {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.dataset.depth = '0.06';
+    comps.forEach((comp, ci) => {
+      if (comp.length < 2) return;
+      const color = PALETTE[ci % PALETTE.length];
+      const items = comp.map(i => nodes[i]);
+      const minX = Math.min(...items.map(n => n.x - n.r));
+      const maxX = Math.max(...items.map(n => n.x + n.r));
+      const minY = Math.min(...items.map(n => n.y - n.r));
+      const maxY = Math.max(...items.map(n => n.y + n.r));
+      const pad = 34;
+      const rect = document.createElementNS(SVG_NS, 'rect');
+      rect.setAttribute('x', String(minX - pad)); rect.setAttribute('y', String(minY - pad));
+      rect.setAttribute('width', String(maxX - minX + pad * 2)); rect.setAttribute('height', String(maxY - minY + pad * 2));
+      rect.setAttribute('rx', '24');
+      rect.setAttribute('fill', color + '0E'); rect.setAttribute('stroke', color + '24');
+      rect.setAttribute('stroke-width', '1'); rect.setAttribute('stroke-dasharray', '5 7');
+      g.appendChild(rect);
+      const label = document.createElementNS(SVG_NS, 'text');
+      label.setAttribute('x', String(minX - pad + 14)); label.setAttribute('y', String(minY - pad + 20));
+      label.setAttribute('fill', color); label.setAttribute('font-size', '10'); label.setAttribute('font-weight', '700');
+      label.setAttribute('font-family', 'var(--mono)');
+      label.setAttribute('paint-order', 'stroke');
+      label.setAttribute('stroke', 'rgba(0,0,0,0.55)'); label.setAttribute('stroke-width', '3');
+      label.textContent = _graphComponentLabel(comp, nodes);
+      g.appendChild(label);
+    });
+    _viewport.appendChild(g);
+  }
+
+  function _drawGraphLegend(W, H, nodeCount, linkCount) {
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.dataset.depth = '0.04';
+    const x = 18, y = 22;
+    const box = document.createElementNS(SVG_NS, 'rect');
+    box.setAttribute('x', String(x)); box.setAttribute('y', String(y));
+    box.setAttribute('width', '310'); box.setAttribute('height', '76'); box.setAttribute('rx', '12');
+    box.setAttribute('fill', 'rgba(0,0,0,0.28)'); box.setAttribute('stroke', 'rgba(255,255,255,0.08)');
+    box.setAttribute('stroke-width', '1');
+    g.appendChild(box);
+    const title = document.createElementNS(SVG_NS, 'text');
+    title.setAttribute('x', String(x + 12)); title.setAttribute('y', String(y + 20));
+    title.setAttribute('fill', 'var(--text0)'); title.setAttribute('font-size', '11');
+    title.setAttribute('font-weight', '700'); title.setAttribute('font-family', 'var(--mono)');
+    title.textContent = 'Карта связей понятий';
+    g.appendChild(title);
+    [`шар = термин, размер = важность`, `цвет = тема / остров, линия = связь`, `${nodeCount} терминов · ${linkCount} связей`].forEach((line, i) => {
+      const t = document.createElementNS(SVG_NS, 'text');
+      t.setAttribute('x', String(x + 12)); t.setAttribute('y', String(y + 39 + i * 14));
+      t.setAttribute('fill', 'var(--text2)'); t.setAttribute('font-size', '10'); t.setAttribute('font-family', 'var(--mono)');
+      t.textContent = line;
+      g.appendChild(t);
+    });
+    _viewport.appendChild(g);
+  }
+
   function _drawGraph(W, H) {
     const allWords = _data.words || [];
     const allLinks = _data.links || [];
@@ -1293,6 +1356,10 @@ const MindMap = (() => {
     links = _pruneGraphLinks(links, nodes, graphKey, maxGraphLinks, 3);
 
     const comps = _graphComponents(nodes, links, nodeMap, graphKey);
+    comps.forEach((comp, ci) => {
+      const color = PALETTE[ci % PALETTE.length];
+      comp.forEach(nodeIndex => { nodes[nodeIndex].compId = ci; nodes[nodeIndex].compColor = color; });
+    });
     const compCenterByNode = new Map();
 
     if (comps.length > 1) {
@@ -1422,16 +1489,22 @@ const MindMap = (() => {
         path.setAttribute('stroke-linecap', 'round');
         path.setAttribute('vector-effect', 'non-scaling-stroke');
         if (l.synthetic) path.setAttribute('stroke-dasharray', '4 6');
+        else if (l.source === 'local') path.setAttribute('stroke-dasharray', '5 6');
+        const edgeTitle = document.createElementNS(SVG_NS, 'title');
+        const srcLabel = l.source === 'llm' ? 'смысловая связь' : 'часто рядом в тексте';
+        edgeTitle.textContent = `${l.from} ↔ ${l.to} · ${srcLabel} · ${(strength * 100).toFixed(0)}%`;
+        path.appendChild(edgeTitle);
         linksG.appendChild(path);
       });
       _viewport.appendChild(linksG);
     }
 
+    _drawGraphComponentBackdrops(comps, nodes);
+
     nodes.forEach((n, i) => {
-      const r = 6 + (n.weight / maxW) * 16;
-      const color = n.role && n.role !== 'topic'
-        ? (ROLE_COLORS[n.role] || PALETTE[i % PALETTE.length])
-        : PALETTE[(Number.isFinite(n.colorIndex) ? n.colorIndex : i) % PALETTE.length];
+      const isIsolated = !links.some(l => graphKey(l.from) === graphKey(n.w) || graphKey(l.to) === graphKey(n.w));
+      const r = isIsolated ? 5 + (n.weight / maxW) * 9 : 6 + (n.weight / maxW) * 16;
+      const color = n.compColor || PALETTE[i % PALETTE.length];
 
       const enterG = document.createElementNS(SVG_NS, 'g');
       enterG.classList.add('mm-enter');
@@ -1445,13 +1518,16 @@ const MindMap = (() => {
       circle.setAttribute('cx', n.x); circle.setAttribute('cy', n.y);
       circle.setAttribute('r', r);
       circle.setAttribute('fill', `url(#${gradId})`);
-      circle.setAttribute('opacity', '0.85');
-      if (n.weight > 7) circle.setAttribute('filter', 'url(#bloom)');
+      circle.setAttribute('opacity', isIsolated ? '0.35' : '0.85');
+      if (n.weight > 7 && !isIsolated) circle.setAttribute('filter', 'url(#bloom)');
       circle.style.cursor = 'pointer';
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
-      circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
+      circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', isIsolated ? '0.35' : '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
       _attachWordInteractions(circle, n.w, n.x, n.y);
+      const nodeTitle = document.createElementNS(SVG_NS, 'title');
+      nodeTitle.textContent = `${n.w}\nважность: ${(Number(n.weight) || 0).toFixed(1)}\nклик: показать количество`;
+      circle.appendChild(nodeTitle);
       depthG.appendChild(circle);
 
       const text = document.createElementNS(SVG_NS, 'text');
@@ -1460,6 +1536,7 @@ const MindMap = (() => {
       text.setAttribute('font-size', n.weight > 7 ? '11' : '10');
       text.setAttribute('fill', 'var(--text2)');
       text.setAttribute('font-family', 'var(--mono)');
+      text.setAttribute('opacity', isIsolated ? '0.45' : '1');
       text.setAttribute('paint-order', 'stroke');
       text.setAttribute('stroke', 'rgba(0,0,0,0.55)'); text.setAttribute('stroke-width', '3');
       text.setAttribute('stroke-linejoin', 'round');
@@ -1468,6 +1545,7 @@ const MindMap = (() => {
       enterG.appendChild(depthG);
       _viewport.appendChild(enterG);
     });
+    _drawGraphLegend(W, H, nodes.length, links.length);
   }
 
   function _drawTree(W, H) {
