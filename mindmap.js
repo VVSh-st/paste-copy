@@ -24,6 +24,10 @@ const MindMap = (() => {
   let _depthEls = [];
   let _abortController = null;
 
+  function _wordKey(s) {
+    return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
   function _num(value, fallback, min, max) {
     const n = Number(value);
     if (!Number.isFinite(n)) return fallback;
@@ -33,26 +37,38 @@ const MindMap = (() => {
   function _normalizeData(raw) {
     const data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
-    const words = Array.isArray(data.words) ? data.words : [];
+    const rawWords = words.slice(0, 120).map(w => ({
+      w: String(w?.w ?? '').slice(0, 80),
+      weight: _num(w?.weight, 1, 1, 10),
+      role: ['topic', 'action', 'modifier', 'entity'].includes(w?.role) ? w.role : 'topic',
+    })).filter(w => w.w.trim());
+
+    const wordMap = new Map();
+    rawWords.forEach(w => {
+      const key = _wordKey(w.w);
+      const existing = wordMap.get(key);
+      if (!existing || w.weight > existing.weight) wordMap.set(key, w);
+    });
+    const dedupedWords = [...wordMap.values()];
     const links = Array.isArray(data.links) ? data.links : [];
     const clusters = Array.isArray(data.clusters) ? data.clusters : [];
     const evidence = Array.isArray(data.evidence) ? data.evidence : [];
     const steps = Array.isArray(data.steps) ? data.steps : [];
 
     return {
-      words: words.slice(0, 120).map(w => ({
-        w: String(w?.w ?? '').slice(0, 80),
-        weight: _num(w?.weight, 1, 1, 10),
-        role: ['topic', 'action', 'modifier', 'entity'].includes(w?.role) ? w.role : 'topic',
-      })).filter(w => w.w.trim()),
+      words: dedupedWords,
 
-      links: links.slice(0, 200)
-        .map(l => ({
-          from: String(l?.from ?? '').slice(0, 80).trim(),
-          to: String(l?.to ?? '').slice(0, 80).trim(),
-          strength: _num(l?.strength, 0.3, 0, 1),
-        }))
-        .filter(l => l.from && l.to && l.from !== l.to),
+      links: (() => {
+        const wordKeys = new Set(dedupedWords.map(w => _wordKey(w.w)));
+        return links.slice(0, 200)
+          .map(l => ({
+            from: String(l?.from ?? '').slice(0, 80).trim(),
+            to: String(l?.to ?? '').slice(0, 80).trim(),
+            strength: _num(l?.strength, 0.3, 0, 1),
+          }))
+          .filter(l => l.from && l.to && l.from !== l.to
+            && wordKeys.has(_wordKey(l.from)) && wordKeys.has(_wordKey(l.to)));
+      })(),
 
       claim: String(data.claim ?? '').slice(0, 500),
       conclusion: String(data.conclusion ?? '').slice(0, 500),
@@ -122,10 +138,35 @@ const MindMap = (() => {
     return out;
   }
 
+  function _looksLikeMindmap(o) {
+    const p = o?.mindmap && typeof o.mindmap === 'object' ? o.mindmap : o;
+    return !!p && typeof p === 'object' && !Array.isArray(p) && (
+      Array.isArray(p.words) || Array.isArray(p.links) ||
+      Array.isArray(p.clusters) || Array.isArray(p.steps) ||
+      p.hierarchy || p.claim || p.conclusion
+    );
+  }
+
   function _extractJsonObject(raw) {
     const s = String(raw ?? '').trim();
-    try { return JSON.parse(s); } catch {}
+    try {
+      const direct = JSON.parse(s);
+      if (_looksLikeMindmap(direct)) return direct;
+    } catch {}
     const fences = [...s.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
+    for (const m of fences) {
+      try {
+        const obj = JSON.parse(m[1].trim());
+        if (_looksLikeMindmap(obj)) return obj;
+      } catch {}
+    }
+    for (const c of _findBalancedJsonObjects(s)) {
+      try {
+        const obj = JSON.parse(c);
+        if (_looksLikeMindmap(obj)) return obj;
+      } catch {}
+    }
+    try { return JSON.parse(s); } catch {}
     for (const m of fences) {
       try { return JSON.parse(m[1].trim()); } catch {}
     }
@@ -366,7 +407,9 @@ const MindMap = (() => {
     if (!safeWord) return;
 
     const sourceText = window.Preview?.getText?.() ?? '';
-    const exists = sourceText.toLowerCase().includes(safeWord.toLowerCase());
+    const escaped = safeWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu');
+    const exists = re.test(sourceText);
 
     if (!exists) {
       window.Toast?.show(`"${safeWord}" не найдено в тексте`, 'info');
@@ -534,7 +577,7 @@ const MindMap = (() => {
       const result = await window.LLMCore.request({
         messages: [{ role: 'user', content: prompt + '\n\n' + text.slice(0, 4000) }],
         stream: false,
-        maxTokens: 4500,
+        maxTokens: 7500,
         featureTag: 'mindmap',
         signal: _abortController.signal,
       });
@@ -645,6 +688,14 @@ const MindMap = (() => {
     _depthEls = Array.from(_viewport.querySelectorAll('[data-depth]'));
   }
 
+  function _estimateTextWidth(text, fontSize, fontWeight) {
+    const s = String(text ?? '');
+    const wide = [...s].filter(ch => /[А-Яа-яЁёШЩЮЖМЫФ]/u.test(ch)).length;
+    const narrow = s.length - wide;
+    const weightFactor = fontWeight === '700' ? 1.08 : 1;
+    return ((wide * 0.68 + narrow * 0.58) * fontSize) * weightFactor;
+  }
+
   function _drawWords(W, H) {
     const words = _data.words || [];
     if (!words.length) return;
@@ -657,23 +708,25 @@ const MindMap = (() => {
       let fontSize = 10 + (item.weight / maxW) * 28;
       const color = ROLE_COLORS[item.role] || PALETTE[i % PALETTE.length];
       const maxTextW = Math.max(40, W - padding * 2);
-      let tw = item.w.length * fontSize * 0.6;
+      let tw = _estimateTextWidth(item.w, fontSize, item.weight > 6 ? '700' : '400');
       if (tw > maxTextW) {
         fontSize = Math.max(8, (maxTextW / (item.w.length * 0.6)));
-        tw = item.w.length * fontSize * 0.6;
+        tw = _estimateTextWidth(item.w, fontSize, item.weight > 6 ? '700' : '400');
       }
       const th = fontSize * 1.3;
-      let x, y, tries = 0;
+      let x, y, tries = 0, collides = false;
       do {
         const rangeX = Math.max(1, W - tw - padding * 2);
         const rangeY = Math.max(1, H - th - padding * 2);
         x = padding + Math.random() * rangeX;
         y = padding + th + Math.random() * rangeY;
+        collides = placed.some(p =>
+          Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + padding) &&
+          Math.abs(y - th / 2 - p.cy) < (th / 2 + p.hh + padding)
+        );
         tries++;
-      } while (tries < 80 && placed.some(p =>
-        Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + padding) &&
-        Math.abs(y - th / 2 - p.cy) < (th / 2 + p.hh + padding)
-      ));
+      } while (tries < 80 && collides);
+      if (collides) return;
       placed.push({ cx: x + tw / 2, cy: y - th / 2, hw: tw / 2, hh: th / 2 });
 
       const enterG = document.createElementNS(SVG_NS, 'g');
@@ -766,16 +819,26 @@ const MindMap = (() => {
       });
     }
 
+    nodes.forEach(n => { n.r = 6 + (n.weight / maxW) * 16; });
+
+    function edgePoint(from, to, offset) {
+      const dx = to.x - from.x, dy = to.y - from.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      return { x: from.x + (dx / dist) * offset, y: from.y + (dy / dist) * offset };
+    }
+
     const linksG = document.createElementNS(SVG_NS, 'g');
     linksG.dataset.depth = '0.12';
     links.forEach(l => {
       const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
       if (ai == null || bi == null) return;
       const a = nodes[ai], b = nodes[bi];
-      const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.15;
-      const my = (a.y + b.y) / 2 - (b.x - a.x) * 0.15;
+      const start = edgePoint(a, b, a.r + 2);
+      const end = edgePoint(b, a, b.r + 2);
+      const mx = (start.x + end.x) / 2 + (end.y - start.y) * 0.15;
+      const my = (start.y + end.y) / 2 - (end.x - start.x) * 0.15;
       const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`);
+      path.setAttribute('d', `M ${start.x} ${start.y} Q ${mx} ${my} ${end.x} ${end.y}`);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', 'rgba(255,255,255,0.12)');
       path.setAttribute('stroke-width', String(0.5 + l.strength * 2.5));
@@ -842,10 +905,13 @@ const MindMap = (() => {
     evidence.forEach(e => rows.push({ text: e.text, color: e.supports ? '#5cb87a' : '#e05c6a', label: e.supports ? 'ДОКАЗАТЕЛЬСТВО' : 'КОНТР-АРГУМЕНТ' }));
     if (conclusion) rows.push({ text: conclusion, color: '#fbbf24', label: 'ВЫВОД' });
 
-    const rowH = Math.min(80, (H - pad * 2) / rows.length);
+    const maxRows = Math.max(3, Math.floor((H - pad * 2) / 72));
+    const visibleRows = rows.slice(0, maxRows);
+
+    const rowH = Math.min(80, (H - pad * 2) / visibleRows.length);
     const startY = pad + 20;
 
-    rows.forEach((r, i) => {
+    visibleRows.forEach((r, i) => {
       const y = startY + i * (rowH + 16);
 
       const enterG = document.createElementNS(SVG_NS, 'g');
@@ -901,8 +967,12 @@ const MindMap = (() => {
     if (!clusters.length) return;
     const cx = W / 2, cy = H / 2;
     const angleStep = (Math.PI * 2) / clusters.length;
-    const maxR = Math.max(...clusters.map(cl => 50 + cl.words.length * 12));
-    const dist = Math.max(Math.min(W, H) * 0.28, maxR * 1.3);
+    const maxR = Math.max(...clusters.map(cl => 50 + Math.max(1, cl.words.length) * 12));
+    const safeDistX = Math.max(0, W / 2 - maxR - 20);
+    const safeDistY = Math.max(0, H / 2 - maxR * 0.7 - 20);
+    const safeDist = Math.min(safeDistX, safeDistY);
+    const desiredDist = Math.max(Math.min(W, H) * 0.28, maxR * 1.1);
+    const dist = Math.min(desiredDist, safeDist);
 
     clusters.forEach((cl, ci) => {
       const angle = angleStep * ci - Math.PI / 2;
@@ -982,7 +1052,7 @@ const MindMap = (() => {
 
     function layout(node, depth, angleStart, angleEnd, color) {
       const angle = (angleStart + angleEnd) / 2;
-      const radius = depth === 0 ? 0 : depth * Math.min(W, H) * 0.16 + 40;
+      const radius = depth === 0 ? 0 : Math.min(depth * Math.min(W, H) * 0.16 + 40, Math.min(W, H) * 0.42);
       const x = cx + Math.cos(angle) * radius;
       const y = cy + Math.sin(angle) * radius;
       node._pos = { x, y, depth, color };
@@ -1085,6 +1155,7 @@ const MindMap = (() => {
 
     const totalW = count * cardW + (count - 1) * gap;
     const startX = Math.max(sidePad, (W - totalW) / 2);
+    maxCardH = Math.min(maxCardH, H - 80);
     const y = Math.max(40, H / 2 - maxCardH / 2);
 
     steps.forEach((step, i) => {
