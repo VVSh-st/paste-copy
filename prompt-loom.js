@@ -98,7 +98,14 @@
     item.kind = VALID_KINDS.includes(item.kind) ? item.kind : 'text';
     item.hash = String(item.hash || hashText(item.text));
     item.sig = String(item.sig || '');
-    item.variants = Array.isArray(item.variants) ? item.variants.slice(0, 5) : [];
+    item.variants = Array.isArray(item.variants)
+      ? item.variants.slice(0, 5).map(v => ({
+          text: String(v?.text || '').slice(0, 300000),
+          hash: String(v?.hash || hashText(v?.text || '')),
+          source: VALID_SOURCES.includes(v?.source) ? v.source : item.source,
+          createdAt: Number(v?.createdAt) || item.createdAt
+        })).filter(v => v.text)
+      : [];
     item.lastSource = String(item.lastSource || item.source);
     item.createdAt = Number(item.createdAt) || Date.now();
     item.updatedAt = Number(item.updatedAt) || item.createdAt;
@@ -382,7 +389,7 @@
     const targetSig = signature(text);
     const horizon = now - 14 * 86400000;
     const candidates = state.items.filter(item =>
-      item.hash === hash ||
+      (item.hash === hash && (source !== 'snippet' || item.source === 'snippet')) ||
       ((item.updatedAt || item.createdAt) >= horizon &&
        item.kind === kind &&
        item.source === source &&
@@ -543,6 +550,8 @@
       navigator.clipboard.writeText = function patchedWriteText(text) {
         const p = originalWriteText(text);
         try {
+          const active = document.activeElement;
+          if (active?.closest?.('[data-private], [data-no-loom]')) return p;
           if (!isLoomInternalCopy(text)) {
             Promise.resolve(p).then(() => {
               record(text, 'copy', { via: 'clipboard.writeText' });
@@ -1012,8 +1021,10 @@
       btn.querySelector('span').textContent = previewText(variant.text, item.kind, 120);
       btn.addEventListener('click', () => {
         const target = getInsertTarget({ preferExternal: true });
+        if (!target) { toast('Нет поля для вставки', 'error'); return; }
         const snapshot = makeAcceptSnapshot(target, variant.text);
-        insertIntoEditable(target, variant.text, null, null, { smartSpacing: false });
+        const ok = insertIntoEditable(target, variant.text, null, null, { smartSpacing: false });
+        if (!ok) { toast('Не удалось вставить', 'error'); return; }
         markItemUsed(item, 'loom-variant');
         playAcceptEffect(snapshot, variant.text);
       });
@@ -1056,6 +1067,7 @@
   function openPanel(persist = false) {
     createPanel();
     document.body.classList.add('prompt-loom-open');
+    renderPanelList();
     if (persist) {
       settings.panelOpen = true;
       saveSettings();
