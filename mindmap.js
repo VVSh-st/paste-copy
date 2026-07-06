@@ -1799,6 +1799,28 @@ const MindMap = (() => {
     });
   }
 
+  function _shortLabel(s, max = 42) {
+    s = String(s ?? '').trim();
+    return s.length > max ? s.slice(0, max - 3) + '...' : s;
+  }
+
+  function _hierarchyLabelLines(text, depth) {
+    const maxChars = depth === 0 ? 26 : depth === 1 ? 22 : 18;
+    return _clusterTextLines(_shortLabel(text, depth === 0 ? 52 : 42), maxChars, 2);
+  }
+
+  function _hierarchyLabelPos(x, y, cx, cy, r, depth) {
+    if (depth === 0) return { x, y: y + r + 20, anchor: 'middle' };
+    const dx = x - cx, dy = y - cy;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = dx / dist, ny = dy / dist;
+    const gap = depth === 1 ? 18 : 14;
+    return {
+      x: x + nx * (r + gap), y: y + ny * (r + gap),
+      anchor: nx > 0.35 ? 'start' : nx < -0.35 ? 'end' : 'middle',
+    };
+  }
+
   function _drawHierarchy(W, H) {
     if (!_data.hierarchy || !_data.hierarchy.label) {
       _viewport.appendChild(_emptyMsg('Нет иерархии тем в тексте'));
@@ -1809,10 +1831,12 @@ const MindMap = (() => {
 
     function layout(node, depth, angleStart, angleEnd, color) {
       const angle = (angleStart + angleEnd) / 2;
-      const radius = depth === 0 ? 0 : Math.min(depth * Math.min(W, H) * 0.16 + 40, Math.min(W, H) * 0.42);
+      const base = Math.min(W, H);
+      const radius = depth === 0 ? 0 : Math.min(depth * base * 0.18 + 48, base * 0.44);
       const x = cx + Math.cos(angle) * radius;
       const y = cy + Math.sin(angle) * radius;
-      node._pos = { x, y, depth, color };
+      const nodeR = Math.max(8, 22 - depth * 6);
+      node._pos = { x, y, depth, color, r: nodeR };
 
       if (node.children && node.children.length) {
         const span = (angleEnd - angleStart) / node.children.length;
@@ -1824,14 +1848,24 @@ const MindMap = (() => {
     }
     layout(_data.hierarchy, 0, 0, Math.PI * 2, palette[0]);
 
+    function edgePoint(from, to, offset) {
+      const dx = to.x - from.x, dy = to.y - from.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      return { x: from.x + (dx / dist) * offset, y: from.y + (dy / dist) * offset };
+    }
+
     function drawLink(a, b, opacity) {
-      const mx = (a.x + b.x) / 2 + (b.y - a.y) * 0.12;
-      const my = (a.y + b.y) / 2 - (b.x - a.x) * 0.12;
+      const start = edgePoint(a, b, (a.r || 14) + 3);
+      const end = edgePoint(b, a, (b.r || 10) + 3);
+      const mx = (start.x + end.x) / 2 + (end.y - start.y) * 0.10;
+      const my = (start.y + end.y) / 2 - (end.x - start.x) * 0.10;
       const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`);
+      path.setAttribute('d', `M ${start.x} ${start.y} Q ${mx} ${my} ${end.x} ${end.y}`);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', `rgba(255,255,255,${opacity})`);
-      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('stroke-width', '1.2');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('vector-effect', 'non-scaling-stroke');
       _viewport.appendChild(path);
     }
 
@@ -1841,8 +1875,7 @@ const MindMap = (() => {
         drawLink(node._pos, child._pos, 1 - node._pos.depth * 0.15);
         renderNode(child);
       });
-      const { x, y, depth, color } = node._pos;
-      const r = Math.max(8, 22 - depth * 6);
+      const { x, y, depth, color, r } = node._pos;
       const depthVal = (0.32 - depth * 0.08).toFixed(2);
 
       _ensureGradient(color);
@@ -1858,19 +1891,35 @@ const MindMap = (() => {
       circle.setAttribute('cx', x); circle.setAttribute('cy', y); circle.setAttribute('r', r);
       circle.setAttribute('fill', `url(#${_gradIdFor(color)})`);
       circle.setAttribute('opacity', '0.85');
-      if (depth === 0) circle.setAttribute('filter', 'url(#bloom)');
+      if (depth === 0) circle.setAttribute('filter', 'url(#glow)');
       circle.style.cursor = 'pointer';
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
       circle.addEventListener('mouseleave', () => { circle.setAttribute('opacity', '0.8'); circle.setAttribute('r', r); circle.classList.remove('mm-pulse'); });
       depthG.appendChild(circle);
 
+      const lp = _hierarchyLabelPos(x, y, cx, cy, r, depth);
+      const lines = _hierarchyLabelLines(node.label, depth);
+      const fontSize = depth === 0 ? 12 : depth === 1 ? 10.5 : 9.5;
+      const lineH = fontSize * 1.12;
       const label = document.createElementNS(SVG_NS, 'text');
-      label.setAttribute('x', x); label.setAttribute('y', y + r + 14);
-      label.setAttribute('text-anchor', 'middle');
-      label.setAttribute('fill', color); label.setAttribute('font-family', 'var(--mono)');
-      label.setAttribute('font-size', depth === 0 ? '12' : '10');
-      label.textContent = node.label;
+      label.setAttribute('x', lp.x); label.setAttribute('y', lp.y);
+      label.setAttribute('text-anchor', lp.anchor);
+      label.setAttribute('fill', depth === 0 ? '#dbeafe' : color);
+      label.setAttribute('font-family', 'var(--mono)');
+      label.setAttribute('font-size', String(fontSize));
+      label.setAttribute('font-weight', depth <= 1 ? '700' : '500');
+      label.setAttribute('paint-order', 'stroke');
+      label.setAttribute('stroke', 'rgba(0,0,0,0.62)');
+      label.setAttribute('stroke-width', depth === 0 ? '3' : '2.4');
+      label.setAttribute('stroke-linejoin', 'round');
+      lines.forEach((line, li) => {
+        const span = document.createElementNS(SVG_NS, 'tspan');
+        span.setAttribute('x', lp.x);
+        span.setAttribute('dy', li === 0 ? '0' : String(lineH));
+        span.textContent = line;
+        label.appendChild(span);
+      });
       _attachWordInteractions(label, node.label, x, y);
       depthG.appendChild(label);
 
