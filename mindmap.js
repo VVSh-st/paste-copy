@@ -235,8 +235,9 @@ const MindMap = (() => {
       _overlay.querySelector('.mindmap-refresh').classList.add('spinning');
 
       const localWords = _buildLocalWords(text);
+      const localLinks = _buildLocalLinks(text, localWords);
       _data = {
-        words: localWords, links: [], claim: '', conclusion: '',
+        words: localWords, links: localLinks, claim: '', conclusion: '',
         evidence: [], clusters: [], hierarchy: null, steps: [], localOnly: true,
       };
 
@@ -517,10 +518,11 @@ const MindMap = (() => {
     }
 
     const localWords = _buildLocalWords(text);
+    const localLinks = _buildLocalLinks(text, localWords);
 
     _data = {
       words: localWords,
-      links: [],
+      links: localLinks,
       claim: '',
       conclusion: '',
       evidence: [],
@@ -817,6 +819,36 @@ const MindMap = (() => {
     }));
   }
 
+  function _buildLocalLinks(text, words, maxLinks = 80) {
+    if (!words.length || !text) return [];
+    const source = String(text).toLowerCase();
+    const sentences = source.split(/[.!?;:\n]+/).filter(s => s.length > 20);
+    const wordSet = new Map(words.map(w => [_wordKey(w.w), w.w]));
+    const pairCounts = new Map();
+
+    for (const sentence of sentences) {
+      const found = [];
+      for (const [key, w] of wordSet) {
+        if (sentence.includes(key)) found.push(key);
+      }
+      for (let i = 0; i < found.length; i++) {
+        for (let j = i + 1; j < found.length; j++) {
+          const pairKey = found[i] < found[j] ? `${found[i]}|${found[j]}` : `${found[j]}|${found[i]}`;
+          pairCounts.set(pairKey, (pairCounts.get(pairKey) || 0) + 1);
+        }
+      }
+    }
+
+    return [...pairCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, maxLinks)
+      .map(([key, count]) => {
+        const [a, b] = key.split('|');
+        return { from: wordSet.get(a), to: wordSet.get(b), strength: Math.min(1, count / 3) };
+      })
+      .filter(l => l.from && l.to);
+  }
+
   let _jumpCursors = new Map();
 
   function _findWordOccurrences(text, word) {
@@ -849,7 +881,8 @@ const MindMap = (() => {
 
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     sorted.forEach((item, i) => {
-      let fontSize = 10 + (item.visualWeight / maxW) * 28;
+      const t = item.visualWeight / maxW;
+      let fontSize = 10 + Math.pow(t, 1.6) * 34;
       const color = PALETTE[i % PALETTE.length];
       const maxTextW = Math.max(40, W - padding * 2);
       let tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
