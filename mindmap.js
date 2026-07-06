@@ -466,14 +466,15 @@ const MindMap = (() => {
   function _smoothZoomTo(targetX, targetY, targetZoom) {
     if (!_viewport || !_svg) return;
     cancelAnimationFrame(_inertiaRaf);
-    _viewport.style.transition = 'transform 0.4s cubic-bezier(.2,.8,.2,1)';
+    const vp = _viewport;
+    vp.style.transition = 'transform 0.4s cubic-bezier(.2,.8,.2,1)';
     const rect = _svg.getBoundingClientRect();
     _zoom = targetZoom;
     _panX = rect.width / 2 - targetX * targetZoom;
     _panY = rect.height / 2 - targetY * targetZoom;
     _applyTransform();
     _syncZoomSlider();
-    setTimeout(() => { _viewport.style.transition = ''; }, 400);
+    setTimeout(() => { if (vp) vp.style.transition = ''; }, 400);
   }
 
   function _startInertia() {
@@ -821,7 +822,9 @@ const MindMap = (() => {
     'one', 'two', 'out', 'our', 'its', 'his', 'her', 'she', 'him',
   ]);
 
-  function _mergeLinks(localLinks, llmLinks, maxLinks = 100) {
+  function _mergeLinks(localLinks = [], llmLinks = [], maxLinks = 100) {
+    localLinks = Array.isArray(localLinks) ? localLinks : [];
+    llmLinks = Array.isArray(llmLinks) ? llmLinks : [];
     const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     const map = new Map();
     function add(link, sourceBoost = 0) {
@@ -839,7 +842,9 @@ const MindMap = (() => {
     return [...map.values()].sort((a, b) => b._score - a._score).slice(0, maxLinks).map(({ _score, ...l }) => l);
   }
 
-  function _selectGraphWords(words, links, maxNodes = 45) {
+  function _selectGraphWords(words = [], links = [], maxNodes = 45) {
+    words = Array.isArray(words) ? words : [];
+    links = Array.isArray(links) ? links : [];
     const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     const linked = new Set();
     links.forEach(l => {
@@ -989,8 +994,9 @@ const MindMap = (() => {
       do {
         const rangeX = Math.max(1, W - tw - padding * 2);
         const rangeY = Math.max(1, H - th - padding * 2);
-        x = padding + Math.random() * rangeX;
-        y = padding + th + Math.random() * rangeY;
+        const seed = _hashString(item.w + '_' + tries);
+        x = padding + _rand01(seed) * rangeX;
+        y = padding + th + _rand01(seed ^ 0x9e3779b9) * rangeY;
         collides = placed.some(p =>
           Math.abs(x + tw / 2 - p.cx) < (tw / 2 + p.hw + padding) &&
           Math.abs(y - th / 2 - p.cy) < (th / 2 + p.hh + padding)
@@ -1283,7 +1289,7 @@ const MindMap = (() => {
       const depthG = document.createElementNS(SVG_NS, 'g');
       depthG.dataset.depth = '0.3';
 
-      const cgradId = `cgrad-${ci}`;
+      const cgradId = `mindmap-cgrad-${ci}`;
       const cgrad = document.createElementNS(SVG_NS, 'radialGradient');
       cgrad.setAttribute('id', cgradId);
       cgrad.setAttribute('cx', `${20 + Math.random() * 60}%`);
@@ -1425,7 +1431,8 @@ const MindMap = (() => {
       return;
     }
 
-    const count = steps.length;
+    const count = Math.min(steps.length, 8);
+    const visibleSteps = steps.slice(0, count);
     const sidePad = 40;
     const minCardH = 120;
 
@@ -1441,7 +1448,7 @@ const MindMap = (() => {
     }
 
     let maxCardH = minCardH;
-    steps.forEach(step => {
+    visibleSteps.forEach(step => {
       const titleLines = _wrapTextLines(step.title || '', cardW - 28, 2);
       const descLines = _wrapTextLines(step.desc || '', cardW - 28, 4);
       const contentH = 36 + titleLines.length * 15 + 4 + descLines.length * 15 + 14;
@@ -1450,10 +1457,10 @@ const MindMap = (() => {
 
     const totalW = count * cardW + (count - 1) * gap;
     const startX = Math.max(sidePad, (W - totalW) / 2);
-    maxCardH = Math.min(maxCardH, H - 80);
+    maxCardH = Math.max(minCardH, Math.min(maxCardH, H - 80));
     const y = Math.max(40, H / 2 - maxCardH / 2);
 
-    steps.forEach((step, i) => {
+    visibleSteps.forEach((step, i) => {
       const x = startX + i * (cardW + gap);
       if (i > 0) {
         const prevRight = startX + (i - 1) * (cardW + gap) + cardW;
