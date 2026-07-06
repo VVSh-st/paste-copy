@@ -123,7 +123,20 @@
 
   function loadSettings() {
     try {
-      return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}) };
+      const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {};
+      return {
+        enabled: raw.enabled !== false,
+        skipLLM: !!raw.skipLLM,
+        skipCode: !!raw.skipCode,
+        maxChars: Math.max(100, Math.min(300000, parseInt(raw.maxChars, 10) || DEFAULT_SETTINGS.maxChars)),
+        panelOpen: !!raw.panelOpen,
+        panelCompact: !!raw.panelCompact,
+        panelUltraLight: !!raw.panelUltraLight,
+        quickPinned: raw.quickPinned !== false,
+        hoverOpen: raw.hoverOpen !== false,
+        toggleTop: typeof raw.toggleTop === 'number' ? raw.toggleTop : null,
+        ignoreSimilar: Array.isArray(raw.ignoreSimilar) ? raw.ignoreSimilar.slice(-300) : []
+      };
     } catch (_) {
       return { ...DEFAULT_SETTINGS };
     }
@@ -276,6 +289,9 @@
     if (/\bxox[baprs]-[A-Za-z0-9\-]{10,}/.test(t)) return true;
     if (/\b(sk|pk)_(live|test)_[A-Za-z0-9]{16,}/.test(t)) return true;
     if (/\b[A-Za-z][A-Za-z0-9+.\-]*:\/\/[^:\s/]+:[^@\s/]+@/.test(t)) return true;
+    if (/\b(cookie|set-cookie)\s*:/i.test(t)) return true;
+    if (/\b(sessionid|connect\.sid|csrftoken|xsrf-token|refresh_token)\b\s*[:=]/i.test(t)) return true;
+    if (/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/.test(t)) return true;
     if (/^\s*[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*.{8,}/im.test(t)) return true;
     return false;
   }
@@ -784,6 +800,7 @@
 
   function renderPanelList() {
     if (!panel) return;
+    if (!document.body.classList.contains('prompt-loom-open')) return;
     const list = panel.querySelector('.pl-list');
     if (!list) return;
     const items = getItems();
@@ -1445,7 +1462,10 @@
     const prefix = smartSpacing && needsSpacingBefore(value, s) ? (blockSpacing ? '\n\n' : '\n') : '';
     const suffix = smartSpacing && needsSpacingAfter(value, e) ? (blockSpacing ? '\n\n' : '\n') : '';
     const fullText = prefix + text + suffix;
-    if (!document.execCommand('insertText', false, fullText)) {
+    let inserted = false;
+    if (document.execCommand('insertText', false, fullText)) {
+      inserted = true;
+    } else {
       const sel = window.getSelection();
       if (sel?.rangeCount) {
         const range = sel.getRangeAt(0);
@@ -1456,8 +1476,10 @@
         range.setEndAfter(node);
         sel.removeAllRanges();
         sel.addRange(range);
+        inserted = true;
       }
     }
+    if (!inserted) return false;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   }
@@ -1601,7 +1623,7 @@
     if (addSnippet(title, item.text)) {
       record(item.text, 'snippet', { via: 'create-snippet' });
       playSmallAcceptEffect('+' + title);
-      showSnippetCreatedToast(title);
+      showSnippetCreatedToast(title, lastCreatedSnippet);
     } else {
       toast('Не найден блок сниппетов', 'error');
     }
@@ -1710,12 +1732,14 @@
   }
 
   function undoLastSnippet() {
-    const created = lastCreatedSnippet;
+    return undoSnippet(lastCreatedSnippet);
+  }
+
+  function undoSnippet(created) {
     if (!created) return false;
     if (created.global) {
       const removed = window.State?.removeGlobalSnippet?.(created.snippetId);
       if (removed) window.GistSync?.schedulePush?.();
-      lastCreatedSnippet = null;
       return !!removed;
     }
 
@@ -1725,7 +1749,6 @@
       block.items = block.items.filter(item => item.id !== created.snippetId);
     });
     window.GistSync?.schedulePush?.();
-    lastCreatedSnippet = null;
     return true;
   }
 
@@ -1781,6 +1804,7 @@
   }
 
   function showSuggestionToast(item, sig) {
+    document.querySelector('.pl-suggest-toast')?.remove();
     const box = document.createElement('div');
     box.className = 'pl-suggest-toast';
     const title = suggestSnippetTitle(item.text);
@@ -1813,7 +1837,7 @@
       }
       close();
       playSmallAcceptEffect('+' + title);
-      showSnippetCreatedToast(title);
+      showSnippetCreatedToast(title, lastCreatedSnippet);
     });
     box.querySelector('[data-ignore]').addEventListener('click', () => {
       clearTimeout(timer);
@@ -1827,13 +1851,14 @@
     });
   }
 
-  function showSnippetCreatedToast(title) {
+  function showSnippetCreatedToast(title, created) {
+    document.querySelector('.pl-created-toast')?.remove();
     const box = document.createElement('div');
     box.className = 'pl-created-toast';
     box.innerHTML = `
       <div class="pl-created-main">${iconBolt()}<span>Сниппет создан</span></div>
       <strong>${escapeHtml(title)}</strong>
-      <small>${escapeHtml(lastCreatedSnippet?.blockTitle || 'Сниппеты')}</small>
+      <small>${escapeHtml(created?.blockTitle || 'Сниппеты')}</small>
       <div class="pl-created-actions">
         <button type="button" data-open>Открыть</button>
         <button type="button" data-undo>Отменить</button>
@@ -1850,7 +1875,7 @@
     });
     box.querySelector('[data-undo]').addEventListener('click', () => {
       clearTimeout(timer);
-      if (undoLastSnippet()) toast('Сниппет удалён', 'success');
+      if (undoSnippet(created)) toast('Сниппет удалён', 'success');
       else toast('Не удалось отменить создание сниппета', 'error');
       close();
     });
@@ -1923,7 +1948,7 @@
     if (el.tagName === 'TEXTAREA') return !el.disabled && !el.readOnly;
     if (el.tagName === 'INPUT') {
       const type = (el.type || 'text').toLowerCase();
-      return ['text', 'search', 'url', 'tel', 'email', 'number'].includes(type) && !el.disabled && !el.readOnly;
+      return ['text', 'search', 'url', 'tel', 'email'].includes(type) && !el.disabled && !el.readOnly;
     }
     return false;
   }
