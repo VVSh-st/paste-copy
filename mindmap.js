@@ -1189,24 +1189,77 @@ const MindMap = (() => {
     if (animateWords) _wordsAnimatedForHash = _textHash;
   }
 
+  function _scoreGraphLink(l, nodeWeightByKey, gk) {
+    const a = gk(l.from), b = gk(l.to);
+    const strength = Math.max(0, Math.min(1, Number(l.strength) || 0.2));
+    const wa = nodeWeightByKey.get(a) || 1;
+    const wb = nodeWeightByKey.get(b) || 1;
+    const syntheticPenalty = l.synthetic ? 0.35 : 1;
+    return syntheticPenalty * (strength * 1.8 + Math.min(10, wa + wb) * 0.08);
+  }
+
+  function _pruneGraphLinks(links, nodes, gk, maxLinks = 26, maxDegree = 3) {
+    const nodeWeightByKey = new Map(nodes.map(n => [gk(n.w), Number(n.weight) || 1]));
+    const sorted = [...links].map(l => ({ ...l, _score: _scoreGraphLink(l, nodeWeightByKey, gk) }))
+      .sort((a, b) => b._score - a._score);
+    const degree = new Map();
+    const selected = [];
+    const seen = new Set();
+    for (const l of sorted) {
+      const a = gk(l.from), b = gk(l.to);
+      if (!a || !b || a === b) continue;
+      const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (seen.has(k)) continue;
+      if ((degree.get(a) || 0) >= maxDegree || (degree.get(b) || 0) >= maxDegree) continue;
+      selected.push(l);
+      seen.add(k);
+      degree.set(a, (degree.get(a) || 0) + 1);
+      degree.set(b, (degree.get(b) || 0) + 1);
+      if (selected.length >= maxLinks) break;
+    }
+    return selected.map(({ _score, ...l }) => l);
+  }
+
+  function _graphComponents(nodes, links, nodeMap, gk) {
+    const adj = nodes.map(() => []);
+    links.forEach(l => {
+      const ai = nodeMap.get(gk(l.from)), bi = nodeMap.get(gk(l.to));
+      if (ai == null || bi == null) return;
+      adj[ai].push(bi); adj[bi].push(ai);
+    });
+    const seen = new Set();
+    const comps = [];
+    nodes.forEach((_, start) => {
+      if (seen.has(start)) return;
+      const stack = [start]; const comp = []; seen.add(start);
+      while (stack.length) {
+        const i = stack.pop(); comp.push(i);
+        adj[i].forEach(j => { if (!seen.has(j)) { seen.add(j); stack.push(j); } });
+      }
+      comps.push(comp);
+    });
+    return comps.sort((a, b) => b.length - a.length);
+  }
+
   function _drawGraph(W, H) {
     const allWords = _data.words || [];
     const allLinks = _data.links || [];
     if (!allWords.length) return;
 
+    function graphKey(s) {
+      return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
     const filteredLinks = _ensureMinimumGraphLinks(allWords, allLinks);
-    const words = _selectGraphWords(allWords, filteredLinks, 45);
+    const graphMaxNodes = W < 900 ? 28 : 34;
+    const words = _selectGraphWords(allWords, filteredLinks, graphMaxNodes);
     if (!words.length) return;
 
     const weights = words.map(w => Number(w.weight) || 1);
     const maxW = Math.max(1, ...weights);
 
-    function graphKey(s) {
-      return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-    }
-
     const wordKeys = new Set(words.map(w => graphKey(w.w)));
-    const links = filteredLinks.filter(l =>
+    let links = filteredLinks.filter(l =>
       wordKeys.has(graphKey(l.from)) && wordKeys.has(graphKey(l.to))
     );
 
@@ -1236,7 +1289,38 @@ const MindMap = (() => {
 
     nodes.forEach(n => { n.r = 6 + (n.weight / maxW) * 16; });
 
-    const iterCount = nodes.length > 90 ? 35 : 60;
+    const maxGraphLinks = W < 900 ? 22 : 28;
+    links = _pruneGraphLinks(links, nodes, graphKey, maxGraphLinks, 3);
+
+    const comps = _graphComponents(nodes, links, nodeMap, graphKey);
+    const compCenterByNode = new Map();
+
+    if (comps.length > 1) {
+      const ringR = Math.min(W, H) * 0.32;
+      comps.forEach((comp, ci) => {
+        const angle = -Math.PI / 2 + ci * Math.PI * 2 / comps.length;
+        const center = {
+          x: W / 2 + Math.cos(angle) * ringR,
+          y: H / 2 + Math.sin(angle) * ringR * 0.72,
+        };
+        comp.forEach((nodeIndex, localI) => {
+          compCenterByNode.set(nodeIndex, center);
+          const n = nodes[nodeIndex];
+          const seed = _hashString(`${n.w}:component:${ci}:${localI}`);
+          const spread = 44 + Math.sqrt(comp.length) * 18;
+          n.x = center.x + (_rand01(seed) - 0.5) * spread;
+          n.y = center.y + (_rand01(seed ^ 0x9e3779b9) - 0.5) * spread;
+          n.vx = 0; n.vy = 0;
+        });
+      });
+    }
+
+    const LINK_DIST = Math.min(240, Math.max(170, Math.min(W, H) * 0.28));
+    const REPULSE = 2400;
+    const COLLIDE_PAD = 42;
+    const CENTER_PULL = comps.length > 1 ? 0.006 : 0.002;
+    const DAMPING = 0.82;
+    const iterCount = nodes.length > 32 ? 90 : 120;
 
     for (let iter = 0; iter < iterCount; iter++) {
       nodes.forEach(a => {
@@ -1244,16 +1328,16 @@ const MindMap = (() => {
           if (a === b) return;
           let dx = a.x - b.x, dy = a.y - b.y;
           let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          let force = 800 / (dist * dist);
+          let force = REPULSE / (dist * dist);
           a.vx += (dx / dist) * force;
           a.vy += (dy / dist) * force;
-          const minDist = (a.r || 16) + (b.r || 16) + 24;
+          const labelA = Math.min(90, String(a.w || '').length * 5);
+          const labelB = Math.min(90, String(b.w || '').length * 5);
+          const minDist = Math.max((a.r || 16) * 2, labelA) * 0.55 + Math.max((b.r || 16) * 2, labelB) * 0.55 + COLLIDE_PAD;
           if (dist < minDist) {
-            const push = (minDist - dist) * 0.03;
-            a.vx += (dx / dist) * push;
-            a.vy += (dy / dist) * push;
-            b.vx -= (dx / dist) * push;
-            b.vy -= (dy / dist) * push;
+            const push = (minDist - dist) * 0.045;
+            a.vx += (dx / dist) * push; a.vy += (dy / dist) * push;
+            b.vx -= (dx / dist) * push; b.vy -= (dy / dist) * push;
           }
         });
       });
@@ -1263,17 +1347,19 @@ const MindMap = (() => {
         const a = nodes[ai], b = nodes[bi];
         let dx = b.x - a.x, dy = b.y - a.y;
         let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        let force = (dist - 150) * 0.005;
-        a.vx += (dx / dist) * force;
-        a.vy += (dy / dist) * force;
-        b.vx -= (dx / dist) * force;
-        b.vy -= (dy / dist) * force;
+        const strength = Math.max(0.15, Math.min(1, Number(l.strength) || 0.3));
+        let force = (dist - LINK_DIST) * 0.0028 * strength;
+        a.vx += (dx / dist) * force; a.vy += (dy / dist) * force;
+        b.vx -= (dx / dist) * force; b.vy -= (dy / dist) * force;
       });
       nodes.forEach(n => {
-        n.vx *= 0.85; n.vy *= 0.85;
+        const c = compCenterByNode.get(n.idx) || { x: W / 2, y: H / 2 };
+        n.vx += (c.x - n.x) * CENTER_PULL;
+        n.vy += (c.y - n.y) * CENTER_PULL;
+        n.vx *= DAMPING; n.vy *= DAMPING;
         n.x += n.vx; n.y += n.vy;
-        n.x = Math.max(40, Math.min(W - 40, n.x));
-        n.y = Math.max(30, Math.min(H - 30, n.y));
+        n.x = Math.max(70, Math.min(W - 70, n.x));
+        n.y = Math.max(70, Math.min(H - 70, n.y));
       });
     }
 
@@ -1331,8 +1417,8 @@ const MindMap = (() => {
         const path = document.createElementNS(SVG_NS, 'path');
         path.setAttribute('d', `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`);
         path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.045)' : `rgba(255,255,255,${(0.055 + strength * 0.095).toFixed(3)})`);
-        path.setAttribute('stroke-width', String(0.6 + strength * 1.8));
+        path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.035)' : `rgba(255,255,255,${(0.07 + strength * 0.11).toFixed(3)})`);
+        path.setAttribute('stroke-width', String(0.8 + strength * 1.4));
         path.setAttribute('stroke-linecap', 'round');
         path.setAttribute('vector-effect', 'non-scaling-stroke');
         if (l.synthetic) path.setAttribute('stroke-dasharray', '4 6');
@@ -1371,9 +1457,12 @@ const MindMap = (() => {
       const text = document.createElementNS(SVG_NS, 'text');
       text.setAttribute('x', n.x); text.setAttribute('y', n.y + r + 14);
       text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('font-size', '10');
+      text.setAttribute('font-size', n.weight > 7 ? '11' : '10');
       text.setAttribute('fill', 'var(--text2)');
       text.setAttribute('font-family', 'var(--mono)');
+      text.setAttribute('paint-order', 'stroke');
+      text.setAttribute('stroke', 'rgba(0,0,0,0.55)'); text.setAttribute('stroke-width', '3');
+      text.setAttribute('stroke-linejoin', 'round');
       text.textContent = n.w;
       depthG.appendChild(text);
       enterG.appendChild(depthG);
