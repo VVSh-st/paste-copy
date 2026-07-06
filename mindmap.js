@@ -63,6 +63,20 @@ const MindMap = (() => {
     return Math.max(min, Math.min(max, n));
   }
 
+  function _isClusterNoiseWord(w) {
+    const s = String(w ?? '').trim();
+    const key = _wordKey(s);
+    if (!s || s.length < 3) return true;
+    if (STOP_WORDS_CODE.has(key)) return true;
+    if (/^[._$]/.test(s)) return true;
+    if (/[.()[\]{}=;<>]/.test(s)) return true;
+    if (/_/.test(s)) return true;
+    if (/^[a-z]+[A-Z][A-Za-z0-9]*$/.test(s)) return true;
+    if (/^[A-Z]{2,5}$/.test(s)) return true;
+    if (/^(get|set|add|remove|update|render|handle|apply|create|query|focus|blur)[A-Z_-]/.test(s)) return true;
+    return false;
+  }
+
   function _normalizeData(raw, forcedWords) {
     const data = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
@@ -95,12 +109,16 @@ const MindMap = (() => {
         supports: Boolean(e?.supports),
       })),
 
-      clusters: clusters.slice(0, 12).map(cl => ({
-        topic: String(cl?.topic ?? '').slice(0, 100).trim(),
-        words: Array.isArray(cl?.words)
-          ? cl.words.slice(0, 20).map(w => String(w).slice(0, 80).trim()).filter(Boolean)
-          : [],
-      })).filter(cl => cl.topic || cl.words.length),
+      clusters: clusters.slice(0, 10).map(cl => {
+        const words = Array.isArray(cl?.words)
+          ? cl.words.map(w => String(w).slice(0, 80).trim()).filter(Boolean)
+              .filter(w => !_isClusterNoiseWord(w)).slice(0, 8)
+          : [];
+        return {
+          topic: String(cl?.topic ?? '').slice(0, 100).trim(),
+          words,
+        };
+      }).filter(cl => cl.topic && cl.words.length >= 2),
 
       hierarchy: normalizeHierarchy(data.hierarchy),
       steps: steps.slice(0, 20)
@@ -719,6 +737,10 @@ const MindMap = (() => {
             'Не возвращай words. Для links/clusters используй только слова из этого списка. ' +
             'Верни links только между действительно связанными понятиями. ' +
             'Не связывай служебные токены кода без смысловой причины. ' +
+            'Для clusters возвращай не токены кода, а смысловые темы текста. ' +
+            'Не используй имена переменных, DOM/API методы, camelCase identifiers, свойства объектов как words. ' +
+            'Если текст технический, группируй по человеческим понятиям: производительность, состояние, интерфейс, хранение данных, события. ' +
+            'В каждом cluster.words оставляй 4-8 коротких понятных слов, без кода. ' +
             'Если подходящих связей мало, верни меньше links, не заполняй искусственно.\n' +
             JSON.stringify(localWordsForPrompt) +
             '\n\nТекст:\n' + text.slice(0, 4000)
@@ -1385,7 +1407,7 @@ const MindMap = (() => {
   }
 
   function _drawClusters(W, H) {
-    const clusters = _data.clusters || [];
+    const clusters = (_data.clusters || []).slice(0, 6);
     if (!clusters.length) return;
     const cx = W / 2, cy = H / 2;
     const angleStep = (Math.PI * 2) / clusters.length;
@@ -1401,7 +1423,7 @@ const MindMap = (() => {
       const ccx = cx + Math.cos(angle) * dist;
       const ccy = cy + Math.sin(angle) * dist;
       const color = PALETTE[ci % PALETTE.length];
-      const r = 50 + cl.words.length * 12;
+      const r = (58 + cl.words.length * 13) * 1.08;
 
       const enterG = document.createElementNS(SVG_NS, 'g');
       enterG.classList.add('mm-enter');
@@ -1418,9 +1440,9 @@ const MindMap = (() => {
       cgrad.setAttribute('cy', `${20 + _rand01(cgradSeed ^ 0x9e3779b9) * 60}%`);
       cgrad.setAttribute('r', '70%');
       cgrad.innerHTML = `
-        <stop offset="0%" stop-color="#fff" stop-opacity="0.8"/>
-        <stop offset="30%" stop-color="${color}" stop-opacity="0.9"/>
-        <stop offset="100%" stop-color="${color}" stop-opacity="0.1"/>
+        <stop offset="0%" stop-color="${color}" stop-opacity="0.42"/>
+        <stop offset="48%" stop-color="${color}" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0.06"/>
       `;
       _svg.querySelector('defs').appendChild(cgrad);
 
@@ -1428,35 +1450,46 @@ const MindMap = (() => {
       ellipse.setAttribute('cx', ccx); ellipse.setAttribute('cy', ccy);
       ellipse.setAttribute('rx', r); ellipse.setAttribute('ry', r * 0.7);
       ellipse.setAttribute('fill', `url(#${cgradId})`);
-      ellipse.setAttribute('fill-opacity', '0.35');
-      ellipse.setAttribute('stroke', color + '40');
-      ellipse.setAttribute('stroke-width', '1');
-      ellipse.style.transition = 'fill-opacity 0.3s, stroke 0.3s';
-      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('fill-opacity', '0.55'); ellipse.setAttribute('stroke', color + '60'); ellipse.classList.add('mm-pulse'); });
-      ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('fill-opacity', '0.35'); ellipse.setAttribute('stroke', color + '40'); ellipse.classList.remove('mm-pulse'); });
+      ellipse.setAttribute('fill-opacity', '0.9');
+      ellipse.setAttribute('stroke', color + '55');
+      ellipse.setAttribute('stroke-width', '1.2');
+      ellipse.setAttribute('filter', 'url(#shadow)');
+      ellipse.style.transition = 'stroke 0.3s, stroke-width 0.3s';
+      ellipse.addEventListener('mouseenter', () => { ellipse.setAttribute('stroke', color + '90'); ellipse.setAttribute('stroke-width', '1.6'); ellipse.classList.add('mm-pulse'); });
+      ellipse.addEventListener('mouseleave', () => { ellipse.setAttribute('stroke', color + '55'); ellipse.setAttribute('stroke-width', '1.2'); ellipse.classList.remove('mm-pulse'); });
       depthG.appendChild(ellipse);
 
       const title = document.createElementNS(SVG_NS, 'text');
-      title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.35);
+      title.setAttribute('x', ccx); title.setAttribute('y', ccy - r * 0.42);
       title.setAttribute('text-anchor', 'middle');
-      title.setAttribute('font-size', '11'); title.setAttribute('font-weight', '700');
+      title.setAttribute('font-size', '13'); title.setAttribute('font-weight', '700');
       title.setAttribute('fill', color); title.setAttribute('font-family', 'var(--mono)');
+      title.setAttribute('paint-order', 'stroke');
+      title.setAttribute('stroke', 'rgba(0,0,0,0.45)'); title.setAttribute('stroke-width', '3');
+      title.setAttribute('stroke-linejoin', 'round');
       title.textContent = cl.topic;
       depthG.appendChild(title);
 
       const wordsG = document.createElementNS(SVG_NS, 'g');
       wordsG.dataset.depth = '0.18';
-      cl.words.forEach((w, wi) => {
-        const a = (wi / cl.words.length) * Math.PI * 2;
-        const wr = r * 0.45;
+      const visibleWords = cl.words.slice(0, 8);
+      visibleWords.forEach((w, wi) => {
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        const a = wi * golden + ci * 0.7;
+        const spread = wi === 0 ? 0 : Math.sqrt(wi / visibleWords.length);
+        const wr = r * 0.48 * spread;
         const wx = ccx + Math.cos(a) * wr;
-        const wy = ccy + Math.sin(a) * wr * 0.7 + 8;
+        const wy = ccy + Math.sin(a) * wr * 0.58 + 12;
         const t = document.createElementNS(SVG_NS, 'text');
         t.setAttribute('x', wx); t.setAttribute('y', wy);
         t.setAttribute('text-anchor', 'middle');
-        t.setAttribute('font-size', '10'); t.setAttribute('fill', 'var(--text1)');
+        t.setAttribute('font-size', wi < 3 ? '12' : '11');
+        t.setAttribute('font-weight', wi < 2 ? '600' : '400');
+        t.setAttribute('fill', wi < 3 ? 'var(--text0)' : 'var(--text1)');
         t.setAttribute('font-family', 'var(--mono)');
+        t.setAttribute('opacity', wi < 3 ? '0.95' : '0.78');
         t.textContent = w;
+        _attachWordInteractions(t, w, wx, wy);
         wordsG.appendChild(t);
       });
       depthG.appendChild(wordsG);
