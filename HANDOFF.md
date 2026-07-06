@@ -33,34 +33,35 @@
 - Статус: модуль значительно укреплён. Приватностьclipboard/history, lifecycle guardы, data-private/data-no-loom boundary, localStorage resilience, State API robustness — все закрыты.
 
 ### gist-sync.js
-- **~1895 строк**, 2 раунда аудита, **18 фиксов**. Коммиты `3de0814`, `6189feb`.
+- **~1900 строк**, 3 раунда аудита, **21 фикс**. Коммиты `3de0814`, `6189feb`, `0c76597`.
 - Аудит #1 (14): push() race condition fix (null return check), hash from snapshot (not current state), sync lock for push/pull/restore, saveCloudHistory quota try/catch, backup metadata normalization (safeNum), cloud history data attribute normalization, duplicate id -> class for backup buttons, loadSettings explicit type normalization with clampNum, CompressionStream await write/close, Cipher.decrypt buffer validation, _quickHash with string length, withRetry for 502/503/504, raw_url removed from console.log, revokeObjectURL delayed.
 - Аудит #2 (4): AES-GCM block push when password empty, _lastPushedHash persisted across reload (K_LAST_HASH), K_DIRTY cleared only if hash matches pushed, PAT input autocomplete='off'.
-- Статус: второй раунд завершён. Ожидает повторного аудита.
+- Аудит #3 (3): pull() split into fetch + markPulledSynced (no premature sync marking), decompress() DecompressionStream check, schedulePush() K_DIRTY try/catch.
+- Статус: третий раунд завершён. Модуль укреплён. Готов к браузерному тестированию.
 
 ## Следующий шаг
-1. Провести повторный аудит `gist-sync.js` (проверка оставшихся 18 пунктов из #11-#32)
+1. Браузерное тестирование `gist-sync.js`:
+   - Push/Pull/Restore параллельно → sync lock блокирует вторую операцию
+   - Push во время активного push → dirty остаётся true
+   - Pull → State.load() упадёт → dirty НЕ очищается (markPulledSynced не вызван)
+   - AES-GCM без пароля → push блокируется с ошибкой
+   - Quota ошибка localStorage → push не падает
 2. Браузерное тестирование `text-expander.js`:
    - `Ёabc` + пробел → expansion БЕЗ открытого dropdown
    - Ё + query + Enter → вставка через dropdown
    - Long press → панель, Escape → закрыта
    - Clipboard expansion → pending state, однократная вставка
-3. Браузерное тестирование `user-memory.js`:
+3. Браузерское тестирование `user-memory.js`:
    - Импорт повреждённого профиля → нормализация
    - `importData()` с некорректным объектом → try/catch
    - `getProfile()` → deepClone, не mutable reference
-4. Браузерное тестирование `smart-suggestions.js`:
+4. Браузерское тестирование `smart-suggestions.js`:
    - Escape → закрывает только верхний modal
    - Retention inputs → валидация границ
    - Strip при отсутствии `#preview-bar` → fallback в body
-5. Браузерное тестирование `prompt-loom.js`:
+5. Браузерское тестирование `prompt-loom.js`:
    - Copy/paste в [data-private] поле → НЕ записывается в историю
    - Вставка из палитры в [data-no-loom] → fallback в clipboard
    - При закрытой панели record() → НЕ перерисовывает 500 карточек
    - OAuth Device Flow → clipboard с user_code
    - Ctrl+S → immediate push в Gist
-6. Браузерное тестирование `gist-sync.js`:
-   - Push/Pull/Restore параллельно → sync lock блокирует вторую операцию
-   - Push во время активного push → dirty остаётся true
-   - Пароль шифрования → session-only по умолчанию
-   - Quota ошибка localStorage → push не падает
