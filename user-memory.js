@@ -75,14 +75,15 @@
     }
   }
 
-  function safePlainObject(obj, maxKeys) {
+  function safePlainObject(obj, maxKeys, maxKeyLength) {
     const out = Object.create(null);
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
     let count = 0;
-    for (const key of Object.keys(obj)) {
-      if (FORBIDDEN_KEYS.has(key)) continue;
+    for (const rawKey of Object.keys(obj)) {
+      const key = maxKeyLength ? sanitizeKey(rawKey, maxKeyLength) : (FORBIDDEN_KEYS.has(rawKey) ? '' : rawKey);
+      if (!key) continue;
       if (maxKeys && ++count > maxKeys) break;
-      out[key] = obj[key];
+      out[key] = obj[rawKey];
     }
     return out;
   }
@@ -100,6 +101,58 @@
     const key = String(value || '').trim().slice(0, max || 80);
     if (!key || FORBIDDEN_KEYS.has(key)) return '';
     return key;
+  }
+
+  function normalizeSuggestionStats(s) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    return {
+      shown: safeCounter(s.shown),
+      accepted: safeCounter(s.accepted),
+      dismissed: safeCounter(s.dismissed),
+      ignored: safeCounter(s.ignored),
+      score: clamp01(s.score ?? 0.5),
+      lastShownAt: safeNumber(s.lastShownAt, 0, 0, now() + 365 * 24 * 60 * 60 * 1000)
+    };
+  }
+
+  function normalizeContextScoreMap(map) {
+    const src = safePlainObject(map, MAX_MAP_KEYS, 80);
+    const out = Object.create(null);
+    for (const key of Object.keys(src)) {
+      const ns = normalizeSuggestionStats(src[key]);
+      if (ns) out[key] = ns;
+    }
+    return out;
+  }
+
+  function normalizeSuggestionStatsMap(map) {
+    const src = safePlainObject(map, MAX_MAP_KEYS, 64);
+    const out = Object.create(null);
+    for (const key of Object.keys(src)) {
+      const ns = normalizeSuggestionStats(src[key]);
+      if (ns) out[key] = ns;
+    }
+    return out;
+  }
+
+  function normalizeDismissedUntilMap(map) {
+    const src = safePlainObject(map, MAX_MAP_KEYS, 64);
+    const out = Object.create(null);
+    const maxUntil = now() + 30 * 24 * 60 * 60 * 1000;
+    for (const key of Object.keys(src)) {
+      const until = safeNumber(src[key], 0, 0, maxUntil);
+      if (until > now()) out[key] = until;
+    }
+    return out;
+  }
+
+  function normalizeDisabledTypesMap(map) {
+    const src = safePlainObject(map, MAX_MAP_KEYS, 64);
+    const out = Object.create(null);
+    for (const key of Object.keys(src)) {
+      if (src[key]) out[key] = true;
+    }
+    return out;
   }
 
   function createDefaultProfile() {
@@ -171,30 +224,36 @@
       behavior: {
         ...base.behavior,
         ...(p.behavior || {}),
-        actionTransitions: safePlainObject(p.behavior?.actionTransitions, MAX_MAP_KEYS),
-        contextScores: safePlainObject(p.behavior?.contextScores, MAX_MAP_KEYS),
-        featureScores: safePlainObject(p.behavior?.featureScores, MAX_MAP_KEYS),
+        actionTransitions: safePlainObject(p.behavior?.actionTransitions, MAX_MAP_KEYS, 120),
+        contextScores: normalizeContextScoreMap(p.behavior?.contextScores),
+        featureScores: safePlainObject(p.behavior?.featureScores, MAX_MAP_KEYS, 80),
         recentEvents: Array.isArray(p.behavior?.recentEvents)
-          ? p.behavior.recentEvents.slice(-MAX_RECENT_EVENTS)
+          ? p.behavior.recentEvents.slice(-MAX_RECENT_EVENTS).map(sanitizeStoredEvent).filter(Boolean)
           : []
       },
       style: {
-        language: { ...base.style.language, ...(p.style?.language || {}) },
-        format: { ...base.style.format, ...(p.style?.format || {}) },
-        verbosity: { ...base.style.verbosity, ...(p.style?.verbosity || {}) }
+        language: { ru: safeCounter(p.style?.language?.ru), en: safeCounter(p.style?.language?.en) },
+        format: { markdown: safeCounter(p.style?.format?.markdown), json: safeCounter(p.style?.format?.json), plain: safeCounter(p.style?.format?.plain) },
+        verbosity: { short: safeCounter(p.style?.verbosity?.short), balanced: safeCounter(p.style?.verbosity?.balanced), detailed: safeCounter(p.style?.verbosity?.detailed) }
       },
       promptPatterns: {
         successfulStructures: Array.isArray(p.promptPatterns?.successfulStructures)
           ? p.promptPatterns.successfulStructures.slice(-MAX_STRUCTURES)
           : [],
-        frequentBlockTitles: safePlainObject(p.promptPatterns?.frequentBlockTitles, MAX_MAP_KEYS),
-        frequentSnippetHashes: safePlainObject(p.promptPatterns?.frequentSnippetHashes, MAX_MAP_KEYS)
+        frequentBlockTitles: safePlainObject(p.promptPatterns?.frequentBlockTitles, MAX_MAP_KEYS, 80),
+        frequentSnippetHashes: safePlainObject(p.promptPatterns?.frequentSnippetHashes, MAX_MAP_KEYS, 80)
       },
-      personalScores: { ...base.personalScores, ...(p.personalScores || {}) },
+      personalScores: {
+        decisiveness: clamp01(p.personalScores?.decisiveness ?? 0.5),
+        chaos: clamp01(p.personalScores?.chaos ?? 0.5),
+        reuse: clamp01(p.personalScores?.reuse ?? 0.5),
+        promptDiscipline: clamp01(p.personalScores?.promptDiscipline ?? 0.5),
+        finishing: clamp01(p.personalScores?.finishing ?? 0.5)
+      },
       suggestions: {
-        byType: safePlainObject(p.suggestions?.byType, MAX_MAP_KEYS),
-        dismissedUntil: safePlainObject(p.suggestions?.dismissedUntil, MAX_MAP_KEYS),
-        disabledTypes: safePlainObject(p.suggestions?.disabledTypes, MAX_MAP_KEYS)
+        byType: normalizeSuggestionStatsMap(p.suggestions?.byType),
+        dismissedUntil: normalizeDismissedUntilMap(p.suggestions?.dismissedUntil),
+        disabledTypes: normalizeDisabledTypesMap(p.suggestions?.disabledTypes)
       }
     };
   }
@@ -265,6 +324,23 @@
     return event;
   }
 
+  function sanitizeStoredEvent(e) {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
+    const type = String(e.type || '').slice(0, 64);
+    if (!type) return null;
+    return {
+      type,
+      ts: safeNumber(e.ts, 0, 0, now() + 365 * 24 * 60 * 60 * 1000),
+      tabId: e.tabId == null ? null : String(e.tabId).slice(0, 80),
+      blockId: e.blockId == null ? null : String(e.blockId).slice(0, 80),
+      title: String(e.title || '').slice(0, 80),
+      kind: String(e.kind || '').slice(0, 32),
+      chars: safeNumber(e.chars, 0, 0, 10_000_000),
+      tokens: safeNumber(e.tokens, 0, 0, 10_000_000),
+      textHash: e.textHash ? String(e.textHash).slice(0, 80) : ''
+    };
+  }
+
   function updateStyleHints(event) {
     if (event.kind === 'markdown') profile.style.format.markdown += 1;
     else if (event.kind === 'json') profile.style.format.json += 1;
@@ -286,6 +362,15 @@
         profile.promptPatterns.frequentBlockTitles[key] =
           (Number(profile.promptPatterns.frequentBlockTitles[key]) || 0) + 1;
         pruneObjectKeys(profile.promptPatterns.frequentBlockTitles, MAX_MAP_KEYS);
+      }
+    }
+
+    if (event.textHash) {
+      const key = sanitizeKey(event.textHash, 80);
+      if (key) {
+        profile.promptPatterns.frequentSnippetHashes[key] =
+          (Number(profile.promptPatterns.frequentSnippetHashes[key]) || 0) + 1;
+        pruneObjectKeys(profile.promptPatterns.frequentSnippetHashes, MAX_MAP_KEYS);
       }
     }
   }
@@ -514,12 +599,17 @@
     getProfile,
     exportData: () => deepClone(profile),
     importData(raw) {
-      // Поддерживаем как объект, так и JSON-строку
-      const parsed = typeof raw === 'string' ? safeParse(raw) : raw;
-      profile = normalizeProfile(parsed);
-      profile.updatedAt = now();
-      saveNow();
-      return profile;
+      try {
+        const parsed = typeof raw === 'string' ? safeParse(raw) : raw;
+        const next = normalizeProfile(parsed);
+        next.updatedAt = now();
+        profile = next;
+        saveNow();
+        return getProfile();
+      } catch (err) {
+        console.warn('[UserMemory] import failed:', err);
+        return getProfile();
+      }
     },
     recordEvent,
     updateFeatureScore,
