@@ -14,6 +14,7 @@ const MindMap = (() => {
 
   let _rafPending = false;
   let _parallaxNX = 0, _parallaxNY = 0;
+  let _wordsAnimatedForHash = null;
 
   const PALETTE = ['#4f8ef7', '#5cb87a', '#f0a050', '#e05c6a', '#a78bfa', '#f472b6', '#22d3ee', '#fbbf24'];
   const ROLE_COLORS = { topic: '#4f8ef7', action: '#5cb87a', modifier: '#a78bfa', entity: '#f0a050' };
@@ -323,15 +324,18 @@ const MindMap = (() => {
       if (_movedEnough && (Math.abs(_velX) + Math.abs(_velY) > 0.5)) _startInertia();
     });
 
-    let _lastCanvasW = 0, _lastCanvasH = 0;
+    let _lastCanvasW = 0, _lastCanvasH = 0, _resizeRaf = null;
     _resizeObs = new ResizeObserver(() => {
       if (!_data || !_overlay?.classList.contains('visible')) return;
-      const rect = _svg.getBoundingClientRect();
-      const w = Math.round(rect.width), h = Math.round(rect.height);
-      if (w === _lastCanvasW && h === _lastCanvasH) return;
-      _lastCanvasW = w; _lastCanvasH = h;
-      _resetTransform();
-      _render();
+      cancelAnimationFrame(_resizeRaf);
+      _resizeRaf = requestAnimationFrame(() => {
+        const rect = _svg.getBoundingClientRect();
+        const w = Math.round(rect.width), h = Math.round(rect.height);
+        if (w === _lastCanvasW && h === _lastCanvasH) return;
+        _lastCanvasW = w; _lastCanvasH = h;
+        _resetTransform();
+        _render();
+      });
     });
     _resizeObs.observe(canvas);
 
@@ -369,18 +373,59 @@ const MindMap = (() => {
     defs.appendChild(grad);
   }
 
+  function _showWordCountAtClick(word, evt, sourceEl) {
+    if (!_viewport || !_svg) return;
+    const safeWord = String(word ?? '').slice(0, 100).trim();
+    if (!safeWord) return;
+    const sourceText = window.Preview?.getText?.() ?? '';
+    const count = _findWordOccurrences(sourceText, safeWord).length;
+    const rect = _svg.getBoundingClientRect();
+    const svgX = (evt.clientX - rect.left - _panX) / _zoom;
+    const svgY = (evt.clientY - rect.top - _panY) / _zoom;
+    const color = sourceEl?.getAttribute?.('fill') || '#ffffff';
+    const fontSize = Number(sourceEl?.getAttribute?.('font-size')) || 18;
+    const fontWeight = sourceEl?.getAttribute?.('font-weight') || '700';
+
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('class', 'mm-count-pop');
+    g.setAttribute('transform', `translate(${svgX}, ${svgY})`);
+
+    const halo = document.createElementNS(SVG_NS, 'circle');
+    halo.setAttribute('cx', '0'); halo.setAttribute('cy', '0');
+    halo.setAttribute('r', String(Math.max(16, fontSize * 0.9)));
+    halo.setAttribute('fill', color); halo.setAttribute('opacity', '0.12');
+    halo.setAttribute('filter', 'url(#glow)');
+
+    const t = document.createElementNS(SVG_NS, 'text');
+    t.setAttribute('x', '0'); t.setAttribute('y', '0');
+    t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
+    t.setAttribute('font-family', 'var(--mono)');
+    t.setAttribute('font-size', String(Math.max(14, fontSize * 0.8)));
+    t.setAttribute('font-weight', fontWeight); t.setAttribute('fill', color);
+    t.setAttribute('filter', 'url(#glow)');
+    t.textContent = String(count);
+
+    g.appendChild(halo); g.appendChild(t);
+    _viewport.appendChild(g);
+    setTimeout(() => { if (g.isConnected) g.classList.add('vanish'); }, 3000);
+    setTimeout(() => { g.remove(); }, 3700);
+  }
+
   function _attachWordInteractions(el, word, cx, cy) {
     el.style.cursor = 'pointer';
     let clickTimer = null;
-    el.addEventListener('click', () => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
       clearTimeout(clickTimer);
+      const evt = { clientX: e.clientX, clientY: e.clientY };
       clickTimer = setTimeout(() => {
         clickTimer = null;
         if (!_overlay?.classList.contains('visible')) return;
-        _jumpToWord(word);
-      }, 220);
+        _showWordCountAtClick(word, evt, el);
+      }, 180);
     });
-    el.addEventListener('dblclick', () => {
+    el.addEventListener('dblclick', e => {
+      e.stopPropagation();
       clearTimeout(clickTimer);
       clickTimer = null;
       _smoothZoomTo(cx, cy, 2);
@@ -547,6 +592,7 @@ const MindMap = (() => {
     if (_data && _textHash !== currentHash) {
       _data = null;
       _jumpCursors.clear();
+      _wordsAnimatedForHash = null;
     }
 
     _overlay.classList.add('visible');
@@ -631,7 +677,11 @@ const MindMap = (() => {
     _inertiaRaf = null;
     _rafPending = false;
     if (_panel) _panel.style.transform = '';
-    if (_loading) _abortController?.abort();
+    if (_loading) {
+      _abortController?.abort();
+      _loading = false;
+    }
+    _overlay.querySelector('.mindmap-refresh')?.classList.remove('spinning');
   }
 
   async function _fetch(text) {
@@ -992,6 +1042,7 @@ const MindMap = (() => {
     const padding = 8;
 
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
+    const animateWords = _wordsAnimatedForHash !== _textHash;
     sorted.forEach((item, i) => {
       const t = item.visualWeight / maxW;
       let fontSize = 10 + Math.pow(t, 3.9) * 48;
@@ -1020,8 +1071,10 @@ const MindMap = (() => {
       placed.push({ cx: x + tw / 2, cy: y - th / 2, hw: tw / 2, hh: th / 2 });
 
       const enterG = document.createElementNS(SVG_NS, 'g');
-      enterG.classList.add('mm-enter');
-      enterG.style.animationDelay = `${i * 25}ms`;
+      if (animateWords && i < 40 && item.visualWeight >= 2) {
+        enterG.classList.add('mm-enter');
+        enterG.style.animationDelay = `${Math.min(i * 18, 450)}ms`;
+      }
 
       const depthG = document.createElementNS(SVG_NS, 'g');
       depthG.dataset.depth = item.visualWeight > 7 ? '0.3' : '0.12';
@@ -1051,6 +1104,7 @@ const MindMap = (() => {
       enterG.appendChild(depthG);
       _viewport.appendChild(enterG);
     });
+    if (animateWords) _wordsAnimatedForHash = _textHash;
   }
 
   function _drawGraph(W, H) {
@@ -1098,6 +1152,8 @@ const MindMap = (() => {
     const nodeMap = new Map();
     dedup.forEach((w, i) => { nodeMap.set(graphKey(w.w), i); });
 
+    nodes.forEach(n => { n.r = 6 + (n.weight / maxW) * 16; });
+
     const iterCount = nodes.length > 90 ? 35 : 60;
 
     for (let iter = 0; iter < iterCount; iter++) {
@@ -1138,8 +1194,6 @@ const MindMap = (() => {
         n.y = Math.max(30, Math.min(H - 30, n.y));
       });
     }
-
-    nodes.forEach(n => { n.r = 6 + (n.weight / maxW) * 16; });
 
     function edgePoint(from, to, offset) {
       const dx = to.x - from.x, dy = to.y - from.y;
@@ -1311,10 +1365,11 @@ const MindMap = (() => {
       depthG.dataset.depth = '0.3';
 
       const cgradId = `mindmap-cgrad-${ci}`;
+      const cgradSeed = _hashString(`${cl.topic}:${ci}`);
       const cgrad = document.createElementNS(SVG_NS, 'radialGradient');
       cgrad.setAttribute('id', cgradId);
-      cgrad.setAttribute('cx', `${20 + Math.random() * 60}%`);
-      cgrad.setAttribute('cy', `${20 + Math.random() * 60}%`);
+      cgrad.setAttribute('cx', `${20 + _rand01(cgradSeed) * 60}%`);
+      cgrad.setAttribute('cy', `${20 + _rand01(cgradSeed ^ 0x9e3779b9) * 60}%`);
       cgrad.setAttribute('r', '70%');
       cgrad.innerHTML = `
         <stop offset="0%" stop-color="#fff" stop-opacity="0.8"/>
@@ -1569,10 +1624,11 @@ const MindMap = (() => {
     const totalH = H + marginY * 2;
     const count = Math.floor((totalW * totalH) / 9000);
     for (let i = 0; i < count; i++) {
+      const seed = _hashString(`${_textHash}:${W}:${H}:star:${i}`);
       const dot = document.createElementNS(SVG_NS, 'circle');
-      dot.setAttribute('cx', -marginX + Math.random() * totalW);
-      dot.setAttribute('cy', -marginY + Math.random() * totalH);
-      dot.setAttribute('r', (Math.random() * 1.2 + 0.3).toFixed(1));
+      dot.setAttribute('cx', String(-marginX + _rand01(seed) * totalW));
+      dot.setAttribute('cy', String(-marginY + _rand01(seed ^ 0x9e3779b9) * totalH));
+      dot.setAttribute('r', (_rand01(seed ^ 0xdeadbeef) * 1.2 + 0.3).toFixed(1));
       dot.setAttribute('fill', 'rgba(255,255,255,0.25)');
       g.appendChild(dot);
     }
