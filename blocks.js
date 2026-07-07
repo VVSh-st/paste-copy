@@ -3021,7 +3021,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         toggleBtn.className = 'btn-icon' + (item.enabled ? ' btn-icon-active' : '');
         toggleBtn.innerHTML = item.enabled ? svgIcon('eye') : svgIcon('eyeOff');
         toggleBtn.title     = item.enabled ? 'Выключить' : 'Включить';
-        toggleBtn.onclick   = () => State.update(() => { item.enabled = !item.enabled; });
+        toggleBtn.onclick   = () => { State.toggleGlobalSnippet(item.id); };
 
         const delBtn = document.createElement('button');
         delBtn.type      = 'button';

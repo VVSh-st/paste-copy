@@ -188,6 +188,14 @@ const State = (() => {
     return globalSnippets.map(item => ({ ...item }));
   }
 
+  function toggleGlobalSnippet(id) {
+    const item = globalSnippets.find(i => i.id === id);
+    if (!item) return false;
+    item.enabled = !item.enabled;
+    emit();
+    return item.enabled;
+  }
+
   function clearGlobalSnippets() {
     if (!globalSnippets.length) return false;
     globalSnippets = [];
@@ -1004,7 +1012,7 @@ const State = (() => {
                 id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : uid(),
                 title: String(item.title || '').trim() || value.slice(0, 40),
                 value,
-                enabled: false,
+      enabled: true,
                 global: true,
                 createdAt: Number.isFinite(Number(item.createdAt)) ? Number(item.createdAt) : Date.now(),
                 meta: item.meta && typeof item.meta === 'object' && !Array.isArray(item.meta) ? item.meta : {},
@@ -1266,7 +1274,7 @@ const State = (() => {
     getLayout, setLayout,
     load, serialize, onChange, onLive, onSnapshot, uid,
     searchAll, replaceAll, getAllSnippetsAndCommands,
-    addGlobalSnippet, removeGlobalSnippet, getGlobalSnippets, clearGlobalSnippets, mergeGlobalSnippets,
+    addGlobalSnippet, removeGlobalSnippet, getGlobalSnippets, toggleGlobalSnippet, clearGlobalSnippets, mergeGlobalSnippets,
     getDefaultTemplateId, setDefaultTemplateId,
     randomIcon, SUBTABS_COUNT,
   };
