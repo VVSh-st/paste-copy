@@ -1781,11 +1781,7 @@ const Templates = (() => {
   function makeCmds(col) {
     return {
       id: uid(), type: 'commands', title: 'Сниппеты', icon: '⚡', column: col, collapsed: false,
-      items: [
-        { id: uid(), label: 'Объясни',   value: 'Объясни простыми словами:' },
-        { id: uid(), label: 'Сократи',   value: 'Сократи текст, оставив главное:' },
-        { id: uid(), label: 'Код-ревью', value: 'Сделай детальное код-ревью:' },
-      ],
+      items: [],
     };
   }
 
