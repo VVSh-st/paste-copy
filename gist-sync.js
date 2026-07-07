@@ -924,12 +924,8 @@ try {
 } catch {}
 }
 function _hasChanges() {
-try {
-  const currentHash = _quickHash(JSON.stringify(State.serialize()));
-  const result = currentHash !== _lastPushedHash;
-  console.log('[GS:_hasChanges] current:', currentHash.substring(0,40), 'last:', _lastPushedHash.substring(0,40), '->', result);
-  return result;
-} catch(e) { return true; }
+try { return _quickHash(JSON.stringify(State.serialize())) !== _lastPushedHash; }
+catch { return true; }
 }
 function _intervalMs() {
 return Math.max(MIN_COOLDOWN_MS, loadSettings().debounceMin * 60_000);
@@ -943,21 +939,17 @@ _debounceTimer = null;
 _debounceUntil = 0;
 }
 function _scheduleDebounce(delay, label) {
-console.log('[GS:_scheduleDebounce] delay:', delay, 'label:', label);
 clearTimeout(_debounceTimer);
 _debounceUntil = Date.now() + delay;
 _debounceTimer = setTimeout(() => {
-  console.log('[GS:_scheduleDebounce] FIRED, label:', label);
-  _debounceUntil = 0;
-  _pendingCount  = 0;
-  if (_hasChanges()) _doPush(label);
+_debounceUntil = 0;
+_pendingCount  = 0;
+if (_hasChanges()) _doPush(label);
 }, delay);
 }
 function schedulePush() {
 const settings = loadSettings();
-const hasCh = _hasChanges();
-console.log('[GS:schedulePush] hasChanges:', hasCh, 'dirty:', localStorage.getItem(K_DIRTY), 'connected:', isConnected(), 'autoSave:', settings.autoSave, 'pending:', _pendingCount);
-if (!hasCh) {
+if (!_hasChanges()) {
   try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
   updateBadge();
   return;
@@ -983,8 +975,8 @@ const delay = Math.max(_intervalMs(), _cooldownLeft());
 _scheduleDebounce(delay, 'Автосохранение');
 }
 async function _doPush(label) {
-if (!isConnected()) { console.log('[GS:_doPush] not connected, skip'); return; }
-if (typeof navigator !== 'undefined' && navigator.onLine === false) { console.log('[GS:_doPush] offline, skip'); return; }
+if (!isConnected()) return;
+if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 if (!_hasChanges()) {
   localStorage.setItem(K_DIRTY, 'false');
   updateBadge();
@@ -992,12 +984,10 @@ if (!_hasChanges()) {
 }
 
 const left = _cooldownLeft();
-if (left > 0) { console.log('[GS:_doPush] cooldown left:', left, 'ms'); _scheduleDebounce(left, label); return; }
+if (left > 0) { _scheduleDebounce(left, label); return; }
 
-console.log('[GS:_doPush] calling push()...');
 try {
   const result = await push(label);
-  console.log('[GS:_doPush] push result:', result ? 'OK' : 'null');
   if (!result) {
     localStorage.setItem(K_DIRTY, 'true');
     updateBadge();
@@ -1007,7 +997,6 @@ try {
   _lastPushAt = Date.now();
   updateBadge();
 } catch (e) {
-  console.log('[GS:_doPush] push ERROR:', e?.message);
   localStorage.setItem(K_DIRTY, 'true');
   updateBadge();
   const msg = String(e?.message ?? '');
@@ -1029,18 +1018,15 @@ try {
 }
 function onSaveTrigger() {
 const settings = loadSettings();
-console.log('[GS:onSaveTrigger] connected:', isConnected(), 'saveOnCtrlS:', settings.saveOnCtrlS, 'hasChanges:', _hasChanges());
 if (!isConnected()) { Toast.show('Сохранено локально ✓', 'success'); return; }
 if (settings.saveOnCtrlS) {
 _clearDebounce();
 _pendingCount = 0;
 if (!_hasChanges()) { Toast.show('☁ Данные актуальны ✓', 'success'); return; }
-console.log('[GS:onSaveTrigger] calling _doPush...');
 _doPush('Ctrl+S').then(() => {
-  console.log('[GS:onSaveTrigger] _doPush resolved, dirty:', localStorage.getItem(K_DIRTY));
-  if (localStorage.getItem(K_DIRTY) !== 'true')
-    Toast.show('☁ Сохранено в Gist ✓', 'success');
-}).catch(e => console.log('[GS:onSaveTrigger] _doPush rejected:', e?.message));
+if (localStorage.getItem(K_DIRTY) !== 'true')
+  Toast.show('☁ Сохранено в Gist ✓', 'success');
+});
 } else {
 Toast.show('Сохранено локально ✓', 'success');
 schedulePush();
