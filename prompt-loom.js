@@ -87,6 +87,20 @@
   const VALID_SOURCES = Object.keys(TYPE_META);
   const VALID_KINDS = Object.keys(CLASS_META);
 
+  const META_WHITELIST = ['via', 'lastVia', 'lastSeenBumpAt', 'featureKey', 'mode', 'blockId', 'prompt'];
+
+  function sanitizeMeta(meta) {
+    if (!meta || typeof meta !== 'object') return {};
+    const out = {};
+    for (const key of META_WHITELIST) {
+      if (key in meta) {
+        const val = meta[key];
+        out[key] = typeof val === 'string' ? val.slice(0, 500) : typeof val === 'number' ? val : String(val).slice(0, 500);
+      }
+    }
+    return out;
+  }
+
   let _loadFailed = false;
   let state = loadState();
   let settings = loadSettings();
@@ -308,20 +322,6 @@
     if (/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/.test(t)) return true;
     if (/^\s*[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*.{8,}/im.test(t)) return true;
     return false;
-  }
-
-  const META_WHITELIST = ['via', 'lastVia', 'lastSeenBumpAt', 'featureKey', 'mode', 'blockId', 'prompt'];
-
-  function sanitizeMeta(meta) {
-    if (!meta || typeof meta !== 'object') return {};
-    const out = {};
-    for (const key of META_WHITELIST) {
-      if (key in meta) {
-        const val = meta[key];
-        out[key] = typeof val === 'string' ? val.slice(0, 500) : typeof val === 'number' ? val : String(val).slice(0, 500);
-      }
-    }
-    return out;
   }
 
   function record(text, source = 'manual', meta = {}) {
