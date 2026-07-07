@@ -32,6 +32,9 @@ const TextExpander = (() => {
   const VISIBLE_DROPDOWN_ITEMS = 8;
   const MAX_SELECTION_LEN = 50000;
 
+  const SHORTENER_MODES = { WORD: 'word', ACRONYM: 'acronym', GLUE: 'glue' };
+  const DEFAULT_SHORTENER_MODE = SHORTENER_MODES.WORD;
+
   const STOP_WORDS = new Set([
     'и','в','на','не','с','по','для','от','до','из','к','о','а','но',
     'что','как','это','все','так','уже','при','об','за','или','ни',
@@ -49,6 +52,10 @@ const TextExpander = (() => {
   let _settings = {
     trigger: DEFAULT_TRIGGER,
     autoLength: AUTO_LENGTH_DEFAULT,
+    shortener: {
+      mode: DEFAULT_SHORTENER_MODE,
+      digits: false
+    },
     categories: [...DEFAULT_CATEGORIES],
     panelPosition: null,
     panelSize: null
@@ -155,6 +162,16 @@ const TextExpander = (() => {
     }
 
     if (Number.isFinite(Number(raw.autoLength))) out.autoLength = Math.max(2, Math.min(20, Number(raw.autoLength)));
+
+    if (raw.shortener && typeof raw.shortener === 'object' && !Array.isArray(raw.shortener)) {
+      const mode = String(raw.shortener.mode || '');
+      const allowed = new Set([SHORTENER_MODES.WORD, SHORTENER_MODES.ACRONYM, SHORTENER_MODES.GLUE]);
+      out.shortener = {
+        mode: allowed.has(mode) ? mode : DEFAULT_SHORTENER_MODE,
+        digits: raw.shortener.digits === true
+      };
+    }
+
     if (Array.isArray(raw.categories) && raw.categories.length) {
       const categories = [...new Set(
         raw.categories
@@ -289,20 +306,62 @@ const TextExpander = (() => {
     return (w || '').toLowerCase().replace(/[^a-zа-яё0-9]/gi, '');
   }
 
+  function _getNormalizedWords(text) {
+    return String(text || '').split(/\s+/).map(_normalizeWord).filter(Boolean);
+  }
+
+  function _getSignificantWords(text) {
+    return _getNormalizedWords(text).filter(w => !STOP_WORDS.has(w));
+  }
+
+  function _makeWordBase(text, maxLen) {
+    const significant = _getSignificantWords(text);
+    if (significant.length) return significant[0].slice(0, maxLen);
+    const all = _getNormalizedWords(text);
+    if (all.length) return all[0].slice(0, maxLen);
+    return 'txt'.slice(0, maxLen);
+  }
+
+  function _makeAcronymBase(text, maxLen) {
+    const significant = _getSignificantWords(text);
+    const source = significant.length ? significant : _getNormalizedWords(text);
+    const acronym = source.map(w => w[0]).filter(Boolean).join('').slice(0, maxLen);
+    if (acronym.length >= 2) return acronym;
+    return _makeWordBase(text, maxLen);
+  }
+
+  function _makeGlueBase(text, maxLen) {
+    const significant = _getSignificantWords(text);
+    const source = significant.length ? significant : _getNormalizedWords(text);
+    const glued = source.join('').slice(0, maxLen);
+    return glued || 'txt'.slice(0, maxLen);
+  }
+
+  function _makeShortcutBase(text, mode) {
+    const maxLen = Math.max(2, Math.min(20, Number(_settings.autoLength) || AUTO_LENGTH_DEFAULT));
+    if (mode === SHORTENER_MODES.ACRONYM) return _normalizeShortcutText(_makeAcronymBase(text, maxLen));
+    if (mode === SHORTENER_MODES.GLUE) return _normalizeShortcutText(_makeGlueBase(text, maxLen));
+    return _normalizeShortcutText(_makeWordBase(text, maxLen));
+  }
+
+  function _nextNumberedCandidate(base) {
+    const normalizedBase = _normalizeShortcutText(base) || 'txt';
+    for (let i = 1; i < 1000; i++) {
+      const suffix = String(i);
+      const maxBaseLen = Math.max(1, MAX_SHORTCUT_LEN - suffix.length);
+      const candidate = normalizedBase.slice(0, maxBaseLen) + suffix;
+      if (!exists(candidate)) return candidate;
+    }
+    const fallbackSuffix = Date.now().toString(36).slice(-3);
+    const maxBaseLen = Math.max(1, MAX_SHORTCUT_LEN - fallbackSuffix.length);
+    return normalizedBase.slice(0, maxBaseLen) + fallbackSuffix;
+  }
+
   function generateSmartShortName(text) {
-    const words = (text || '').split(/\s+/).filter(w => w.length > 0);
-    if (!words.length) return _nextCandidate('txt');
-    const maxLen = _settings.autoLength;
-    for (const w of words) {
-      const lower = _normalizeWord(w);
-      if (lower.length > 0 && !STOP_WORDS.has(lower)) return _nextCandidate(lower.slice(0, maxLen));
-    }
-    const sigWords = words.filter(w => !STOP_WORDS.has(_normalizeWord(w)));
-    if (sigWords.length >= 2) {
-      const acr = sigWords.map(w => { const n = _normalizeWord(w); return n ? n[0] : ''; }).filter(Boolean).join('').slice(0, maxLen);
-      if (acr.length >= 2) return _nextCandidate(acr);
-    }
-    return _nextCandidate(words.map(w => _normalizeWord(w)).filter(Boolean).join('').slice(0, maxLen) || 'txt');
+    const sh = _getShortenerSettings();
+    const base = _makeShortcutBase(text, sh.mode);
+    if (sh.digits) return _nextNumberedCandidate(base);
+    return _nextCandidate(base);
   }
 
   // ========================
@@ -405,6 +464,30 @@ const TextExpander = (() => {
     if (result.reason === 'empty') Toast.show('TextExpander: введите shortcut и текст', 'error');
     else if (result.reason === 'duplicate') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
     else if (result.reason === 'save') Toast.show('TextExpander: ошибка сохранения', 'error');
+  }
+
+  function _getShortenerSettings() {
+    const sh = _settings.shortener && typeof _settings.shortener === 'object' ? _settings.shortener : {};
+    const mode = [SHORTENER_MODES.WORD, SHORTENER_MODES.ACRONYM, SHORTENER_MODES.GLUE].includes(sh.mode)
+      ? sh.mode : DEFAULT_SHORTENER_MODE;
+    return { mode, digits: sh.digits === true };
+  }
+
+  function _setShortenerMode(mode) {
+    if (![SHORTENER_MODES.WORD, SHORTENER_MODES.ACRONYM, SHORTENER_MODES.GLUE].includes(mode)) return;
+    if (!_settings.shortener || typeof _settings.shortener !== 'object') {
+      _settings.shortener = { mode: DEFAULT_SHORTENER_MODE, digits: false };
+    }
+    _settings.shortener.mode = mode;
+    _save();
+  }
+
+  function _toggleShortenerDigits() {
+    if (!_settings.shortener || typeof _settings.shortener !== 'object') {
+      _settings.shortener = { mode: DEFAULT_SHORTENER_MODE, digits: false };
+    }
+    _settings.shortener.digits = !_settings.shortener.digits;
+    _save();
   }
 
   function _saveTriggerFromInput(input) {
@@ -674,9 +757,69 @@ const TextExpander = (() => {
       autoValue.textContent = autoSlider.value;
       _save();
     };
+
+    // Shortener mode icons
+    const modeGroup = document.createElement('div');
+    modeGroup.className = 'te-shortener-modes';
+    modeGroup.setAttribute('aria-label', 'Механизм автогенерации сокращения');
+
+    const WORD_ICON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h10M3 15h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    const ACRONYM_ICON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 15L7.5 5h1L12 15M5.2 12h5.6M14 5v10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const GLUE_ICON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 7.5l5 5M6.5 12.5l-1 1a3 3 0 104.2 4.2l1-1M13.5 7.5l1-1a3 3 0 10-4.2-4.2l-1 1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    const DIGITS_ICON = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 5h2v10M5 15h4M12 7.5a2.5 2.5 0 115 0c0 1.2-.8 2.1-1.8 3L12 15h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    function _createShortenerModeButton(mode, title, svg) {
+      const sh = _getShortenerSettings();
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'te-shortener-mode-btn';
+      btn.dataset.mode = mode;
+      btn.title = title;
+      btn.innerHTML = svg;
+      btn.classList.toggle('active', sh.mode === mode);
+      btn.setAttribute('aria-pressed', sh.mode === mode ? 'true' : 'false');
+      btn.onclick = () => {
+        _setShortenerMode(mode);
+        const group = btn.closest('.te-shortener-modes');
+        if (group) {
+          group.querySelectorAll('.te-shortener-mode-btn[data-mode]').forEach(b => {
+            const isActive = b.dataset.mode === mode;
+            b.classList.toggle('active', isActive);
+            b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          });
+        }
+      };
+      return btn;
+    }
+
+    function _createDigitsModeButton(svg) {
+      const sh = _getShortenerSettings();
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'te-shortener-mode-btn te-shortener-digits-btn';
+      btn.dataset.digits = '1';
+      btn.title = 'Добавлять первую свободную цифру с 1';
+      btn.innerHTML = svg;
+      btn.classList.toggle('active', sh.digits);
+      btn.setAttribute('aria-pressed', sh.digits ? 'true' : 'false');
+      btn.onclick = () => {
+        _toggleShortenerDigits();
+        const next = _getShortenerSettings();
+        btn.classList.toggle('active', next.digits);
+        btn.setAttribute('aria-pressed', next.digits ? 'true' : 'false');
+      };
+      return btn;
+    }
+
+    modeGroup.appendChild(_createShortenerModeButton(SHORTENER_MODES.WORD, 'Первое значимое слово', WORD_ICON));
+    modeGroup.appendChild(_createShortenerModeButton(SHORTENER_MODES.ACRONYM, 'Акроним из первых букв', ACRONYM_ICON));
+    modeGroup.appendChild(_createShortenerModeButton(SHORTENER_MODES.GLUE, 'Склейка слов', GLUE_ICON));
+    modeGroup.appendChild(_createDigitsModeButton(DIGITS_ICON));
+
     autoRow.appendChild(autoLabel);
     autoRow.appendChild(autoSlider);
     autoRow.appendChild(autoValue);
+    autoRow.appendChild(modeGroup);
 
     const filterRow = document.createElement('div');
     filterRow.className = 'te-filter-row';
@@ -846,11 +989,10 @@ const TextExpander = (() => {
   }
 
   function _getTriggerPattern() {
-    const t = _escapeRe(_getGlobalTrigger());
     if (_getGlobalTrigger().toLowerCase() === 'ё') {
-      return '(?:' + t + '|Ё|`|ё)';
+      return '(?:ё|Ё|`)';
     }
-    return t;
+    return _escapeRe(_getGlobalTrigger());
   }
 
   function _startsWithTrigger(fragment) {
@@ -983,12 +1125,13 @@ const TextExpander = (() => {
       if (curPos < _dropdownStart) { _hideDropdown(); return; }
 
       const fragment = ta.value.slice(_dropdownStart, curPos);
-      if (!fragment || !_startsWithTrigger(fragment) || /\s/.test(fragment.slice(1))) {
+      const queryPart = _stripTrigger(fragment);
+      if (!fragment || !_startsWithTrigger(fragment) || /\s/.test(queryPart)) {
         _hideDropdown();
         return;
       }
 
-      const nextQuery = _stripTrigger(fragment).toLowerCase();
+      const nextQuery = queryPart.toLowerCase();
       if (nextQuery !== _dropdownQuery) {
         _dropdownQuery = nextQuery;
         _dropdownFocusedIdx = 0;
@@ -1270,13 +1413,14 @@ const TextExpander = (() => {
     // Replace trigger+query with expansion + space
     const finalExpansion = expansion.endsWith(' ') ? expansion : expansion + ' ';
     ta.setRangeText(finalExpansion, startPos, endPos, 'end');
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
 
-    // Position cursor if {{cursor}} was present
+    // Position cursor if {{cursor}} was present (before dispatchEvent)
     if (cursorOffset >= 0) {
       const finalCursorPos = startPos + cursorOffset;
       ta.selectionStart = ta.selectionEnd = finalCursorPos;
     }
+
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
 
     if (blockId && typeof State !== 'undefined') State.snapshot();
 
@@ -1541,6 +1685,7 @@ const TextExpander = (() => {
       settings: Object.assign({
         trigger: DEFAULT_TRIGGER,
         autoLength: AUTO_LENGTH_DEFAULT,
+        shortener: { mode: DEFAULT_SHORTENER_MODE, digits: false },
         categories: [...DEFAULT_CATEGORIES],
         panelPosition: null,
         panelSize: null
