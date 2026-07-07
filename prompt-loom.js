@@ -119,11 +119,13 @@
 
   function loadState() {
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      const raw = Array.isArray(parsed.items) ? parsed.items : [];
-      const items = raw.map(normalizeItem).filter(Boolean).slice(0, MAX_ITEMS);
+      const raw = localStorage.getItem(STORAGE_KEY) || '{}';
+      const parsed = JSON.parse(raw);
+      const items = Array.isArray(parsed.items) ? parsed.items.map(normalizeItem).filter(Boolean).slice(0, MAX_ITEMS) : [];
+      console.log('[PromptLoom loadState] key=', STORAGE_KEY, 'raw length=', raw.length, 'items=', items.length);
       return { items };
-    } catch (_) {
+    } catch (e) {
+      console.error('[PromptLoom loadState] error:', e);
       return { items: [] };
     }
   }
@@ -822,11 +824,12 @@
   }
 
   function renderPanelList() {
-    if (!panel) return;
-    if (!document.body.classList.contains('prompt-loom-open')) return;
+    if (!panel) { console.log('[PromptLoom] renderPanelList: no panel'); return; }
+    if (!document.body.classList.contains('prompt-loom-open')) { console.log('[PromptLoom] renderPanelList: panel not open'); return; }
     const list = panel.querySelector('.pl-list');
-    if (!list) return;
+    if (!list) { console.log('[PromptLoom] renderPanelList: no list element'); return; }
     const items = getItems();
+    console.log('[PromptLoom] renderPanelList: items=', items.length, 'state.items=', state.items.length);
     list.innerHTML = '';
 
     if (!items.length) {
