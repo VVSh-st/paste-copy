@@ -1024,15 +1024,18 @@ try {
 }
 function onSaveTrigger() {
 const settings = loadSettings();
+console.log('[GS:onSaveTrigger] connected:', isConnected(), 'saveOnCtrlS:', settings.saveOnCtrlS, 'hasChanges:', _hasChanges());
 if (!isConnected()) { Toast.show('Сохранено локально ✓', 'success'); return; }
 if (settings.saveOnCtrlS) {
 _clearDebounce();
 _pendingCount = 0;
 if (!_hasChanges()) { Toast.show('☁ Данные актуальны ✓', 'success'); return; }
+console.log('[GS:onSaveTrigger] calling _doPush...');
 _doPush('Ctrl+S').then(() => {
-if (localStorage.getItem(K_DIRTY) !== 'true')
-Toast.show('☁ Сохранено в Gist ✓', 'success');
-});
+  console.log('[GS:onSaveTrigger] _doPush resolved, dirty:', localStorage.getItem(K_DIRTY));
+  if (localStorage.getItem(K_DIRTY) !== 'true')
+    Toast.show('☁ Сохранено в Gist ✓', 'success');
+}).catch(e => console.log('[GS:onSaveTrigger] _doPush rejected:', e?.message));
 } else {
 Toast.show('Сохранено локально ✓', 'success');
 schedulePush();
