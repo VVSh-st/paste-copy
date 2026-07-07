@@ -87,12 +87,11 @@
   const VALID_SOURCES = Object.keys(TYPE_META);
   const VALID_KINDS = Object.keys(CLASS_META);
 
-  const META_WHITELIST = ['via', 'lastVia', 'lastSeenBumpAt', 'featureKey', 'mode', 'blockId', 'prompt'];
-
   function sanitizeMeta(meta) {
+    const whitelist = ['via', 'lastVia', 'lastSeenBumpAt', 'featureKey', 'mode', 'blockId', 'prompt'];
     if (!meta || typeof meta !== 'object') return {};
     const out = {};
-    for (const key of META_WHITELIST) {
+    for (const key of whitelist) {
       if (key in meta) {
         const val = meta[key];
         out[key] = typeof val === 'string' ? val.slice(0, 500) : typeof val === 'number' ? val : String(val).slice(0, 500);
