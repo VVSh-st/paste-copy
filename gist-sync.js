@@ -536,7 +536,12 @@ if (_pushing) return null;
 if (_syncOperation) throw new Error(`Уже выполняется операция: ${_syncOperation}`);
 _syncOperation = 'push';
 _pushing = true;
-try { return await _pushImpl(label, options); }
+try {
+  return await Promise.race([
+    _pushImpl(label, options),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('push_timeout')), 30_000)),
+  ]);
+}
 finally { _pushing = false; _syncOperation = null; }
 }
 async function _pushImpl(label, { immortal = false } = {}) {
