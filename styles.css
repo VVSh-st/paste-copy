@@ -6180,6 +6180,24 @@ body.help-open {
 .te-input-row {
   display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px;
 }
+.te-input-row-compact {
+  display: grid;
+  grid-template-columns: 44px 100px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.te-trigger-input {
+  width: 44px;
+  min-width: 44px;
+  text-align: center;
+}
+.te-shortcut-input {
+  width: 100%;
+  min-width: 90px;
+}
+.te-category-select {
+  min-width: 100px;
+}
 .te-add-btn {
   padding: 6px 14px;
   border: none; border-radius: 6px;

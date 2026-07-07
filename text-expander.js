@@ -18,7 +18,8 @@ const TextExpander = (() => {
   // ========================
 
   const STORE_KEY = 'text-expander-v1';
-  const TRIGGER_CODE = 'Backquote';
+  const DEFAULT_TRIGGER = 'ё';
+  const MAX_TRIGGER_LEN = 3;
   const AUTO_LENGTH_DEFAULT = 4;
   const LONG_PRESS_MS = 450;
   const DRAG_THRESHOLD = 10;
@@ -26,7 +27,7 @@ const TextExpander = (() => {
   const PANEL_DEFAULT_H = 600;
   const PANEL_MIN_W = 350;
   const PANEL_MIN_H = 500;
-  const MAX_SHORTCUT_LEN = 20;
+  const MAX_SHORTCUT_LEN = 10;
   const MAX_DROPDOWN_ITEMS = 100;
   const VISIBLE_DROPDOWN_ITEMS = 8;
   const MAX_SELECTION_LEN = 50000;
@@ -46,9 +47,8 @@ const TextExpander = (() => {
   let _inited = false;
   let _shortcuts = new Map();
   let _settings = {
-    triggerCode: TRIGGER_CODE,
+    trigger: DEFAULT_TRIGGER,
     autoLength: AUTO_LENGTH_DEFAULT,
-    email: '',
     categories: [...DEFAULT_CATEGORIES],
     panelPosition: null,
     panelSize: null
@@ -75,6 +75,7 @@ const TextExpander = (() => {
   let _lastSavedPayload = '';
   let _editingId = null; // ID shortcut в режиме редактирования
   let _formShortcutInput = null;
+  let _formTriggerInput = null;
   let _formTextarea = null;
   let _formCatSelect = null;
   let _formAddBtn = null;
@@ -92,7 +93,18 @@ const TextExpander = (() => {
   // STORAGE
   // ========================
 
-  function _normalizeTrigger(value) {
+  function _getShortcutValue(s) {
+    return String(s.shortcut || s.trigger || '');
+  }
+
+  function _normalizeGlobalTrigger(value) {
+    return String(value || '')
+      .trim()
+      .replace(/[\u0000-\u001F\u007F\s]+/g, '')
+      .slice(0, MAX_TRIGGER_LEN);
+  }
+
+  function _normalizeShortcutText(value) {
     return String(value || '')
       .trim()
       .replace(/^\/+/, '')
@@ -103,9 +115,12 @@ const TextExpander = (() => {
   function _normalizeShortcut(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     if (typeof raw.id !== 'string' || !raw.id) return null;
-    if (typeof raw.trigger !== 'string') return null;
-    const trigger = _normalizeTrigger(raw.trigger);
-    if (!trigger) return null;
+
+    const rawShortcut = typeof raw.shortcut === 'string' ? raw.shortcut : raw.trigger;
+    if (typeof rawShortcut !== 'string') return null;
+
+    const shortcut = _normalizeShortcutText(rawShortcut);
+    if (!shortcut) return null;
 
     const category = typeof raw.category === 'string' && raw.category.trim()
       ? raw.category.trim().slice(0, 80)
@@ -117,7 +132,8 @@ const TextExpander = (() => {
 
     return {
       id: raw.id,
-      trigger,
+      shortcut,
+      trigger: shortcut,
       category,
       text,
       enabled: raw.enabled !== false,
@@ -129,9 +145,16 @@ const TextExpander = (() => {
   function _normalizeSettings(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const out = {};
-    if (typeof raw.triggerCode === 'string') out.triggerCode = raw.triggerCode;
+
+    if (typeof raw.trigger === 'string') {
+      const trigger = _normalizeGlobalTrigger(raw.trigger);
+      if (trigger) out.trigger = trigger;
+    }
+    if (!out.trigger && typeof raw.triggerCode === 'string') {
+      if (raw.triggerCode === 'Backquote') out.trigger = 'ё';
+    }
+
     if (Number.isFinite(Number(raw.autoLength))) out.autoLength = Math.max(2, Math.min(20, Number(raw.autoLength)));
-    if (typeof raw.email === 'string') out.email = raw.email;
     if (Array.isArray(raw.categories) && raw.categories.length) {
       const categories = [...new Set(
         raw.categories
@@ -244,8 +267,9 @@ const TextExpander = (() => {
   // ========================
 
   function exists(candidate) {
+    const c = _normalizeShortcutText(candidate).toLowerCase();
     for (const s of _shortcuts.values()) {
-      if (s.trigger === candidate) return true;
+      if (_getShortcutValue(s).toLowerCase() === c) return true;
     }
     return false;
   }
@@ -285,21 +309,53 @@ const TextExpander = (() => {
   // TOKEN ENGINE
   // ========================
 
-  function expandDynamicTokens(text) {
+  function _formatDateTime(now) {
+    return now.toLocaleString('ru-RU', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function _getBlockElByContext(ta, blockId) {
+    if (ta?.closest) { const b = ta.closest('.block'); if (b) return b; }
+    if (blockId) return document.querySelector('.block[data-id="' + CSS.escape(blockId) + '"]');
+    return null;
+  }
+
+  function _getBlockTitle(ta, blockId) {
+    const block = _getBlockElByContext(ta, blockId);
+    if (!block) return '';
+    const el = block.querySelector('input.block-title');
+    return el ? String(el.value || '').trim() : '';
+  }
+
+  function _getBlockIndex(ta, blockId) {
+    const block = _getBlockElByContext(ta, blockId);
+    if (!block) return '';
+    const blocks = [...document.querySelectorAll('.block')];
+    const idx = blocks.indexOf(block);
+    return idx >= 0 ? String(idx + 1) : '';
+  }
+
+  function expandDynamicTokens(text, context) {
     if (!text) return text;
     if (!String(text).includes('{{')) return text;
     const now = new Date();
-    return text
+    const ta = context?.ta || null;
+    const blockId = context?.blockId || null;
+
+    return String(text)
       .replace(/\{\{date\}\}/g, () => now.toLocaleDateString('ru-RU'))
       .replace(/\{\{time\}\}/g, () => now.toLocaleTimeString('ru-RU'))
-      .replace(/\{\{url\}\}/g, () => window.location.href)
-      .replace(/\{\{email\}\}/g, () => _settings.email || '');
+      .replace(/\{\{datetime\}\}/g, () => _formatDateTime(now))
+      .replace(/\{\{title\}\}/g, () => _getBlockTitle(ta, blockId))
+      .replace(/\{\{blockIndex\}\}/g, () => _getBlockIndex(ta, blockId));
   }
 
-  async function expandDynamicTokensAsync(text) {
+  async function expandDynamicTokensAsync(text, context) {
     if (!text) return text;
     if (!String(text).includes('{{')) return text;
-    let result = expandDynamicTokens(text);
+    let result = expandDynamicTokens(text, context);
     if (result.includes('{{clipboard}}')) {
       try {
         const clip = (typeof navigator !== 'undefined' && navigator.clipboard?.readText)
@@ -325,19 +381,19 @@ const TextExpander = (() => {
   }
 
   function _shortcutKey(s) {
-    return String(s.category || 'General') + '\u0000' + String(s.trigger || '');
+    return String(s.category || 'General') + '\u0000' + _getShortcutValue(s).toLowerCase();
   }
 
-  function _addShortcut(trigger, text, category) {
-    trigger = _normalizeTrigger(trigger);
+  function _addShortcut(shortcut, text, category) {
+    shortcut = _normalizeShortcutText(shortcut);
     text = String(text || '').trim();
     category = category || 'General';
-    if (!trigger || !text) return { ok: false, reason: 'empty' };
+    if (!shortcut || !text) return { ok: false, reason: 'empty' };
     for (const s of _shortcuts.values()) {
-      if (_shortcutKey(s) === _shortcutKey({ trigger, category })) return { ok: false, reason: 'duplicate' };
+      if (_shortcutKey(s) === _shortcutKey({ shortcut, trigger: shortcut, category })) return { ok: false, reason: 'duplicate' };
     }
     const id = _generateId();
-    const item = { id, trigger, category, text, enabled: true, createdAt: Date.now(), updatedAt: Date.now() };
+    const item = { id, shortcut, trigger: shortcut, category, text, enabled: true, createdAt: Date.now(), updatedAt: Date.now() };
     _shortcuts.set(id, item);
     if (!_save()) { _shortcuts.delete(id); return { ok: false, reason: 'save' }; }
     return { ok: true, item };
@@ -349,6 +405,22 @@ const TextExpander = (() => {
     if (result.reason === 'empty') Toast.show('TextExpander: введите shortcut и текст', 'error');
     else if (result.reason === 'duplicate') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
     else if (result.reason === 'save') Toast.show('TextExpander: ошибка сохранения', 'error');
+  }
+
+  function _saveTriggerFromInput(input) {
+    const next = _normalizeGlobalTrigger(input?.value);
+    if (!next) {
+      if (typeof Toast !== 'undefined') Toast.show('TextExpander: trigger не может быть пустым', 'error');
+      if (input) input.value = _settings.trigger || DEFAULT_TRIGGER;
+      return false;
+    }
+    if (next !== _settings.trigger) {
+      _settings.trigger = next;
+      _hideDropdown();
+      _save();
+    }
+    if (input) input.value = next;
+    return true;
   }
 
   function _clampPanelToViewport(panel) {
@@ -395,6 +467,7 @@ const TextExpander = (() => {
     if (_panelEl) { _panelEl.remove(); _panelEl = null; }
     _editingId = null;
     _formShortcutInput = null;
+    _formTriggerInput = null;
     _formTextarea = null;
     _formCatSelect = null;
     _formAddBtn = null;
@@ -458,64 +531,72 @@ const TextExpander = (() => {
     const body = document.createElement('div');
     body.className = 'te-body';
 
-    const shortcutRow = document.createElement('div');
-    shortcutRow.className = 'te-row';
+    const inputRow = document.createElement('div');
+    inputRow.className = 'te-input-row te-input-row-compact';
+
+    // Global trigger input
+    const triggerInput = document.createElement('input');
+    triggerInput.type = 'text';
+    triggerInput.className = 'te-input te-trigger-input';
+    triggerInput.placeholder = 'ё';
+    triggerInput.maxLength = MAX_TRIGGER_LEN;
+    triggerInput.value = _settings.trigger || DEFAULT_TRIGGER;
+    triggerInput.title = 'Глобальный триггер для всех сокращений';
+
+    // Shortcut input
     const shortcutInput = document.createElement('input');
     shortcutInput.type = 'text';
-    shortcutInput.className = 'te-input te-input-wide';
-    shortcutInput.placeholder = 'trigger';
+    shortcutInput.className = 'te-input te-shortcut-input';
+    shortcutInput.placeholder = 'shortcut';
     shortcutInput.maxLength = MAX_SHORTCUT_LEN;
     shortcutInput.value = '';
-    shortcutRow.appendChild(shortcutInput);
 
-    const catRow = document.createElement('div');
-    catRow.className = 'te-row';
-    const catLabel = document.createElement('span');
-    catLabel.className = 'te-label';
-    catLabel.textContent = 'Category';
+    // Category select (no label)
     const catSelect = document.createElement('select');
-    catSelect.className = 'te-select';
+    catSelect.className = 'te-select te-category-select';
     _settings.categories.forEach(cat => {
       const opt = document.createElement('option');
       opt.value = cat;
       opt.textContent = cat;
       catSelect.appendChild(opt);
     });
-    catRow.appendChild(catLabel);
-    catRow.appendChild(catSelect);
 
+    // Add button
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'te-add-btn';
     addBtn.textContent = 'Add Key';
 
     addBtn.onclick = () => {
+      // Save global trigger first
+      if (!_saveTriggerFromInput(triggerInput)) return;
+
       if (_editingId) {
-        // Режим редактирования — обновить существующий shortcut
         const existing = _shortcuts.get(_editingId);
         if (!existing) { _clearPanelForm(); return; }
-        const newTrigger = _normalizeTrigger(shortcutInput.value);
+        const newShortcut = _normalizeShortcutText(shortcutInput.value);
         const newText = textarea.value.trim();
         const newCat = catSelect.value;
-        if (!newTrigger || !newText) {
+        if (!newShortcut || !newText) {
           if (typeof Toast !== 'undefined') Toast.show('TextExpander: введите shortcut и текст', 'error');
           return;
         }
-        // Проверка коллизий (кроме текущего)
         for (const s of _shortcuts.values()) {
-          if (s.id !== _editingId && _shortcutKey(s) === _shortcutKey({ trigger: newTrigger, category: newCat })) {
+          if (s.id !== _editingId && _shortcutKey(s) === _shortcutKey({ shortcut: newShortcut, trigger: newShortcut, category: newCat })) {
             if (typeof Toast !== 'undefined') Toast.show('TextExpander: такой shortcut уже есть в категории', 'error');
             return;
           }
         }
         const prev = {
+          shortcut: existing.shortcut,
           trigger: existing.trigger,
           text: existing.text,
           category: existing.category,
           updatedAt: existing.updatedAt
         };
 
-        existing.trigger = newTrigger;
+        existing.shortcut = newShortcut;
+        existing.trigger = newShortcut;
         existing.text = newText;
         existing.category = newCat;
         existing.updatedAt = Date.now();
@@ -526,10 +607,10 @@ const TextExpander = (() => {
         }
         _clearPanelForm();
         _refreshPanelTable(body);
-        if (typeof Toast !== 'undefined') Toast.show('TextExpander: обновлено "' + newTrigger + '"', 'success');
+        if (typeof Toast !== 'undefined') Toast.show('TextExpander: обновлено "' + newShortcut + '"', 'success');
         return;
       }
-      // Режим добавления
+      // Add mode
       const result = _addShortcut(shortcutInput.value, textarea.value, catSelect.value);
       if (!result.ok) {
         _showAddShortcutError(result);
@@ -537,18 +618,17 @@ const TextExpander = (() => {
       }
       _clearPanelForm();
       _refreshPanelTable(body);
-      if (typeof Toast !== 'undefined') Toast.show('TextExpander: добавлено "' + result.item.trigger + '"', 'success');
+      if (typeof Toast !== 'undefined') Toast.show('TextExpander: добавлено "' + _getShortcutValue(result.item) + '"', 'success');
     };
 
-    const inputRow = document.createElement('div');
-    inputRow.className = 'te-input-row';
-    inputRow.appendChild(shortcutRow);
-    inputRow.appendChild(catRow);
+    inputRow.appendChild(triggerInput);
+    inputRow.appendChild(shortcutInput);
+    inputRow.appendChild(catSelect);
     inputRow.appendChild(addBtn);
 
     const textarea = document.createElement('textarea');
     textarea.className = 'te-textarea';
-    textarea.placeholder = 'Текст сокращения... Поддерживает {{date}}, {{time}}, {{clipboard}}, {{url}}, {{email}}';
+    textarea.placeholder = 'Текст подстановки... {{date}}, {{time}}, {{datetime}}, {{title}}, {{clipboard}}, {{cursor}}, {{blockIndex}}';
     textarea.rows = 5;
 
     const tokenBar = document.createElement('div');
@@ -556,9 +636,11 @@ const TextExpander = (() => {
     [
       { label: 'date', token: '{{date}}' },
       { label: 'time', token: '{{time}}' },
+      { label: 'datetime', token: '{{datetime}}' },
+      { label: 'title', token: '{{title}}' },
       { label: 'clipboard', token: '{{clipboard}}' },
-      { label: 'url', token: '{{url}}' },
-      { label: 'email', token: '{{email}}' }
+      { label: 'cursor', token: '{{cursor}}' },
+      { label: 'blockIndex', token: '{{blockIndex}}' }
     ].forEach(t => {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -630,6 +712,7 @@ const TextExpander = (() => {
 
     // Store form references for edit mode
     _formShortcutInput = shortcutInput;
+    _formTriggerInput = triggerInput;
     _formTextarea = textarea;
     _formCatSelect = catSelect;
     _formAddBtn = addBtn;
@@ -702,7 +785,7 @@ const TextExpander = (() => {
 
       const shortcut = document.createElement('span');
       shortcut.className = 'te-table-shortcut';
-      shortcut.textContent = s.trigger;
+      shortcut.textContent = _getShortcutValue(s);
 
       const cat = document.createElement('span');
       cat.className = 'te-table-category';
@@ -716,7 +799,7 @@ const TextExpander = (() => {
       preview.style.cursor = 'pointer';
       preview.onclick = () => {
         _editingId = s.id;
-        if (_formShortcutInput) _formShortcutInput.value = s.trigger;
+        if (_formShortcutInput) _formShortcutInput.value = _getShortcutValue(s);
         if (_formTextarea) _formTextarea.value = s.text || '';
         if (_formCatSelect) _formCatSelect.value = s.category;
         if (_formAddBtn) _formAddBtn.textContent = 'Save';
@@ -736,7 +819,7 @@ const TextExpander = (() => {
         }
         if (_editingId === s.id) _clearPanelForm();
         _refreshPanelTable(body);
-        if (typeof Toast !== 'undefined') Toast.show('TextExpander: удалено "' + s.trigger + '"', 'success');
+        if (typeof Toast !== 'undefined') Toast.show('TextExpander: удалено "' + _getShortcutValue(s) + '"', 'success');
       };
 
       row.appendChild(toggle);
@@ -758,28 +841,60 @@ const TextExpander = (() => {
     return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  function _getTriggerChar() {
-    return _settings.triggerCode === 'Backquote' ? '\u0401' : '`';
+  function _getGlobalTrigger() {
+    return _settings.trigger || DEFAULT_TRIGGER;
   }
 
   function _getTriggerPattern() {
-    return _settings.triggerCode === 'Backquote'
-      ? '[`Ёё]'
-      : _escapeRe(_getTriggerChar());
+    const t = _escapeRe(_getGlobalTrigger());
+    if (_getGlobalTrigger().toLowerCase() === 'ё') {
+      return '(?:' + t + '|Ё|`|ё)';
+    }
+    return t;
   }
 
-  function _isTriggerChar(ch) {
-    if (_settings.triggerCode === 'Backquote') return ch === '`' || ch === 'Ё' || ch === 'ё';
-    return ch === _getTriggerChar();
+  function _startsWithTrigger(fragment) {
+    const trigger = _getGlobalTrigger();
+    if (trigger.toLowerCase() === 'ё') {
+      return fragment.startsWith('ё') || fragment.startsWith('Ё') || fragment.startsWith('`');
+    }
+    return fragment.startsWith(trigger);
+  }
+
+  function _stripTrigger(fragment) {
+    if (_getGlobalTrigger().toLowerCase() === 'ё') {
+      if (fragment[0] === 'ё' || fragment[0] === 'Ё' || fragment[0] === '`') return fragment.slice(1);
+    }
+    return fragment.startsWith(_getGlobalTrigger()) ? fragment.slice(_getGlobalTrigger().length) : fragment;
   }
 
   function _findExactEnabledShortcut(query) {
     const q = String(query || '').toLowerCase();
     if (!q) return null;
     for (const s of _shortcuts.values()) {
-      if (s.enabled && String(s.trigger || '').toLowerCase() === q) return s;
+      if (s.enabled && _getShortcutValue(s).toLowerCase() === q) return s;
     }
     return null;
+  }
+
+  function _findTriggerQueryBeforeCaret(ta) {
+    const pos = ta.selectionStart;
+    if (pos == null) return null;
+    const before = ta.value.slice(0, pos);
+    const re = new RegExp('(^|[\\n\\s])(' + _getTriggerPattern() + ')([^\\s\\n]*)$', 'i');
+    const m = before.match(re);
+    if (!m) return null;
+    return { query: m[3].toLowerCase(), start: pos - m[0].length + m[1].length, end: pos };
+  }
+
+  function _findCompletedShortcutBeforeCaret(ta) {
+    const pos = ta.selectionStart;
+    if (pos == null) return null;
+    const before = ta.value.slice(0, pos);
+    const re = new RegExp('(^|[\\n\\s])(' + _getTriggerPattern() + ')([^\\s\\n]+)([\\s\\n])$', 'i');
+    const m = before.match(re);
+    if (!m) return null;
+    return { query: m[3].toLowerCase(), start: pos - m[0].length + m[1].length, end: pos, delimiter: m[4] };
   }
 
   function _handleTriggerInTextarea(ta, blockId) {
@@ -787,23 +902,33 @@ const TextExpander = (() => {
     if (pos === undefined || pos === null) return;
 
     const before = ta.value.slice(0, pos);
-    // Match: start/whitespace + trigger + query (non-whitespace until cursor)
-    const re = new RegExp('(^|[\\n\\s])' + _getTriggerPattern() + '([^\\s\\n]*)$', 'i');
-    const m = before.match(re);
 
-    if (m) {
-      const query = m[2].toLowerCase();
-      const triggerStart = pos - m[0].length + m[1].length;
-
-      if (!_dropdownEl) {
+    // 1. Check completed form: trigger + shortcut + space
+    const completed = _findCompletedShortcutBeforeCaret(ta);
+    if (completed) {
+      const item = _findExactEnabledShortcut(completed.query);
+      if (item) {
         _activeTa = ta;
         _activeBlockId = blockId || ta.closest('.block')?.dataset?.id || null;
-        _dropdownStart = triggerStart;
+        _dropdownStart = completed.start;
+        _dropdownQuery = completed.query;
+        _insertExpansion(item, completed.end);
+        return;
+      }
+    }
+
+    // 2. Check incomplete trigger+query for dropdown
+    const active = _findTriggerQueryBeforeCaret(ta);
+    if (active) {
+      _activeTa = ta;
+      _activeBlockId = blockId || ta.closest('.block')?.dataset?.id || null;
+      _dropdownStart = active.start;
+      _dropdownQuery = active.query;
+
+      if (!_dropdownEl) {
         _dropdownFocusedIdx = 0;
-        _dropdownQuery = query;
         _showDropdown(ta);
       } else {
-        _dropdownQuery = query;
         _dropdownFocusedIdx = 0;
         _renderDropdownItems();
         if (!_dropdownItems.length) { _hideDropdown(); return; }
@@ -812,32 +937,9 @@ const TextExpander = (() => {
       return;
     }
 
-    // No regex match — delimiter after exact trigger+query, e.g. "Ёabc "
-    // This must work even if dropdown was already closed by blur/selectionchange.
-    const delimiterRe = new RegExp(
-      '(^|[\\n\\s])' + _getTriggerPattern() + '([^\\s\\n]+)([\\s\\n])$',
-      'i'
-    );
-    const dm = before.match(delimiterRe);
-    if (dm) {
-      const query = dm[2].toLowerCase();
-      const item = _findExactEnabledShortcut(query);
-      if (item) {
-        _activeTa = ta;
-        _activeBlockId = blockId || ta.closest('.block')?.dataset?.id || null;
-        _dropdownStart = pos - dm[0].length + dm[1].length;
-        _dropdownQuery = query;
-        _insertExpansion(item);
-        return;
-      }
-    }
-
     if (_dropdownEl && _activeTa === ta) {
       _hideDropdown();
-      return;
     }
-
-    // No dropdown open — do nothing (trigger char is just regular text)
   }
 
   // ========================
@@ -881,12 +983,12 @@ const TextExpander = (() => {
       if (curPos < _dropdownStart) { _hideDropdown(); return; }
 
       const fragment = ta.value.slice(_dropdownStart, curPos);
-      if (!fragment || !_isTriggerChar(fragment[0]) || /\s/.test(fragment.slice(1))) {
+      if (!fragment || !_startsWithTrigger(fragment) || /\s/.test(fragment.slice(1))) {
         _hideDropdown();
         return;
       }
 
-      const nextQuery = fragment.slice(1).toLowerCase();
+      const nextQuery = _stripTrigger(fragment).toLowerCase();
       if (nextQuery !== _dropdownQuery) {
         _dropdownQuery = nextQuery;
         _dropdownFocusedIdx = 0;
@@ -945,7 +1047,7 @@ const TextExpander = (() => {
     const includes = [];
     for (const s of _shortcuts.values()) {
       if (!s.enabled) continue;
-      const tl = s.trigger.toLowerCase();
+      const tl = _getShortcutValue(s).toLowerCase();
       if (tl === q) exact.push(s);
       else if (tl.startsWith(q)) starts.push(s);
       else if (tl.includes(q)) includes.push(s);
@@ -994,7 +1096,7 @@ const TextExpander = (() => {
 
       const shortcut = document.createElement('span');
       shortcut.className = 'te-dd-shortcut';
-      shortcut.textContent = item.trigger;
+      shortcut.textContent = _getShortcutValue(item);
 
       const catBadge = document.createElement('span');
       catBadge.className = 'te-dd-category';
@@ -1090,7 +1192,7 @@ const TextExpander = (() => {
   // INSERTION ENGINE
   // ========================
 
-  function _insertExpansion(item) {
+  function _insertExpansion(item, forcedEndPos) {
     if (_insertingExpansion) return;
     const ta = _activeTa;
     if (!ta) return;
@@ -1098,17 +1200,18 @@ const TextExpander = (() => {
 
     const session = _dropdownSession;
     const startPos = _dropdownStart;
-    const endPos = ta.selectionStart;
+    const endPos = Number.isFinite(forcedEndPos) ? forcedEndPos : ta.selectionStart;
     const expectedQuery = _dropdownQuery;
     const blockId = _activeBlockId;
+    const context = { ta, blockId };
 
     // Синхронная вставка для быстрых токенов
-    let expansion = expandDynamicTokens(item.text);
+    let expansion = expandDynamicTokens(item.text, context);
 
     // Для clipboard — async fallback
     if (expansion.includes('{{clipboard}}')) {
       if (_dropdownEl) _dropdownEl.classList.add('te-dd-pending');
-      expandDynamicTokensAsync(item.text).then(result => {
+      expandDynamicTokensAsync(item.text, context).then(result => {
         if (session !== _dropdownSession) return;
         if (!_doInsert(ta, result, startPos, endPos, expectedQuery, blockId)) _hideDropdown();
       }).catch(() => {
@@ -1135,10 +1238,19 @@ const TextExpander = (() => {
 
     const actualText = ta.value.slice(startPos, endPos);
     const actualTrimmed = actualText.trimEnd();
-    if (!actualTrimmed || !_isTriggerChar(actualTrimmed[0])) return false;
-    if (actualTrimmed.slice(1).toLowerCase() !== String(expectedQuery || '').toLowerCase()) return false;
+    if (!actualTrimmed || !_startsWithTrigger(actualTrimmed)) return false;
+    if (_stripTrigger(actualTrimmed).toLowerCase() !== String(expectedQuery || '').toLowerCase()) return false;
 
     if (blockId && typeof State !== 'undefined') State.blockSnapshot(blockId);
+
+    // Handle {{cursor}} token
+    const cursorToken = '{{cursor}}';
+    let cursorOffset = -1;
+    const tokenIndex = expansion.indexOf(cursorToken);
+    if (tokenIndex >= 0) {
+      cursorOffset = tokenIndex;
+      expansion = expansion.replace(cursorToken, '');
+    }
 
     // Case handling
     if (expectedQuery) {
@@ -1155,11 +1267,16 @@ const TextExpander = (() => {
       }
     }
 
-    // Replace trigger+query with expansion
-    const nextChar = ta.value.charAt(endPos);
-    const needsSpace = !nextChar || !/[\s.,;:!?)]/.test(nextChar);
-    ta.setRangeText(expansion + (needsSpace ? ' ' : ''), startPos, endPos, 'end');
+    // Replace trigger+query with expansion + space
+    const finalExpansion = expansion.endsWith(' ') ? expansion : expansion + ' ';
+    ta.setRangeText(finalExpansion, startPos, endPos, 'end');
     ta.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Position cursor if {{cursor}} was present
+    if (cursorOffset >= 0) {
+      const finalCursorPos = startPos + cursorOffset;
+      ta.selectionStart = ta.selectionEnd = finalCursorPos;
+    }
 
     if (blockId && typeof State !== 'undefined') State.snapshot();
 
@@ -1257,12 +1374,12 @@ const TextExpander = (() => {
       if (typeof Toast !== 'undefined') Toast.show('TextExpander: выделенный текст слишком большой', 'error');
       return;
     }
-    const trigger = generateSmartShortName(selectedText);
+    const shortcut = generateSmartShortName(selectedText);
     const category = _settings.categories[0] || 'General';
     const id = _generateId();
-    _shortcuts.set(id, { id, trigger, category, text: selectedText, enabled: true, createdAt: Date.now(), updatedAt: Date.now() });
+    _shortcuts.set(id, { id, shortcut, trigger: shortcut, category, text: selectedText, enabled: true, createdAt: Date.now(), updatedAt: Date.now() });
     if (!_save()) { _shortcuts.delete(id); return; }
-    if (typeof Toast !== 'undefined') Toast.show('TextExpander: создано "' + trigger + '"', 'success');
+    if (typeof Toast !== 'undefined') Toast.show('TextExpander: создано "' + shortcut + '"', 'success');
   }
 
   // ========================
@@ -1422,9 +1539,8 @@ const TextExpander = (() => {
     return {
       shortcuts: [..._shortcuts.values()].map(s => _normalizeShortcut(s)).filter(Boolean),
       settings: Object.assign({
-        triggerCode: TRIGGER_CODE,
+        trigger: DEFAULT_TRIGGER,
         autoLength: AUTO_LENGTH_DEFAULT,
-        email: '',
         categories: [...DEFAULT_CATEGORIES],
         panelPosition: null,
         panelSize: null
