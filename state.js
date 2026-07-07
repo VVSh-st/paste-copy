@@ -357,7 +357,15 @@ const State = (() => {
       if ((b.type === 'snippets' || b.type === 'commands') && !Array.isArray(b.items)) {
         b.items = b.type === 'snippets' ? defaultSnippets() : defaultCommands();
       }
-      if (b.type === 'snippets' && b.showTitles === undefined) b.showTitles = true;
+
+      // Миграция: snippets → commands
+      if (b.type === 'snippets') {
+        b.type = 'commands';
+        b.title = 'Сниппеты';
+        b.icon = '⚡';
+        b.items = (b.items || []).map(i => ({ id: i.id, label: i.title || '', value: i.value || '' }));
+        delete b.showTitles;
+      }
 
       if (b.type === 'group') {
         // [FIX] Проверяем что children — массив
@@ -1196,15 +1204,7 @@ const State = (() => {
 
     function collect(blocks) {
       for (const b of blocks) {
-        if (b.type === 'snippets') {
-          for (const i of (b.items || [])) {
-            const nv = normalizeSnippetValue(i.value);
-            if (nv && !seen.has(nv)) {
-              seen.add(nv);
-              items.push({ type: 'snippet', label: i.title || nv.slice(0, 30), value: nv, icon: '💬' });
-            }
-          }
-        } else if (b.type === 'commands') {
+        if (b.type === 'commands') {
           for (const i of (b.items || [])) {
             const nv = normalizeSnippetValue(i.value);
             if (nv && !seen.has(nv)) {
