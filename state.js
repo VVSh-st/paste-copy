@@ -425,6 +425,25 @@ const State = (() => {
     });
   }
 
+  function _deduplicateCommandsBlocks(blocks) {
+    const commandsBlocks = blocks.filter(b => b.type === 'commands');
+    if (commandsBlocks.length <= 1) return blocks;
+    // Объединяем все items в первый блок, остальные удаляем
+    const primary = commandsBlocks[0];
+    for (let i = 1; i < commandsBlocks.length; i++) {
+      const extra = commandsBlocks[i];
+      const existingValues = new Set(primary.items.map(item => (item.value || '').trim().toLowerCase()));
+      for (const item of (extra.items || [])) {
+        const val = (item.value || '').trim().toLowerCase();
+        if (val && !existingValues.has(val)) {
+          primary.items.push(item);
+          existingValues.add(val);
+        }
+      }
+    }
+    return blocks.filter(b => !(b.type === 'commands' && b !== primary));
+  }
+
   /* ── event bus ── */
 
   // [FIX] Безопасный вызов listener'ов — исключение в одном не убивает остальные
@@ -618,7 +637,7 @@ const State = (() => {
     // [FIX] Защита от битых snapshots — предотвращает крэш
     try {
       const data  = JSON.parse(snap);
-      t.blocks    = migrate(Array.isArray(data.blocks) ? data.blocks : []);
+      t.blocks    = _deduplicateCommandsBlocks(migrate(Array.isArray(data.blocks) ? data.blocks : []));
       t.separator = typeof data.separator === 'string' ? data.separator : '\n\n';
       return true;
     } catch (err) {
@@ -927,7 +946,7 @@ const State = (() => {
         id:             normalizeTabId(t.id),
         name:           typeof t.name === 'string' && t.name.trim() ? t.name : 'Project',
         separator:      t.separator ?? '\n\n',
-        blocks:         migrate(Array.isArray(t.blocks) ? t.blocks : []),
+        blocks:         _deduplicateCommandsBlocks(migrate(Array.isArray(t.blocks) ? t.blocks : [])),
         history:        [],
         historyIdx:     -1,
         // [FIX] Нормализуем namedSnapshots — фильтруем невалидные элементы
