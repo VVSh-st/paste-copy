@@ -2096,10 +2096,18 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     footer.className = 'block-footer block-footer-compact';
 
     const fDecBtn = mkBtn('font-ctrl-btn', 'A−', 'Уменьшить шрифт');
-    fDecBtn.onclick = e => { e.stopPropagation(); State.update(() => { b.fontSize = Math.max(8, Math.round(((b.fontSize || 12) - 0.5) * 2) / 2); }); };
+    fDecBtn.onclick = e => {
+      e.stopPropagation();
+      State.updateLive(() => { b.fontSize = Math.max(8, Math.round(((b.fontSize || 12) - 0.5) * 2) / 2); });
+      ta.style.fontSize = (b.fontSize || 12) + 'px';
+    };
 
     const fIncBtn = mkBtn('font-ctrl-btn', 'A+', 'Увеличить шрифт');
-    fIncBtn.onclick = e => { e.stopPropagation(); State.update(() => { b.fontSize = Math.min(24, Math.round(((b.fontSize || 12) + 0.5) * 2) / 2); }); };
+    fIncBtn.onclick = e => {
+      e.stopPropagation();
+      State.updateLive(() => { b.fontSize = Math.min(24, Math.round(((b.fontSize || 12) + 0.5) * 2) / 2); });
+      ta.style.fontSize = (b.fontSize || 12) + 'px';
+    };
 
     const pasteCursorBtn = mkBtn('font-ctrl-btn paste-cursor-btn', '', '');
     pasteCursorBtn.setAttribute('aria-label', 'Положение курсора после вставки');
