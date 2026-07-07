@@ -919,8 +919,12 @@ try {
 } catch {}
 }
 function _hasChanges() {
-try { return _quickHash(JSON.stringify(State.serialize())) !== _lastPushedHash; }
-catch { return true; }
+try {
+  const currentHash = _quickHash(JSON.stringify(State.serialize()));
+  const result = currentHash !== _lastPushedHash;
+  console.log('[GS:_hasChanges] current:', currentHash.substring(0,40), 'last:', _lastPushedHash.substring(0,40), '->', result);
+  return result;
+} catch(e) { return true; }
 }
 function _intervalMs() {
 return Math.max(MIN_COOLDOWN_MS, loadSettings().debounceMin * 60_000);
@@ -944,7 +948,9 @@ if (_hasChanges()) _doPush(label);
 }
 function schedulePush() {
 const settings = loadSettings();
-if (!_hasChanges()) {
+const hasCh = _hasChanges();
+console.log('[GS:schedulePush] hasChanges:', hasCh, 'dirty:', localStorage.getItem(K_DIRTY), 'connected:', isConnected(), 'autoSave:', settings.autoSave, 'pending:', _pendingCount);
+if (!hasCh) {
   try { localStorage.setItem(K_DIRTY, 'false'); } catch {}
   updateBadge();
   return;
@@ -970,8 +976,8 @@ const delay = Math.max(_intervalMs(), _cooldownLeft());
 _scheduleDebounce(delay, 'Автосохранение');
 }
 async function _doPush(label) {
-if (!isConnected()) return;
-if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+if (!isConnected()) { console.log('[GS:_doPush] not connected, skip'); return; }
+if (typeof navigator !== 'undefined' && navigator.onLine === false) { console.log('[GS:_doPush] offline, skip'); return; }
 if (!_hasChanges()) {
   localStorage.setItem(K_DIRTY, 'false');
   updateBadge();

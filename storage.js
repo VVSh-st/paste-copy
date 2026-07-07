@@ -190,17 +190,20 @@ const Storage = (() => {
     try { raw = JSON.stringify(data); }
     catch (e) { _warn('save:stringify', e); return false; }
 
-    if (raw === _lastSavedRaw) return true;
+    if (raw === _lastSavedRaw) { console.log('[STORAGE] dedup skip, len:', raw.length); return true; }
     _lastSavedRaw = raw;
 
+    console.log('[STORAGE] save attempt, raw.length:', raw.length);
     if (raw.length <= 3_500_000 && _set(KEY, raw)) {
+      console.log('[STORAGE] localStorage OK');
       _set(MODE_KEY, 'localStorage');
       _idbSet(KEY, raw).catch(e => _warn('save:idb-mirror', e));
       return true;
     }
 
-    // Если документ крупный или localStorage упёрся в лимит, переносим основу в IndexedDB.
+    console.log('[STORAGE] localStorage FAILED, trying IDB');
     _idbSet(KEY, raw).then(ok => {
+      console.log('[STORAGE] IDB result:', ok);
       if (!ok) return;
       _remove(KEY);
       _set(KEY, JSON.stringify({ _idb: true, key: KEY, ts: Date.now() }));
