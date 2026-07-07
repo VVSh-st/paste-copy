@@ -697,8 +697,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = en + '/' + (b.items || []).length;
         badge.title = 'Включено / всего';
       } else if (b.type === 'commands') {
-        badge.textContent = (b.items || []).length;
-        badge.title = 'Команд';
+        badge.style.display = 'none';
       } else if (b.type === 'group') {
         badge.textContent = (b.children || []).length;
         badge.title = 'Блоков в группе';

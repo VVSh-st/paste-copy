@@ -725,7 +725,7 @@ textarea.block-textarea:focus {
 .item-title-input {
   background: transparent; border: 1px solid transparent; color: var(--text0);
   font-size: 11px; font-weight: 600; padding: 2px 5px;
-  border-radius: var(--radius-sm); width: 90px; outline: none;
+  border-radius: var(--radius-sm); width: 160px; outline: none;
   transition: border-color var(--trans), background var(--trans);
 }
 .item-title-input:hover { border-color: var(--border); }
