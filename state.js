@@ -338,6 +338,8 @@ const State = (() => {
         b.subtabs = b.subtabs.map((st, i) => ({
           label: String(st?.label ?? i + 1),
           value: String(st?.value ?? ''),
+          completed: !!st?.completed,
+          blocked: !!st?.blocked,
         }));
         // Ensure subtabs array is not shorter than SUBTABS_COUNT (schema upgrade)
         while (b.subtabs.length < SUBTABS_COUNT)
