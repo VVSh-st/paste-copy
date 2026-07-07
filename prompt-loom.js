@@ -139,11 +139,9 @@
       const parsed = JSON.parse(raw);
       const arr = Array.isArray(parsed.items) ? parsed.items : [];
       const items = arr.map(normalizeItem).filter(Boolean).slice(0, MAX_ITEMS);
-      console.log('[PL-debug] raw items:', arr.length, 'after normalize:', items.length);
       return { items };
     } catch (e) {
       _loadFailed = true;
-      console.error('[PL-debug] loadState FAILED:', e.message);
       return { items: [] };
     }
   }
