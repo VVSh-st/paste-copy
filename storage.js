@@ -185,42 +185,29 @@ const Storage = (() => {
 
   // =Core state=
 
-  // save() — sync wrapper that tries localStorage first, falls back to IDB.
-  // Uses compression to fit larger datasets into localStorage quota.
   function save(data) {
     let raw;
     try { raw = JSON.stringify(data); }
     catch (e) { _warn('save:stringify', e); return false; }
 
     if (raw === _lastSavedRaw) return true;
+    _lastSavedRaw = raw;
 
-    // Try compressed localStorage write (async internally, but fire-and-forget)
-    _saveCompressed(raw);
-    return true;
-  }
-
-  async function _saveCompressed(raw) {
-    try {
-      const envelope = await _compress(raw);
-      const payload = JSON.stringify({ _c: true, ...envelope });
-      if (payload.length <= 5_500_000 && _set(KEY, payload)) {
-        _lastSavedRaw = raw;
-        _set(MODE_KEY, 'localStorage');
-        _idbSet(KEY, raw).catch(e => _warn('save:idb-mirror', e));
-        return;
-      }
-    } catch (e) {
-      _warn('save:compress', e);
+    if (raw.length <= 3_500_000 && _set(KEY, raw)) {
+      _set(MODE_KEY, 'localStorage');
+      _idbSet(KEY, raw).catch(e => _warn('save:idb-mirror', e));
+      return true;
     }
 
-    // Compression failed or payload still too large → IDB
+    // Если документ крупный или localStorage упёрся в лимит, переносим основу в IndexedDB.
     _idbSet(KEY, raw).then(ok => {
       if (!ok) return;
-      _lastSavedRaw = raw;
       _remove(KEY);
       _set(KEY, JSON.stringify({ _idb: true, key: KEY, ts: Date.now() }));
       _set(MODE_KEY, 'indexedDB');
     }).catch(e => _warn('save:indexedDB', e));
+
+    return false;
   }
 
   async function load() {
