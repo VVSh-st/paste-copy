@@ -63,7 +63,7 @@ const State = (() => {
       },
 
       history: {
-        enabled: true,
+      enabled: item.enabled !== false,
         limit:   100,
       },
     },
@@ -167,7 +167,7 @@ const State = (() => {
       id: uid(),
       title: String(title || '').trim() || clean.slice(0, 40),
       value: clean,
-      enabled: false,
+      enabled: true,
       global: true,
       createdAt: Date.now(),
       meta: meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {},
@@ -215,7 +215,7 @@ const State = (() => {
         id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : uid(),
         title: String(raw.title || '').trim() || clean.slice(0, 40),
         value: clean,
-        enabled: false,
+        enabled: raw.enabled !== false,
         global: true,
         createdAt: Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now(),
         meta: raw.meta && typeof raw.meta === 'object' && !Array.isArray(raw.meta) ? raw.meta : {},
