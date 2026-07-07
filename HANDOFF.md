@@ -2,33 +2,62 @@
 
 ## Текущий статус
 
-### Завершено
-- **Сниппеты refactor**: убран блок `snippets` из дефолта, `commands` переименован в "Сниппеты", глобальные сниппеты (облачные) в блоке с edit/delete/on-off
-- **Миграция**: `snippets` → `commands` при загрузке, фильтрация старых дефолтных значений
-- **Дедупликация**: несколько `commands` блоков объединяются в один
-- **Prompt Loom**: исправлены TDZ ошибки (`VALID_SOURCES`, `META_WHITELIST`, `_loadFailed`), история корректно загружается после F5
-- **Cache-busting**: `prompt-loom.js?v=3` в index.html
+### Завершено в этой сессии
+1. **Сниппеты refactor**
+   - Убран блок `snippets` из дефолтного layout
+   - `commands` переименован в "Сниппеты" (title, меню, help)
+   - Глобальные сниппеты (облачные ☁) в блоке "Сниппеты" с edit/delete/on/off
+   - Миграция: `snippets` → `commands` при загрузке, фильтрация старых дефолтных значений
+   - Дедупликация: несколько `commands` блоков объединяются в один
+   - `defaultSnippets()` и `defaultCommands()` возвращают `[]` — без дефолтов
+   - Поле названия сниппета увеличено до 160px (~25 символов)
+   - Badge "Команд" скрыт для блока "Сниппеты"
 
-### Текущие файлы (изменённые)
+2. **Prompt Loom — TDZ исправления**
+   - `VALID_SOURCES`, `VALID_KINDS` перенесены до `loadState()`
+   - `META_WHITELIST`, `sanitizeMeta` перенесены до `loadState()`
+   - `_loadFailed` флаг:防止 `saveState()` перезаписывает данные при ошибке загрузки
+   - Cache-busting: `prompt-loom.js?v=3` в `index.html`
+   - История Loom корректно переживает F5
+
+3. **On/off тогл для глобальных сниппетов**
+   - `addGlobalSnippet`: `enabled: true` по умолчанию
+   - `toggleGlobalSnippet(id)`: переключает + `emit()`
+   - `getAllSnippetsAndCommands`: проверяет `enabled === false`
+   - Кнопка "глаз" обновляется при переключении
+
+4. **Другие правки**
+   - `gist-sync.js`: `calcTotalChars` учитывает `commands` + `globalSnippets`
+   - `llm-features.js`, `word-complete.js`: `snippets` → `commands`
+   - `ui.js`: `makeCmds` создаёт пустой блок, `_typeIcons` без snippets
+
+### Изменённые файлы
 | Файл | Что изменено |
 |------|-------------|
-| `state.js` | defaultBlocks без snippets, commands title='Сниппеты', миграция snippets→commands, дедупликация, clearGlobalSnippets, toggleGlobalSnippet |
-| `blocks.js` | renderCommandsBody с облачными сниппетами, SVG eye/eyeOff, badge скрыт для commands |
+| `state.js` | defaultBlocks, commands title, миграция, дедупликация, clearGlobalSnippets, toggleGlobalSnippet, load: item.enabled !== false |
+| `blocks.js` | renderCommandsBody с облачными сниппетами, eye/eyeOff SVG, badge скрыт для commands |
 | `ui.js` | makeCmds пустой, _typeIcons без snippets |
-| `prompt-loom.js` | TDZ fixes: VALID_SOURCES, META_WHITELIST, _loadFailed перенесены до loadState() |
-| `index.html` | snippets кнопка удалена, commands переименована, prompt-loom.js?v=3 |
-| `styles.css` | global-snippet-section, btn-icon-active |
-| `help.js` | обновлено описание блока Сниппеты |
-| `gist-sync.js` | calcTotalChars учитывает commands + globalSnippets |
+| `prompt-loom.js` | TDZ: VALID_SOURCES, META_WHITELIST, _loadFailed до loadState() |
+| `index.html` | snippets удалена, commands="Сниппеты", prompt-loom.js?v=3 |
+| `styles.css` | global-snippet-section, btn-icon-active, item-title-input 160px |
+| `help.js` | Описание блока "Сниппеты" |
+| `gist-sync.js` | calcTotalChars: commands + globalSnippets |
 | `llm-features.js` | snippets → commands |
 | `word-complete.js` | snippets → commands |
 
-### Известные ограничения
-- `defaultSnippets()` и `defaultCommands()` возвращают `[]` — пользователь добавляет свои через Loom
-- Старые шаблоны с блоком snippets автоматически конвертируются в commands
+### Бэкапы
+- `Backup/backup-2026-07-07_22-00/` — полный бэкап после всех правок
+
+## Как работает
+- Блок "Сниппеты" (type: `commands`) — локальные команды + облачные сниппеты сверху
+- Облачные сниппеты: создаются Loom/Intelligence, хранятся в `globalSnippets`
+- On/off: выключенные не попадают в `/` меню
+- Миграция: при загрузке `snippets` → `commands` с конвертацией `title` → `label`
+- Prompt Loom: история в `localStorage('promptLoom.v1')`, загружается в IIFE
 
 ## Проверка
-1. Новый layout: блок "Сниппеты" (type: commands) без дефолтных items
-2. Облачные сниппеты: edit/delete/on-off работает, `/` меню учитывает enabled
-3. Миграция: старый snippets блок → commands
-4. Prompt Loom: история переживает F5
+1. Новый layout: блок "Сниппеты" без дефолтных items ✓
+2. Облачные сниппеты: edit/delete/on-off → `/` меню ✓
+3. Миграция: старый snippets → commands ✓
+4. Prompt Loom: F5 сохраняет историю ✓
+5. Cache-busting: `?v=3` предотвращает кэширование старой версии ✓
