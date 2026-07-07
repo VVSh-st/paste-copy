@@ -125,6 +125,7 @@
       const items = raw.map(normalizeItem).filter(Boolean).slice(0, MAX_ITEMS);
       return { items };
     } catch (_) {
+      _loadFailed = true;
       return { items: [] };
     }
   }
@@ -150,7 +151,10 @@
     }
   }
 
+  let _loadFailed = false;
+
   function saveState() {
+    if (_loadFailed) return false;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
