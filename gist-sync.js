@@ -549,7 +549,7 @@ const settings = loadSettings();
 const state    = State.serialize();
 const raw      = JSON.stringify(state);
 const pushedHash = _quickHash(raw);
-const { data, compressed } = settings.compress
+const { data, compressed } = (settings.compress && raw.length > 8_000_000)
   ? await Compress.compress(raw)
   : { data: raw, compressed: false };
 
