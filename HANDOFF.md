@@ -3,10 +3,12 @@
 ## Модули
 
 ### text-expander.js
-- **~1550 строк**, 9 раундов аудита, **100 фиксов**. Коммит `12df6f0`.
-- Основные: RU/EN trigger, space trigger без dropdown, async clipboard safety, dropdown session guard, save rollback, long press fixes, rAF race protection.
-- Аудит #9: дефолт Ё→пусто, Escape щадит форму, case transform ≤120, `_doInsert` проверяет `_activeTa`, `_save()` кеш payload, `_showAddShortcutError()` хелпер.
-- Статус: код стабилен, ожидает браузерного тестирования.
+- **~1665 строк**, рефакторинг глобального триггера. Коммит `d9c1c9d`.
+- Изменения: глобальный trigger (`ё` как настройка), поле `shortcut` вместо `trigger` в объектах, legacy mirror `trigger: shortcut`, компактный input row `[ё] [shortcut] [category] [Add Key]`.
+- Токены: удалены `{{email}}`, `{{url}}`; добавлены `{{title}}`, `{{datetime}}`, `{{cursor}}`, `{{blockIndex}}`.
+- Новая логика: `триггер + сокращение + пробел = подстановка + пробел`. `{{cursor}}` устанавливает позицию курсора.
+- Legacy: `_normalizeShortcut()` поддерживает `raw.shortcut || raw.trigger`. `_normalizeSettings()` мигрирует `triggerCode: 'Backquote'` → `trigger: 'ё'`.
+- Статус: рефакторинг завершён. Ожидает браузерного тестирования.
 
 ### user-memory.js
 - **~610 строк**, 4 раунда аудита, **26 фиксов**. Коммиты `60ee697`, `0424ca0`, `8d0cbca`, `1c5239d`.
@@ -41,9 +43,22 @@
 - Статус: четвёртый раунд завершён. Модуль укреплён. Готов к браузерному тестированию.
 
 ### memory-sync.js
-- **~847 строк**, 1 раунд аудита, **0 фиксов**. Аудитор запутал модули — все 6 пунктов относились к gist-sync.js.
-- Собственный аудит: файл чистый. escapeHtml для innerHTML OK, suppressSchedule предотвращает sync-циклы, pushInFlight/pullInFlight блокируют параллельные операции, rate limiting корректен, try/catch на localStorage, wrapSaveHooks с guard.
-- Статус: аудит завершён, фиксов не требуется. Готов к браузерному тестированию.
+- **~940 строк**, 4 раунда аудита, **20 фиксов**. Коммиты `1e9dd4f`, `3827dc7`, `8804ded`.
+- Аудит #1 (0): аудитор запутал модули — все 6 пунктов относились к gist-sync.js.
+- Аудит #2 (6): `document.title` удалён из sync payload, `localBudget` обработка в `pull()`, `pauseAfterRateLimit` dirty только для push, `rollbackRequestCount` при AbortError, `getValidatedGistId()`, `escapeHtml` одинарные кавычки.
+- Аудит #3 (10): bundle/hash в try/catch, auto-pull таймер 24ч, schemaVersion валидация, truncated проверка, assertPayloadSize 1.5MB, partial import state, abort timer в finally, localStorage try/catch, stableStringify sorted keys, isRateLimitError + rateLimitRemaining.
+- Аудит #3.1 (4): **request() сделан async** (finally блок корректно ждёт fetch), assertPayloadSize считает UTF-8 байты через TextEncoder, suppressSchedule save/restore в pull(), maskGistId в diagnostics.
+- Статус: аудит завершён. Критичный баг с timeout исправлен. Готов к браузерному тестированию.
+
+### quality-detectors.js
+- **~361 строк**, 1 раунд аудита, **6 фиксов**. Коммит `7f9a6a1`.
+- Аудит #1 (6): `getTextBlocks` depth limit (max 20), `similarityScore` валидация внешнего результата (Number.isFinite + clamp), `findDuplicates` предвычисление tokenSet (avoid redundant normalization), `analyzePreview` кеш блоков (1 обход вместо 5), `estimateStructure` инкрементальная сборка текста (вместо join-then-slice).
+- Статус: аудит завершён. Модуль чистый (нет innerHTML, нет сети, нет сохранения). Готов к браузерному тестированию.
+
+### mindmap.js
+- **~2220 строк**, 28 раундов аудита, **~270 фиксов**. Коммиты `c576109`, `0865ded`.
+- Аудит #28 (2): spinner race condition (finally guard `seq === _requestSeq`), jump-to-word через Shift+click.
+- Статус: 28 раундов завершены. Готов к браузерному тестированию.
 
 ## Следующий шаг
 1. Браузерское тестирование `gist-sync.js`:
@@ -53,10 +68,16 @@
    - AES-GCM без пароля → push блокируется с ошибкой
    - Quota ошибка localStorage → push не падает
 2. Браузерское тестирование `text-expander.js`:
-   - `Ёabc` + пробел → expansion БЕЗ открытого dropdown
-   - Ё + query + Enter → вставка через dropdown
+   - Глобальный trigger: смена `ё` → `/` работает
+   - Дефолтный trigger: `ёзаме `, `Ёзаме `, `` `заме `` работают
+   - Dropdown: `ёза` → открытие, Enter → вставка + пробел
+   - Панель: первая строка `[ё] [shortcut] [General ▼] [Add Key]`
+   - Токены: `{{title}}`, `{{datetime}}`, `{{cursor}}`, `{{blockIndex}}` работают
+   - `{{cursor}}` устанавливает позицию курсора после вставки
+   - Удалённые токены: `{{url}}`, `{{email}}` отсутствуют в UI
    - Long press → панель, Escape → закрыта
    - Clipboard expansion → pending state, однократная вставка
+   - Gist sync: serialize/load совместим со старыми данными
 3. Браузерское тестирование `user-memory.js`:
    - Импорт повреждённого профиля → нормализация
    - `importData()` с некорректным объектом → try/catch
@@ -72,7 +93,46 @@
    - OAuth Device Flow → clipboard с user_code
    - Ctrl+S → immediate push в Gist
 6. Браузерское тестирование `memory-sync.js`:
-   - Auto-push → не чаще 1 раза в 3ч
-   - Rate limit → пауза + восстановление
-   - Pull → importData → sync status обновляется
-   - Wrap hooks → UserMemory.save() триггерит schedulePush
+    - Auto-push → не чаще 1 раза в 3ч
+    - Rate limit → пауза + восстановление
+    - Pull → importData → sync status обновляется
+    - Wrap hooks → UserMemory.save() триггерит schedulePush
+    - Pull → localBudget error → warn toast (не error)
+    - Rate limit во время pull → dirty НЕ ставится
+    - AbortError → requestCount откатывается
+    - Auto-pull таймер → через 24ч pull запускается автоматически
+    - Pull с неверным schemaVersion → ошибка, не импорт
+    - Pull с truncated файлом → ошибка, не импорт
+    - Pull > 1.5MB → ошибка, не импорт
+    - Зависший fetch → abort через 15с (request() async + finally)
+7. Браузерское тестирование `quality-detectors.js`:
+    - analyzePreview → blocks кешируются (1 walk вместо 5)
+    - findDuplicates → tokenSet предвычислен, нормализация не повторяется
+    - similarityScore от PromptLoom → non-number не крашит
+    - getTextBlocks с циклическими данными → depth limit, не stack overflow
+    - estimateStructure → текст собирается инкрементально
+8. Браузерское тестирование `mindmap.js`:
+    - LLM JSON с невалидными полями → _normalizeData не падает
+    - nodeMap с ключом "toString" / "constructor" → Map, нет конфликта
+    - open() при пустом preview → toast, overlay НЕ открывается
+    - open() при _loading → overlay + "Анализирую..."
+    - close() во время inertia → RAF останавливается
+    - close() → _requestSeq++ инвалидирует fetch
+    - Spinner race condition: быстрый refresh → spinner НЕ снимается старым запросом
+    - Shift+click по слову → jump-to-word с курсором
+    - Graph: клик по ноде → jump-to-word
+    - Hierarchy глубиной 10 → обрезается до 5
+    - Graph links → nodeMap.get() работает, линии рисуются
+    - Graph links "Безопасность" vs "безопасность" → graphKey совпадает
+    - Клик по слову → exact: true/false в CustomEvent
+    - _drawWords: слово 80 символов при маленьком canvas → fontSize scale
+    - Timeline: 6 шагов → карточки одинаковой высоты, стрелки в центре gap
+    - Timeline: 15 шагов → max 8 шагов, помещается в canvas
+    - Graph dedup: "API" + "api" + " API " → один узел
+    - _wrapTextLines: длинный токен без пробелов → дробится на части
+    - Word cloud: слово из текста 10 раз → больше, чем LLM-тема с weight 8
+    - Wheel zoom / drag pan → работают (setupSvgListeners вызван)
+    - ResizeObserver: resize canvas → re-render; status text change → НЕ re-render
+    - Смена текста Preview → _data сбрасывается, строится новое облако
+    - Pan/zoom во время _loading → работает (не блокируется)
+    - Word cloud: LLM-тема не в тексте → маленькое + stroke outline
