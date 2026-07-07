@@ -60,6 +60,15 @@
 - Аудит #28 (2): spinner race condition (finally guard `seq === _requestSeq`), jump-to-word через Shift+click.
 - Статус: 28 раундов завершены. Готов к браузерному тестированию.
 
+### storage.js
+- Баг-фикс (`a07c3a2`): `_lastSavedRaw` кеш обновлялся до попытки сохранения. При quota exceeded localStorage `_set()` возвращал `false`, данные падали в IndexedDB (async), но `_lastSavedRaw` уже был обновлён → следующий `save()` пропускался через `raw === _lastSavedRaw` → `return true`. Теперь `_lastSavedRaw` обновляется только после успешного сохранения.
+
+### state.js
+- Баг-фикс (`32fb513`): миграция subtabs для text-блоков выбрасывала поля `completed` и `blocked`, оставляя только `label`/`value`. Галочка "выполнено" и блокировка не сохранялись между сессиями.
+
+### blocks.js
+- Баг-фикс (`432c002`): кнопки A+/A− вызывали `State.update()` → `emit()` → полный `render()` всех блоков → визуальное дёрганье. Заменено на `State.updateLive()` + прямое обновление `ta.style.fontSize`.
+
 ## Следующий шаг
 1. Браузерское тестирование `gist-sync.js`:
    - Push/Pull/Restore параллельно → sync lock блокирует вторую операцию
