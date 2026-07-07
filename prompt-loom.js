@@ -87,6 +87,7 @@
   const VALID_SOURCES = Object.keys(TYPE_META);
   const VALID_KINDS = Object.keys(CLASS_META);
 
+  let _loadFailed = false;
   let state = loadState();
   let settings = loadSettings();
 
@@ -150,8 +151,6 @@
       return { ...DEFAULT_SETTINGS };
     }
   }
-
-  let _loadFailed = false;
 
   function saveState() {
     if (_loadFailed) return false;
