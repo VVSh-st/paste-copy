@@ -3,12 +3,12 @@
 ## Модули
 
 ### text-expander.js
-- **~1665 строк**, рефакторинг глобального триггера. Коммит `d9c1c9d`.
-- Изменения: глобальный trigger (`ё` как настройка), поле `shortcut` вместо `trigger` в объектах, legacy mirror `trigger: shortcut`, компактный input row `[ё] [shortcut] [category] [Add Key]`.
-- Токены: удалены `{{email}}`, `{{url}}`; добавлены `{{title}}`, `{{datetime}}`, `{{cursor}}`, `{{blockIndex}}`.
-- Новая логика: `триггер + сокращение + пробел = подстановка + пробел`. `{{cursor}}` устанавливает позицию курсора.
-- Legacy: `_normalizeShortcut()` поддерживает `raw.shortcut || raw.trigger`. `_normalizeSettings()` мигрирует `triggerCode: 'Backquote'` → `trigger: 'ё'`.
-- Статус: рефакторинг завершён. Ожидает браузерного тестирования.
+- **~1750 строк**, 2 итерации рефакторинга. Коммиты `d9c1c9d`, `d6ca839`.
+- Итерация 1: глобальный trigger, поле `shortcut`, компактный input row, токены `{{title}}`, `{{datetime}}`, `{{cursor}}`, `{{blockIndex}}`.
+- Итерация 2: shortener modes (`word`/`acronym`/`glue`), digits modifier, SVG-иконки в панели.
+- Баг-фиксы: multi-char trigger в selectionchange, `{{cursor}}` порядок (до dispatchEvent), `_getTriggerPattern()` дубликат `ё`.
+- `_settings.shortener = { mode: 'word', digits: false }` — persistence через Gist sync.
+- Статус: код готов. Ожидает браузерного тестирования.
 
 ### user-memory.js
 - **~610 строк**, 4 раунда аудита, **26 фиксов**. Коммиты `60ee697`, `0424ca0`, `8d0cbca`, `1c5239d`.
@@ -71,12 +71,17 @@
    - Глобальный trigger: смена `ё` → `/` работает
    - Дефолтный trigger: `ёзаме `, `Ёзаме `, `` `заме `` работают
    - Dropdown: `ёза` → открытие, Enter → вставка + пробел
-   - Панель: первая строка `[ё] [shortcut] [General ▼] [Add Key]`
-   - Токены: `{{title}}`, `{{datetime}}`, `{{cursor}}`, `{{blockIndex}}` работают
-   - `{{cursor}}` устанавливает позицию курсора после вставки
-   - Удалённые токены: `{{url}}`, `{{email}}` отсутствуют в UI
+   - Multi-char trigger: `;;заме ` → работает (selectionchange корректен)
+   - Панель: `[ё] [shortcut] [General ▼] [Add Key]`
+   - Shortener modes: word/acronym/glue иконки работают, digits toggle
+   - Word mode: `Замечание: мне не написали` → `заме`
+   - Acronym mode: `Нужно доработать интерфейс` → `нди`
+   - Glue mode (autoLength=8): `Нужно доработать интерфейс` → `нужнодор`
+   - Digits on: `заме` → `заме1`, если занято → `заме2`
+   - Токены: `{{title}}`, `{{datetime}}`, `{{cursor}}`, `{{blockIndex}}`
+   - `{{cursor}}` устанавливает позицию курсора (до dispatchEvent)
    - Long press → панель, Escape → закрыта
-   - Clipboard expansion → pending state, однократная вставка
+   - Clipboard expansion → pending state
    - Gist sync: serialize/load совместим со старыми данными
 3. Браузерское тестирование `user-memory.js`:
    - Импорт повреждённого профиля → нормализация
