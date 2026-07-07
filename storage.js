@@ -126,9 +126,9 @@ const Storage = (() => {
     catch (e) { _warn('save:stringify', e); return false; }
 
     if (raw === _lastSavedRaw) return true;
-    _lastSavedRaw = raw;
 
     if (raw.length <= 3_500_000 && _set(KEY, raw)) {
+      _lastSavedRaw = raw;
       _set(MODE_KEY, 'localStorage');
       _idbSet(KEY, raw).catch(e => _warn('save:idb-mirror', e));
       return true;
@@ -137,6 +137,7 @@ const Storage = (() => {
     // Если документ крупный или localStorage упёрся в лимит, переносим основу в IndexedDB.
     _idbSet(KEY, raw).then(ok => {
       if (!ok) return;
+      _lastSavedRaw = raw;
       _remove(KEY);
       _set(KEY, JSON.stringify({ _idb: true, key: KEY, ts: Date.now() }));
       _set(MODE_KEY, 'indexedDB');
