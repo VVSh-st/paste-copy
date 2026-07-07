@@ -1226,7 +1226,7 @@ const State = (() => {
 
     for (const i of globalSnippets) {
       const value = normalizeSnippetValue(i.value);
-      if (!value || seen.has(value)) continue;
+      if (!value || seen.has(value) || i.enabled === false) continue;
       seen.add(value);
       items.push({ type: 'snippet', label: i.title || value.slice(0, 30), value, icon: '☁', global: true, id: i.id });
     }
