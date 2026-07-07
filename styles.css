@@ -768,6 +768,38 @@ textarea.block-textarea:focus {
 .btn-add-compact svg { width: 11px; height: 11px; stroke: currentColor; fill: none; }
 .btn-add-compact:hover { background: var(--surface2); color: var(--text0); border-color: var(--border2); transform: translateY(-1px); }
 
+/* ===== GLOBAL SNIPPET SECTION ===== */
+.global-snippet-section {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+.global-snippet-section .section-label {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.global-snippet-section .section-label .cloud-icon {
+  font-size: 14px;
+}
+.global-snippet-section .item-global-row {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.global-snippet-section .item-global-row:hover {
+  border-color: var(--accent);
+}
+.btn-icon-active {
+  color: var(--green);
+  border-color: var(--green);
+}
+.btn-icon-active:hover {
+  background: rgba(74, 222, 128, 0.1);
+}
+
 .snippet-insert-btn {
   background: rgba(79,142,247,0.08); border: 1px solid rgba(79,142,247,0.2); color: var(--accent);
   padding: 3px 10px; border-radius: var(--radius-sm); cursor: pointer;

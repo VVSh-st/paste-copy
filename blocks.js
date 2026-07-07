@@ -2983,6 +2983,63 @@ title.addEventListener('focus',     () => _stopMarquee(title));
      Commands body
   ================================================================ */
   function renderCommandsBody(b, body) {
+    // --- Облачные сниппеты (globalSnippets) ---
+    const globalSnippets = State.getGlobalSnippets?.() || [];
+    if (globalSnippets.length > 0) {
+      const gSection = document.createElement('div');
+      gSection.className = 'global-snippet-section';
+
+      const gLabel = document.createElement('div');
+      gLabel.className = 'section-label';
+      gLabel.innerHTML = '<span class="cloud-icon">☁</span> Облачные сниппеты';
+      gSection.appendChild(gLabel);
+
+      const gList = document.createElement('div');
+      gList.className = 'items-list';
+
+      globalSnippets.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'item-row item-global-row';
+
+        const titleInp = document.createElement('input');
+        titleInp.className   = 'item-title-input';
+        titleInp.value       = item.title || '';
+        titleInp.placeholder = 'Заголовок';
+        titleInp.oninput = () => State.updateLive(() => { item.title = titleInp.value; });
+        titleInp.onblur  = () => State.snapshot();
+
+        const valInp = document.createElement('textarea');
+        valInp.className   = 'item-value';
+        valInp.value       = item.value || '';
+        valInp.placeholder = 'Текст сниппета...';
+        valInp.rows = 2;
+        valInp.oninput = () => State.updateLive(() => { item.value = valInp.value; });
+        valInp.onblur  = () => State.snapshot();
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type      = 'button';
+        toggleBtn.className = 'btn-icon' + (item.enabled ? ' btn-icon-active' : '');
+        toggleBtn.innerHTML = item.enabled ? svgIcon('eye') : svgIcon('eyeOff');
+        toggleBtn.title     = item.enabled ? 'Выключить' : 'Включить';
+        toggleBtn.onclick   = () => State.update(() => { item.enabled = !item.enabled; });
+
+        const delBtn = document.createElement('button');
+        delBtn.type      = 'button';
+        delBtn.className = 'btn-icon btn-icon-danger';
+        delBtn.innerHTML = svgIcon('trash');
+        delBtn.title     = 'Удалить';
+        delBtn.onclick   = () => State.update(() => { State.removeGlobalSnippet(item.id); });
+
+        row.appendChild(titleInp); row.appendChild(valInp);
+        row.appendChild(toggleBtn); row.appendChild(delBtn);
+        gList.appendChild(row);
+      });
+
+      gSection.appendChild(gList);
+      body.appendChild(gSection);
+    }
+
+    // --- Локальные команды ---
     const list = document.createElement('div');
     list.className = 'items-list';
 
@@ -3617,6 +3674,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       transfer:  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"/></svg>',
       undo:      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6H9a3.5 3.5 0 0 1 0 7H6"/><polyline points="3.5,2.5 3.5,6 7,6"/></svg>',
       redo:      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 6H7a3.5 3.5 0 0 0 0 7h3"/><polyline points="12.5,2.5 12.5,6 9,6"/></svg>',
+      eye:       '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>',
+      eyeOff:    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><line x1="2" y1="2" x2="14" y2="14"/></svg>',
     };
     return m[name] || '';
   }

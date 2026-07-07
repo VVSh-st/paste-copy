@@ -364,8 +364,10 @@ state.tabs?.forEach(tab =>
 tab.blocks?.forEach(b => {
 if (b.type === 'text')     b.subtabs?.forEach(st => { total += (st.value || '').length; });
 if (b.type === 'snippets') b.items?.forEach(i    => { total += (i.value  || '').length; });
+if (b.type === 'commands') b.items?.forEach(i    => { total += (i.value  || '').length; });
 }),
 );
+state.globalSnippets?.forEach?.(i => { total += (i.value || '').length; });
 return total;
 }
 function getStats() {

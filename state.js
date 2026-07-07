@@ -237,14 +237,13 @@ const State = (() => {
 
   function defaultBlocks() {
     return [
-      makeBlock('База промпта',    randomIcon(), 0, 'Основной системный промпт...', 'text'),
-      makeBlock('Замечания',       randomIcon(), 0, 'Что исправить...',             'text'),
-      makeBlock('Улучшения',       randomIcon(), 0, 'Что добавить...',              'text'),
-      makeBlock('Скрипт',          randomIcon(), 1, 'Текущий код...',               'text'),
-      makeBlock('Стили',           randomIcon(), 1, 'CSS и оформление...',          'text'),
-      makeBlock('Разное',          randomIcon(), 1, 'Всё остальное...',             'text'),
-      makeBlock('Сниппеты',        '💬',         1, '',                             'snippets'),
-      makeBlock('Быстрые команды', '⚡',         1, '',                             'commands'),
+      makeBlock('База промпта', randomIcon(), 0, 'Основной системный промпт...', 'text'),
+      makeBlock('Замечания',    randomIcon(), 0, 'Что исправить...',             'text'),
+      makeBlock('Улучшения',    randomIcon(), 0, 'Что добавить...',              'text'),
+      makeBlock('Скрипт',       randomIcon(), 1, 'Текущий код...',               'text'),
+      makeBlock('Стили',        randomIcon(), 1, 'CSS и оформление...',          'text'),
+      makeBlock('Разное',       randomIcon(), 1, 'Всё остальное...',             'text'),
+      makeBlock('Сниппеты',     '⚡',         1, '',                             'commands'),
     ];
   }
 
@@ -486,7 +485,7 @@ const State = (() => {
 
     let title, icon;
     if      (type === 'snippets') { title = 'Сниппеты';        icon = '💬'; }
-    else if (type === 'commands') { title = 'Быстрые команды'; icon = '⚡'; }
+    else if (type === 'commands') { title = 'Сниппеты';        icon = '⚡'; }
     else if (type === 'group')    { title = 'Группа';          icon = '📁'; }
     else if (type === 'variable') { title = 'Переменная';      icon = '🔤'; }
     else if (type === 'sticky')   { title = 'Заметка';         icon = '📌'; }
