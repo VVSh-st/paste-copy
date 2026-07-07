@@ -7,6 +7,55 @@ const LocalBackup = (() => {
   const MAX_BACKUPS = 30;
   let db = null;
 
+  const _compressSupported = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+
+  function _bytesToB64(bytes) {
+    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    const CHUNK = 0x8000;
+    let bin = '';
+    for (let i = 0; i < u8.length; i += CHUNK)
+      bin += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK));
+    return btoa(bin);
+  }
+  function _b64ToBytes(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
+  async function _readStream(readable) {
+    const chunks = [];
+    const reader = readable.getReader();
+    for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); }
+    let len = 0; for (const c of chunks) len += c.length;
+    const out = new Uint8Array(len); let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
+
+  async function _compress(str) {
+    if (!_compressSupported) return { data: str, compressed: false };
+    const encoded = new TextEncoder().encode(str);
+    const cs = new CompressionStream('deflate-raw');
+    const writer = cs.writable.getWriter();
+    await writer.write(encoded);
+    await writer.close();
+    return { data: _bytesToB64(await _readStream(cs.readable)), compressed: true };
+  }
+
+  async function _decompress(envelope) {
+    if (!envelope.compressed) return envelope.data;
+    const ds = new DecompressionStream('deflate-raw');
+    const writer = ds.writable.getWriter();
+    await writer.write(_b64ToBytes(envelope.data));
+    await writer.close();
+    return new TextDecoder().decode(await _readStream(ds.readable));
+  }
+
+  async function _compressWithTimeout(str, ms = 10_000) {
+    try {
+      return await Promise.race([
+        _compress(str),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('compress_timeout')), ms)),
+      ]);
+    } catch { return { data: str, compressed: false }; }
+  }
+
   function init() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, 1);
@@ -23,12 +72,14 @@ const LocalBackup = (() => {
 
   async function save(state) {
     if (!db) await init();
-    const data = JSON.stringify(state);
+    const raw = JSON.stringify(state);
+    const envelope = await _compressWithTimeout(raw);
     const entry = {
       ts: Date.now(),
-      size: data.length,
+      size: raw.length,
       tabsCount: state.tabs?.length ?? 0,
-      data,
+      data: envelope.data,
+      compressed: envelope.compressed || false,
     };
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
@@ -59,7 +110,14 @@ const LocalBackup = (() => {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(ts);
-      req.onsuccess = () => resolve(req.result?.data ? JSON.parse(req.result.data) : null);
+      req.onsuccess = async () => {
+        try {
+          const entry = req.result;
+          if (!entry?.data) { resolve(null); return; }
+          const raw = await _decompress({ data: entry.data, compressed: !!entry.compressed });
+          resolve(JSON.parse(raw));
+        } catch { resolve(null); }
+      };
       req.onerror = () => reject(req.error);
     });
   }
