@@ -212,6 +212,13 @@ const State = (() => {
     return globalSnippets.map(item => ({ ...item }));
   }
 
+  function clearGlobalSnippets() {
+    if (!globalSnippets.length) return false;
+    globalSnippets = [];
+    emit();
+    return true;
+  }
+
   function mergeGlobalSnippets(items = []) {
     const seen = new Set(globalSnippets.map(item => normalizeSnippetValue(item.value)));
     let changed = false;
@@ -1237,7 +1244,7 @@ const State = (() => {
     getLayout, setLayout,
     load, serialize, onChange, onLive, onSnapshot, uid,
     searchAll, replaceAll, getAllSnippetsAndCommands,
-    addGlobalSnippet, removeGlobalSnippet, getGlobalSnippets, mergeGlobalSnippets,
+    addGlobalSnippet, removeGlobalSnippet, getGlobalSnippets, clearGlobalSnippets, mergeGlobalSnippets,
     getDefaultTemplateId, setDefaultTemplateId,
     randomIcon, SUBTABS_COUNT,
   };
