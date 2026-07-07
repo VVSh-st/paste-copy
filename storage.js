@@ -44,6 +44,71 @@ const Storage = (() => {
     catch (e) { _warn('remove:' + key, e); }
   }
 
+  // ── Compression ──────────────────────────────────────────────────────────
+  const _compressSupported = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+
+  function _bytesToB64(bytes) {
+    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    const CHUNK = 0x8000;
+    let bin = '';
+    for (let i = 0; i < u8.length; i += CHUNK)
+      bin += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK));
+    return btoa(bin);
+  }
+
+  function _b64ToBytes(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
+
+  async function _readStream(readable) {
+    const chunks = [];
+    const reader = readable.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    let len = 0;
+    for (const c of chunks) len += c.length;
+    const out = new Uint8Array(len);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
+
+  async function _compress(str) {
+    if (!_compressSupported) return { data: str, compressed: false };
+    const encoded = new TextEncoder().encode(str);
+    const cs = new CompressionStream('deflate-raw');
+    const writer = cs.writable.getWriter();
+    await writer.write(encoded);
+    await writer.close();
+    return { data: _bytesToB64(await _readStream(cs.readable)), compressed: true };
+  }
+
+  async function _decompress(envelope) {
+    if (!envelope.compressed) return envelope.data;
+    const ds = new DecompressionStream('deflate-raw');
+    const writer = ds.writable.getWriter();
+    await writer.write(_b64ToBytes(envelope.data));
+    await writer.close();
+    return new TextDecoder().decode(await _readStream(ds.readable));
+  }
+
+  function _isCompressed(raw) {
+    if (!raw || raw[0] !== '{') return false;
+    try { return JSON.parse(raw)?._c === true; }
+    catch { return false; }
+  }
+
+  async function _decompressRaw(raw) {
+    try {
+      const envelope = JSON.parse(raw);
+      return await _decompress(envelope);
+    } catch (e) {
+      _warn('load:decompress', e);
+      return raw;
+    }
+  }
+
   function _openDb() {
     if (!('indexedDB' in window)) return Promise.resolve(null);
     if (_dbPromise) return _dbPromise;
@@ -120,6 +185,8 @@ const Storage = (() => {
 
   // =Core state=
 
+  // save() — sync wrapper that tries localStorage first, falls back to IDB.
+  // Uses compression to fit larger datasets into localStorage quota.
   function save(data) {
     let raw;
     try { raw = JSON.stringify(data); }
@@ -127,14 +194,26 @@ const Storage = (() => {
 
     if (raw === _lastSavedRaw) return true;
 
-    if (raw.length <= 3_500_000 && _set(KEY, raw)) {
-      _lastSavedRaw = raw;
-      _set(MODE_KEY, 'localStorage');
-      _idbSet(KEY, raw).catch(e => _warn('save:idb-mirror', e));
-      return true;
+    // Try compressed localStorage write (async internally, but fire-and-forget)
+    _saveCompressed(raw);
+    return true;
+  }
+
+  async function _saveCompressed(raw) {
+    try {
+      const envelope = await _compress(raw);
+      const payload = JSON.stringify({ _c: true, ...envelope });
+      if (payload.length <= 5_500_000 && _set(KEY, payload)) {
+        _lastSavedRaw = raw;
+        _set(MODE_KEY, 'localStorage');
+        _idbSet(KEY, raw).catch(e => _warn('save:idb-mirror', e));
+        return;
+      }
+    } catch (e) {
+      _warn('save:compress', e);
     }
 
-    // Если документ крупный или localStorage упёрся в лимит, переносим основу в IndexedDB.
+    // Compression failed or payload still too large → IDB
     _idbSet(KEY, raw).then(ok => {
       if (!ok) return;
       _lastSavedRaw = raw;
@@ -142,8 +221,6 @@ const Storage = (() => {
       _set(KEY, JSON.stringify({ _idb: true, key: KEY, ts: Date.now() }));
       _set(MODE_KEY, 'indexedDB');
     }).catch(e => _warn('save:indexedDB', e));
-
-    return false;
   }
 
   async function load() {
@@ -153,12 +230,18 @@ const Storage = (() => {
       let raw = _get(KEY);
       let migrated = false;
 
+      // Handle IDB pointer
       if (_isPointer(raw)) raw = await _idbGet(KEY);
 
-      // Если localStorage пуст, пробуем большую копию из IndexedDB.
+      // Handle compressed envelope
+      if (raw && _isCompressed(raw)) {
+        raw = await _decompressRaw(raw);
+      }
+
+      // Fallback: try IDB directly
       if (!raw) raw = await _idbGet(KEY);
 
-      // Если нет — пробуем старые ключи (миграция v2 → v3 и прежний slug → новый).
+      // Migration from old keys
       if (!raw) {
         raw = _get(KEY_OLD) || _get(LEGACY_KEY) || _get(LEGACY_KEY_OLD);
         if (raw) migrated = true;
