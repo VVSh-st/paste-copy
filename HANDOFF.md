@@ -61,3 +61,15 @@
 3. Миграция: старый snippets → commands ✓
 4. Prompt Loom: F5 сохраняет историю ✓
 5. Cache-busting: `?v=3` предотвращает кэширование старой версии ✓
+
+## TDZ-чеклист для IIFE с ранним loadState()
+
+Файлы вида `prompt-loom.js`, где `state = loadState()` вызывается в первых строках IIFE, уязвимы к Temporal Dead Zone. Любая top-level `const`/`let`, объявленная ниже `loadState()` но используемая в цепочке `loadState → normalizeItem → sanitizeMeta → ...`, вызовет `ReferenceError`, который try/catch проглотит → `state.items = []` → `saveState()` перезапишет localStorage пустыми данными.
+
+**Правила:**
+1. Все `const`/`function`, нужные `loadState`/`normalizeItem`/`sanitizeMeta`, объявлять **выше** `let state = loadState()`
+2. Константы, используемые ТОЛЬКО внутри одной функции — делать **локальными** внутри неё (надёжнее)
+3. Добавлять `_loadFailed` флаг: если `loadState` упал, `saveState()` не должен перезаписывать данные
+4. При аудите这类 IIFE — первым делом проверять порядок объявления относительно `loadState()`
+
+**История бага:** три TDZ за одну сессию (`VALID_SOURCES`, `META_WHITELIST`, `_loadFailed`) — все приводили к тихой потере данных Loom после F5.
