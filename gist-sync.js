@@ -938,12 +938,14 @@ _debounceTimer = null;
 _debounceUntil = 0;
 }
 function _scheduleDebounce(delay, label) {
+console.log('[GS:_scheduleDebounce] delay:', delay, 'label:', label);
 clearTimeout(_debounceTimer);
 _debounceUntil = Date.now() + delay;
 _debounceTimer = setTimeout(() => {
-_debounceUntil = 0;
-_pendingCount  = 0;
-if (_hasChanges()) _doPush(label);
+  console.log('[GS:_scheduleDebounce] FIRED, label:', label);
+  _debounceUntil = 0;
+  _pendingCount  = 0;
+  if (_hasChanges()) _doPush(label);
 }, delay);
 }
 function schedulePush() {
@@ -985,10 +987,12 @@ if (!_hasChanges()) {
 }
 
 const left = _cooldownLeft();
-if (left > 0) { _scheduleDebounce(left, label); return; }
+if (left > 0) { console.log('[GS:_doPush] cooldown left:', left, 'ms'); _scheduleDebounce(left, label); return; }
 
+console.log('[GS:_doPush] calling push()...');
 try {
   const result = await push(label);
+  console.log('[GS:_doPush] push result:', result ? 'OK' : 'null');
   if (!result) {
     localStorage.setItem(K_DIRTY, 'true');
     updateBadge();
@@ -998,6 +1002,7 @@ try {
   _lastPushAt = Date.now();
   updateBadge();
 } catch (e) {
+  console.log('[GS:_doPush] push ERROR:', e?.message);
   localStorage.setItem(K_DIRTY, 'true');
   updateBadge();
   const msg = String(e?.message ?? '');
