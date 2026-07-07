@@ -465,6 +465,7 @@ const MindMap = (() => {
     el.addEventListener('click', e => {
       e.stopPropagation();
       clearTimeout(clickTimer);
+      if (e.shiftKey) { _jumpToWord(word); return; }
       const evt = { clientX: e.clientX, clientY: e.clientY };
       clickTimer = setTimeout(() => {
         clickTimer = null;
@@ -876,8 +877,10 @@ const MindMap = (() => {
       if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error');
       if (!_data?.words?.length) close();
     } finally {
-      if (seq === _requestSeq) _loading = false;
-      _overlay?.querySelector('.mindmap-refresh')?.classList.remove('spinning');
+      if (seq === _requestSeq) {
+        _loading = false;
+        _overlay?.querySelector('.mindmap-refresh')?.classList.remove('spinning');
+      }
     }
   }
 
