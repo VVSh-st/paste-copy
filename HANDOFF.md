@@ -35,12 +35,11 @@
 - Статус: модуль значительно укреплён. Приватностьclipboard/history, lifecycle guardы, data-private/data-no-loom boundary, localStorage resilience, State API robustness — все закрыты.
 
 ### gist-sync.js
-- **~1910 строк**, 4 раунда аудита, **27 фиксов**. Коммиты `3de0814`, `6189feb`, `0c76597`, `8559ece`.
-- Аудит #1 (14): push() race condition fix (null return check), hash from snapshot (not current state), sync lock for push/pull/restore, saveCloudHistory quota try/catch, backup metadata normalization (safeNum), cloud history data attribute normalization, duplicate id -> class for backup buttons, loadSettings explicit type normalization with clampNum, CompressionStream await write/close, Cipher.decrypt buffer validation, _quickHash with string length, withRetry for 502/503/504, raw_url removed from console.log, revokeObjectURL delayed.
-- Аудит #2 (4): AES-GCM block push when password empty, _lastPushedHash persisted across reload (K_LAST_HASH), K_DIRTY cleared only if hash matches pushed, PAT input autocomplete='off'.
-- Аудит #3 (3): pull() split into fetch + markPulledSynced (no premature sync marking), decompress() DecompressionStream check, schedulePush() K_DIRTY try/catch.
-- Аудит #4 (6): Compress.supported checks both streams, schedulePush _hasChanges before dirty, _doPush sync lock reschedule, _quickHash dual hash (djb2+FNV-1a), parseBody form-encoded check, Storage.save before State.load in all handlers.
-- Статус: четвёртый раунд завершён. Модуль укреплён. Готов к браузерному тестированию.
+- **~1930 строк**, 4 раунда аудита + критический баг-фикс. Коммиты `3de0814`, `6189feb`, `0c76597`, `8559ece`, `7e382f9`.
+- Аудит #1-4 (27 фиксов): (см. предыдущие записи).
+- **Критический баг-фикс** (`7e382f9`): аудит добавил `await` на `writer.write(encoded)` в `Compress.compress()`. На данных ~3MB `CompressionStream` зависал → промис never resolvился → `_pushing` оставался `true` → все push() мгновенно возвращали `null` → данные не сохранялись никуда.
+- Фикс: сжатие пропускается если данные < 8MB (`settings.compress && raw.length > 8_000_000`). Дополнительно: таймаут 30сек на `push()` как страховка.
+- Статус: push восстановлен. Данные ~3MB пишутся в gist без сжатия.
 
 ### memory-sync.js
 - **~940 строк**, 4 раунда аудита, **20 фиксов**. Коммиты `1e9dd4f`, `3827dc7`, `8804ded`.
@@ -61,13 +60,27 @@
 - Статус: 28 раундов завершены. Готов к браузерному тестированию.
 
 ### storage.js
-- Баг-фикс (`a07c3a2`): `_lastSavedRaw` кеш обновлялся до попытки сохранения. При quota exceeded localStorage `_set()` возвращал `false`, данные падали в IndexedDB (async), но `_lastSavedRaw` уже был обновлён → следующий `save()` пропускался через `raw === _lastSavedRaw` → `return true`. Теперь `_lastSavedRaw` обновляется только после успешного сохранения.
+- Аудитgist выявил баг: `_lastSavedRaw` кеш обновлялся до попытки сохранения → при quota exceeded следующий `save()` пропускался. Исправлено и откачено к оригиналу —原始ный код работает корректно с IDB fallback.
+- Сжатие (deflate-raw) добавлялось и откатывалось — `CompressionStream` вешается на ~3MB данных в этом окружении. Не решаемо на уровне JS.
 
 ### state.js
 - Баг-фикс (`32fb513`): миграция subtabs для text-блоков выбрасывала поля `completed` и `blocked`, оставляя только `label`/`value`. Галочка "выполнено" и блокировка не сохранялись между сессиями.
 
 ### blocks.js
 - Баг-фикс (`432c002`): кнопки A+/A− вызывали `State.update()` → `emit()` → полный `render()` всех блоков → визуальное дёрганье. Заменено на `State.updateLive()` + прямое обновление `ta.style.fontSize`.
+
+### local-backup.js
+- **~103 строк**. Сжатие добавлялось и откатывалось — `CompressionStream` зависает на ~3MB, таймаут 10сек бесполезен (fallback на сырой JSON + задержка). Сырой JSON в IDB работает нормально, лимит IDBufficient.
+
+## Известные ограничения
+
+### CompressionStream не работает с данными ~3MB
+`CompressionStream('deflate-raw')` + `await writer.write(encoded)` зависает на буферах >2MB в текущем окружении (Chrome/Edge на Windows). Промис never resolv/reject. Влияет на:
+- `gist-sync.js` — сжатие перед push в gist (решено: пропуск при <8MB)
+- `local-backup.js` — сжатие локальных копий (откатано: не стоит 10сек задержки)
+- `storage.js` — сжатие в localStorage (откатано: не решаемо синхронно)
+
+Работает нормально на маленьких данных (<1MB). Причина — баг среды выполнения, не кода.
 
 ## Следующий шаг
 1. Браузерское тестирование `gist-sync.js`:
