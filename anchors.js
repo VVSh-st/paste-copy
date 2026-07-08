@@ -512,62 +512,72 @@ const Anchors = (() => {
 
   /* ---- block buttons ---- */
   const SVG_ANCHOR = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="4.5" r="2.5"/><line x1="10" y1="7" x2="10" y2="18"/><path d="M6 12.5H4a8 8 0 0 0 12 0h-2"/></svg>';
+  const SVG_LEFT = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 4 7 10 13 16"/></svg>';
+  const SVG_RIGHT = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 4 13 10 7 16"/></svg>';
 
   function createBlockAnchorButtons(blockId, ta) {
     const group = document.createElement('span');
     group.className = 'anchor-btn-group anchor-btn-block';
 
+    /* -- long-press helper -- */
+    function _makeLongPress(el, onLongPress) {
+      let started = false;
+      let triggered = false;
+      const start = () => {
+        started = true; triggered = false;
+        clearTimeout(_longPressTimer);
+        _longPressTimer = setTimeout(() => { if (started) { triggered = true; onLongPress(); } }, LONG_PRESS_MS);
+      };
+      const stop = () => { started = false; clearTimeout(_longPressTimer); };
+      el.addEventListener('pointerdown', start);
+      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointercancel', stop);
+      el.addEventListener('pointerleave', stop);
+      return () => triggered;
+    }
+
+    /* -- left button: click = prev anchor, long press = clear all -- */
+    const leftBtn = document.createElement('button');
+    leftBtn.type = 'button';
+    leftBtn.className = 'block-tool-btn anchor-btn';
+    leftBtn.title = 'Предыдущий якорь · Длинное нажатие — очистить все';
+    leftBtn.innerHTML = SVG_LEFT;
+    const isLongLeft = _makeLongPress(leftBtn, () => clearAnchors());
+    leftBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (isLongLeft()) { e.preventDefault(); return; }
+      navigateAnchor(-1);
+    });
+
+    /* -- center button: click = set anchor, long press = palette -- */
     const setBtn = document.createElement('button');
     setBtn.type = 'button';
     setBtn.className = 'block-tool-btn anchor-btn';
-    setBtn.title = 'Установить якорь';
+    setBtn.title = 'Установить якорь · Длинное нажатие — список якорей';
     setBtn.innerHTML = SVG_ANCHOR;
-    setBtn.onclick = e => { e.stopPropagation(); setAnchor(ta, blockId); };
-
-    const navBtn = document.createElement('button');
-    navBtn.type = 'button';
-    navBtn.className = 'block-tool-btn anchor-btn';
-    navBtn.title = 'Навигация по якорям · Длинное нажатие — список';
-    navBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a6 6 0 0 1 12 0"/><polyline points="4 10 1 7"/><polyline points="16 10 19 7"/></svg>';
-
-    let longPressStarted = false;
-    const startLongPress = () => {
-      longPressStarted = true; _longPressTriggered = false;
-      clearTimeout(_longPressTimer);
-      _longPressTimer = setTimeout(() => { if (longPressStarted) { _longPressTriggered = true; _showPalette(navBtn); } }, LONG_PRESS_MS);
-    };
-    const stopLongPress = () => { longPressStarted = false; clearTimeout(_longPressTimer); };
-    navBtn.addEventListener('pointerdown', startLongPress);
-    navBtn.addEventListener('pointerup', stopLongPress);
-    navBtn.addEventListener('pointercancel', stopLongPress);
-    navBtn.addEventListener('pointerleave', stopLongPress);
-    navBtn.addEventListener('click', e => {
+    const isLongSet = _makeLongPress(setBtn, () => _showPalette(setBtn));
+    setBtn.addEventListener('click', e => {
       e.stopPropagation();
-      if (_longPressTriggered) {
-        e.preventDefault();
-        _longPressTriggered = false;
-        return;
-      }
+      if (isLongSet()) { e.preventDefault(); return; }
+      setAnchor(ta, blockId);
+    });
+
+    /* -- right button: click = next anchor, long press = clear all -- */
+    const rightBtn = document.createElement('button');
+    rightBtn.type = 'button';
+    rightBtn.className = 'block-tool-btn anchor-btn';
+    rightBtn.title = 'Следующий якорь · Длинное нажатие — очистить все';
+    rightBtn.innerHTML = SVG_RIGHT;
+    const isLongRight = _makeLongPress(rightBtn, () => clearAnchors());
+    rightBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (isLongRight()) { e.preventDefault(); return; }
       navigateAnchor(1);
     });
 
-    const clearBtn = document.createElement('button');
-    clearBtn.type = 'button';
-    clearBtn.className = 'block-tool-btn anchor-btn anchor-btn-danger';
-    clearBtn.title = 'Удалить все якоря';
-    clearBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l12 12"/><path d="M16 4L4 16"/></svg>';
-    let clearPending = false, clearTimer = null;
-    clearBtn.onclick = e => {
-      e.stopPropagation();
-      if (!clearPending) {
-        clearPending = true; clearBtn.classList.add('anchor-clear-pending');
-        clearTimer = setTimeout(() => { clearPending = false; clearBtn.classList.remove('anchor-clear-pending'); }, CLEAR_CONFIRM_MS);
-      } else { clearTimeout(clearTimer); clearBtn.classList.remove('anchor-clear-pending'); clearAnchors(); }
-    };
-
+    group.appendChild(leftBtn);
     group.appendChild(setBtn);
-    group.appendChild(navBtn);
-    group.appendChild(clearBtn);
+    group.appendChild(rightBtn);
     return group;
   }
 
