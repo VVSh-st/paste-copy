@@ -6389,7 +6389,6 @@ body.help-open {
   font-size: 12px;
   color: var(--text1);
   user-select: none;
-  display: none;
 }
 .wc-popup:hover .wc-pin { opacity: 1; }
 .wc-pin {

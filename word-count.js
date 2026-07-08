@@ -154,6 +154,7 @@ const WordCount = (() => {
     });
 
     document.body.appendChild(_popup);
+    _popup.style.display = 'none';
     return _popup;
   }
 
@@ -167,7 +168,7 @@ const WordCount = (() => {
   function open(ta) {
     _ta = ta;
     _createPopup();
-    _popup.style.display = '';
+    _popup.style.display = 'block';
     _isOpen = true;
     _btn?.classList.add('active');
     _render();
