@@ -2,15 +2,6 @@
 
 ## Текущий статус
 
-### В работе
-**Подсветка текущей строки в textarea-блоке (blocks.js)**
-- Проблема: highlight отстаёт от курсора из-за подсчёта `\n` вместо визуальных строк
-- Решение: mirror-подход `_getCaretTop()` — текст до курсора + маркер-span в зеркало, читаем `offsetTop`
-- Удалён мёртвый код: `getLineMirror()`, `lineMirror`, `_hlLogCounter`
-- Позиционирование теперь через `_getCaretTop()` вместо `nl * _hlLineH`
-- `_hlLineH` остаётся — нужен для `lineHighlight.style.height`
-- Проверка: вручную — длинная строка с переносом, смешанный текст, кириллица
-
 ### Завершено в этой сессии
 1. **Сниппеты refactor**
    - Убран блок `snippets` из дефолтного layout
@@ -40,11 +31,19 @@
    - `llm-features.js`, `word-complete.js`: `snippets` → `commands`
    - `ui.js`: `makeCmds` создаёт пустой блок, `_typeIcons` без snippets
 
+5. **Подсветка текущей строки — исправлено**
+   - Проблема: highlight отстаёт от курсора из-за подсчёта `\n` вместо визуальных строк
+   - Решение: div-зеркало + span-маркёр + `getBoundingClientRect()`
+   - `getLineMirror(cs)`: div с `pre-wrap`/`word-wrap`, идентичные стили textarea
+   - Позиция: `marker.getBoundingClientRect()` относительно `mirror.getBoundingClientRect()`
+   - Двойной `requestAnimationFrame` — ждём два кадра для layout settling
+   - Удалён мёртвый код: `_hlLineH`, `_hlMirror`, `_ensureHlMirror`, `_measureLineHeight`, `_getCaretTop`
+
 ### Изменённые файлы
 | Файл | Что изменено |
 |------|-------------|
 | `state.js` | defaultBlocks, commands title, миграция, дедупликация, clearGlobalSnippets, toggleGlobalSnippet, load: item.enabled !== false |
-| `blocks.js` | renderCommandsBody с облачными сниппетами, eye/eyeOff SVG, badge скрыт для commands; **line highlight — mirror-подход (заблокирован, см. аудит)** |
+| `blocks.js` | renderCommandsBody с облачными сниппетами, eye/eyeOff SVG, badge скрыт для commands; **line highlight — div-зеркало + getBoundingClientRect** |
 | `ui.js` | makeCmds пустой, _typeIcons без snippets |
 | `prompt-loom.js` | TDZ: VALID_SOURCES, META_WHITELIST, _loadFailed до loadState() |
 | `index.html` | snippets удалена, commands="Сниппеты", prompt-loom.js?v=3 |
@@ -63,6 +62,7 @@
 - On/off: выключенные не попадают в `/` меню
 - Миграция: при загрузке `snippets` → `commands` с конвертацией `title` → `label`
 - Prompt Loom: история в `localStorage('promptLoom.v1')`, загружается в IIFE
+- Line highlight: div-зеркало с теми же стилями, span-маркёр, getBoundingClientRect для точной позиции
 
 ## Проверка
 1. Новый layout: блок "Сниппеты" без дефолтных items ✓
@@ -70,6 +70,7 @@
 3. Миграция: старый snippets → commands ✓
 4. Prompt Loom: F5 сохраняет историю ✓
 5. Cache-busting: `?v=3` предотвращает кэширование старой версии ✓
+6. Line highlight: длинная строка с переносом, ~170+ строк, кириллица ✓
 
 ## TDZ-чеклист для IIFE с ранним loadState()
 
