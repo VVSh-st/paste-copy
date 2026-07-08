@@ -30,7 +30,7 @@ const WordCount = (() => {
       ? text.split(/\n\s*\n/).filter(s => s.trim()).length || 1
       : 0;
     const readingMinutes = Math.ceil(words / 200);
-    const readingTime = readingMinutes < 1 ? '< 1 мин' : readingMinutes + ' мин';
+    const readingTime = words < 200 ? '< 1 мин' : readingMinutes + ' мин';
     return { words, chars, charsNoSpaces, sentences, paragraphs, readingTime };
   }
 
