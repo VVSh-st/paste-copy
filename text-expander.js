@@ -29,7 +29,8 @@ const TextExpander = (() => {
   const PANEL_MIN_H = 500;
   const MAX_SHORTCUT_LEN = 10;
   const MAX_DROPDOWN_ITEMS = 100;
-  const VISIBLE_DROPDOWN_ITEMS = 8;
+  const VISIBLE_DROPDOWN_ITEMS = 6;
+  const DROPDOWN_ROW_HEIGHT = 28;
   const MAX_SELECTION_LEN = 50000;
 
   const SHORTENER_MODES = { WORD: 'word', ACRONYM: 'acronym', GLUE: 'glue' };
@@ -144,6 +145,8 @@ const TextExpander = (() => {
       category,
       text,
       enabled: raw.enabled !== false,
+      useCount: typeof raw.useCount === 'number' ? Math.max(0, Math.floor(raw.useCount)) : 0,
+      lastUsedAt: Number.isFinite(Number(raw.lastUsedAt)) ? Number(raw.lastUsedAt) : 0,
       createdAt: Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now(),
       updatedAt: Number.isFinite(Number(raw.updatedAt)) ? Number(raw.updatedAt) : Date.now()
     };
@@ -344,6 +347,68 @@ const TextExpander = (() => {
     return _normalizeShortcutText(_makeWordBase(text, maxLen));
   }
 
+  function _getWordCandidates(text, maxLen) {
+    const out = [];
+    const significant = _getSignificantWords(text);
+    for (const w of significant) {
+      out.push(_normalizeShortcutText(w.slice(0, maxLen)));
+    }
+    if (!out.length) {
+      const all = _getNormalizedWords(text);
+      for (const w of all) {
+        out.push(_normalizeShortcutText(w.slice(0, maxLen)));
+      }
+    }
+    if (!out.length) out.push(_normalizeShortcutText('txt'.slice(0, maxLen)));
+    return [...new Set(out.filter(Boolean))];
+  }
+
+  function _getAcronymCandidates(text, maxLen) {
+    const out = [];
+    const significant = _getSignificantWords(text);
+    const source = significant.length ? significant : _getNormalizedWords(text);
+    if (source.length >= 2) {
+      const full = source.map(w => w[0]).filter(Boolean).join('').slice(0, maxLen);
+      if (full.length >= 2) out.push(_normalizeShortcutText(full));
+    }
+    if (!out.length) {
+      const all = _getNormalizedWords(text);
+      for (const w of all) {
+        out.push(_normalizeShortcutText(w.slice(0, maxLen)));
+      }
+    }
+    if (!out.length) out.push(_normalizeShortcutText('txt'.slice(0, maxLen)));
+    return [...new Set(out.filter(Boolean))];
+  }
+
+  function _getGlueCandidates(text, maxLen) {
+    const out = [];
+    const significant = _getSignificantWords(text);
+    const source = significant.length ? significant : _getNormalizedWords(text);
+    if (source.length >= 2) {
+      const glued = source.join('').slice(0, maxLen);
+      if (glued) out.push(_normalizeShortcutText(glued));
+      const half = source.slice(0, Math.max(2, Math.floor(source.length / 2)));
+      const halfGlue = half.join('').slice(0, maxLen);
+      if (halfGlue && halfGlue !== glued) out.push(_normalizeShortcutText(halfGlue));
+    }
+    const all = _getNormalizedWords(text);
+    for (const w of all) {
+      const v = _normalizeShortcutText(w.slice(0, maxLen));
+      if (!out.includes(v)) out.push(v);
+    }
+    if (!out.length) out.push(_normalizeShortcutText('txt'.slice(0, maxLen)));
+    return [...new Set(out.filter(Boolean))];
+  }
+
+  function _firstFreeCandidate(candidates) {
+    for (const c of candidates) {
+      if (!c) continue;
+      if (!exists(c)) return c;
+    }
+    return null;
+  }
+
   function _nextNumberedCandidate(base) {
     const normalizedBase = _normalizeShortcutText(base) || 'txt';
     for (let i = 1; i < 1000; i++) {
@@ -359,8 +424,26 @@ const TextExpander = (() => {
 
   function generateSmartShortName(text) {
     const sh = _getShortenerSettings();
-    const base = _makeShortcutBase(text, sh.mode);
-    if (sh.digits) return _nextNumberedCandidate(base);
+    const maxLen = Math.max(2, Math.min(20, Number(_settings.autoLength) || AUTO_LENGTH_DEFAULT));
+
+    let candidates = [];
+    if (sh.mode === SHORTENER_MODES.ACRONYM) {
+      candidates = _getAcronymCandidates(text, maxLen);
+    } else if (sh.mode === SHORTENER_MODES.GLUE) {
+      candidates = _getGlueCandidates(text, maxLen);
+    } else {
+      candidates = _getWordCandidates(text, maxLen);
+    }
+
+    if (sh.digits) {
+      const base = candidates[0] || 'txt';
+      return _nextNumberedCandidate(base);
+    }
+
+    const free = _firstFreeCandidate(candidates);
+    if (free) return free;
+
+    const base = candidates[0] || 'txt';
     return _nextCandidate(base);
   }
 
@@ -452,7 +535,7 @@ const TextExpander = (() => {
       if (_shortcutKey(s) === _shortcutKey({ shortcut, trigger: shortcut, category })) return { ok: false, reason: 'duplicate' };
     }
     const id = _generateId();
-    const item = { id, shortcut, trigger: shortcut, category, text, enabled: true, createdAt: Date.now(), updatedAt: Date.now() };
+    const item = { id, shortcut, trigger: shortcut, category, text, enabled: true, useCount: 0, lastUsedAt: 0, createdAt: Date.now(), updatedAt: Date.now() };
     _shortcuts.set(id, item);
     if (!_save()) { _shortcuts.delete(id); return { ok: false, reason: 'save' }; }
     return { ok: true, item };
@@ -874,7 +957,12 @@ const TextExpander = (() => {
   function _getPanelItems(activeFilter) {
     return [..._shortcuts.values()]
       .filter(s => activeFilter === 'All' || s.category === activeFilter)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .sort((a, b) => {
+        const au = a.useCount || 0;
+        const bu = b.useCount || 0;
+        if (au !== bu) return bu - au;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
   }
 
   function _refreshPanelTable(body) {
@@ -1142,12 +1230,24 @@ const TextExpander = (() => {
       _positionDropdownAtCaret(ta, dd);
     };
 
+    // Mouse wheel navigation
+    const onWheel = (e) => {
+      if (!_dropdownItems.length) return;
+      e.preventDefault();
+      const dir = e.deltaY > 0 ? 1 : -1;
+      const visibleCount = Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS);
+      _dropdownFocusedIdx = Math.max(0, Math.min(visibleCount - 1, _dropdownFocusedIdx + dir));
+      _updateDropdownFocus();
+    };
+
     ta.addEventListener('blur', onBlur);
     document.addEventListener('selectionchange', onSelectionChange);
+    dd.addEventListener('wheel', onWheel, { passive: false });
 
     dd._cleanupInput = () => {
       ta.removeEventListener('blur', onBlur);
       document.removeEventListener('selectionchange', onSelectionChange);
+      dd.removeEventListener('wheel', onWheel);
     };
   }
 
@@ -1196,6 +1296,23 @@ const TextExpander = (() => {
       else if (tl.includes(q)) includes.push(s);
       if (exact.length + starts.length + includes.length >= MAX_DROPDOWN_ITEMS * 2) break;
     }
+
+    const _rankCompare = (a, b) => {
+      const at = _getShortcutValue(a).toLowerCase();
+      const bt = _getShortcutValue(b).toLowerCase();
+      if (at.length !== bt.length) return at.length - bt.length;
+      const aIdx = at.indexOf(q);
+      const bIdx = bt.indexOf(q);
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      const au = a.useCount || 0;
+      const bu = b.useCount || 0;
+      if (au !== bu) return bu - au;
+      return (b.lastUsedAt || 0) - (a.lastUsedAt || 0);
+    };
+
+    exact.sort((a, b) => (b.useCount || 0) - (a.useCount || 0));
+    starts.sort(_rankCompare);
+    includes.sort(_rankCompare);
 
     const out = [];
     for (const group of [exact, starts, includes]) {
@@ -1247,7 +1364,7 @@ const TextExpander = (() => {
 
       const preview = document.createElement('span');
       preview.className = 'te-dd-preview';
-      const pt = (item.text || '').length > 40 ? item.text.slice(0, 40) + '...' : (item.text || '');
+      const pt = (item.text || '').length > 25 ? item.text.slice(0, 25) + '...' : (item.text || '');
       preview.textContent = pt;
 
       row.appendChild(shortcut);
@@ -1259,7 +1376,8 @@ const TextExpander = (() => {
     });
 
     const visibleCount = Math.min(_dropdownItems.length, VISIBLE_DROPDOWN_ITEMS);
-    dd.style.maxHeight = _dropdownItems.length > visibleCount ? (visibleCount * 36 + 10) + 'px' : '';
+    dd.style.maxHeight = (visibleCount * DROPDOWN_ROW_HEIGHT + 8) + 'px';
+    dd.style.overflowY = 'auto';
   }
 
   function _positionDropdownAtCaret(ta, dd) {
@@ -1348,6 +1466,15 @@ const TextExpander = (() => {
     const blockId = _activeBlockId;
     const context = { ta, blockId };
 
+    // Increment useCount on successful expansion
+    const _bumpUseCount = () => {
+      if (item && typeof item === 'object') {
+        item.useCount = (item.useCount || 0) + 1;
+        item.lastUsedAt = Date.now();
+        _save();
+      }
+    };
+
     // Синхронная вставка для быстрых токенов
     let expansion = expandDynamicTokens(item.text, context);
 
@@ -1356,7 +1483,9 @@ const TextExpander = (() => {
       if (_dropdownEl) _dropdownEl.classList.add('te-dd-pending');
       expandDynamicTokensAsync(item.text, context).then(result => {
         if (session !== _dropdownSession) return;
-        if (!_doInsert(ta, result, startPos, endPos, expectedQuery, blockId)) _hideDropdown();
+        const ok = _doInsert(ta, result, startPos, endPos, expectedQuery, blockId);
+        if (ok) _bumpUseCount();
+        else _hideDropdown();
       }).catch(() => {
         if (session !== _dropdownSession) return;
         if (!_doInsert(ta, expansion.replace(/\{\{clipboard\}\}/g, ''), startPos, endPos, expectedQuery, blockId)) _hideDropdown();
@@ -1368,7 +1497,9 @@ const TextExpander = (() => {
     }
 
     try {
-      if (!_doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId)) _hideDropdown();
+      const ok = _doInsert(ta, expansion, startPos, endPos, expectedQuery, blockId);
+      if (ok) _bumpUseCount();
+      else _hideDropdown();
     } finally {
       _insertingExpansion = false;
     }
@@ -1521,7 +1652,7 @@ const TextExpander = (() => {
     const shortcut = generateSmartShortName(selectedText);
     const category = _settings.categories[0] || 'General';
     const id = _generateId();
-    _shortcuts.set(id, { id, shortcut, trigger: shortcut, category, text: selectedText, enabled: true, createdAt: Date.now(), updatedAt: Date.now() });
+    _shortcuts.set(id, { id, shortcut, trigger: shortcut, category, text: selectedText, enabled: true, useCount: 0, lastUsedAt: 0, createdAt: Date.now(), updatedAt: Date.now() });
     if (!_save()) { _shortcuts.delete(id); return; }
     if (typeof Toast !== 'undefined') Toast.show('TextExpander: создано "' + shortcut + '"', 'success');
   }

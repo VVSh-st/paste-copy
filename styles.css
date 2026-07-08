@@ -6122,6 +6122,7 @@ body.help-open {
   width: min(320px, calc(100vw - 16px));
   max-height: min(240px, calc(100vh - 18px));
   overflow-y: auto;
+  scrollbar-width: thin;
   padding: 5px;
   border: 1px solid rgba(79,142,247,0.24);
   border-radius: 12px;
@@ -6132,7 +6133,7 @@ body.help-open {
 }
 .te-dd-item {
   display: flex; align-items: center; gap: 8px;
-  width: 100%; padding: 6px 10px;
+  width: 100%; height: 28px; padding: 0 10px;
   border: none; border-radius: 6px;
   background: transparent; color: var(--text0);
   font: inherit; font-size: 12px;
@@ -6317,6 +6318,7 @@ body.help-open {
   font-size: 10px; padding: 1px 6px; border-radius: 4px;
   background: rgba(79,142,247,0.12); color: var(--accent);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 110px; display: inline-block;
 }
 .te-table-preview {
   font-size: 11px; color: var(--text-muted);
