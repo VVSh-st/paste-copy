@@ -149,22 +149,42 @@ const Flowchart = (() => {
     const box = document.createElement('div');
     box.className = 'fc-tooltip';
     box.style.left = x + 'px'; box.style.top = y + 'px';
-    box.innerHTML = `
-      ${title ? `<div class="fc-tooltip-title">${title}</div>` : ''}
-      ${fields.map(f => f.type === 'select'
-        ? `<select data-field="${f.name}">${f.options.map(o => `<option value="${o}" ${o === f.value ? 'selected' : ''}>${o}</option>`).join('')}</select>`
-        : `<input data-field="${f.name}" type="text" value="${f.value || ''}" placeholder="${f.placeholder || ''}">`
-      ).join('')}
-      <div class="fc-tooltip-actions">
-        <button class="fc-tooltip-ok">✓</button>
-        <button class="fc-tooltip-cancel">✕</button>
-      </div>`;
+    if (title) { const t = document.createElement('div'); t.className = 'fc-tooltip-title'; t.textContent = title; box.appendChild(t); }
+    fields.forEach(f => {
+      if (f.type === 'select') {
+        const sel = document.createElement('select');
+        sel.dataset.field = f.name;
+        f.options.forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o; opt.textContent = o;
+          if (o === f.value) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        box.appendChild(sel);
+      } else {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.dataset.field = f.name;
+        inp.value = f.value || '';
+        inp.placeholder = f.placeholder || '';
+        box.appendChild(inp);
+      }
+    });
+    const actions = document.createElement('div');
+    actions.className = 'fc-tooltip-actions';
+    const okBtn = document.createElement('button');
+    okBtn.className = 'fc-tooltip-ok'; okBtn.textContent = '✓';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'fc-tooltip-cancel'; cancelBtn.textContent = '✕';
+    actions.appendChild(okBtn);
+    actions.appendChild(cancelBtn);
+    box.appendChild(actions);
     _overlay.appendChild(box);
     const firstInput = box.querySelector('input, select');
     firstInput?.focus(); firstInput?.select?.();
     const submit = () => { const values = {}; fields.forEach(f => values[f.name] = box.querySelector(`[data-field="${f.name}"]`).value); onSubmit(values); box.remove(); _currentTooltip = null; };
-    box.querySelector('.fc-tooltip-ok').addEventListener('click', submit);
-    box.querySelector('.fc-tooltip-cancel').addEventListener('click', () => { box.remove(); _currentTooltip = null; });
+    okBtn.addEventListener('click', submit);
+    cancelBtn.addEventListener('click', () => { box.remove(); _currentTooltip = null; });
     box.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { box.remove(); _currentTooltip = null; } });
     _currentTooltip = box;
   }
@@ -561,20 +581,23 @@ const Flowchart = (() => {
     else _flowchartLayout();
   }
 
-  function _forceLayout() {
+  function _forceLayout(reset) {
     _nodes.forEach(n => {
-      if (n.x == null) {
+      if (reset || n.x == null || n.y == null) {
         n.x = VCW / 2 + (Math.random() - 0.5) * 400;
         n.y = VCH / 2 + (Math.random() - 0.5) * 300;
-        n._movable = true;
-      } else {
-        n._movable = false;
       }
+      n._movable = true;
+      n._vx = 0;
+      n._vy = 0;
     });
+
     const movable = _nodes.filter(n => n._movable);
     if (!movable.length) return;
 
-    for (let iter = 0; iter < 60; iter++) {
+    const iterations = Math.min(200, 60 + _nodes.length * 3);
+
+    for (let iter = 0; iter < iterations; iter++) {
       movable.forEach(a => {
         let fx = 0, fy = 0;
         _nodes.forEach(b => {
@@ -594,6 +617,9 @@ const Flowchart = (() => {
           const attract = (dist - 150) * 0.02;
           fx += (dx / dist) * attract; fy += (dy / dist) * attract;
         });
+        // Weak center gravity for disconnected nodes
+        fx += (VCW / 2 - a.x) * 0.002;
+        fy += (VCH / 2 - a.y) * 0.002;
         a._vx = (a._vx || 0) * 0.8 + fx; a._vy = (a._vy || 0) * 0.8 + fy;
       });
       movable.forEach(a => {
@@ -1052,7 +1078,7 @@ const Flowchart = (() => {
         _nodes.forEach(n => { n._vx = 0; n._vy = 0; });
         // Apply appropriate layout for new mode
         if (_mode === 'flow') _flowchartLayout();
-        else if (_mode === 'graph') _forceLayout();
+        else if (_mode === 'graph') _forceLayout(true);
         _skipRestore = true; _render();
       });
     });
@@ -1331,7 +1357,7 @@ const Flowchart = (() => {
     _render();
   }
 
-  function close() { if (_overlay) _overlay.classList.remove('visible'); _closeTooltip(); }
+  function close() { cancelAnimationFrame(_inertiaRaf); _inertiaRaf = null; if (_overlay) _overlay.classList.remove('visible'); _closeTooltip(); }
 
   async function _fetchWithQuery(text, query) {
     _loading = true;
@@ -1361,6 +1387,15 @@ const Flowchart = (() => {
       let json;
       try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; } }
       if (!json || !Array.isArray(json.nodes) || !json.nodes.length) { window.Toast?.show('LLM вернул пустую схему', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
+      // Sanitize: dedupe node ids, filter invalid edges
+      const seenIds = new Set();
+      json.nodes = json.nodes.filter(n => {
+        if (!n.id || seenIds.has(n.id)) return false;
+        seenIds.add(n.id); return true;
+      });
+      if (json.edges) {
+        json.edges = json.edges.filter(e => e.from && e.to && seenIds.has(e.from) && seenIds.has(e.to));
+      }
       _data = json;
       _nodes = _data.nodes; _edges = _data.edges || [];
       _nodes.forEach(n => { const sz = _nodeSize(n); n.w = sz.w; n.h = sz.h; });
