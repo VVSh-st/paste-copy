@@ -1787,10 +1787,18 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     function _ensureHlMirror() {
       if (_hlMirror && _hlMirror.isConnected) return _hlMirror;
-      _hlMirror = document.createElement('div');
+      // ВАЖНО: зеркало — textarea, а не div. У textarea и div разные внутренние
+      // рендер-пути (form control vs block flow), из-за чего line-height может
+      // считаться с суб-пиксельным расхождением, которое накапливается на
+      // каждой строке. Зеркало-textarea рендерится тем же движком, что и
+      // реальный ta — расхождения в принципе нет.
+      _hlMirror = document.createElement('textarea');
+      _hlMirror.tabIndex = -1;
+      _hlMirror.setAttribute('readonly', '');
+      _hlMirror.setAttribute('aria-hidden', 'true');
       _hlMirror.style.cssText =
         'position:absolute;visibility:hidden;pointer-events:none;' +
-        'top:0;left:0;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;' +
+        'top:0;left:0;overflow:hidden;resize:none;' +
         'z-index:-1';
       lineWrap.appendChild(_hlMirror);
       return _hlMirror;
@@ -1803,13 +1811,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       m.style.borderWidth = '0';
       m.style.padding = '0';
       m.style.width = ta.clientWidth + 'px';
+      m.style.height = 'auto';
 
       const fs = cs.fontSize;
       if (_hlLineH > 0 && _hlMirrorFs === fs) return; // already measured
       // height("X\nX") - height("X") = one rendered line
-      m.textContent = 'X';
+      m.value = 'X';
       const h1 = m.scrollHeight;
-      m.textContent = 'X\nX';
+      m.value = 'X\nX';
       const h2 = m.scrollHeight;
       const measured = h2 - h1;
       if (measured > 0) {
@@ -1820,12 +1829,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         _hlLineH = Math.round((parseFloat(cs.fontSize) || 12) * 1.65);
         _hlMirrorFs = '';
       }
-      m.textContent = '';
+      m.value = '';
     }
 
-    // Точная позиция курсора с учётом word-wrap: пишем в зеркало весь текст
-    // до курсора + маркер-span, читаем его offsetTop. В отличие от подсчёта
-    // \n, корректно учитывает визуальные (перенесённые) строки.
+    // Точная позиция курсора с учётом word-wrap: пишем в зеркало-textarea
+    // весь текст до курсора и читаем scrollHeight — высоту, которую контент
+    // занимает вплоть до текущей (последней) визуальной строки. Верх этой
+    // строки = scrollHeight - высота одной строки.
     function _getCaretTop() {
       const m = _ensureHlMirror();
       const cs = getComputedStyle(ta);
@@ -1836,18 +1846,20 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       m.style.borderWidth = '0';
       m.style.padding = '0';
       m.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
+      m.style.height = 'auto';
 
       const sel = ta.selectionStart;
       const val = ta.value;
 
-      m.textContent = val.substring(0, sel);
-      const marker = document.createElement('span');
-      marker.textContent = val.substring(sel, sel + 1) || '\u200b';
-      m.appendChild(marker);
+      // Пустая строка перед курсором — частый кейс (начало документа),
+      // scrollHeight пустой textarea может быть 0 или min-height браузера,
+      // поэтому подстраховываемся минимум одним символом.
+      m.value = val.substring(0, sel) || ' ';
+      const contentHeight = m.scrollHeight;
+      m.value = '';
 
-      const top = marker.offsetTop;
-      m.textContent = '';
-      return top;
+      if (!_hlLineH) _measureLineHeight();
+      return Math.max(0, contentHeight - _hlLineH);
     }
 
     function updateCurrentLineHighlight() {
