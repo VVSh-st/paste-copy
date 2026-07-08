@@ -12,7 +12,8 @@ const WordCount = (() => {
   let _isOpen = false;
   let _pinned = localStorage.getItem('wc-pinned') === 'true';
   let _updateTimer = null;
-  let _lastRenderKey = '';
+  let _lastSourceText = '';
+  let _lastSel = '';
   let _rowValueEls = new Map();
 
   /* ---- drag state ---- */
@@ -76,15 +77,13 @@ const WordCount = (() => {
 
   /* ---- render (diff-update, textContent only) ---- */
   function _render() {
-    if (!_popup || !_ta) return;
-    const s = _ta.selectionStart;
-    const e = _ta.selectionEnd;
-    const key = s + ':' + e + '|' + _ta.value.length + '|' + (s !== e ? _ta.value.substring(s, e) : '');
-    if (key === _lastRenderKey) return;
-    _lastRenderKey = key;
+    if (!_popup || !_ta || !_ta.isConnected) return;
+    const src = _getSourceText();
+    if (src === _lastSourceText) return;
+    _lastSourceText = src;
 
     if (!_rowValueEls.size) _buildRowsSkeleton();
-    const stats = computeStats(_getSourceText());
+    const stats = computeStats(src);
 
     const wordsEl = _popup.querySelector('.wc-words-value');
     if (wordsEl) wordsEl.textContent = stats.words;
@@ -107,16 +106,14 @@ const WordCount = (() => {
     const r = _popup.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    let left = r.left;
-    let top = r.top;
+    let left = Math.round(r.left);
+    let top = Math.round(r.top);
     if (left < 0) left = 0;
     if (top < 0) top = 0;
-    if (left + r.width > vw) left = Math.max(0, vw - r.width);
-    if (top + r.height > vh) top = Math.max(0, vh - r.height);
-    if (left !== r.left || top !== r.top) {
-      _popup.style.left = left + 'px';
-      _popup.style.top = top + 'px';
-    }
+    if (left + r.width > vw) left = Math.max(0, Math.round(vw - r.width));
+    if (top + r.height > vh) top = Math.max(0, Math.round(vh - r.height));
+    _popup.style.left = left + 'px';
+    _popup.style.top = top + 'px';
   }
 
   /* ---- create popup DOM ---- */
@@ -142,7 +139,11 @@ const WordCount = (() => {
       _popup.style.bottom = '80px';
     }
 
-    // pin button
+    // words block (hero) — pin lives inside for drag guard
+    const wordsBlock = document.createElement('div');
+    wordsBlock.className = 'wc-words-block';
+    wordsBlock.style.cursor = 'grab';
+
     const pin = document.createElement('button');
     pin.type = 'button';
     pin.className = 'wc-pin';
@@ -156,18 +157,15 @@ const WordCount = (() => {
       pin.classList.toggle('active', _pinned);
       pin.title = _pinned ? 'Открепить окно' : 'Закрепить окно';
     };
-    _popup.appendChild(pin);
 
-    // words block (hero)
-    const wordsBlock = document.createElement('div');
-    wordsBlock.className = 'wc-words-block';
     const wordsLabel = document.createElement('div');
     wordsLabel.className = 'wc-words-label';
     wordsLabel.textContent = 'Слова';
     const wordsVal = document.createElement('div');
     wordsVal.className = 'wc-words-value';
     wordsVal.textContent = '0';
-    wordsBlock.append(wordsLabel, wordsVal);
+    wordsVal.setAttribute('aria-live', 'polite');
+    wordsBlock.append(pin, wordsLabel, wordsVal);
     _popup.appendChild(wordsBlock);
 
     // rows container
@@ -175,8 +173,7 @@ const WordCount = (() => {
     rows.className = 'wc-rows';
     _popup.appendChild(rows);
 
-    // drag
-    wordsBlock.style.cursor = 'grab';
+    // drag — guard: skip if click started on pin
     wordsBlock.addEventListener('mousedown', e => {
       if (e.target === pin || pin.contains(e.target)) return;
       _dragging = true;
@@ -218,7 +215,7 @@ const WordCount = (() => {
   function _savePosition() {
     if (!_popup) return;
     const rect = _popup.getBoundingClientRect();
-    localStorage.setItem('wc-popup-pos', JSON.stringify({ x: rect.left, y: rect.top }));
+    localStorage.setItem('wc-popup-pos', JSON.stringify({ x: Math.round(rect.left), y: Math.round(rect.top) }));
   }
 
   /* ---- open / close ---- */
@@ -229,7 +226,8 @@ const WordCount = (() => {
     _clampPosition();
     _isOpen = true;
     _btn?.classList.add('active');
-    _lastRenderKey = '';
+    _lastSourceText = '';
+    _lastSel = '';
     _render();
     _attachListeners();
   }
@@ -255,7 +253,8 @@ const WordCount = (() => {
   function _onSelection() {
     if (!_ta) return;
     const sel = _ta.selectionStart + ':' + _ta.selectionEnd;
-    if (sel !== _lastRenderKey.split(':')[0] + ':' + _lastRenderKey.split(':')[1]) {
+    if (sel !== _lastSel) {
+      _lastSel = sel;
       _scheduleUpdate();
     }
   }
@@ -264,7 +263,8 @@ const WordCount = (() => {
     const newTa = e.target;
     if (newTa.classList?.contains('block-textarea') && newTa !== _ta) {
       _ta = newTa;
-      _lastRenderKey = '';
+      _lastSourceText = '';
+      _lastSel = '';
       _scheduleUpdate();
     }
   }
@@ -284,26 +284,31 @@ const WordCount = (() => {
     }
   }
 
+  /* ---- listener registry ---- */
+  const _DOC_HANDLERS = [
+    ['input',           _onInput,        true],
+    ['selectionchange', _onSelection,    true],
+    ['focusin',         _onFocusIn,      true],
+    ['keydown',         _onKeydown,      true],
+    ['contextmenu',     _onContextMenu,  true],
+  ];
+
   let _listenersAttached = false;
 
   function _attachListeners() {
     if (_listenersAttached) return;
     _listenersAttached = true;
-    document.addEventListener('input', _onInput, true);
-    document.addEventListener('selectionchange', _onSelection, true);
-    document.addEventListener('focusin', _onFocusIn, true);
-    document.addEventListener('keydown', _onKeydown, true);
-    document.addEventListener('contextmenu', _onContextMenu, true);
+    for (const [type, fn, opts] of _DOC_HANDLERS) {
+      document.addEventListener(type, fn, opts);
+    }
   }
 
   function _detachListeners() {
     if (!_listenersAttached) return;
     _listenersAttached = false;
-    document.removeEventListener('input', _onInput, true);
-    document.removeEventListener('selectionchange', _onSelection, true);
-    document.removeEventListener('focusin', _onFocusIn, true);
-    document.removeEventListener('keydown', _onKeydown, true);
-    document.removeEventListener('contextmenu', _onContextMenu, true);
+    for (const [type, fn, opts] of _DOC_HANDLERS) {
+      document.removeEventListener(type, fn, opts);
+    }
   }
 
   /* ---- public API ---- */
