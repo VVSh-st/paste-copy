@@ -279,6 +279,7 @@ const WordCount = (() => {
   function _onContextMenu(e) {
     if (_pinned) return;
     if (_isOpen && _popup && !_popup.contains(e.target)) {
+      e.preventDefault();
       close();
     }
   }
