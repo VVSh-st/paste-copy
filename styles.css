@@ -1209,7 +1209,7 @@ textarea.block-textarea:focus {
   background: rgba(79,142,247,0.15); border-color: rgba(79,142,247,0.3); color: var(--accent);
 }
 .search-count { font-size: 11px; white-space: nowrap; color: var(--text2); min-width: 80px; text-align: right; }
-#search-results { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+#search-results { display: flex; flex-direction: column; gap: 6px; }
 .search-result-item {
   background: var(--bg0); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 10px 13px;
@@ -1691,6 +1691,7 @@ textarea.block-textarea:focus {
   border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
   padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
   width: 580px; max-width: calc(100vw - 24px);
+  height: 420px; min-height: 120px; max-height: 80vh;
   animation: searchPanelIn 0.18s ease;
 }
 @keyframes searchPanelIn {
@@ -1698,7 +1699,7 @@ textarea.block-textarea:focus {
   to   { opacity: 1; }
 }
 
-.sp-row { display: flex; gap: 6px; align-items: center; }
+.sp-row { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
 
 .sp-nav-btn {
   background: var(--surface); border: 1px solid var(--border); color: var(--text2);
@@ -1722,8 +1723,25 @@ textarea.block-textarea:focus {
 .sp-close-btn:hover { color: var(--red); background: rgba(224,92,106,0.12); }
 
 .search-panel #search-results {
-  max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 5px;
 }
+
+.sp-resize-handle {
+  flex: 0 0 auto; height: 8px;
+  margin: -4px -12px -10px -12px;
+  cursor: ns-resize; position: relative;
+}
+.sp-resize-handle::after {
+  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--border2); opacity: 0.6;
+}
+.sp-resize-handle:hover::after,
+.search-panel.sp-resizing .sp-resize-handle::after {
+  opacity: 1; background: var(--accent, #888);
+}
+.search-panel.sp-resizing { user-select: none; transition: none; }
 
 .search-tab-badge {
   background: rgba(79,142,247,0.12); color: var(--accent);

@@ -1316,7 +1316,15 @@ const Search = (() => {
       const preview = document.createElement('div');
       preview.className = 'search-result-preview';
 
-      if (snipRe) {
+      if (snipRe && r.matches.length) {
+        const firstIdx = r.matches[0].index;
+        const start = Math.max(0, firstIdx - 80);
+        const end = Math.min(r.value.length, firstIdx + 120);
+        const prefix = start > 0 ? '…' : '';
+        const suffix = end < r.value.length ? '…' : '';
+        const snip = escHtmlUi(prefix + r.value.slice(start, end) + suffix);
+        preview.innerHTML = snip.replace(snipRe, m => `<mark>${m}</mark>`);
+      } else if (snipRe) {
         const snip = escHtmlUi(r.value.slice(0, 200));
         preview.innerHTML = snip.replace(snipRe, m => `<mark>${m}</mark>`);
       } else {
@@ -1388,6 +1396,40 @@ const Search = (() => {
       Toast.show('Совпадений не найдено', 'error');
     }
   }
+
+  /* ---- resize handle ---- */
+  (function initSearchPanelResize() {
+    const handle = document.getElementById('sp-resize-handle');
+    if (!panel || !handle) return;
+    const STORAGE_KEY = 'searchPanelHeight';
+    const MIN_H = 120;
+    function maxH() { return Math.floor(window.innerHeight * 0.8); }
+    function applyHeight(h) {
+      const clamped = Math.min(Math.max(h, MIN_H), maxH());
+      panel.style.height = clamped + 'px';
+      return clamped;
+    }
+    const saved = parseInt(localStorage.getItem(STORAGE_KEY), 10);
+    if (!Number.isNaN(saved)) applyHeight(saved);
+    let dragging = false, startY = 0, startH = 0;
+    handle.addEventListener('mousedown', e => {
+      dragging = true; startY = e.clientY;
+      startH = panel.getBoundingClientRect().height;
+      panel.classList.add('sp-resizing'); e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      applyHeight(startH + (e.clientY - startY));
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false; panel.classList.remove('sp-resizing');
+      localStorage.setItem(STORAGE_KEY, Math.round(panel.getBoundingClientRect().height));
+    });
+    window.addEventListener('resize', () => {
+      applyHeight(panel.getBoundingClientRect().height);
+    });
+  })();
 
   /* ---- event wiring ---- */
 
