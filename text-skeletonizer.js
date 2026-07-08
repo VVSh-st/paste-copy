@@ -171,7 +171,8 @@ const TextSkeletonizer = (() => {
   }
 
   /**
-   * Основная функция: строит скелет текста (синхронно).
+   * Синхронная обработка: строит скелет текста.
+   * Не использует Web Worker — для больших текстов используйте processAsync().
    * @param {string} text — исходный текст
    * @param {object} opts — настройки: { level: 'light'|'medium'|'aggressive' }
    * @returns {string} компактный скелет
@@ -416,7 +417,11 @@ const TextSkeletonizer = (() => {
       if (w.length <= 3 || STOP_WORDS.has(w)) continue;
 
       // Проверяем окно 3 слова назад — если есть отрицание, пропускаем
-      if (i > 0 && rawWords.slice(Math.max(0, i - 3), i).some(w => NEGATIONS.has(w))) continue;
+      let negated = false;
+      for (let j = Math.max(0, i - 3); j < i; j++) {
+        if (NEGATIONS.has(rawWords[j])) { negated = true; break; }
+      }
+      if (negated) continue;
 
       // Лемматизация: приводим к основе
       const lemma = _lemmatize(w);
