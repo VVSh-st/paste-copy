@@ -2545,7 +2545,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       wcBtn.type = 'button';
       wcBtn.className = 'font-ctrl-btn word-count-btn';
       wcBtn.title = 'Подсчёт слов';
-      wcBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="2" width="14" height="16" rx="2"/><line x1="7" y1="7" x2="13" y2="7"/><line x1="7" y1="10.5" x2="13" y2="10.5"/><line x1="7" y1="14" x2="10" y2="14"/></svg>';
+      wcBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><line x1="4" y1="5" x2="16" y2="5"/><line x1="4" y1="10" x2="12" y2="10"/><line x1="4" y1="15" x2="8" y2="15"/></svg>';
       WordCount.setupButton(wcBtn, ta);
       footer.appendChild(wcBtn);
     }
