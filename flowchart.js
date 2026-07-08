@@ -664,20 +664,6 @@ const Flowchart = (() => {
     _saveCanvases();
   }
 
-  function _confirmDeleteCanvas(cv, btn) {
-    if (_canvases.length <= 1) { window.Toast?.show('Нельзя удалить последнее полотно', 'info'); return; }
-    const rect = btn.getBoundingClientRect(), panelRect = _panel.getBoundingClientRect();
-    _showTooltip({
-      x: rect.left - panelRect.left, y: rect.bottom - panelRect.top + 4,
-      title: `Удалить «${cv.name}»?`, fields: [],
-      onSubmit: () => {
-        _canvases = _canvases.filter(c => c.id !== cv.id);
-        if (_activeCanvasId === cv.id) _activeCanvasId = _canvases[0].id;
-        _saveCanvases(); _switchCanvas(_activeCanvasId); _renderCanvasPills();
-      }
-    });
-  }
-
   function _renderCanvasPills() {
     const wrap = _overlay?.querySelector('.flowchart-canvases');
     if (!wrap) return;
@@ -686,20 +672,14 @@ const Flowchart = (() => {
       const btn = document.createElement('button');
       btn.className = 'fc-canvas-pill' + (cv.id === _activeCanvasId ? ' active' : '');
       btn.textContent = cv.name; btn.dataset.id = cv.id;
-      let holdTimer = null, holding = false;
-      btn.addEventListener('mousedown', e => {
-        if (e.button !== 0) return;
-        holding = false;
-        btn.classList.add('fc-pill-charging');
-        holdTimer = setTimeout(() => {
-          holding = true;
-          btn.classList.remove('fc-pill-charging');
-          _confirmDeleteCanvas(cv, btn);
-        }, 600);
+      btn.addEventListener('click', () => _switchCanvas(cv.id));
+      btn.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        if (_canvases.length <= 1) return;
+        _canvases = _canvases.filter(c => c.id !== cv.id);
+        if (_activeCanvasId === cv.id) _activeCanvasId = _canvases[0].id;
+        _saveCanvases(); _switchCanvas(_activeCanvasId); _renderCanvasPills();
       });
-      btn.addEventListener('mouseup', () => { clearTimeout(holdTimer); btn.classList.remove('fc-pill-charging'); });
-      btn.addEventListener('mouseleave', () => { clearTimeout(holdTimer); btn.classList.remove('fc-pill-charging'); });
-      btn.addEventListener('click', e => { if (holding) { e.stopPropagation(); holding = false; return; } _switchCanvas(cv.id); });
       btn.addEventListener('dblclick', e => {
         e.stopPropagation();
         const rect = btn.getBoundingClientRect();
@@ -828,7 +808,13 @@ const Flowchart = (() => {
     el.addEventListener('mouseenter', () => el.setAttribute('stroke', 'rgba(255,255,255,0.4)'));
     el.addEventListener('mouseleave', () => el.setAttribute('stroke', 'rgba(255,255,255,0.18)'));
     el.addEventListener('click', e => { e.stopPropagation(); _openEdgeTooltip(e, fromId, toId, edge.label || ''); });
-    el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(fromId, toId); });
+    // Invisible hit-area for easier right-click deletion
+    const hit = el.cloneNode();
+    hit.setAttribute('stroke', 'transparent');
+    hit.setAttribute('stroke-width', '14');
+    hit.style.cursor = 'pointer';
+    hit.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(fromId, toId); });
+    _edgesG.insertBefore(hit, el);
   }
 
   function _renderEdgeLabel(pathEl, edge) {
@@ -1036,7 +1022,6 @@ const Flowchart = (() => {
           <button class="flowchart-btn flowchart-add" title="Добавить блок">+</button>
           <button class="flowchart-btn flowchart-connect" title="Соединить блоки">↗</button>
           <button class="flowchart-btn flowchart-auto-layout" title="Авто-раскладка">⊞</button>
-          <button class="flowchart-btn flowchart-refresh" title="Обновить анализ">↻</button>
           <button class="flowchart-btn flowchart-export" title="Дублировать полотно">⇪</button>
           <button class="flowchart-btn fc-font-dec" title="Меньше шрифт">A−</button>
           <button class="flowchart-btn fc-font-inc" title="Больше шрифт">A+</button>
@@ -1081,15 +1066,6 @@ const Flowchart = (() => {
         else if (_mode === 'graph') _forceLayout(true);
         _skipRestore = true; _render();
       });
-    });
-
-    _overlay.querySelector('.flowchart-refresh').addEventListener('click', () => {
-      if (_loading) return;
-      const text = window.Preview?.getText?.() ?? '';
-      if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
-      _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
-      _overlay.querySelector('.flowchart-refresh').classList.add('spinning');
-      _fetchWithQuery(text, null);
     });
 
     // ── Query menu: presets, history, input ─────────────────────
@@ -1171,7 +1147,6 @@ const Flowchart = (() => {
       if (!text.trim()) { window.Toast?.show('Превью пустое', 'info'); return; }
       if (!PRESETS.includes(query)) _saveHistory(query);
       _overlay.querySelector('.flowchart-status').textContent = 'Анализирую...';
-      _overlay.querySelector('.flowchart-refresh')?.classList.add('spinning');
       _fetchWithQuery(text, query);
     }
 
@@ -1317,15 +1292,10 @@ const Flowchart = (() => {
       const nodeEl = e.target.closest('[data-node-id]');
       if (!nodeEl) return;
       e.preventDefault();
-      const node = _nodes.find(n => n.id === nodeEl.dataset.nodeId);
-      if (!node) return;
-      const panelRect = _panel.getBoundingClientRect();
-      _showTooltip({
-        x: e.clientX - panelRect.left, y: e.clientY - panelRect.top,
-        title: `Удалить «${node.label}»?`,
-        fields: [],
-        onSubmit: () => { _nodes = _nodes.filter(n => n.id !== node.id); _edges = _edges.filter(e => e.from !== node.id && e.to !== node.id); _syncData(); _render(); }
-      });
+      const nodeId = nodeEl.dataset.nodeId;
+      _nodes = _nodes.filter(n => n.id !== nodeId);
+      _edges = _edges.filter(e => e.from !== nodeId && e.to !== nodeId);
+      _syncData(); _render();
     });
 
     _svg.addEventListener('mousemove', e => {
@@ -1383,10 +1353,10 @@ const Flowchart = (() => {
         messages: [{ role: 'user', content: userContent }],
         stream: false, maxTokens: 2500, featureTag: 'flowchart',
       });
-      if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
+      if (!result?.trim()) { window.Toast?.show('Нет результата', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; return; }
       let json;
-      try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; } }
-      if (!json || !Array.isArray(json.nodes) || !json.nodes.length) { window.Toast?.show('LLM вернул пустую схему', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); return; }
+      try { json = JSON.parse(result.trim()); } catch { const m = result.match(/\{[\s\S]*\}/); if (m) json = JSON.parse(m[0]); else { window.Toast?.show('Не удалось распарсить JSON', 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; return; } }
+      if (!json || !Array.isArray(json.nodes) || !json.nodes.length) { window.Toast?.show('LLM вернул пустую схему', 'info'); _overlay.querySelector('.flowchart-status').textContent = ''; _loading = false; return; }
       // Sanitize: dedupe node ids, filter invalid edges
       const seenIds = new Set();
       json.nodes = json.nodes.filter(n => {
@@ -1412,7 +1382,7 @@ const Flowchart = (() => {
       _render();
       _syncData();
     } catch (e) { if (e.name !== 'AbortError') window.Toast?.show(e.message, 'error'); _overlay.querySelector('.flowchart-status').textContent = ''; }
-    finally { _loading = false; _overlay?.querySelector('.flowchart-refresh')?.classList.remove('spinning'); }
+    finally { _loading = false; }
   }
 
   function _buildDefs() {
