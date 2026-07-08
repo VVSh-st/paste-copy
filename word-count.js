@@ -30,7 +30,7 @@ const WordCount = (() => {
       ? text.split(/\n\s*\n/).filter(s => s.trim()).length || 1
       : 0;
     const readingMinutes = Math.ceil(words / 200);
-    const readingTime = words === 0 ? '< 1 мин' : readingMinutes + ' мин';
+    const readingTime = readingMinutes < 1 ? '< 1 мин' : readingMinutes + ' мин';
     return { words, chars, charsNoSpaces, sentences, paragraphs, readingTime };
   }
 
@@ -216,6 +216,7 @@ const WordCount = (() => {
   }
 
   function _onContextMenu(e) {
+    if (_pinned) return;
     if (_isOpen && _popup && !_popup.contains(e.target)) {
       e.preventDefault();
       close();
