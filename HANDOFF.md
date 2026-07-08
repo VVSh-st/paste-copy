@@ -2,6 +2,13 @@
 
 ## Текущий статус
 
+### В работе
+**Аудит ninja-cursor.js**
+- Промпт: `аудит ninja-cursor.txt`
+- Файл: `ninja-cursor.js` (~500 строк, IIFE NinjaCursor)
+- Назначение: декоративный анимированный курсор-шлейф для textarea
+- Ожидание: ответ аудитора
+
 ### Завершено в этой сессии
 1. **Сниппеты refactor**
    - Убран блок `snippets` из дефолтного layout
@@ -26,51 +33,67 @@
    - `getAllSnippetsAndCommands`: проверяет `enabled === false`
    - Кнопка "глаз" обновляется при переключении
 
-4. **Другие правки**
-   - `gist-sync.js`: `calcTotalChars` учитывает `commands` + `globalSnippets`
-   - `llm-features.js`, `word-complete.js`: `snippets` → `commands`
-   - `ui.js`: `makeCmds` создаёт пустой блок, `_typeIcons` без snippets
-
-5. **Подсветка текущей строки — исправлено**
+4. **Подсветка текущей строки — исправлено**
    - Проблема: highlight отстаёт от курсора из-за подсчёта `\n` вместо визуальных строк
-   - Решение: div-зеркало + span-маркёр + `getBoundingClientRect()`
+   - 4 итерации аудита: div→textarea→getBoundingClientRect→scrollHeight→откат к div
+   - Итог: div-зеркало + span-маркёр + `getBoundingClientRect()` + двойной rAF
    - `getLineMirror(cs)`: div с `pre-wrap`/`word-wrap`, идентичные стили textarea
-   - Позиция: `marker.getBoundingClientRect()` относительно `mirror.getBoundingClientRect()`
-   - Двойной `requestAnimationFrame` — ждём два кадра для layout settling
-   - Удалён мёртвый код: `_hlLineH`, `_hlMirror`, `_ensureHlMirror`, `_measureLineHeight`, `_getCaretTop`
+
+5. **Хоткеи — проверка на раскладонезависимость**
+   - Глобальные (Ctrl+Z/Y/S/T/W/C/D/K): уже на `e.code` ✓
+   - Палитры (1-9): на `e.key` — осознанно (продолжение ввода символа)
+   - Решение: оставить как есть
+
+6. **Кнопки якоря — новая логика ← ⚓ →**
+   - ← клик: предыдущий якорь, долгое: очистить все
+   - ⚓ клик: установить якорь, долгое: список якорей
+   - → клик: следующий якорь, долгое: очистить все
+   - `_makeLongPress()` хелпер для переиспользования
+
+7. **Подсчёт слов — фича (3 раунда аудита)**
+   - Новый файл `word-count.js`, IIFE `WordCount`
+   - Кнопка в футере блока (после Translate)
+   - Статистика: слова (акцент), символы, без пробелов, предложения, абзацы, время чтения
+   - Автообновление: input, selectionchange, focusin
+   - Перетаскивание, 📌 закрепление, ESC/ПКМ закрытие
+   - Аудит round 1: innerHTML→textContent, skeleton, clamp bounds, input filter
+   - Аудит round 2: _lastSourceText, _DOC_HANDLERS массив, _ta.isConnected, pin в wordsBlock
+   - Аудит round 3: race focusin/click, clearTimeout в close, комментарий B3
 
 ### Изменённые файлы
 | Файл | Что изменено |
 |------|-------------|
-| `state.js` | defaultBlocks, commands title, миграция, дедупликация, clearGlobalSnippets, toggleGlobalSnippet, load: item.enabled !== false |
-| `blocks.js` | renderCommandsBody с облачными сниппетами, eye/eyeOff SVG, badge скрыт для commands; **line highlight — div-зеркало + getBoundingClientRect** |
+| `state.js` | defaultBlocks, commands title, миграция, дедупликация, toggleGlobalSnippet, load: item.enabled !== false |
+| `blocks.js` | renderCommandsBody, eye/eyeOff SVG, badge; **line highlight — div-зеркало + getBoundingClientRect**; **кнопка Word Count** |
+| `anchors.js` | **Новые кнопки ← ⚓ → с длинным нажатием** |
+| `word-count.js` | **Новый файл: Подсчёт слов — floating stats popup** |
 | `ui.js` | makeCmds пустой, _typeIcons без snippets |
 | `prompt-loom.js` | TDZ: VALID_SOURCES, META_WHITELIST, _loadFailed до loadState() |
-| `index.html` | snippets удалена, commands="Сниппеты", prompt-loom.js?v=3 |
-| `styles.css` | global-snippet-section, btn-icon-active, item-title-input 160px |
+| `index.html` | commands="Сниппеты", prompt-loom.js?v=3, word-count.js |
+| `styles.css` | global-snippet-section, btn-icon-active, item-title-input 160px, **.wc-popup** |
 | `help.js` | Описание блока "Сниппеты" |
 | `gist-sync.js` | calcTotalChars: commands + globalSnippets |
 | `llm-features.js` | snippets → commands |
 | `word-complete.js` | snippets → commands |
 
-### Бэкапы
-- `Backup/backup-2026-07-07_22-00/` — полный бэкап после всех правок
-
 ## Как работает
-- Блок "Сниппеты" (type: `commands`) — локальные команды + облачные сниппеты сверху
-- Облачные сниппеты: создаются Loom/Intelligence, хранятся в `globalSnippets`
-- On/off: выключенные не попадают в `/` меню
-- Миграция: при загрузке `snippets` → `commands` с конвертацией `title` → `label`
-- Prompt Loom: история в `localStorage('promptLoom.v1')`, загружается в IIFE
-- Line highlight: div-зеркало с теми же стилями, span-маркёр, getBoundingClientRect для точной позиции
+- **Сниппеты** (type: `commands`) — локальные команды + облачные сниппеты сверху
+- **Облачные сниппеты**: создаются Loom/Intelligence, хранятся в `globalSnippets`
+- **On/off**: выключенные не попадают в `/` меню
+- **Миграция**: `snippets` → `commands` с конвертацией `title` → `label`
+- **Prompt Loom**: история в `localStorage('promptLoom.v1')`, загружается в IIFE
+- **Line highlight**: div-зеркало + span-маркёр + `getBoundingClientRect()` + двойной rAF
+- **Якоря**: ← ⚓ → с длинным нажатием, перекрестная навигация
+- **Подсчёт слов**: skeleton rows + textContent, _lastSourceText diff, _DOC_HANDLERS массив
 
 ## Проверка
-1. Новый layout: блок "Сниппеты" без дефолтных items ✓
+1. Сниппеты: блок без дефолтных items ✓
 2. Облачные сниппеты: edit/delete/on-off → `/` меню ✓
 3. Миграция: старый snippets → commands ✓
 4. Prompt Loom: F5 сохраняет историю ✓
-5. Cache-busting: `?v=3` предотвращает кэширование старой версии ✓
-6. Line highlight: длинная строка с переносом, ~170+ строк, кириллица ✓
+5. Line highlight: длинная строка, ~170+ строк, кириллица ✓
+6. Якоря: ← ⚓ → клик + долгое нажатие ✓
+7. Подсчёт слов: stats, drag, pin, ESC, автообновление ✓
 
 ## TDZ-чеклист для IIFE с ранним loadState()
 
