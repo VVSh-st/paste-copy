@@ -1400,6 +1400,16 @@ window.LLMFeatures = (() => {
     function _renderClassicOp(op, idxRef, totalTokens) {
       if (op.type === 'eq') return escapeHtml(op.text);
 
+      if (op._collapsed) {
+        const tag = op.type === 'del' ? 'del' : 'ins';
+        const cls = op.type === 'del'
+          ? 'diff-del diff-classic-token diff-classic-del diff-run-summary'
+          : 'diff-ins diff-classic-token diff-classic-ins diff-run-summary';
+        const firstChar = String(op.text ?? '').charAt(0);
+        const visible = firstChar === '\n' ? '↵' : firstChar === ' ' ? '·' : firstChar === '\t' ? '⇥' : escapeHtml(firstChar);
+        return `<${tag} class="${cls}" title="Скрыто ${op._totalLines} пустых строк" data-collapsed="${op._totalLines}">${visible}<span class="diff-run-count"> …${op._totalLines} строк…</span></${tag}>`;
+      }
+
       const tag = op.type === 'del' ? 'del' : 'ins';
       const cls = op.type === 'del' ? 'diff-del diff-classic-token diff-classic-del' : 'diff-ins diff-classic-token diff-classic-ins';
       const denom = Math.max(1, totalTokens - 1);
@@ -1416,6 +1426,16 @@ window.LLMFeatures = (() => {
 
     function _renderMatrixOp(op, idxRef, totalTokens, durationMs) {
       if (op.type === 'eq') return escapeHtml(op.text);
+
+      if (op._collapsed) {
+        const tag = op.type === 'del' ? 'del' : 'ins';
+        const cls = op.type === 'del'
+          ? 'diff-del diff-matrix-token diff-matrix-del diff-run-summary'
+          : 'diff-ins diff-matrix-token diff-matrix-ins diff-run-summary';
+        const firstChar = String(op.text ?? '').charAt(0);
+        const visible = firstChar === '\n' ? '↵' : firstChar === ' ' ? '·' : firstChar === '\t' ? '⇥' : escapeHtml(firstChar);
+        return `<${tag} class="${cls}" title="Скрыто ${op._totalLines} пустых строк" data-collapsed="${op._totalLines}">${visible}<span class="diff-run-count"> …${op._totalLines} строк…</span></${tag}>`;
+      }
 
       const tag = op.type === 'del' ? 'del' : 'ins';
       const cls = op.type === 'del' ? 'diff-del diff-matrix-token diff-matrix-del' : 'diff-ins diff-matrix-token diff-matrix-ins';
@@ -1443,17 +1463,58 @@ window.LLMFeatures = (() => {
       }, 0);
     }
 
+    const EMPTY_RUN_THRESHOLD = 3;
+
+    function _collapseWhitespaceRuns(ops) {
+      if (!ops || !ops.length) return ops;
+      const result = [];
+      let i = 0;
+      while (i < ops.length) {
+        const op = ops[i];
+        if ((op.type === 'del' || op.type === 'ins') && /^[ \t\n\r]*$/.test(op.text ?? '')) {
+          let j = i + 1;
+          while (j < ops.length
+                 && ops[j].type === op.type
+                 && /^[ \t\n\r]*$/.test(ops[j].text ?? '')
+                 && ops[j].text) {
+            j++;
+          }
+          const totalNewlines = ops.slice(i, j).reduce((n, o) => n + (o.text.match(/\n/g) || []).length, 0);
+          const groupSize = j - i;
+          if (totalNewlines >= EMPTY_RUN_THRESHOLD) {
+            const first = String(op.text ?? '');
+            result.push({
+              type: op.type,
+              text: first,
+              _collapsed: true,
+              _groupSize: groupSize,
+              _totalLines: totalNewlines,
+            });
+          } else {
+            for (let k = i; k < j; k++) result.push(ops[k]);
+          }
+          i = j;
+          continue;
+        }
+        result.push(op);
+        i++;
+      }
+      return result;
+    }
+
     function renderHtml(ops, mode = 'classic', options = {}) {
+      const collapsed = _collapseWhitespaceRuns(ops);
+
       if (mode === 'matrix') {
         const idxRef = { value: 0 };
         const durationMs = _clampEffectMs(options.durationMs);
-        const totalTokens = _countChangedTokens(ops);
-        return ops.map(op => _renderMatrixOp(op, idxRef, totalTokens, durationMs)).join('');
+        const totalTokens = _countChangedTokens(collapsed);
+        return collapsed.map(op => _renderMatrixOp(op, idxRef, totalTokens, durationMs)).join('');
       }
 
       const idxRef = { value: 0 };
-      const totalTokens = _countChangedTokens(ops);
-      return ops.map(op => _renderClassicOp(op, idxRef, totalTokens)).join('');
+      const totalTokens = _countChangedTokens(collapsed);
+      return collapsed.map(op => _renderClassicOp(op, idxRef, totalTokens)).join('');
     }
 
     return { compute, renderHtml };

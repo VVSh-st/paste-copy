@@ -1141,6 +1141,18 @@ textarea.block-textarea:focus {
 .snap-diff-body .diff-ins { background: rgba(92,184,122,0.15); color: var(--green); border-radius: 2px; padding: 0 2px; }
 .snap-diff-body .diff-eq { color: var(--text2); }
 .snap-diff-body .snap-diff-empty { color: var(--text3); font-style: italic; }
+.snap-diff-body .diff-run-summary {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-style: italic;
+  opacity: 0.75;
+}
+.snap-diff-body .diff-run-count {
+  margin-inline: 4px;
+  font-size: 0.85em;
+  opacity: 0.65;
+}
 .snap-diff-nav { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .snap-diff-nav-btn {
   background: transparent; border: 1px solid var(--border); color: var(--text2); cursor: pointer;
