@@ -27,6 +27,16 @@ const TextSkeletonizer = (() => {
     return ((h2 ^= h1 >>> 16) >>> 0).toString(36) + ((h1 >>> 0).toString(36));
   }
 
+  function _cacheKey(level, text) {
+    return level + ':' + text.length + ':' + _hash(text);
+  }
+
+  function _setCache(key, value) {
+    _cache.delete(key);
+    _cache.set(key, value);
+    if (_cache.size > MAX_CACHE) _cache.delete(_cache.keys().next().value);
+  }
+
   // ── Web Worker ──────────────────────────────────────────────
   let _worker = null;
   let _workerReady = false;
@@ -61,13 +71,11 @@ const TextSkeletonizer = (() => {
         if (cb) {
           clearTimeout(cb.timerId);
           _workerCallbacks.delete(id);
-          if (error) {
+          if (error || typeof result !== 'string') {
             try { cb.resolve(_processSync(cb.text, cb.level)); }
             catch (err) { cb.reject(err); }
           } else {
-            const cacheKey = cb.level + ':' + _hash(cb.text);
-            _cache.set(cacheKey, result);
-            if (_cache.size > MAX_CACHE) _cache.delete(_cache.keys().next().value);
+            _setCache(_cacheKey(cb.level, cb.text), result);
             cb.resolve(result);
           }
         }
@@ -177,11 +185,10 @@ const TextSkeletonizer = (() => {
   function processAsync(text, opts = {}) {
     if (!text || !text.trim()) return Promise.resolve('');
     const level = opts.level || 'medium';
-    const cacheKey = level + ':' + _hash(text);
-    const cached = _cache.get(cacheKey);
+    const key = _cacheKey(level, text);
+    const cached = _cache.get(key);
     if (cached !== undefined) {
-      _cache.delete(cacheKey);
-      _cache.set(cacheKey, cached);
+      _setCache(key, cached);
       return Promise.resolve(cached);
     }
     if (text.length >= WORKER_THRESHOLD) {
@@ -194,11 +201,10 @@ const TextSkeletonizer = (() => {
    * Синхронная обработка (используется для маленьких текстов и как fallback).
    */
   function _processSync(text, level) {
-    const cacheKey = level + ':' + _hash(text);
-    const cached = _cache.get(cacheKey);
+    const key = _cacheKey(level, text);
+    const cached = _cache.get(key);
     if (cached !== undefined) {
-      _cache.delete(cacheKey);
-      _cache.set(cacheKey, cached);
+      _setCache(key, cached);
       return cached;
     }
 
@@ -261,10 +267,7 @@ const TextSkeletonizer = (() => {
 
     const result = parts.join('\n');
 
-    _cache.set(cacheKey, result);
-    if (_cache.size > MAX_CACHE) {
-      _cache.delete(_cache.keys().next().value);
-    }
+    _setCache(key, result);
 
     return result;
   }
@@ -294,7 +297,7 @@ const TextSkeletonizer = (() => {
 
   // ── Конфигурация по уровню ──────────────────────────────────
 
-  function _configForLevel(level, opts) {
+  function _configForLevel(level) {
     const base = {
       maxHeadingLength: 120,
       maxSentenceLength: 200,
@@ -412,8 +415,8 @@ const TextSkeletonizer = (() => {
       const w = rawWords[i];
       if (w.length <= 3 || STOP_WORDS.has(w)) continue;
 
-      // Проверяем предыдущее слово — если отрицание, пропускаем
-      if (i > 0 && NEGATIONS.has(rawWords[i - 1])) continue;
+      // Проверяем окно 3 слова назад — если есть отрицание, пропускаем
+      if (i > 0 && rawWords.slice(Math.max(0, i - 3), i).some(w => NEGATIONS.has(w))) continue;
 
       // Лемматизация: приводим к основе
       const lemma = _lemmatize(w);
