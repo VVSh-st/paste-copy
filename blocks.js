@@ -1815,11 +1815,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       const fs = cs.fontSize;
       if (_hlLineH > 0 && _hlMirrorFs === fs) return; // already measured
-      // height("X\nX") - height("X") = one rendered line
+      // height("X\nX") - height("X") = one rendered line.
+      // getBoundingClientRect даёт float без округления — scrollHeight
+      // округляет/усекает до целого пикселя на каждом вызове, и это
+      // давало остаточный суб-пиксельный дрейф даже после textarea-зеркала.
       m.value = 'X';
-      const h1 = m.scrollHeight;
+      const h1 = m.getBoundingClientRect().height;
       m.value = 'X\nX';
-      const h2 = m.scrollHeight;
+      const h2 = m.getBoundingClientRect().height;
       const measured = h2 - h1;
       if (measured > 0) {
         _hlLineH = measured;
@@ -1833,9 +1836,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
 
     // Точная позиция курсора с учётом word-wrap: пишем в зеркало-textarea
-    // весь текст до курсора и читаем scrollHeight — высоту, которую контент
-    // занимает вплоть до текущей (последней) визуальной строки. Верх этой
-    // строки = scrollHeight - высота одной строки.
+    // весь текст до курсора и читаем getBoundingClientRect().height — высоту,
+    // которую контент занимает вплоть до текущей (последней) визуальной строки.
+    // Верх этой строки = contentHeight - высота одной строки.
     function _getCaretTop() {
       const m = _ensureHlMirror();
       const cs = getComputedStyle(ta);
@@ -1855,7 +1858,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       // scrollHeight пустой textarea может быть 0 или min-height браузера,
       // поэтому подстраховываемся минимум одним символом.
       m.value = val.substring(0, sel) || ' ';
-      const contentHeight = m.scrollHeight;
+      const contentHeight = m.getBoundingClientRect().height;
       m.value = '';
 
       if (!_hlLineH) _measureLineHeight();
