@@ -236,6 +236,8 @@ const WordCount = (() => {
     if (_popup) _popup.style.display = 'none';
     _isOpen = false;
     _btn?.classList.remove('active');
+    clearTimeout(_updateTimer);
+    _updateTimer = null;
     _detachListeners();
   }
 
@@ -261,12 +263,13 @@ const WordCount = (() => {
 
   function _onFocusIn(e) {
     const newTa = e.target;
-    if (newTa.classList?.contains('block-textarea') && newTa !== _ta) {
-      _ta = newTa;
-      _lastSourceText = '';
-      _lastSel = '';
-      _scheduleUpdate();
-    }
+    if (!newTa.classList?.contains('block-textarea') || newTa === _ta) return;
+    _ta = newTa;
+    _lastSourceText = '';
+    _lastSel = '';
+    // При открытом попапе не обновляем — click на кнопке другого блока
+    // должен работать через toggle(), а не через focusin.
+    if (_isOpen) _scheduleUpdate();
   }
 
   function _onKeydown(e) {
@@ -276,6 +279,7 @@ const WordCount = (() => {
     }
   }
 
+  // Подавление системного контекстного меню при ПКМ вне закреплённого попапа — by design.
   function _onContextMenu(e) {
     if (_pinned) return;
     if (_isOpen && _popup && !_popup.contains(e.target)) {
