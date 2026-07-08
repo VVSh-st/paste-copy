@@ -2234,6 +2234,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     });
 
+    // ── Word Count button ────────────────────────────────────
+    if (typeof WordCount !== 'undefined') {
+      const wcBtn = document.createElement('button');
+      wcBtn.type = 'button';
+      wcBtn.className = 'font-ctrl-btn word-count-btn';
+      wcBtn.title = 'Подсчёт слов';
+      wcBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="3" y="2" width="14" height="16" rx="2"/><line x1="7" y1="7" x2="13" y2="7"/><line x1="7" y1="10.5" x2="13" y2="10.5"/><line x1="7" y1="14" x2="10" y2="14"/></svg>';
+      WordCount.setupButton(wcBtn, ta);
+      footer.appendChild(wcBtn);
+    }
+
     // ── Translate button ───────────────────────────────────────
     const TRANSLATE_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
     const translateBtn = mkBtn('font-ctrl-btn translate-btn', '', 'Перевести');

@@ -6374,3 +6374,64 @@ body.help-open {
 }
 .te-resize-handle:hover { opacity: 1; }
 .te-resize-handle svg { width: 10px; height: 10px; }
+
+/* ── Word Count popup ───────────────────────────────────── */
+.wc-popup {
+  position: fixed;
+  width: 175px;
+  z-index: 9500;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--text1);
+  user-select: none;
+  display: none;
+}
+.wc-popup:hover .wc-pin { opacity: 1; }
+.wc-pin {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+.wc-pin.active { opacity: 1; }
+.wc-words-block {
+  background: var(--accent, #4f8ef7);
+  color: #fff;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.wc-words-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.wc-words-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.wc-rows { display: flex; flex-direction: column; gap: 4px; }
+.wc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+.wc-label { color: var(--text3, #888); font-size: 11px; }
+.wc-value { font-weight: 600; color: var(--text0, #eee); font-size: 12px; }
