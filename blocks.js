@@ -1608,7 +1608,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(tools);
 
     ta.className   = 'block-textarea';
-    ta.spellcheck  = false; // browser spellcheck disabled (hidden from settings, CPU-heavy on large text)
+    ta.spellcheck  = b.spellcheck !== false; // browser spellcheck, default ON (toggle via footer button)
     ta.value       = b.subtabs[b.activeSubtab].value || '';
     ta.placeholder = b.placeholder || 'Введите текст...';
     ta.style.fontSize = (b.fontSize || 12) + 'px';

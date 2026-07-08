@@ -20,7 +20,7 @@ const State = (() => {
     previewHeaders:  true,
     currentLineHighlight: false,
     currentLineColor:     'rgba(79,142,247,0.18)',
-    spellCheck:           false,
+    spellCheck:           true,
     blockHeights:    {},
 
     llm: {
@@ -1150,6 +1150,49 @@ const State = (() => {
                 matches, value: val,
               });
           }
+        } else if (b.type === 'sticky') {
+          const val = b.value || '';
+          if (val) {
+            const matches = _collectMatches(re, val);
+            if (matches.length)
+              results.push({
+                tabId: tab.id, tabName: tab.name,
+                blockId: b.id, blockTitle: b.title,
+                matches, value: val,
+              });
+          }
+        } else if (b.type === 'todo') {
+          for (const sub of (b.subtabs || [])) {
+            for (const item of (sub.items || [])) {
+              const val = item.text || '';
+              if (!val) continue;
+              const matches = _collectMatches(re, val);
+              if (matches.length)
+                results.push({
+                  tabId: tab.id, tabName: tab.name,
+                  blockId: b.id, blockTitle: b.title,
+                  subtabLabel: sub.label,
+                  matches, value: val,
+                });
+            }
+          }
+        } else if (b.type === 'table') {
+          for (const sub of (b.subtabs || [])) {
+            for (const row of (sub.rows || [])) {
+              for (const cell of row) {
+                const val = String(cell || '');
+                if (!val) continue;
+                const matches = _collectMatches(re, val);
+                if (matches.length)
+                  results.push({
+                    tabId: tab.id, tabName: tab.name,
+                    blockId: b.id, blockTitle: b.title,
+                    subtabLabel: sub.label,
+                    matches, value: val,
+                  });
+              }
+            }
+          }
         } else if (b.type === 'group' && b.children) {
           searchBlocks(b.children);
         }
@@ -1206,6 +1249,46 @@ const State = (() => {
             if (next === before) continue;
             count      += hits.length;
             item.value   = next;
+          }
+        } else if (b.type === 'sticky') {
+          const before = b.value || '';
+          if (before) {
+            re.lastIndex = 0;
+            const hits = before.match(re);
+            if (hits) {
+              const next = before.replace(re, replacement);
+              if (next !== before) { count += hits.length; b.value = next; }
+            }
+          }
+        } else if (b.type === 'todo') {
+          for (const sub of (b.subtabs || [])) {
+            for (const item of (sub.items || [])) {
+              const before = item.text || '';
+              if (!before) continue;
+              re.lastIndex = 0;
+              const hits = before.match(re);
+              if (!hits) continue;
+              const next = before.replace(re, replacement);
+              if (next === before) continue;
+              count += hits.length;
+              item.text = next;
+            }
+          }
+        } else if (b.type === 'table') {
+          for (const sub of (b.subtabs || [])) {
+            for (const row of (sub.rows || [])) {
+              for (let ci = 0; ci < row.length; ci++) {
+                const before = String(row[ci] || '');
+                if (!before) continue;
+                re.lastIndex = 0;
+                const hits = before.match(re);
+                if (!hits) continue;
+                const next = before.replace(re, replacement);
+                if (next === before) continue;
+                count += hits.length;
+                row[ci] = next;
+              }
+            }
           }
         } else if (b.type === 'group' && b.children) {
           replaceBlocks(b.children);
