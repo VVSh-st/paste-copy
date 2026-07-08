@@ -146,7 +146,12 @@ function _extractKeyTerms(text, cfg) {
   for (let i = 0; i < rawWords.length; i++) {
     const w = rawWords[i];
     if (w.length <= 3 || STOP_WORDS.has(w)) continue;
-    if (i > 0 && NEGATIONS.has(rawWords[i - 1])) continue;
+    // Проверяем окно 3 слова назад — если есть отрицание, пропускаем
+    let negated = false;
+    for (let j = Math.max(0, i - 3); j < i; j++) {
+      if (NEGATIONS.has(rawWords[j])) { negated = true; break; }
+    }
+    if (negated) continue;
     const lemma = _lemmatize(w);
     freq.set(lemma, (freq.get(lemma) || 0) + 1);
   }
@@ -214,7 +219,7 @@ function _computeStats(text, sections) {
 }
 
 function process(text, level) {
-  if (!text || !text.trim()) return '';
+  if (typeof text !== 'string' || !text.trim()) return '';
   const cfg = _configForLevel(level);
   const sections = _extractSections(text, cfg);
   const parts = [];
@@ -258,11 +263,11 @@ function process(text, level) {
 // ── Worker обработчик ──────────────────────────────────────────
 
 self.onmessage = function(e) {
-  const { text, level, id } = e.data;
   try {
+    const { text, level, id } = e.data || {};
     const result = process(text, level);
     self.postMessage({ id, result });
   } catch (err) {
-    self.postMessage({ id, error: err.message });
+    self.postMessage({ id: e.data?.id, error: String(err.message || err) });
   }
 };
