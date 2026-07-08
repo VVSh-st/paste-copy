@@ -27,6 +27,7 @@ const NinjaCursor = (() => {
     'fontFeatureSettings', 'fontKerning',
     'letterSpacing', 'lineHeight',
     'textTransform', 'textIndent',
+    'whiteSpace',
     'wordBreak', 'overflowWrap',
     'tabSize',
   ];
@@ -40,6 +41,7 @@ const NinjaCursor = (() => {
    * avoiding DOM thrashing on fast typing.
    */
   function _getMirror(el) {
+    if (!el.isConnected) return null;
     const doc = el.ownerDocument;
 
     if (_mirrorCache.el === el && _mirrorCache.mirror && _mirrorCache.mirror.isConnected) {
@@ -75,14 +77,14 @@ const NinjaCursor = (() => {
     mirror.style.left          = '-9999px';
     mirror.style.overflow      = 'hidden';
 
+    // whiteSpace now comes from COPY_PROPS (computed style).
+    // For INPUT elements, force 'pre' to prevent wrap.
     if (el.tagName === 'INPUT') {
       mirror.style.whiteSpace = 'pre';
-    } else {
-      mirror.style.whiteSpace = 'pre-wrap';
-      mirror.style.wordWrap   = 'break-word';
     }
 
     doc.body.appendChild(mirror);
+    mirror.setAttribute('aria-hidden', 'true');
 
     _mirrorCache = { el, mirror };
     return mirror;
@@ -93,6 +95,7 @@ const NinjaCursor = (() => {
    * inside a <textarea> or <input type="text">.
    */
   function _getTextareaCaretRect(el) {
+    if (!el.isConnected) return null;
     // Guard: selectionStart can be null for certain input types in some browsers
     const start = Number(el.selectionStart);
     if (!Number.isFinite(start)) return null;
@@ -114,11 +117,11 @@ const NinjaCursor = (() => {
     const before = doc.createElement('span');
     before.textContent = el.value.substring(0, start);
 
-    // Marker at the caret position. Use the actual next char, or '.' as a
-    // height placeholder (never a space — trailing space at a wrap boundary
-    // may be collapsed).
+    // Marker at the caret position. Use NBSP for spaces to prevent
+    // collapse at wrap boundaries; '.' as fallback when at end of text.
     const marker = doc.createElement('span');
-    marker.textContent = el.value.substring(start, start + 1) || '.';
+    const ch = el.value.substring(start, start + 1);
+    marker.textContent = (ch && ch !== ' ') ? ch : '\u00A0';
 
     mirror.appendChild(before);
     mirror.appendChild(marker);
@@ -191,7 +194,6 @@ const NinjaCursor = (() => {
       this._handlers   = [];
       this._datumEl    = null;
       this._scrollBusy = false;
-      this._scrollMode = false;
 
       this._build();
       this._bind();
@@ -221,7 +223,7 @@ const NinjaCursor = (() => {
         'keydown', 'keyup', 'input',
         'mousedown', 'mouseup',
         'touchstart', 'touchend',
-        'focusin', 'click',
+        'focusin',
       ];
 
       for (const type of events) {
@@ -275,6 +277,10 @@ const NinjaCursor = (() => {
       this._busy = true;
       try {
         await this._tick(null, { animate });
+        if (this._needResync) {
+          this._needResync = false;
+          await this._tick(null, { animate });
+        }
       } catch (err) {
         if (typeof console !== 'undefined') console.debug('[NinjaCursor]', err);
       } finally {
@@ -350,7 +356,6 @@ const NinjaCursor = (() => {
 
     _hide() {
       this._wrapper.style.setProperty('--nc-vis', 'hidden');
-      this._wrapper.style.setProperty('--nc-offset-y', '0px');
       if (this._cursor) this._cursor.className = 'nc-caret';
     }
 
@@ -365,7 +370,6 @@ const NinjaCursor = (() => {
       s.setProperty('--nc-y1', `${rect.y}px`);
       s.setProperty('--nc-x2', `${rect.x}px`);
       s.setProperty('--nc-y2', `${rect.y}px`);
-      s.setProperty('--nc-offset-y', '0px');
       s.setProperty('--nc-vis', 'hidden');
       if (this._cursor) this._cursor.className = 'nc-caret';
     }
@@ -390,7 +394,6 @@ const NinjaCursor = (() => {
       s.setProperty('--nc-y1', `${prev.y}px`);
       s.setProperty('--nc-x2', `${rect.x}px`);
       s.setProperty('--nc-y2', `${rect.y}px`);
-      s.setProperty('--nc-offset-y', '0px');
       s.setProperty('--nc-vis', 'visible');
 
       // [FIX] Update _lastPos synchronously so the next _tick
@@ -415,14 +418,14 @@ const NinjaCursor = (() => {
 
       if (this._scrollBusy) return;
       this._scrollBusy = true;
-      this._scrollMode = true;
 
-      const tick = (prev) => {
+      const MAX_SCROLL_FRAMES = 90; // ~1.5s @ 60fps
+      const tick = (prev, frame = 0) => {
         requestAnimationFrame(() => {
-          if (!this._datumEl || !this._datumEl.isConnected) {
+          if (!this._datumEl || !this._datumEl.isConnected || frame > MAX_SCROLL_FRAMES) {
             this._datumEl    = null;
             this._scrollBusy = false;
-            this._scrollMode = false;
+            this._resync({ animate: false });
             return;
           }
           try {
@@ -431,15 +434,13 @@ const NinjaCursor = (() => {
             const state = `${cur}:${elScroll}`;
 
             if (prev === false || prev !== state) {
-              tick(state);
+              tick(state, frame + 1);
             } else {
               this._scrollBusy = false;
-              this._scrollMode = false;
               this._resync({ animate: false });
             }
           } catch (_) {
             this._scrollBusy = false;
-            this._scrollMode = false;
             this._hide();
           }
         });
