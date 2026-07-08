@@ -1781,91 +1781,28 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     // ── Line highlight: measure lineHeight once, then fast line-count math ──
     // We measure the REAL rendered line height using a hidden mirror element
     // with identical font styles. One measurement at focus = no per-frame lag.
-    let _hlLineH = 0;
-    let _hlMirror = null;
-    let _hlMirrorFs = '';
+    let lineMirror = null;
 
-    function _ensureHlMirror() {
-      if (_hlMirror && _hlMirror.isConnected) return _hlMirror;
-      // ВАЖНО: зеркало — textarea, а не div. У textarea и div разные внутренние
-      // рендер-пути (form control vs block flow), из-за чего line-height может
-      // считаться с суб-пиксельным расхождением, которое накапливается на
-      // каждой строке. Зеркало-textarea рендерится тем же движком, что и
-      // реальный ta — расхождения в принципе нет.
-      _hlMirror = document.createElement('textarea');
-      _hlMirror.tabIndex = -1;
-      _hlMirror.setAttribute('readonly', '');
-      _hlMirror.setAttribute('aria-hidden', 'true');
-      _hlMirror.style.cssText =
-        'position:absolute;visibility:hidden;pointer-events:none;' +
-        'top:0;left:0;overflow:hidden;resize:none;' +
-        'z-index:-1';
-      lineWrap.appendChild(_hlMirror);
-      return _hlMirror;
-    }
-
-    function _measureLineHeight() {
-      const m = _ensureHlMirror();
-      const cs = getComputedStyle(ta);
-      for (const prop of lineMirrorProps) m.style[prop] = cs[prop];
-      m.style.borderWidth = '0';
-      m.style.padding = '0';
-      m.style.width = ta.clientWidth + 'px';
-      m.style.height = 'auto';
-
-      const fs = cs.fontSize;
-      if (_hlLineH > 0 && _hlMirrorFs === fs) return; // already measured
-      // ВАЖНО: getBoundingClientRect() тут не подходит — у <textarea>
-      // рендер-бокс определяется атрибутом rows, а не содержимым .value
-      // (в отличие от div). Только scrollHeight корректно отражает
-      // реальную высоту контента независимо от rows. Используем
-      // scrollHeight, но меряем на N строках и делим — единичная ошибка
-      // округления (макс ~1px) размазывается на N строк, а не на одну.
-      const N = 50;
-      m.value = 'X';
-      const h1 = m.scrollHeight;
-      m.value = Array(N + 1).fill('X').join('\n');
-      const hN = m.scrollHeight;
-      const measured = (hN - h1) / N;
-      if (measured > 0) {
-        _hlLineH = measured;
-        _hlMirrorFs = fs;
-      } else {
-        // Measurement failed (mirror not rendered yet) — use fallback
-        _hlLineH = Math.round((parseFloat(cs.fontSize) || 12) * 1.65);
-        _hlMirrorFs = '';
+    function getLineMirror(cs) {
+      if (!lineMirror) {
+        lineMirror = document.createElement('div');
+        lineMirror.style.position = 'absolute';
+        lineMirror.style.visibility = 'hidden';
+        lineMirror.style.pointerEvents = 'none';
+        lineMirror.style.top = '0';
+        lineMirror.style.left = '0';
+        lineMirror.style.overflow = 'hidden';
+        lineMirror.style.whiteSpace = 'pre-wrap';
+        lineMirror.style.wordWrap = 'break-word';
+        lineWrap.appendChild(lineMirror);
       }
-      m.value = '';
-    }
 
-    // Точная позиция курсора с учётом word-wrap: пишем в зеркало-textarea
-    // весь текст до курсора и читаем scrollHeight — высоту, которую контент
-    // занимает вплоть до текущей (последней) визуальной строки.
-    // Верх этой строки = contentHeight - высота одной строки.
-    function _getCaretTop() {
-      const m = _ensureHlMirror();
-      const cs = getComputedStyle(ta);
-      for (const prop of lineMirrorProps) m.style[prop] = cs[prop];
+      for (const prop of lineMirrorProps) lineMirror.style[prop] = cs[prop];
       const pl = parseFloat(cs.paddingLeft) || 0;
       const pr = parseFloat(cs.paddingRight) || 0;
-      m.style.boxSizing = 'content-box';
-      m.style.borderWidth = '0';
-      m.style.padding = '0';
-      m.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
-      m.style.height = 'auto';
-
-      const sel = ta.selectionStart;
-      const val = ta.value;
-
-      // Пустая строка перед курсором — частый кейс (начало документа),
-      // scrollHeight пустой textarea может быть 0 или min-height браузера,
-      // поэтому подстраховываемся минимум одним символом.
-      m.value = val.substring(0, sel) || ' ';
-      const contentHeight = m.scrollHeight;
-      m.value = '';
-
-      if (!_hlLineH) _measureLineHeight();
-      return Math.max(0, contentHeight - _hlLineH);
+      lineMirror.style.boxSizing = 'content-box';
+      lineMirror.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
+      return lineMirror;
     }
 
     function updateCurrentLineHighlight() {
@@ -1874,33 +1811,45 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       lineWrap.classList.toggle('current-line-enabled', enabled);
       if (!enabled) return;
 
-      if (!_hlLineH) _measureLineHeight();
-
       const cs = getComputedStyle(ta);
-      const borderTop = parseFloat(cs.borderTopWidth) || 0;
-      const paddingTop = parseFloat(cs.paddingTop) || 0;
-      const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
-      const borderRight = parseFloat(cs.borderRightWidth) || 0;
+      const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+      const mirror = getLineMirror(cs);
+      mirror.textContent = '';
 
-      const top = borderTop + paddingTop + _getCaretTop() - ta.scrollTop;
+      const before = document.createElement('span');
+      before.textContent = ta.value.substring(0, ta.selectionStart);
+      const marker = document.createElement('span');
+      marker.textContent = ta.value.substring(ta.selectionStart, ta.selectionStart + 1) || '.';
+      mirror.appendChild(before);
+      mirror.appendChild(marker);
+
+      const markerRect = marker.getBoundingClientRect();
+      const mirrorRect = mirror.getBoundingClientRect();
+      const taRect = ta.getBoundingClientRect();
+      const wrapRect = lineWrap.getBoundingClientRect();
+      const glyphOffset = Math.max(0, (lineHeight - markerRect.height) / 2) - 1;
+      const top = (taRect.top - wrapRect.top) +
+        (markerRect.top - mirrorRect.top) -
+        glyphOffset -
+        ta.scrollTop;
 
       lineHighlight.style.top = top + 'px';
-      lineHighlight.style.height = _hlLineH + 'px';
-      lineHighlight.style.left = borderLeft + 'px';
-      lineHighlight.style.right = borderRight + 'px';
+      lineHighlight.style.height = lineHeight + 'px';
+      lineHighlight.style.left = (parseFloat(cs.borderLeftWidth) || 0) + 'px';
+      lineHighlight.style.right = (parseFloat(cs.borderRightWidth) || 0) + 'px';
       lineHighlight.style.background = lay.currentLineColor || 'rgba(79,142,247,0.18)';
     }
 
-    // [FIX] Debounce для line highlight — один rAF вместо двух
-    let _lineUpdateRaf = null;
     ['focus', 'click', 'keyup', 'select', 'input', 'scroll'].forEach(evt => {
       ta.addEventListener(evt, () => {
-        cancelAnimationFrame(_lineUpdateRaf);
-        _lineUpdateRaf = requestAnimationFrame(updateCurrentLineHighlight);
+        requestAnimationFrame(updateCurrentLineHighlight);
+        requestAnimationFrame(() => requestAnimationFrame(updateCurrentLineHighlight));
       });
     });
     ta.addEventListener('blur', () => {
       updateCurrentLineHighlight();
+      if (lineMirror?.parentNode) lineMirror.parentNode.removeChild(lineMirror);
+      lineMirror = null;
       // Commit any pending spell error on blur (skip if setRangeText triggered the blur)
       if (!_spellApplying) _spellCommit();
       // Immediately render spell markers on blur (safest moment)
