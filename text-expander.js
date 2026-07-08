@@ -89,6 +89,8 @@ const TextExpander = (() => {
   let _formAddBtn = null;
   let _formBody = null;
 
+  let _dropdownCleanup = null;
+
   // Stored listener refs for cleanup
   let _dropdownKeyHandler = null;
   let _outsideClickHandler = null;
@@ -221,7 +223,8 @@ const TextExpander = (() => {
 
   function _dedupeShortcutsByKey() {
     const seen = new Map();
-    for (const [id, s] of _shortcuts) {
+    const entries = [..._shortcuts.entries()];
+    for (const [id, s] of entries) {
       const key = _shortcutKey(s);
       const prev = seen.get(key);
       if (!prev) {
@@ -256,7 +259,11 @@ const TextExpander = (() => {
         Object.assign(_settings, _normalizeSettings(data.settings));
       }
       _ensureKnownCategories();
-    } catch (_) {}
+    } catch (err) {
+      _shortcuts.clear();
+      _lastSavedPayload = '';
+      if (typeof Toast !== 'undefined') Toast.show('TextExpander: повреждены сохранённые данные', 'error');
+    }
   }
 
   function _save() {
@@ -1244,19 +1251,23 @@ const TextExpander = (() => {
     document.addEventListener('selectionchange', onSelectionChange);
     dd.addEventListener('wheel', onWheel, { passive: false });
 
-    dd._cleanupInput = () => {
+    _dropdownCleanup = () => {
       ta.removeEventListener('blur', onBlur);
       document.removeEventListener('selectionchange', onSelectionChange);
       dd.removeEventListener('wheel', onWheel);
     };
+    dd._cleanupInput = _dropdownCleanup;
   }
 
   function _hideDropdown() {
     _dropdownSession++;
     _dropdownPositionSeq++;
     _insertingExpansion = false;
+    if (_dropdownCleanup) {
+      _dropdownCleanup();
+      _dropdownCleanup = null;
+    }
     if (_dropdownEl) {
-      _dropdownEl._cleanupInput?.();
       _dropdownEl.remove();
       _dropdownEl = null;
     }
@@ -1424,8 +1435,10 @@ const TextExpander = (() => {
     m.style.boxSizing = 'content-box';
     m.style.width = (ta.clientWidth - pl - pr) + 'px';
 
-    _caretMirrorBefore.textContent = ta.value.substring(0, ta.selectionStart);
-    _caretMirrorMarker.textContent = ta.value.substring(ta.selectionStart, ta.selectionStart + 1) || '.';
+    const beforeText = ta.value.substring(0, ta.selectionStart);
+    const markerText = ta.value.substring(ta.selectionStart, ta.selectionStart + 1) || '.';
+    if (_caretMirrorBefore.textContent !== beforeText) _caretMirrorBefore.textContent = beforeText;
+    if (_caretMirrorMarker.textContent !== markerText) _caretMirrorMarker.textContent = markerText;
 
     const taR = ta.getBoundingClientRect();
     const mR = m.getBoundingClientRect();
@@ -1457,6 +1470,7 @@ const TextExpander = (() => {
     if (_insertingExpansion) return;
     const ta = _activeTa;
     if (!ta) return;
+    const insertToken = _generateId();
     _insertingExpansion = true;
 
     const session = _dropdownSession;
@@ -1481,8 +1495,10 @@ const TextExpander = (() => {
     // Для clipboard — async fallback
     if (expansion.includes('{{clipboard}}')) {
       if (_dropdownEl) _dropdownEl.classList.add('te-dd-pending');
+      ta._teInsertToken = insertToken;
       expandDynamicTokensAsync(item.text, context).then(result => {
         if (session !== _dropdownSession) return;
+        if (ta._teInsertToken !== insertToken) return;
         const ok = _doInsert(ta, result, startPos, endPos, expectedQuery, blockId);
         if (ok) _bumpUseCount();
         else _hideDropdown();
@@ -1919,6 +1935,7 @@ const TextExpander = (() => {
     _escapePanelHandler = null;
     _windowBlurHandler = null;
     _visibilityChangeHandler = null;
+    if (_dropdownCleanup) { _dropdownCleanup(); _dropdownCleanup = null; }
     _hideDropdown();
     closePanel();
     if (_caretMirrorEl) { _caretMirrorEl.remove(); _caretMirrorEl = null; }
