@@ -8,15 +8,25 @@ const WordCount = (() => {
 
   let _popup = null;
   let _btn = null;
-  let _ta = null;          // current textarea
+  let _ta = null;
   let _isOpen = false;
   let _pinned = localStorage.getItem('wc-pinned') === 'true';
   let _updateTimer = null;
-  let _lastSelection = '';
+  let _lastRenderKey = '';
+  let _rowValueEls = new Map();
 
   /* ---- drag state ---- */
   let _dragging = false;
   let _dragOffset = { x: 0, y: 0 };
+
+  /* ---- row definitions ---- */
+  const _ROW_DEFS = [
+    { label: 'Символы',      stat: 'chars' },
+    { label: 'Без пробелов', stat: 'charsNoSpaces' },
+    { label: 'Предложения',  stat: 'sentences' },
+    { label: 'Абзацы',       stat: 'paragraphs' },
+    { label: 'Время чтения', stat: 'readingTime' },
+  ];
 
   /* ---- stats computation ---- */
   function computeStats(text) {
@@ -43,37 +53,70 @@ const WordCount = (() => {
     return _ta.value;
   }
 
-  /* ---- render ---- */
-  function _render() {
-    if (!_popup) return;
-    const stats = computeStats(_getSourceText());
+  /* ---- build skeleton rows (once) ---- */
+  function _buildRowsSkeleton() {
     const rows = _popup.querySelector('.wc-rows');
     if (!rows) return;
+    rows.textContent = '';
+    _rowValueEls.clear();
+    for (const def of _ROW_DEFS) {
+      const row = document.createElement('div');
+      row.className = 'wc-row';
+      const lbl = document.createElement('span');
+      lbl.className = 'wc-label';
+      lbl.textContent = def.label;
+      const val = document.createElement('span');
+      val.className = 'wc-value';
+      val.textContent = '0';
+      row.append(lbl, val);
+      rows.appendChild(row);
+      _rowValueEls.set(def.stat, val);
+    }
+  }
 
-    const lines = [
-      { label: 'Символы',       value: stats.chars },
-      { label: 'Без пробелов',  value: stats.charsNoSpaces },
-      { label: 'Предложения',   value: stats.sentences },
-      { label: 'Абзацы',        value: stats.paragraphs },
-      { label: 'Время чтения',  value: stats.readingTime },
-    ];
+  /* ---- render (diff-update, textContent only) ---- */
+  function _render() {
+    if (!_popup || !_ta) return;
+    const s = _ta.selectionStart;
+    const e = _ta.selectionEnd;
+    const key = s + ':' + e + '|' + _ta.value.length + '|' + (s !== e ? _ta.value.substring(s, e) : '');
+    if (key === _lastRenderKey) return;
+    _lastRenderKey = key;
+
+    if (!_rowValueEls.size) _buildRowsSkeleton();
+    const stats = computeStats(_getSourceText());
 
     const wordsEl = _popup.querySelector('.wc-words-value');
     if (wordsEl) wordsEl.textContent = stats.words;
 
-    rows.innerHTML = '';
-    lines.forEach(l => {
-      const row = document.createElement('div');
-      row.className = 'wc-row';
-      row.innerHTML = '<span class="wc-label">' + l.label + '</span><span class="wc-value">' + l.value + '</span>';
-      rows.appendChild(row);
-    });
+    for (const def of _ROW_DEFS) {
+      const el = _rowValueEls.get(def.stat);
+      if (el) el.textContent = stats[def.stat];
+    }
   }
 
   /* ---- schedule update ---- */
   function _scheduleUpdate() {
     clearTimeout(_updateTimer);
     _updateTimer = setTimeout(_render, 80);
+  }
+
+  /* ---- clamp position to viewport ---- */
+  function _clampPosition() {
+    if (!_popup) return;
+    const r = _popup.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let left = r.left;
+    let top = r.top;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (left + r.width > vw) left = Math.max(0, vw - r.width);
+    if (top + r.height > vh) top = Math.max(0, vh - r.height);
+    if (left !== r.left || top !== r.top) {
+      _popup.style.left = left + 'px';
+      _popup.style.top = top + 'px';
+    }
   }
 
   /* ---- create popup DOM ---- */
@@ -104,7 +147,7 @@ const WordCount = (() => {
     pin.type = 'button';
     pin.className = 'wc-pin';
     pin.title = _pinned ? 'Открепить окно' : 'Закрепить окно';
-    pin.textContent = '📌';
+    pin.textContent = '\uD83D\uDCCC';
     if (_pinned) pin.classList.add('active');
     pin.onclick = e => {
       e.stopPropagation();
@@ -118,10 +161,16 @@ const WordCount = (() => {
     // words block (hero)
     const wordsBlock = document.createElement('div');
     wordsBlock.className = 'wc-words-block';
-    wordsBlock.innerHTML = '<div class="wc-words-label">Слова</div><div class="wc-words-value">0</div>';
+    const wordsLabel = document.createElement('div');
+    wordsLabel.className = 'wc-words-label';
+    wordsLabel.textContent = 'Слова';
+    const wordsVal = document.createElement('div');
+    wordsVal.className = 'wc-words-value';
+    wordsVal.textContent = '0';
+    wordsBlock.append(wordsLabel, wordsVal);
     _popup.appendChild(wordsBlock);
 
-    // rows
+    // rows container
     const rows = document.createElement('div');
     rows.className = 'wc-rows';
     _popup.appendChild(rows);
@@ -139,8 +188,16 @@ const WordCount = (() => {
 
     document.addEventListener('mousemove', e => {
       if (!_dragging || !_popup) return;
-      _popup.style.left = (e.clientX - _dragOffset.x) + 'px';
-      _popup.style.top = (e.clientY - _dragOffset.y) + 'px';
+      let left = e.clientX - _dragOffset.x;
+      let top = e.clientY - _dragOffset.y;
+      const pw = _popup.offsetWidth;
+      const ph = _popup.offsetHeight;
+      if (left < 0) left = 0;
+      if (top < 0) top = 0;
+      if (left + pw > window.innerWidth) left = window.innerWidth - pw;
+      if (top + ph > window.innerHeight) top = window.innerHeight - ph;
+      _popup.style.left = left + 'px';
+      _popup.style.top = top + 'px';
       _popup.style.right = 'auto';
       _popup.style.bottom = 'auto';
     }, { passive: true });
@@ -169,8 +226,10 @@ const WordCount = (() => {
     _ta = ta;
     _createPopup();
     _popup.style.display = 'block';
+    _clampPosition();
     _isOpen = true;
     _btn?.classList.add('active');
+    _lastRenderKey = '';
     _render();
     _attachListeners();
   }
@@ -188,13 +247,15 @@ const WordCount = (() => {
   }
 
   /* ---- listeners ---- */
-  function _onInput() { _scheduleUpdate(); }
+  function _onInput(e) {
+    if (_ta && e.target !== _ta) return;
+    _scheduleUpdate();
+  }
 
   function _onSelection() {
     if (!_ta) return;
     const sel = _ta.selectionStart + ':' + _ta.selectionEnd;
-    if (sel !== _lastSelection) {
-      _lastSelection = sel;
+    if (sel !== _lastRenderKey.split(':')[0] + ':' + _lastRenderKey.split(':')[1]) {
       _scheduleUpdate();
     }
   }
@@ -203,7 +264,7 @@ const WordCount = (() => {
     const newTa = e.target;
     if (newTa.classList?.contains('block-textarea') && newTa !== _ta) {
       _ta = newTa;
-      _lastSelection = newTa.selectionStart + ':' + newTa.selectionEnd;
+      _lastRenderKey = '';
       _scheduleUpdate();
     }
   }
@@ -218,7 +279,6 @@ const WordCount = (() => {
   function _onContextMenu(e) {
     if (_pinned) return;
     if (_isOpen && _popup && !_popup.contains(e.target)) {
-      e.preventDefault();
       close();
     }
   }
