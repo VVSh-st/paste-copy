@@ -748,8 +748,9 @@ const Flowchart = (() => {
     const p2 = _edgeAnchor(b, { x: a.x, y: a.y });
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
-    _styleEdge(path, a.id, b.id, edge);
+    const hit = _styleEdge(path, a.id, b.id, edge);
     _edgesG.appendChild(path);
+    _edgesG.appendChild(hit);
     _renderEdgeLabel(path, edge);
   }
 
@@ -758,8 +759,9 @@ const Flowchart = (() => {
     const p2 = _edgeAnchor(dst, { x: src.x, y: src.y });
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
-    _styleEdge(path, src.id, dst.id, edge);
+    const hit = _styleEdge(path, src.id, dst.id, edge);
     _edgesG.appendChild(path);
+    _edgesG.appendChild(hit);
     _renderEdgeLabel(path, edge);
   }
 
@@ -774,8 +776,9 @@ const Flowchart = (() => {
     const midX = (p1.x + p2.x) / 2;
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', `M ${p1.x} ${p1.y} L ${marginX} ${p1.y} L ${marginX} ${p2.y} L ${p2.x} ${p2.y}`);
-    _styleEdge(path, src.id, dst.id, edge);
+    const hit = _styleEdge(path, src.id, dst.id, edge);
     _edgesG.appendChild(path);
+    _edgesG.appendChild(hit);
     _renderEdgeLabel(path, edge);
   }
 
@@ -794,8 +797,9 @@ const Flowchart = (() => {
     }
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', d);
-    _styleEdge(path, src.id, dst.id, edge);
+    const hit = _styleEdge(path, src.id, dst.id, edge);
     _edgesG.appendChild(path);
+    _edgesG.appendChild(hit);
     _renderEdgeLabel(path, edge);
   }
 
@@ -814,7 +818,7 @@ const Flowchart = (() => {
     hit.setAttribute('stroke-width', '14');
     hit.style.cursor = 'pointer';
     hit.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(fromId, toId); });
-    _edgesG.insertBefore(hit, el);
+    return hit;
   }
 
   function _renderEdgeLabel(pathEl, edge) {
