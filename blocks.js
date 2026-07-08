@@ -1770,7 +1770,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     lineWrap.appendChild(lineHighlight);
     lineWrap.appendChild(ta);
 
-    let lineMirror = null;
     const lineMirrorProps = [
       'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
       'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
@@ -1779,49 +1778,98 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       'textTransform', 'textIndent', 'wordBreak', 'overflowWrap', 'tabSize',
     ];
 
-    function getLineMirror(cs) {
-      if (!lineMirror) {
-        lineMirror = document.createElement('div');
-        lineMirror.style.position = 'absolute';
-        lineMirror.style.visibility = 'hidden';
-        lineMirror.style.pointerEvents = 'none';
-        lineMirror.style.top = '0';
-        lineMirror.style.left = '0';
-        lineMirror.style.overflow = 'hidden';
-        lineMirror.style.whiteSpace = 'pre-wrap';
-        lineMirror.style.wordWrap = 'break-word';
-        lineWrap.appendChild(lineMirror);
-      }
+    // ── Line highlight: measure lineHeight once, then fast line-count math ──
+    // We measure the REAL rendered line height using a hidden mirror element
+    // with identical font styles. One measurement at focus = no per-frame lag.
+    let _hlLineH = 0;
+    let _hlMirror = null;
+    let _hlMirrorFs = '';
 
-      for (const prop of lineMirrorProps) lineMirror.style[prop] = cs[prop];
-      const pl = parseFloat(cs.paddingLeft) || 0;
-      const pr = parseFloat(cs.paddingRight) || 0;
-      lineMirror.style.boxSizing = 'content-box';
-      lineMirror.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
-      return lineMirror;
+    function _ensureHlMirror() {
+      if (_hlMirror && _hlMirror.isConnected) return _hlMirror;
+      _hlMirror = document.createElement('div');
+      _hlMirror.style.cssText =
+        'position:absolute;visibility:hidden;pointer-events:none;' +
+        'top:0;left:0;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;' +
+        'z-index:-1';
+      lineWrap.appendChild(_hlMirror);
+      return _hlMirror;
     }
 
-    let _hlLogCounter = 0;
+    function _measureLineHeight() {
+      const m = _ensureHlMirror();
+      const cs = getComputedStyle(ta);
+      for (const prop of lineMirrorProps) m.style[prop] = cs[prop];
+      m.style.borderWidth = '0';
+      m.style.padding = '0';
+      m.style.width = ta.clientWidth + 'px';
+
+      const fs = cs.fontSize;
+      if (_hlLineH > 0 && _hlMirrorFs === fs) return; // already measured
+      // height("X\nX") - height("X") = one rendered line
+      m.textContent = 'X';
+      const h1 = m.scrollHeight;
+      m.textContent = 'X\nX';
+      const h2 = m.scrollHeight;
+      const measured = h2 - h1;
+      if (measured > 0) {
+        _hlLineH = measured;
+        _hlMirrorFs = fs;
+      } else {
+        // Measurement failed (mirror not rendered yet) — use fallback
+        _hlLineH = Math.round((parseFloat(cs.fontSize) || 12) * 1.65);
+        _hlMirrorFs = '';
+      }
+      m.textContent = '';
+    }
+
+    // Точная позиция курсора с учётом word-wrap: пишем в зеркало весь текст
+    // до курсора + маркер-span, читаем его offsetTop. В отличие от подсчёта
+    // \n, корректно учитывает визуальные (перенесённые) строки.
+    function _getCaretTop() {
+      const m = _ensureHlMirror();
+      const cs = getComputedStyle(ta);
+      for (const prop of lineMirrorProps) m.style[prop] = cs[prop];
+      const pl = parseFloat(cs.paddingLeft) || 0;
+      const pr = parseFloat(cs.paddingRight) || 0;
+      m.style.boxSizing = 'content-box';
+      m.style.borderWidth = '0';
+      m.style.padding = '0';
+      m.style.width = Math.max(0, ta.clientWidth - pl - pr) + 'px';
+
+      const sel = ta.selectionStart;
+      const val = ta.value;
+
+      m.textContent = val.substring(0, sel);
+      const marker = document.createElement('span');
+      marker.textContent = val.substring(sel, sel + 1) || '\u200b';
+      m.appendChild(marker);
+
+      const top = marker.offsetTop;
+      m.textContent = '';
+      return top;
+    }
+
     function updateCurrentLineHighlight() {
       const lay = State.getLayout();
       const enabled = lay.currentLineHighlight === true && document.activeElement === ta;
       lineWrap.classList.toggle('current-line-enabled', enabled);
       if (!enabled) return;
 
-      const cs = getComputedStyle(ta);
-      const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+      if (!_hlLineH) _measureLineHeight();
 
-      // Count newlines before cursor — charCode loop, no substring allocation
-      const sel = ta.selectionStart;
-      const val = ta.value;
-      let linesBefore = 0;
-      for (let i = 0; i < sel; i++) { if (val.charCodeAt(i) === 10) linesBefore++; }
-      const top = linesBefore * lineHeight - ta.scrollTop;
+      const cs = getComputedStyle(ta);
+      const borderTop = parseFloat(cs.borderTopWidth) || 0;
+      const paddingTop = parseFloat(cs.paddingTop) || 0;
+      const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
+      const borderRight = parseFloat(cs.borderRightWidth) || 0;
+
+      const top = borderTop + paddingTop + _getCaretTop() - ta.scrollTop;
 
       lineHighlight.style.top = top + 'px';
-      lineHighlight.style.height = lineHeight + 'px';
-      lineHighlight.style.left = (parseFloat(cs.borderLeftWidth) || 0) + 'px';
-      lineHighlight.style.right = (parseFloat(cs.borderRightWidth) || 0) + 'px';
+      lineHighlight.style.height = _hlLineH + 'px';
+      lineHighlight.style.left = borderLeft + 'px';
+      lineHighlight.style.right = borderRight + 'px';
       lineHighlight.style.background = lay.currentLineColor || 'rgba(79,142,247,0.18)';
     }
 
@@ -1835,8 +1883,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     });
     ta.addEventListener('blur', () => {
       updateCurrentLineHighlight();
-      if (lineMirror?.parentNode) lineMirror.parentNode.removeChild(lineMirror);
-      lineMirror = null;
       // Commit any pending spell error on blur (skip if setRangeText triggered the blur)
       if (!_spellApplying) _spellCommit();
       // Immediately render spell markers on blur (safest moment)

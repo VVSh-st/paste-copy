@@ -2,6 +2,15 @@
 
 ## Текущий статус
 
+### В работе
+**Подсветка текущей строки в textarea-блоке (blocks.js)**
+- Проблема: highlight отстаёт от курсора из-за подсчёта `\n` вместо визуальных строк
+- Решение: mirror-подход `_getCaretTop()` — текст до курсора + маркер-span в зеркало, читаем `offsetTop`
+- Удалён мёртвый код: `getLineMirror()`, `lineMirror`, `_hlLogCounter`
+- Позиционирование теперь через `_getCaretTop()` вместо `nl * _hlLineH`
+- `_hlLineH` остаётся — нужен для `lineHighlight.style.height`
+- Проверка: вручную — длинная строка с переносом, смешанный текст, кириллица
+
 ### Завершено в этой сессии
 1. **Сниппеты refactor**
    - Убран блок `snippets` из дефолтного layout
@@ -35,7 +44,7 @@
 | Файл | Что изменено |
 |------|-------------|
 | `state.js` | defaultBlocks, commands title, миграция, дедупликация, clearGlobalSnippets, toggleGlobalSnippet, load: item.enabled !== false |
-| `blocks.js` | renderCommandsBody с облачными сниппетами, eye/eyeOff SVG, badge скрыт для commands |
+| `blocks.js` | renderCommandsBody с облачными сниппетами, eye/eyeOff SVG, badge скрыт для commands; **line highlight — mirror-подход (заблокирован, см. аудит)** |
 | `ui.js` | makeCmds пустой, _typeIcons без snippets |
 | `prompt-loom.js` | TDZ: VALID_SOURCES, META_WHITELIST, _loadFailed до loadState() |
 | `index.html` | snippets удалена, commands="Сниппеты", prompt-loom.js?v=3 |
