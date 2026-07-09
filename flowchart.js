@@ -727,11 +727,13 @@ const Flowchart = (() => {
     }
 
     // Flow mode: waypoint-based routing through dummy nodes
+    const routedEdgeKeys = new Set();
     for (const routed of _routeData.routedEdges) {
       const { e, chain, isBack } = routed;
       const srcNode = nodeMap[e.from];
       const dstNode = nodeMap[e.to];
       if (!srcNode || !dstNode) continue;
+      routedEdgeKeys.add(e.from + '→' + e.to);
 
       // Build waypoints from chain
       const pts = chain.map(id => {
@@ -750,6 +752,13 @@ const Flowchart = (() => {
         _drawWaypointEdge(pts, e, srcNode, dstNode);
       }
     }
+    // Draw edges not in routeData (e.g. added via connect mode)
+    _edges.forEach(e => {
+      if (!routedEdgeKeys.has(e.from + '→' + e.to)) {
+        const a = nodeMap[e.from], b = nodeMap[e.to];
+        if (a && b) _drawEdgeSimple(a, b, e);
+      }
+    });
   }
 
   function _drawEdgeSimple(a, b, edge) {
@@ -1264,13 +1273,22 @@ const Flowchart = (() => {
         if (_connectMode) {
           if (!_connectFrom) {
             _connectFrom = nodeId;
-            nodeEl.setAttribute('class', (nodeEl.getAttribute('class') || '') + ' fc-connect-source');
+            nodeEl.setAttribute('class', ((nodeEl.getAttribute('class') || '') + ' fc-connect-source').trim());
             window.Toast?.show('Теперь кликните на целевой блок', 'info');
           }
           else if (_connectFrom !== nodeId) {
             const srcEl = _viewport?.querySelector(`[data-node-id="${_connectFrom}"]`);
-            if (srcEl) srcEl.classList.remove('fc-connect-source');
-            _edges.push({ from: _connectFrom, to: nodeId, label: '' }); _connectFrom = null; _connectMode = false; _overlay.querySelector('.flowchart-connect').classList.remove('active'); _syncData(); _renderEdges();
+            if (srcEl) {
+              const cls = (srcEl.getAttribute('class') || '').replace(/\bfc-connect-source\b/g, '').trim();
+              srcEl.setAttribute('class', cls);
+            }
+            _edges.push({ from: _connectFrom, to: nodeId, label: '' });
+            _connectFrom = null;
+            _connectMode = false;
+            const connBtn = _overlay?.querySelector('.flowchart-connect');
+            if (connBtn) connBtn.classList.remove('active');
+            _syncData();
+            _renderEdges();
           }
           return;
         }
