@@ -3027,16 +3027,16 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         titleInp.className   = 'item-title-input';
         titleInp.value       = item.title || '';
         titleInp.placeholder = 'Заголовок';
-        titleInp.oninput = () => State.update(() => { item.title = titleInp.value; });
-        titleInp.onblur  = () => State.snapshot();
+        titleInp.oninput = () => State.updateLive(() => { item.title = titleInp.value; });
+        titleInp.onblur  = () => State.update(() => { item.title = titleInp.value; });
 
         const valInp = document.createElement('textarea');
         valInp.className   = 'item-value';
         valInp.value       = item.value || '';
         valInp.placeholder = 'Текст сниппета...';
         valInp.rows = 2;
-        valInp.oninput = () => State.update(() => { item.value = valInp.value; });
-        valInp.onblur  = () => State.snapshot();
+        valInp.oninput = () => State.updateLive(() => { item.value = valInp.value; });
+        valInp.onblur  = () => State.update(() => { item.value = valInp.value; });
 
         const toggleBtn = document.createElement('button');
         toggleBtn.type      = 'button';
