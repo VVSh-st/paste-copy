@@ -4,13 +4,76 @@
 
 ### В работе
 
-**Баг: dropdown TextExpander моргает после ввода триггера ё**
+**Квадратный таймер (обводка по периметру)**
+- Статус: визуальный аудит применён (~9/10), нужна проверка в браузере
+- Файлы: `timer.js`, `index.html`, `styles.css`
+- Коммиты: `37aa292` (базовая), `91eaaf9` (фикс display), `366ad0b` (аудит), `3afa6d7` (повторный аудит), `67a9475` (визуал), `2dec017` (trail-анимация), `50ae50a` (trail 5с + пасхалка), `609b61e` (направление trail), `825a855` (rAF trail + flash), `35041d5` (упрощение: ghost удалён)
+- Что исправлено по шестому аудиту (замена функций):
+  - **CRITICAL:** Trail через `requestAnimationFrame` — CSS transition на `stroke-dasharray` не работает в браузерах
+  - **HIGH:** `_injectStyles()` — CSS инжектируется из JS, гарантированно применяется
+  - **HIGH:** `_flashEffect()` — `drop-shadow` + `brightness` flash при достижении 99/0
+  - **LOW:** `_cancelGhost()` — отмена rAF + скрытие ghost
+- Что исправлено по пятому аудиту:
+  - **HIGH:** `onPointerUp` — проверка `_pointerDownPos === null` перед стартом (свайп за пределы кнопки на тач)
+  - **HIGH:** SVG `<rect>` → `<path>` (старт обводки от 12 часов)
+  - **MEDIUM:** Анимация смены минуты (`_prevMinutes` + CSS `@keyframes timerDigitFlip`)
+  - **MEDIUM:** `setIdleVisual()` — очистка анимации перед установкой '0'
+  - **LOW:** `onLostCapture` — сброс `_longPressFired`
+  - **LOW:** `destroy` — сброс `_prevMinutes`
+  - **LOW:** `startCountDown` — `closeInlineInput()` перед `updateDisplay()`
+- Что исправлено по первому аудиту:
+  - **HIGH:** `resetToIdle()` теперь очищает long-press (гонка правый клик → setTimeout)
+  - **HIGH:** `pointerleave` не отменяет long-press для mouse hover (только touch/stylus)
+  - **MEDIUM:** Строгая валидация полей в `restoreState()` (mode/startTs/targetMinutes)
+  - **MEDIUM:** Очистка повреждённых данных через `clearPersisted()`
+  - **MEDIUM:** `safeSet()` обёртка для `Storage._set` (ловит QuotaExceededError)
+  - **MEDIUM:** `ResizeObserver` инвалидирует кэш периметра при resize
+  - **MEDIUM:** `lostpointercapture` обработчик для жестов ОС
+  - **MEDIUM:** CSS transition 0.9s → 1s (синхронизация с tick)
+  - **LOW:** `_initialized` guard от двойной инициализации
+  - **LOW:** `closeInlineInput()` очищает `inputEl.value`, обёртка `try/catch`
+- Следующий шаг: проверка в браузере
+
+**Баг: сниппеты не обновляются в пикере после редактирования**
+- Симптом: изменение текста в блоке Сниппеты не отражалось при вводе через "/" или кнопку "Вставить сниппет"
+- Причина: `getAllSnippetsAndCommands()` в `state.js` собирала данные только из `commands` блоков, игнорируя `snippets` блоки
+- Фикс: добавлен сбор из `snippets` типа с фильтрацией по `enabled` и дедупликацией по `value`
+- Коммит: `19af0c6`
+
+**Баг: облачные сниппеты не сохраняют правки (показано на скриншоте)**
+- Симптом: изменение текста облачного сниппета не сохранялось → при вставке через "/" вставлялась старая версия
+- Причина: `renderCommandsBody` в `blocks.js` использовал `State.updateLive()` для облачных сниппетов — обновлял память, но не вызывал `emit()` для сохранения в localStorage
+- Фикс: заменено на `State.update()` для title и value облачных сниппетов
+- Коммит: `c5d6110`
+- Уточнение: `State.update()` на каждый тик вызывал ре-рендер → инпут пересоздавался → фокус терялся
+- Исправлено: `oninput` → `updateLive` (без ре-рендера), `onblur` → `update` (сохранение)
+- Коммит: `5ecadd9`
+- Ещё не работало: `State.updateLive()` вызывает `scheduleSave()` с 600мс дебаунсом — при быстром уходе со страницы не успевало сохраниться
+- Исправлено: `onblur` → `State.snapshot()` + `Storage.save(State.serialize())` — немедленное сохранение
+- Коммит: `f884f6c`
+- **Корневая причина**: `getGlobalSnippets()` возвращает浅ковые копии `{...item}`. Редактирование `item.value` в `oninput` меняло копию, а не оригинал в `globalSnippets`. `serialize()` сериализовал неизменённые оригиналы.
+- Добавлены `State.updateGlobalSnippetLive(id, fn)` и `State.updateGlobalSnippet(id, fn)` — мутация оригинального объекта + emitLive/emit
+- `oninput` → `updateGlobalSnippetLive` (без ре-рендера), `onblur` → `updateGlobalSnippet` (полное сохранение)
+- Коммит: `50a2ec8`
+- **Подтверждено работает** пользователем
+
+### Завершено в этой сессии
 - Симптом: меню появляется и сразу пропадает
 - Расследование: прочитаны `text-expander.js`, `blocks.js`, `prompt-loom.js`
 - Подозрение: race condition между `input` → `_showDropdown` и `selectionchange` → `_hideDropdown`
 - Следующий шаг: проверить `WordComplete.handleInput(ta)` — вызывается до `TextExpander.handleInput`, может модифицировать textarea и вызвать `selectionchange`, который закроет dropdown
 
 ### Завершено в этой сессии
+
+**Аудит app.js** — 1 раунд (ответ 3 (8).txt), 7 исправлений
+- **#1 [критично]** Async IIFE `.catch()` — теперь ловит ошибки bootstrap + показывает пользователю
+- **#2 [критично]** `importFile`: `_importBusy` guard, `MAX_IMPORT_BYTES` 10MB, `reader.onerror`
+- **#3 [важно]** `revokeObjectURL` 1с → 10с во всех местах скачивания (4 шт.)
+- **#4 [важно]** Column resizer `mousemove` → rAF batching (убран layout thrashing)
+- **#5 [UX]** `prev-download` — Toast при пустом превью
+- **#6 [perf]** `State.onChange(queueFullRender)` вместо прямого `fullRender` — rAF batching
+- **#7 [читабельность]** Магические числа в `optWcEffectMs` → `WC_EFFECT_MIN_MS/MAX_MS/STEP_MS`
+- Коммит: `6591bc1`
 
 **Аудит text-skeletonizer.js** — 2 раунда, GPT-5.5-mini, оценка 8.5-9/10
 - Раунд 1 (`Ответ 2 (4).txt`): 2 high + 5 medium + 3 low → applied:
@@ -75,6 +138,9 @@
 ### Изменённые файлы
 | Файл | Что изменено |
 |------|-------------|
+| `timer.js` | Новый модуль квадратного таймера |
+| `index.html` | Добавлена кнопка #btn-timer, подключение timer.js |
+| `styles.css` | Стили для таймера (анимация, пульсация) |
 | `text-skeletonizer.js` | cache key + LRU + worker validation + negation window + JSDoc |
 | `text-skeletonizer-worker.js` | negation sync + onmessage safety + type guard |
 | `text-expander.js` | dropdown cleanup + dedupe safety + insertToken + localStorage error + mirror diff |
@@ -82,6 +148,7 @@
 | `state.js` | `spellCheck: true` |
 | `blocks.js` | `ta.spellcheck = b.spellcheck !== false` |
 | `translator.js` | удалён Korean |
+| `app.js` | catch bootstrap + importFile guards + revokeObjectURL 10s + resizer rAF + fullRender batching + magic numbers + empty preview toast |
 
 ### Аудиторские файлы (не коммитятся)
 | Файл | Содержание |
@@ -96,6 +163,7 @@
 | `аудит text-skeletonizer.txt` | Промпт для аудита text-skeletonizer.js |
 | `аудит text-skeletonizer-worker.txt` | Промпт для аудита text-skeletonizer-worker.js |
 | `аудит flowchart.txt` | Промпт для аудита flowchart.js |
+| `ответ 3 (8).txt` | Аудит app.js (Claude Sonnet 4) |
 
 ## Как работает
 - **TextExpander**: trigger `ё` → dropdown с фильтрацией → вставка с обработкой регистра
