@@ -3028,7 +3028,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         titleInp.value       = item.title || '';
         titleInp.placeholder = 'Заголовок';
         titleInp.oninput = () => State.updateLive(() => { item.title = titleInp.value; });
-        titleInp.onblur  = () => State.update(() => { item.title = titleInp.value; });
+        titleInp.onblur  = () => { State.snapshot(); Storage.save(State.serialize()); };
 
         const valInp = document.createElement('textarea');
         valInp.className   = 'item-value';
@@ -3036,7 +3036,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         valInp.placeholder = 'Текст сниппета...';
         valInp.rows = 2;
         valInp.oninput = () => State.updateLive(() => { item.value = valInp.value; });
-        valInp.onblur  = () => State.update(() => { item.value = valInp.value; });
+        valInp.onblur  = () => { State.snapshot(); Storage.save(State.serialize()); };
 
         const toggleBtn = document.createElement('button');
         toggleBtn.type      = 'button';
