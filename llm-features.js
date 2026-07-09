@@ -2027,64 +2027,32 @@ window.LLMFeatures = (() => {
         _withAutoSnap('compress');
         const toksBefore = _LLMCore.estimateTokens(origText) || 0;
 
-        // Бесплатное сжатие skeletonizer'ом
-        let text = origText;
-        let usedSkeleton = false;
+        // Сжатие skeletonizer'ом (бесплатно)
         if (typeof TextSkeletonizer !== 'undefined' && TextSkeletonizer.shouldCompress(origText.length)) {
           const level = TextSkeletonizer.recommendLevel(origText.length) || 'medium';
           const skel = await TextSkeletonizer.processAsync(origText, { level });
-          const skelRatio = skel.length / origText.length;
-          if (skelRatio < 0.5) {
-            text = skel;
-            usedSkeleton = true;
-            window.Toast?.show?.('Skeletonizer: −' + Math.round((1 - skelRatio) * 100) + '%', 'info');
-          }
-        }
-
-        MiniChat.newSession();
-        MiniChat.open();
-        MiniChat.addSystemMessage(usedSkeleton ? '✂️ Сжато skeletonizer + доработка LLM...' : '✂️ Сжимаю токены...');
-        MiniChat.pushToHistory('user', text);
-        _showThinking(usedSkeleton ? '✂️ Дорабатываю...' : '✂️ Сжимаю...');
-
-        const result = await _LLMCore.request({
-          messages: [
-            { role: 'system', content: _LLMCore.getPrompt('compress') + (_LANG_INSTR ?? '') },
-            { role: 'user',   content: text },
-          ],
-          stream:     true,
-          onChunk:    chunk => MiniChat.appendChunk(chunk),
-          featureTag: 'compress',
-        });
-
-        if (result != null) {
-          MiniChat.finalizeLastMessage(result);
-          if (String(result ?? '').trim()) MiniChat.pushToHistory('assistant', result);
-          const toksAfter = _LLMCore.estimateTokens(result) || 0;
+          const toksAfter = _LLMCore.estimateTokens(skel) || 0;
           const pct = toksBefore > 0 ? Math.round((1 - toksAfter / toksBefore) * 100) : 0;
+
+          MiniChat.newSession();
+          MiniChat.open();
+          MiniChat.addSystemMessage('✂️ Сжато skeletonizer\'ом');
+          MiniChat.pushToHistory('assistant', skel);
           MiniChat.addSystemMessage(`Было ~${toksBefore} → стало ~${toksAfter} токенов (−${pct}%)`);
           window.Intelligence?.track?.('llm.action.success', {
             featureKey: 'compress',
             inputTokens: toksBefore,
             outputTokens: toksAfter,
-            outputChars: String(result ?? '').length
+            outputChars: skel.length
           });
         } else {
-          MiniChat.addSystemMessage('Сжатие вернуло пустой результат');
+          window.Toast?.show('Текст достаточно короткий, сжатие не нужно', 'info');
         }
       } catch (e) {
-        if (e?.name !== 'AbortError') {
-          const msg = e?.message || 'Неизвестная ошибка';
-          MiniChat.addSystemMessage('Ошибка: ' + msg);
-          window.Intelligence?.track?.('llm.action.error', {
-            featureKey: 'compress',
-            message: msg
-          });
-          window.Toast?.show(msg, 'error');
-        }
+        window.Toast?.show(e.message || 'Ошибка сжатия', 'error');
       } finally {
-        _hideThinking();
         _compressing = false;
+        _hideThinking();
       }
     }
 
