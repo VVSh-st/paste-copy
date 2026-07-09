@@ -65,7 +65,7 @@
 
 ### Завершено в этой сессии
 
-**Аудит llm-core.js** — 1 раунд (ответ 3 (11).txt), 6 исправлений из 8
+**Аудит llm-core.js** — 2 раунда (ответ 3 (11).txt + ответ 3 (12).txt), 8 исправлений из 13
 - **#3 [high]** SSE `[object Object]` — `typeof delta === 'string'` guard (Anthropic `message_delta` объект ломал вывод)
 - **#1 [high]** 429-backoff отрицательный — `baseRetries - retries` вместо `3 - retries`
 - **#2 [high]** Все HTTP ошибки ретраятся — теперь только 429 и 5xx
@@ -74,6 +74,13 @@
 - **#7 [low]** retries=0 невозможно — `|| 2` → `?? 2`
 - Пропущено: **#5** (пустой ответ ретраится — разумно), **#8** (estimateTokens CJK — опционально)
 - Коммит: `97ed4fb`
+- Раунд 2 (ответ 3 (12).txt) — 2 из 5:
+  - **#3 [low]** NDJSON `typeof delta === 'string'` guard (единообразие с SSE)
+  - **#5 [low]** `_clearDangerButton` при `close()` модала (сброс armed-кнопок)
+  - **#1 [medium]** Тело ответа не читается — пропущено (`_readErrorText` уже дренирует)
+  - **#2 [medium]** Текст ошибки теряется — пропужено (дублирует #1)
+  - **#4 [low]** `json.delta` fallback мёртвый код — пропужено (работает корректно)
+  - Коммит: `77f4772`
 
 **Аудит app.js** — 3 раунда (ответ 3 (8).txt + ответ 3 (9).txt + ответ 3 (10).txt), 10 исправлений
 - **#1 [критично]** Async IIFE `.catch()` — теперь ловит ошибки bootstrap + показывает пользователю
@@ -186,7 +193,8 @@
 | `ответ 3 (8).txt` | Аудит app.js раунд 1 (Claude Sonnet 4) |
 | `ответ 3 (9).txt` | Аудит app.js раунд 2 (Claude Sonnet 4) |
 | `ответ 3 (10).txt` | Аудит app.js раунд 3 — финальный (Claude Sonnet 4) |
-| `ответ 3 (11).txt` | Аудит llm-core.js (Claude Sonnet 4) |
+| `ответ 3 (11).txt` | Аудит llm-core.js раунд 1 (Claude Sonnet 4) |
+| `ответ 3 (12).txt` | Аудит llm-core.js раунд 2 (Claude Sonnet 4) |
 
 ## Как работает
 - **TextExpander**: trigger `ё` → dropdown с фильтрацией → вставка с обработкой регистра
