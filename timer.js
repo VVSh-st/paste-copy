@@ -18,15 +18,14 @@ const SquareTimer = (() => {
   const LONG_PRESS_MS = 450;
   const MOVE_THRESHOLD = 10;
   const PULSE_BPM = 50;          // 50 ударов в минуту → ~1.2с интервал
-  const PULSE_INTERVAL = 60000 / PULSE_BPM;
   const PULSE_MAX_DURATION = 180000; // 3 минуты
 
-  let btn, iconSvg, arcSvg, arcRect, valueEl, inputEl;
+  let btn, arcSvg, arcRect, valueEl, inputEl;
+  let _cachedPerimeter = null;   // кэш длины периметра rect
   let mode = null;               // 'up' | 'down' | null
   let startTs = null;
   let targetMinutes = null;      // только для mode:'down'
   let intervalId = null;
-  let pulseTimeout = null;
   let pulseIntervalId = null;
   let pulseStartTime = null;
   let _longPressFired = false;
@@ -37,11 +36,15 @@ const SquareTimer = (() => {
     btn = document.getElementById('btn-timer');
     if (!btn) return;
 
-    iconSvg = btn.querySelector('.timer-icon');
     arcSvg = btn.querySelector('.timer-arc');
     arcRect = btn.querySelector('.timer-arc-rect');
     valueEl = btn.querySelector('.timer-value');
     inputEl = btn.querySelector('.timer-input');
+
+    // Кэшируем периметр один раз
+    if (arcRect) {
+      _cachedPerimeter = arcRect.getTotalLength();
+    }
 
     // Pointer Events для long-press
     btn.addEventListener('pointerdown', onPointerDown);
@@ -89,6 +92,12 @@ const SquareTimer = (() => {
   function onPointerUp(e) {
     if (e.button !== 0) return;
     clearLongPress();
+
+    // Сброс по клику во время пульсации
+    if (pulseIntervalId) {
+      resetToIdle();
+      return;
+    }
 
     if (_longPressFired) {
       _longPressFired = false;
@@ -140,7 +149,6 @@ const SquareTimer = (() => {
   function openInlineInput() {
     if (mode !== null) return;
 
-    iconSvg.style.display = 'none';
     valueEl.style.display = 'none';
     inputEl.style.display = '';
     inputEl.value = '';
@@ -178,8 +186,12 @@ const SquareTimer = (() => {
     inputEl.onkeydown = null;
     inputEl.onclick = null;
     inputEl.onmousedown = null;
-    iconSvg.style.display = '';
-    valueEl.style.display = mode ? '' : 'none';
+    if (mode) {
+      valueEl.style.display = 'flex';
+      valueEl.classList.remove('timer-value-dim');
+    } else {
+      setIdleVisual();
+    }
   }
 
   // ── Timer Logic ───────────────────────────────────────────────────────
@@ -235,7 +247,6 @@ const SquareTimer = (() => {
       const minutes = Math.floor(totalSeconds / 60);
 
       if (minutes >= 99) {
-        // Достиг лимита
         onLimitReached();
         return;
       }
@@ -247,7 +258,6 @@ const SquareTimer = (() => {
       const remaining = totalMinutesTarget - totalSeconds;
 
       if (remaining <= 0) {
-        // Достиг лимита (0 минут)
         onLimitReached();
         return;
       }
@@ -258,7 +268,6 @@ const SquareTimer = (() => {
 
   function onLimitReached() {
     stopTick();
-    // Уведомление через Ember (мигание)
     if (window.Ember && typeof Ember.notifyEdit === 'function') {
       Ember.notifyEdit();
     }
@@ -275,16 +284,8 @@ const SquareTimer = (() => {
       const elapsed = Date.now() - pulseStartTime;
       if (elapsed >= PULSE_MAX_DURATION) {
         resetToIdle();
-        return;
       }
     }, 1000);
-
-    // Клик по пульсирующей кнопке — сброс
-    const pulseClickHandler = () => {
-      btn.removeEventListener('click', pulseClickHandler);
-      resetToIdle();
-    };
-    btn.addEventListener('click', pulseClickHandler);
   }
 
   function stopPulse() {
@@ -292,10 +293,6 @@ const SquareTimer = (() => {
     if (pulseIntervalId) {
       clearInterval(pulseIntervalId);
       pulseIntervalId = null;
-    }
-    if (pulseTimeout) {
-      clearTimeout(pulseTimeout);
-      pulseTimeout = null;
     }
   }
 
@@ -323,30 +320,24 @@ const SquareTimer = (() => {
       direction = 'ccw'; // против часовой
     }
 
-    // Показываем иконку и число
-    iconSvg.style.display = 'none';
-    valueEl.style.display = '';
+    valueEl.style.display = 'flex';
+    valueEl.classList.remove('timer-value-dim');
     valueEl.textContent = minutes;
 
-    // Обводка
     updateArc(progress, direction);
   }
 
   function updateArc(progress, direction) {
     if (!arcRect) return;
 
-    arcSvg.style.display = '';
+    arcSvg.style.display = 'block';
 
-    // Получаем длину периметра в рантайме
-    const totalLength = arcRect.getTotalLength();
+    const totalLength = _cachedPerimeter || arcRect.getTotalLength();
     arcRect.style.strokeDasharray = totalLength;
-    arcRect.style.strokeDashoffset = totalLength;
 
-    // Вычисляем offset для прогресса
     const offset = totalLength * (1 - progress);
     arcRect.style.strokeDashoffset = offset;
 
-    // Направление (для обратного отсчёта — против часовой через трансформ)
     if (direction === 'ccw') {
       arcSvg.style.transform = 'scaleX(-1)';
     } else {
@@ -355,8 +346,9 @@ const SquareTimer = (() => {
   }
 
   function setIdleVisual() {
-    iconSvg.style.display = '';
-    valueEl.style.display = 'none';
+    valueEl.style.display = 'flex';
+    valueEl.textContent = '0';
+    valueEl.classList.add('timer-value-dim');
     arcSvg.style.display = 'none';
     btn.classList.remove('timer-pulsing');
   }
@@ -398,13 +390,11 @@ const SquareTimer = (() => {
         const minutes = Math.floor(totalSeconds / 60);
 
         if (minutes >= 99) {
-          // Уже прошёл лимит — idle
           setIdleVisual();
           Storage._set(STORAGE_KEY, '');
           return;
         }
 
-        // Восстанавливаем
         mode = state.mode;
         startTs = state.startTs;
         targetMinutes = null;
@@ -417,13 +407,11 @@ const SquareTimer = (() => {
         const remaining = totalMinutesTarget - totalSeconds;
 
         if (remaining <= 0) {
-          // Уже прошёл лимит — idle
           setIdleVisual();
           Storage._set(STORAGE_KEY, '');
           return;
         }
 
-        // Восстанавливаем
         mode = state.mode;
         startTs = state.startTs;
         targetMinutes = state.targetMinutes;
