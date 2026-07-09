@@ -1,6 +1,6 @@
 // file_name: app.js
 
-(async function () {
+(async function main() {
   'use strict';
 
   let saveTimer = null;
@@ -76,6 +76,16 @@
     WordDict.scheduleBuild();
     requestAnimationFrame(() => {
       if (typeof Anchors !== 'undefined') Anchors._renderMarkersAll();
+    });
+  }
+
+  let _renderQueued = false;
+  function queueFullRender() {
+    if (_renderQueued) return;
+    _renderQueued = true;
+    requestAnimationFrame(() => {
+      _renderQueued = false;
+      fullRender();
     });
   }
 
@@ -166,7 +176,7 @@
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
   }
 
-  State.onChange(fullRender);
+  State.onChange(queueFullRender);
   State.onLive(liveRender);
   State.onSnapshot(updateButtons); // обновляем кнопки undo/redo после blur без re-render блоков
 
@@ -335,12 +345,16 @@
     scheduleSave();
   };
 
+  const WC_EFFECT_MIN_MS  = 1000;
+  const WC_EFFECT_MAX_MS  = 10000;
+  const WC_EFFECT_STEP_MS = 50;
+
   const optWcEffectMs = $id('opt-wc-effect-ms-misc');
   if (optWcEffectMs) optWcEffectMs.onchange = e => {
     const raw = parseInt(e.target.value, 10);
     if (!Number.isFinite(raw)) return;
 
-    const v = Math.max(1000, Math.min(10000, Math.round(raw / 50) * 50));
+    const v = Math.max(WC_EFFECT_MIN_MS, Math.min(WC_EFFECT_MAX_MS, Math.round(raw / WC_EFFECT_STEP_MS) * WC_EFFECT_STEP_MS));
     e.target.value = v;
     WordDict.setConfig({ acceptEffectMs: v });
     State.setLayout({ wcAcceptEffectMs: v });
@@ -522,7 +536,7 @@
 
   onClick('prev-download', () => {
     const text = Preview.getText();
-    if (!text) return;
+    if (!text) { Toast.show('Превью пустое — нечего скачивать', 'error'); return; }
 
     const tab = State.getActive();
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
@@ -530,7 +544,7 @@
       href:     url,
       download: (tab?.name ?? 'prompt') + '.txt',
     }).click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
     Toast.show('Файл скачан ✓', 'success');
     window.Intelligence?.track?.('preview.download', {
       chars: text.length,
@@ -558,7 +572,7 @@
       href:     url,
       download: 'all-tabs-' + new Date().toISOString().slice(0, 10) + '.md',
     }).click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
     Toast.show('Экспортировано ' + allTabs.length + ' вкладок ✓', 'success');
     window.Intelligence?.track?.('preview.exportAll', {
       tabs: allTabs.length,
@@ -702,6 +716,8 @@
     let activeResizer = null;
     let startX = 0;
     let startWidths = [];
+    let _colRafId = null;
+    let _colPendingDx = 0;
 
     document.addEventListener('mousedown', e => {
       const r = e.target.closest('.col-resizer');
@@ -717,23 +733,27 @@
 
     document.addEventListener('mousemove', e => {
       if (!activeResizer) return;
-      const cols = Array.from(ws.querySelectorAll('.column')).filter(c => c.style.display !== 'none');
-      const resizers = Array.from(ws.querySelectorAll('.col-resizer'));
-      const rIdx = resizers.indexOf(activeResizer);
-      if (rIdx < 0 || rIdx >= cols.length - 1) return;
-      const dx = e.clientX - startX;
-      const leftW = Math.max(80, startWidths[rIdx] + dx);
-      const rightW = Math.max(80, startWidths[rIdx + 1] - dx);
-      const newWidths = startWidths.map((w, i) => {
-        if (i === rIdx) return leftW;
-        if (i === rIdx + 1) return rightW;
-        return w;
+      _colPendingDx = e.clientX - startX;
+      if (_colRafId) return;
+      _colRafId = requestAnimationFrame(() => {
+        _colRafId = null;
+        const cols = Array.from(ws.querySelectorAll('.column')).filter(c => c.style.display !== 'none');
+        const resizers = Array.from(ws.querySelectorAll('.col-resizer'));
+        const rIdx = resizers.indexOf(activeResizer);
+        if (rIdx < 0 || rIdx >= cols.length - 1) return;
+        const dx = _colPendingDx;
+        const leftW = Math.max(80, startWidths[rIdx] + dx);
+        const rightW = Math.max(80, startWidths[rIdx + 1] - dx);
+        const newWidths = startWidths.map((w, i) => {
+          if (i === rIdx) return leftW;
+          if (i === rIdx + 1) return rightW;
+          return w;
+        });
+        const total = newWidths.reduce((a, b) => a + b, 0);
+        const ratios = newWidths.map(w => Math.round((w / total) * 1000));
+        Blocks.applyLayout(ratios);
+        activeResizer._pendingRatios = ratios;
       });
-      const total = newWidths.reduce((a, b) => a + b, 0);
-      const ratios = newWidths.map(w => Math.round((w / total) * 1000));
-      // Apply flex directly via parameter — no State.setLayout, no fullRender
-      Blocks.applyLayout(ratios);
-      activeResizer._pendingRatios = ratios;
     });
 
     document.addEventListener('mouseup', () => {
@@ -792,7 +812,7 @@
       href:     url,
       download: 'prompt-builder-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json',
     }).click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
     Toast.show('Файл экспортирован ✓', 'success');
     window.Intelligence?.track?.('file.export', {
       tabs: State.getAll().length
@@ -811,18 +831,28 @@
       href:     url,
       download: name + '-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json',
     }).click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
     Toast.show('Вкладка «' + (tab.name || 'Без имени') + '» экспортирована ✓', 'success');
     window.Intelligence?.track?.('file.exportTab', { blocks: (tab.blocks || []).length });
   }
+
+  let _importBusy = false;
+  const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
   function importFile(e) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (_importBusy) { Toast.show('Импорт уже выполняется…', 'error'); return; }
+    if (file.size > MAX_IMPORT_BYTES) {
+      Toast.show('Файл слишком большой (макс. 10 МБ)', 'error');
+      return;
+    }
+    _importBusy = true;
 
     const reader = new FileReader();
     reader.onload = ev => {
+      _importBusy = false;
       try {
         const data = JSON.parse(ev.target.result);
         if (!data.tabs || !Array.isArray(data.tabs) || !data.tabs.length) throw new Error('Неверный формат файла');
@@ -864,6 +894,10 @@
         Toast.show('Ошибка импорта: ' + err.message, 'error');
         console.error('Import failed:', err);
       }
+    };
+    reader.onerror = () => {
+      _importBusy = false;
+      Toast.show('Не удалось прочитать файл', 'error');
     };
     reader.readAsText(file);
   }
@@ -1022,4 +1056,9 @@
     });
   })();
 
-})();
+})().catch(err => {
+  console.error('[app] Bootstrap failed:', err);
+  document.body.innerHTML =
+    '<pre style="padding:2rem;color:#c00;white-space:pre-wrap">'
+    + 'Ошибка запуска приложения:\n' + (err?.message ?? err) + '</pre>';
+});
