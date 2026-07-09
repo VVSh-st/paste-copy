@@ -59,7 +59,7 @@ function _configForLevel(level) {
     maxHeadingLength: 50,
     maxSentenceLength: 60,
     maxKeyTerms: 20,
-    maxSections: 30,
+    maxSections: 25,
     maxBulletsPerSection: 3,
     includeStats: true,
   };
@@ -67,7 +67,7 @@ function _configForLevel(level) {
     case 'light':
       return { ...base, maxSections: 10, maxKeyTerms: 0, includeStats: true };
     case 'aggressive':
-      return { ...base, maxSections: 50, maxKeyTerms: 30, maxBulletsPerSection: 4 };
+      return { ...base, maxSections: 40, maxKeyTerms: 30, maxBulletsPerSection: 4 };
     default:
       return base;
   }
