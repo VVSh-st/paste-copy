@@ -1592,13 +1592,19 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     });
 
     const transferBtn = makeToolBtn(svgIcon('transfer'), 'Скопировать текст на следующую вкладку', () => {
-      if (!ta.value.trim()) return;
+      const selStart = ta.selectionStart;
+      const selEnd = ta.selectionEnd;
+      const hasSelection = selStart != null && selEnd != null && selEnd > selStart;
+      const text = hasSelection
+        ? ta.value.substring(selStart, selEnd)
+        : b.subtabs[b.activeSubtab].value;
+      if (!text.trim()) return;
       let target = (b.activeSubtab + 1) % State.SUBTABS_COUNT;
       for (let i = 1; i < State.SUBTABS_COUNT; i++) {
         const idx = (b.activeSubtab + i) % State.SUBTABS_COUNT;
         if (!b.subtabs[idx].value.trim()) { target = idx; break; }
       }
-      b.subtabs[target].value += (b.subtabs[target].value ? '\n' : '') + b.subtabs[b.activeSubtab].value;
+      b.subtabs[target].value += (b.subtabs[target].value ? '\n' : '') + text;
       patchSubtab(b, target);
       Toast.show('Скопировано ✓', 'success');
     });
