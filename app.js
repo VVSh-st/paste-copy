@@ -759,6 +759,7 @@
     document.addEventListener('mouseup', () => {
       if (!activeResizer) return;
       activeResizer.classList.remove('active');
+      if (activeResizer._pendingRatios) Blocks.applyLayout(activeResizer._pendingRatios);
       const ratios = activeResizer._pendingRatios;
       activeResizer = null;
       document.body.style.cursor = '';
@@ -805,6 +806,10 @@
       if (!dragging) return;
       dragging = false;
       if (_prevRafId) { cancelAnimationFrame(_prevRafId); _prevRafId = null; }
+      // Apply final position from last mousemove
+      const h = Math.max(60, Math.min(window.innerHeight * 0.7, startH + _prevPendingDy));
+      panel.style.height = h + 'px';
+      State.setLayout({ previewHeight: h });
       resizer.classList.remove('active');
       document.body.style.cursor = '';
       scheduleSave();
