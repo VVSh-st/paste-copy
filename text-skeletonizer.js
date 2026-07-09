@@ -260,9 +260,10 @@ const TextSkeletonizer = (() => {
       if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.slice(0, 10).join('\n')}`);
     }
 
-    // Статистика (все уровни)
+    // Статистика (все уровни) — считаем после сборки
     if (cfg.includeStats) {
-      const stats = _computeStats(text, sections);
+      const tmpResult = parts.join('\n');
+      const stats = _computeStats(text, sections, tmpResult.length);
       parts.push(`=== СТАТИСТИКА ===\n${stats}`);
     }
 
@@ -301,17 +302,17 @@ const TextSkeletonizer = (() => {
   function _configForLevel(level) {
     const base = {
       maxHeadingLength: 120,
-      maxSentenceLength: 200,
-      maxKeyTerms: 50,
-      maxSections: 100,
-      maxBulletsPerSection: 8,
+      maxSentenceLength: 150,
+      maxKeyTerms: 40,
+      maxSections: 80,
+      maxBulletsPerSection: 5,
       includeStats: true,
     };
     switch (level) {
       case 'light':
-        return { ...base, maxSections: 40, maxKeyTerms: 0, includeStats: true };
+        return { ...base, maxSections: 30, maxKeyTerms: 0, includeStats: true };
       case 'aggressive':
-        return { ...base, maxSections: 200, maxKeyTerms: 100, maxBulletsPerSection: 12 };
+        return { ...base, maxSections: 150, maxKeyTerms: 80, maxBulletsPerSection: 8 };
       default: // medium
         return base;
     }
@@ -509,12 +510,13 @@ const TextSkeletonizer = (() => {
 
   // ── Статистика ──────────────────────────────────────────────
 
-  function _computeStats(text, sections) {
+  function _computeStats(text, sections, resultLength) {
     const chars = text.length;
     const words = text.split(/\s+/).filter(Boolean).length;
     const paragraphs = text.split(/\n{2,}/).filter(p => p.trim()).length;
     const headings = sections.length;
-    return `${chars} символов | ${words} слов | ${paragraphs} абзацев | ${headings} секций`;
+    const ratio = resultLength > 0 ? (chars / resultLength).toFixed(1) : '?';
+    return `${chars} символов → ~${ratio}x сжатие | ${words} слов | ${headings} секций`;
   }
 
   // ── Публичный API ──────────────────────────────────────────
