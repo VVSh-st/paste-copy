@@ -337,35 +337,31 @@ const Anchors = (() => {
     const pl = parseFloat(cs.paddingLeft) || 0;
     if (charPos <= 0) return { x: pl, y: pt };
 
+    const text = ta.value.substring(0, Math.min(charPos, ta.value.length));
+    const lineNum = (text.match(/\n/g) || []).length;
+    const lastNl = text.lastIndexOf('\n');
+    const col = lastNl < 0 ? text.length : text.length - lastNl - 1;
+    const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+
+    // Measure x via mirror (only the current line fragment)
+    let x = pl;
     const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
-    if (!wrap) return { x: pl, y: pt };
-
-    const mirror = document.createElement('div');
-    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;';
-    for (const prop of ['fontFamily','fontSize','fontWeight','fontStyle','fontVariantLigatures','fontFeatureSettings','fontKerning','letterSpacing','lineHeight','textTransform','textIndent','wordBreak','overflowWrap','tabSize','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','paddingTop','paddingRight','paddingBottom','paddingLeft']) {
-      mirror.style[prop] = cs[prop];
-    }
-    mirror.style.width = Math.max(0, ta.clientWidth) + 'px';
-    wrap.appendChild(mirror);
-
-    try {
-      const safePos = Math.min(charPos, ta.value.length);
-      const before = document.createElement('span');
-      before.textContent = ta.value.substring(0, safePos);
-      const marker = document.createElement('span');
-      marker.textContent = ta.value.substring(safePos, safePos + 1) || '.';
-      mirror.appendChild(before);
-      mirror.appendChild(marker);
-      const mr = marker.getBoundingClientRect();
-      const mir = mirror.getBoundingClientRect();
-      const x = pl + mr.left - mir.left;
-      const y = pt + mr.top - mir.top;
-      return { x: x, y: y };
-    } catch (_) {
-      return { x: pl, y: pt + mirror.scrollHeight };
-    } finally {
+    if (wrap) {
+      const mirror = document.createElement('div');
+      mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;';
+      for (const prop of ['fontFamily','fontSize','fontWeight','fontStyle','fontVariantLigatures','fontFeatureSettings','fontKerning','letterSpacing','lineHeight','textTransform','textIndent','wordBreak','overflowWrap','tabSize','paddingTop','paddingRight','paddingBottom','paddingLeft']) {
+        mirror.style[prop] = cs[prop];
+      }
+      mirror.style.width = Math.max(0, ta.clientWidth) + 'px';
+      const lineText = lastNl < 0 ? text : text.substring(lastNl + 1);
+      mirror.textContent = lineText;
+      const mirR = mirror.getBoundingClientRect();
+      x = pl + mirR.width;
       mirror.remove();
     }
+
+    const y = pt + lineNum * lineHeight;
+    return { x: x, y: y };
   }
 
   /* ---- marker rendering (DOM overlay inside current-line-wrap) ---- */
@@ -434,34 +430,8 @@ const Anchors = (() => {
     const scrollY = ta.scrollTop;
     const taCs = getComputedStyle(ta);
 
-    // Local mirror inside wrap — same pattern as current line highlight
-    const mirror = document.createElement('div');
-    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;';
-    for (const prop of ['fontFamily','fontSize','fontWeight','fontStyle','fontVariantLigatures','fontFeatureSettings','fontKerning','letterSpacing','lineHeight','textTransform','textIndent','wordBreak','overflowWrap','tabSize','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','paddingTop','paddingRight','paddingBottom','paddingLeft']) {
-      mirror.style[prop] = taCs[prop];
-    }
-    mirror.style.width = Math.max(0, ta.clientWidth) + 'px';
-    wrap.appendChild(mirror);
-
-    function measurePos(charPos) {
-      mirror.textContent = '';
-      const safePos = Math.min(charPos, ta.value.length);
-      const before = document.createElement('span');
-      before.textContent = ta.value.substring(0, safePos);
-      const marker = document.createElement('span');
-      marker.textContent = ta.value.substring(safePos, safePos + 1) || '.';
-      mirror.appendChild(before);
-      mirror.appendChild(marker);
-      const mr = marker.getBoundingClientRect();
-      const mir = mirror.getBoundingClientRect();
-      const x = (parseFloat(taCs.paddingLeft) || 0) + mr.left - mir.left;
-      const y = (parseFloat(taCs.paddingTop) || 0) + mr.top - mir.top;
-      mirror.textContent = '';
-      return { x, y };
-    }
-
     blockAnchors.forEach((anchor, localIdx) => {
-      const pos = measurePos(anchor.start);
+      const pos = _measurePos(ta, anchor.start);
       const rawTop = pos.y - scrollY;
       const wrapH = wrap.clientHeight;
 
@@ -479,7 +449,7 @@ const Anchors = (() => {
       }
 
       if (settings.bgHighlight && anchor.start !== anchor.end) {
-        const endPos = measurePos(anchor.end);
+        const endPos = _measurePos(ta, anchor.end);
         const wrapW = wrap.clientWidth || (ta.clientWidth + (parseFloat(taCs.paddingLeft) || 0));
         let selW = Math.max(2, Math.abs(endPos.x - pos.x));
         const gLeft = Math.min(pos.x, endPos.x);
@@ -492,8 +462,6 @@ const Anchors = (() => {
         wrap.appendChild(g);
       }
     });
-
-    mirror.remove();
   }
 
   function _renderMarkersNoGutter(blockEl, ta) {
@@ -510,29 +478,9 @@ const Anchors = (() => {
     wrap.style.position = 'relative';
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
-    const taCs = getComputedStyle(ta);
-
-    const mirror = document.createElement('div');
-    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;';
-    for (const prop of ['fontFamily','fontSize','fontWeight','fontStyle','fontVariantLigatures','fontFeatureSettings','fontKerning','letterSpacing','lineHeight','textTransform','textIndent','wordBreak','overflowWrap','tabSize','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','paddingTop','paddingRight','paddingBottom','paddingLeft']) {
-      mirror.style[prop] = taCs[prop];
-    }
-    mirror.style.width = Math.max(0, ta.clientWidth) + 'px';
-    wrap.appendChild(mirror);
-
     blockAnchors.forEach(anchor => {
-      mirror.textContent = '';
-      const safePos = Math.min(anchor.start, ta.value.length);
-      const before = document.createElement('span');
-      before.textContent = ta.value.substring(0, safePos);
-      const marker = document.createElement('span');
-      marker.textContent = ta.value.substring(safePos, safePos + 1) || '.';
-      mirror.appendChild(before);
-      mirror.appendChild(marker);
-      const mr = marker.getBoundingClientRect();
-      const mir = mirror.getBoundingClientRect();
-      const rawTop = (parseFloat(taCs.paddingTop) || 0) + mr.top - mir.top - scrollY;
-      mirror.textContent = '';
+      const pos = _measurePos(ta, anchor.start);
+      const rawTop = pos.y - scrollY;
       const wrapH = wrap.clientHeight;
       if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
       if (settings.lineMarkers) {
@@ -542,8 +490,6 @@ const Anchors = (() => {
         wrap.appendChild(m);
       }
     });
-
-    mirror.remove();
   }
 
   /* ---- block buttons ---- */
