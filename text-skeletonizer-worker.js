@@ -67,7 +67,7 @@ function _configForLevel(level) {
     case 'light':
       return { ...base, maxSections: 5, maxKeyTerms: 0, includeStats: true };
     case 'aggressive':
-      return { ...base, maxSections: 15, maxKeyTerms: 20, maxBulletsPerSection: 4 };
+      return { ...base, maxSections: 20, maxKeyTerms: 20, maxBulletsPerSection: 4 };
     default:
       return base;
   }
