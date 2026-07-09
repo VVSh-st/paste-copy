@@ -253,7 +253,10 @@ window.AiTransform = (() => {
         return;
       }
 
-      _suggestedText = result.trim();
+      _suggestedText = result.trim()
+        .replace(/^<text>\s*/i, '')
+        .replace(/\s*<\/text>$/i, '')
+        .trim();
 
       // Скрываем popup, показываем diff
       if (_popup) _popup.style.display = 'none';
