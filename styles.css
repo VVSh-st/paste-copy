@@ -152,11 +152,18 @@ body {
 .hint { color: var(--text3); font-size: 11px; white-space: nowrap; padding: 0 4px; }
 
 /* ===== SQUARE TIMER ===== */
-#btn-timer { position: relative; overflow: visible; }
+#btn-timer {
+  position: relative; overflow: visible;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 #btn-timer .timer-arc {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  display: none; pointer-events: none; overflow: visible;
+  pointer-events: none; overflow: visible;
 }
+#btn-timer.timer-idle .timer-arc { display: none; }
 #btn-timer .timer-arc-rect,
 #btn-timer .timer-arc-ghost {
   fill: none; stroke: var(--accent); stroke-width: 2;

@@ -271,6 +271,8 @@ const SquareTimer = (() => {
     _prevMinutes = null;
     _prevSecondsInMinute = null;
     _isFading = false;
+    btn.classList.remove('timer-idle');
+    btn.classList.add('timer-active');
     saveState();
     startTick();
     updateDisplay();
@@ -283,6 +285,8 @@ const SquareTimer = (() => {
     _prevMinutes = null;
     _prevSecondsInMinute = null;
     _isFading = false;
+    btn.classList.remove('timer-idle');
+    btn.classList.add('timer-active');
     closeInlineInput();
     saveState();
     startTick();
@@ -456,26 +460,19 @@ const SquareTimer = (() => {
     _isFading = true;
 
     const perimeter = _cachedPerimeter || arcRect.getTotalLength();
-    const currentOffset = parseFloat(arcRect.style.strokeDashoffset) || 0;
 
     arcGhost.style.transition = 'none';
     arcGhost.style.strokeDasharray = perimeter + ' ' + perimeter;
-    arcGhost.style.strokeDashoffset = currentOffset;
+    arcGhost.style.strokeDashoffset = '0';
     arcGhost.style.opacity = '0.7';
     arcGhost.style.display = 'block';
-
-    if (mode === 'down') {
-      arcGhost.style.transform = 'scaleX(-1)';
-    } else {
-      arcGhost.style.transform = '';
-    }
 
     void arcGhost.offsetWidth;
 
     arcGhost.style.transition =
-      'stroke-dashoffset ' + TRAIL_DURATION + 'ms ease-in-out, ' +
+      'stroke-dasharray ' + TRAIL_DURATION + 'ms ease-in-out, ' +
       'opacity ' + TRAIL_DURATION + 'ms ease-in';
-    arcGhost.style.strokeDashoffset = currentOffset - perimeter;
+    arcGhost.style.strokeDasharray = '0 ' + (perimeter * 2);
     arcGhost.style.opacity = '0';
 
     const cleanup = () => {
@@ -489,7 +486,7 @@ const SquareTimer = (() => {
     _fadeTimeout = setTimeout(cleanup, TRAIL_DURATION + 200);
 
     arcGhost.addEventListener('transitionend', function handler(e) {
-      if (e.propertyName === 'stroke-dashoffset') {
+      if (e.propertyName === 'stroke-dasharray') {
         clearTimeout(_fadeTimeout);
         cleanup();
       }
@@ -540,6 +537,8 @@ const SquareTimer = (() => {
     arcSvg.style.transition = '';
     arcSvg.style.display = 'none';
     btn.classList.remove('timer-pulsing');
+    btn.classList.remove('timer-active');
+    btn.classList.add('timer-idle');
   }
 
   // ── Persistence ───────────────────────────────────────────────────────
