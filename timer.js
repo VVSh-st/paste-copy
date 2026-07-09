@@ -19,10 +19,9 @@ const SquareTimer = (() => {
   const MOVE_THRESHOLD = 10;
   const PULSE_BPM = 50;
   const PULSE_MAX_DURATION = 180000;
-  const TRAIL_DURATION = 5000;
 
   let _initialized = false;
-  let btn, arcSvg, arcRect, arcGhost, valueEl, inputEl;
+  let btn, arcSvg, arcRect, valueEl, inputEl;
   let _cachedPerimeter = null;
   let mode = null;
   let startTs = null;
@@ -35,9 +34,6 @@ const SquareTimer = (() => {
   let _longPressTimer = null;
   let _prevMinutes = null;
   let _prevSecondsInMinute = null;
-  let _isFading = false;
-  let _fadeTimeout = null;
-  let _ghostRafId = null;
 
   function _injectStyles() {
     if (document.getElementById('square-timer-injected')) return;
@@ -54,13 +50,19 @@ const SquareTimer = (() => {
         position: absolute; inset: 0; width: 100%; height: 100%;
         pointer-events: none; overflow: visible;
       }
+      #btn-timer .timer-arc-rect {
+        transition: stroke-dashoffset 0.9s linear;
+      }
       #btn-timer.timer-flash {
-        animation: sqTimerFlash 0.7s ease;
+        animation: sqTimerFlash 1.5s ease;
       }
       @keyframes sqTimerFlash {
-        0%, 100% { filter: none; }
-        30%      { filter: drop-shadow(0 0 14px var(--accent)) brightness(1.4); }
-        60%      { filter: drop-shadow(0 0 6px  var(--accent)) brightness(1.1); }
+        0%   { filter: none; }
+        12%  { filter: brightness(1.6) drop-shadow(0 0 20px var(--accent)); }
+        28%  { filter: brightness(1.1) drop-shadow(0 0 8px var(--accent)); }
+        42%  { filter: brightness(1.5) drop-shadow(0 0 18px var(--accent)); }
+        58%  { filter: brightness(1.05) drop-shadow(0 0 6px var(--accent)); }
+        100% { filter: none; }
       }
     `;
     document.head.appendChild(s);
@@ -70,19 +72,7 @@ const SquareTimer = (() => {
     btn.classList.remove('timer-flash');
     void btn.offsetWidth;
     btn.classList.add('timer-flash');
-    setTimeout(() => btn.classList.remove('timer-flash'), 700);
-  }
-
-  function _cancelGhost() {
-    if (_ghostRafId) {
-      cancelAnimationFrame(_ghostRafId);
-      _ghostRafId = null;
-    }
-    if (arcGhost) {
-      arcGhost.style.transition = 'none';
-      arcGhost.style.display = 'none';
-      arcGhost.style.opacity = '';
-    }
+    setTimeout(() => btn.classList.remove('timer-flash'), 1500);
   }
 
   function init() {
@@ -101,15 +91,6 @@ const SquareTimer = (() => {
 
     if (arcRect) {
       _cachedPerimeter = arcRect.getTotalLength();
-
-      arcGhost = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      for (const attr of arcRect.attributes) {
-        arcGhost.setAttribute(attr.name, attr.value);
-      }
-      arcGhost.classList.add('timer-arc-ghost');
-      arcGhost.style.display = 'none';
-      arcSvg.insertBefore(arcGhost, arcRect);
-
       const ro = new ResizeObserver(() => { _cachedPerimeter = null; });
       ro.observe(btn);
     }
@@ -134,9 +115,6 @@ const SquareTimer = (() => {
     stopTick();
     stopPulse();
     clearLongPress();
-    _cancelGhost();
-    _isFading = false;
-    if (_fadeTimeout) { clearTimeout(_fadeTimeout); _fadeTimeout = null; }
     _pointerDownPos = null;
     _prevMinutes = null;
     _prevSecondsInMinute = null;
@@ -320,7 +298,6 @@ const SquareTimer = (() => {
     targetMinutes = null;
     _prevMinutes = null;
     _prevSecondsInMinute = null;
-    _isFading = false;
     btn.classList.remove('timer-idle');
     btn.classList.add('timer-active');
     saveState();
@@ -334,7 +311,6 @@ const SquareTimer = (() => {
     targetMinutes = minutes;
     _prevMinutes = null;
     _prevSecondsInMinute = null;
-    _isFading = false;
     btn.classList.remove('timer-idle');
     btn.classList.add('timer-active');
     closeInlineInput();
@@ -347,9 +323,6 @@ const SquareTimer = (() => {
     stopTick();
     stopPulse();
     clearLongPress();
-    _cancelGhost();
-    _isFading = false;
-    if (_fadeTimeout) { clearTimeout(_fadeTimeout); _fadeTimeout = null; }
     _longPressFired = false;
     _pointerDownPos = null;
     mode = null;
@@ -404,7 +377,6 @@ const SquareTimer = (() => {
 
   function onLimitReached() {
     stopTick();
-
     _flashEffect();
 
     if (window.Ember && typeof Ember.notifyEdit === 'function') {
@@ -414,7 +386,7 @@ const SquareTimer = (() => {
     if (mode === 'up') {
       startPulse();
     } else {
-      setTimeout(() => resetToIdle(), 700);
+      setTimeout(() => resetToIdle(), 1500);
     }
   }
 
@@ -448,7 +420,6 @@ const SquareTimer = (() => {
     targetMinutes = 99;
     _prevMinutes = null;
     _prevSecondsInMinute = null;
-    _isFading = false;
     saveState();
     startTick();
     updateDisplay();
@@ -478,8 +449,6 @@ const SquareTimer = (() => {
       direction = 'ccw';
     }
 
-    _checkMinuteBoundary(secondsInMinute, direction);
-
     valueEl.style.display = 'flex';
     valueEl.classList.remove('timer-value-dim');
 
@@ -496,59 +465,8 @@ const SquareTimer = (() => {
     _applyArc(progress, direction);
   }
 
-  function _checkMinuteBoundary(secondsInMinute, direction) {
-    if (_prevSecondsInMinute === null) return;
-
-    const crossed =
-      (direction === 'cw'  && _prevSecondsInMinute === 59 && secondsInMinute === 0) ||
-      (direction === 'ccw' && _prevSecondsInMinute === 0  && secondsInMinute === 59);
-
-    if (crossed && !_isFading) {
-      _startTrailTransition();
-    }
-  }
-
-  function _startTrailTransition() {
-    if (!arcGhost || !arcRect) return;
-    _isFading = true;
-
-    const perimeter = _cachedPerimeter || arcRect.getTotalLength();
-    const startTime = performance.now();
-
-    arcGhost.style.transition = 'none';
-    arcGhost.style.strokeDasharray = perimeter + ' ' + perimeter;
-    arcGhost.style.strokeDashoffset = '0';
-    arcGhost.style.opacity = '0.7';
-    arcGhost.style.display = 'block';
-
-    function animate(now) {
-      const elapsed = now - startTime;
-      const t = Math.min(elapsed / TRAIL_DURATION, 1);
-
-      const ease = t < 0.5
-        ? 2 * t * t
-        : 1 - Math.pow(-2 * t + 2, 2) / 2;
-
-      const dashLen = perimeter * (1 - ease);
-      arcGhost.style.strokeDasharray = dashLen + ' ' + perimeter;
-      arcGhost.style.strokeDashoffset = '0';
-      arcGhost.style.opacity = String(0.7 * (1 - ease));
-
-      if (t < 1) {
-        _ghostRafId = requestAnimationFrame(animate);
-      } else {
-        arcGhost.style.display = 'none';
-        _ghostRafId = null;
-        _isFading = false;
-      }
-    }
-
-    _ghostRafId = requestAnimationFrame(animate);
-  }
-
   function _applyArc(progress, direction) {
     if (!arcRect) return;
-
     arcSvg.style.display = 'block';
 
     if (_cachedPerimeter == null) {
@@ -556,7 +474,6 @@ const SquareTimer = (() => {
     }
     const totalLength = _cachedPerimeter;
 
-    arcRect.style.transition = 'stroke-dashoffset 0.95s linear';
     arcRect.style.strokeDasharray = totalLength + ' ' + totalLength;
     arcRect.style.strokeDashoffset = totalLength * (1 - progress);
 
@@ -570,9 +487,6 @@ const SquareTimer = (() => {
   function setIdleVisual() {
     _prevMinutes = null;
     _prevSecondsInMinute = null;
-    _isFading = false;
-    if (_fadeTimeout) { clearTimeout(_fadeTimeout); _fadeTimeout = null; }
-    _cancelGhost();
 
     valueEl.classList.remove('timer-digit-animate');
     void valueEl.offsetWidth;
@@ -581,7 +495,6 @@ const SquareTimer = (() => {
     valueEl.classList.add('timer-value-dim');
 
     arcSvg.style.opacity = '';
-    arcSvg.style.transition = '';
     arcSvg.style.display = 'none';
     btn.classList.remove('timer-pulsing');
     btn.classList.remove('timer-active');
