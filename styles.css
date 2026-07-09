@@ -6299,7 +6299,7 @@ body.help-open {
 }
 .te-input-row-compact {
   display: grid;
-  grid-template-columns: 44px 100px 1fr auto;
+  grid-template-columns: 44px 140px 1fr auto;
   gap: 8px;
   align-items: center;
 }
@@ -6310,10 +6310,10 @@ body.help-open {
 }
 .te-shortcut-input {
   width: 100%;
-  min-width: 90px;
+  min-width: 130px;
 }
 .te-category-select {
-  min-width: 100px;
+  min-width: 80px;
 }
 .te-add-btn {
   padding: 6px 14px;
