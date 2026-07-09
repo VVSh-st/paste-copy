@@ -2037,7 +2037,8 @@ window.LLMFeatures = (() => {
           MiniChat.newSession();
           MiniChat.open();
           MiniChat.addSystemMessage('✂️ Сжато skeletonizer\'ом');
-          MiniChat.pushToHistory('assistant', skel);
+          MiniChat.appendChunk(skel);
+          MiniChat.finalizeLastMessage(skel);
           MiniChat.addSystemMessage(`Было ~${toksBefore} → стало ~${toksAfter} токенов (−${pct}%)`);
           window.Intelligence?.track?.('llm.action.success', {
             featureKey: 'compress',
