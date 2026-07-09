@@ -6275,7 +6275,7 @@ body.help-open {
 .te-close-btn svg { width: 14px; height: 14px; }
 
 .te-body {
-  flex: 1; overflow-y: auto; padding: 12px;
+  flex: 1; overflow: hidden; padding: 12px;
   display: flex; flex-direction: column; gap: 10px;
 }
 .te-row { display: flex; align-items: center; gap: 8px; }
@@ -6378,7 +6378,7 @@ body.help-open {
 }
 
 /* Table */
-.te-table-container { display: flex; flex-direction: column; gap: 2px; }
+.te-table-container { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; }
 .te-table-head {
   display: grid; grid-template-columns: 40px 80px 90px 1fr 30px;
   gap: 8px; padding: 4px 8px;
