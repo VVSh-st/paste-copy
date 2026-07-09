@@ -357,7 +357,7 @@ window.LLMCore = (() => {
         for (const line of part.split('\n')) {
           if (!line.startsWith('data:')) continue;
           const raw = line.slice(5).trim();
-          if (raw === '[DONE]') return full;
+          if (raw === '[DONE]') { reader.cancel().catch(() => {}); return full; }
           try {
             const json = JSON.parse(raw);
             const delta = json.choices?.[0]?.delta?.content
@@ -367,7 +367,7 @@ window.LLMCore = (() => {
               || json.delta
               || (json.type === 'response.output_text.delta' ? json.delta : '')
               || '';
-            if (delta) { full += delta; onChunk?.(delta); }
+            if (delta && typeof delta === 'string') { full += delta; onChunk?.(delta); }
           } catch {}
         }
       }
@@ -610,7 +610,8 @@ window.LLMCore = (() => {
       const useStream = !!(opts.stream ?? profile.streaming ?? llmCfg.streaming);
       const messages = _withNoThink(opts.messages, profile);
       const body = _buildRequestBody(profile, messages, { model: profile.model ?? '', temperature: opts.temperature, maxTokens: opts.maxTokens, stream: useStream });
-      let retries = profile.retries ?? 2;
+      const baseRetries = profile.retries ?? 2;
+      let retries = baseRetries;
       let lastError = null;
       while (retries >= 0) {
         const controller = new AbortController();
@@ -625,12 +626,17 @@ window.LLMCore = (() => {
         try {
           const res = await fetch(url, { method: 'POST', headers: _buildHeaders(profile, apiKey), body: JSON.stringify(body), signal: controller.signal });
           if (res.status === 429) {
-            if (retries-- > 0) { await _sleep(1500 * (3 - retries)); continue; }
+            if (retries-- > 0) { await _sleep(1500 * (baseRetries - retries)); continue; }
             throw new Error('Превышен лимит запросов (429)');
           }
           if (!res.ok) {
             const txt = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${txt.slice(0, 120)}`);
+            const errMsg = `HTTP ${res.status}: ${txt.slice(0, 120)}`;
+            const isRetryable = /^5\d\d/.test(String(res.status));
+            if (!isRetryable) throw new Error(errMsg);
+            lastError = new Error(errMsg);
+            if (retries-- > 0) { await _sleep(800); continue; }
+            throw lastError;
           }
           if (useStream) result = profile.provider === 'ollama' ? await _parseNDJSON(res, opts.onChunk) : await _parseSSE(res, profile.provider, opts.onChunk);
           else {
@@ -643,6 +649,7 @@ window.LLMCore = (() => {
             opts.onChunk?.(result);
           }
           lastError = null;
+          retries = baseRetries;
           break;
         } catch (err) {
           if (err.name === 'AbortError' || controller.signal.aborted) {
@@ -962,7 +969,7 @@ window.LLMCore = (() => {
         temperature: parseFloat(document.getElementById('llm-prf-temp')?.value ?? 0.7),
         maxTokens: parseInt(_get('llm-prf-maxtok'), 10) || 2000,
         timeout: parseInt(_get('llm-prf-timeout'), 10) || 30,
-        retries: parseInt(_get('llm-prf-retries'), 10) || 2,
+        retries: parseInt(_get('llm-prf-retries'), 10) ?? 2,
         thinkingMode: _get('llm-prf-thinking') || 'auto',
         streaming: _getCheck('llm-prf-stream'), useCache: _getCheck('llm-prf-cache'),
       };
