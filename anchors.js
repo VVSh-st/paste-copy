@@ -594,13 +594,18 @@ const Anchors = (() => {
     State.onChange(rerender);
     State.onLive(debouncedRerender);
     let _scrollTimer = null;
+    let _scrollFastTimer = null;
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
         if (!bel) return;
-        // Рендерим маркеры (линии) при каждом скролле — следуют за текстом
-        _renderMarkersNoGutter(bel, ta);
+        // Fast path: lightweight reposition on every scroll (no DOM mutation)
+        clearTimeout(_scrollFastTimer);
+        _scrollFastTimer = setTimeout(() => {
+          if (bel.isConnected) _renderMarkersNoGutter(bel, ta);
+        }, 16);
+        // Full render: debounced
         clearTimeout(_scrollTimer);
         _scrollTimer = setTimeout(() => {
           if (bel.isConnected) _renderMarkers(bel, ta);
