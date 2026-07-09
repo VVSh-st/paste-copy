@@ -731,7 +731,9 @@
     <!-- Square Timer -->
     <button id="btn-timer" type="button" title="Таймер (одиночный клик — вперёд, долгий — ввести минуты)" class="tb-btn tb-btn-icon-only" aria-label="Таймер">
       <svg class="timer-arc" viewBox="0 0 40 40" aria-hidden="true">
-        <path class="timer-arc-rect" d="M 20,1 L 39,1 L 39,39 L 1,39 L 1,1 L 20,1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path class="timer-arc-rect"
+              d="M 20,1 L 36,1 Q 39,1 39,4 L 39,36 Q 39,39 36,39 L 4,39 Q 1,39 1,36 L 1,4 Q 1,1 4,1 L 20,1"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span class="timer-value"></span>
       <input class="timer-input" type="text" inputmode="numeric" maxlength="2" style="display:none">
