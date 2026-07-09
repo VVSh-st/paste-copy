@@ -1962,6 +1962,10 @@ const TextExpander = (() => {
     _outsideClickHandler = e => {
       if (_activeTa && !_activeTa.isConnected) { _hideDropdown(); return; }
       if (_dropdownEl && !_dropdownEl.contains(e.target) && e.target !== _activeTa) _hideDropdown();
+      // Close panel on outside click
+      if (_panelEl && !_panelEl.contains(e.target)) {
+        closePanel();
+      }
     };
     document.addEventListener('mousedown', _outsideClickHandler);
 
