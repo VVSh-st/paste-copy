@@ -6380,14 +6380,14 @@ body.help-open {
 /* Table */
 .te-table-container { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; }
 .te-table-head {
-  display: grid; grid-template-columns: 40px 80px 90px 1fr 30px;
+  display: grid; grid-template-columns: 40px 80px auto 1fr 30px;
   gap: 8px; padding: 4px 8px;
   font-size: 10px; font-weight: 600; color: var(--text-muted);
   text-transform: uppercase; letter-spacing: 0.5px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .te-table-row {
-  display: grid; grid-template-columns: 40px 80px 90px 1fr 30px;
+  display: grid; grid-template-columns: 40px 80px auto 1fr 30px;
   gap: 8px; padding: 6px 8px;
   align-items: center;
   border-radius: 6px;
