@@ -728,6 +728,19 @@
 
     </button>
 
+    <!-- Square Timer -->
+    <button id="btn-timer" type="button" title="Таймер (одиночный клик — вперёд, долгий — ввести минуты)" class="tb-btn tb-btn-icon-only" aria-label="Таймер">
+      <svg class="timer-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect class="timer-rect" x="3" y="3" width="14" height="14" rx="2"/>
+        <path d="M10 6v4l2.5 1.5"/>
+      </svg>
+      <svg class="timer-arc" viewBox="0 0 20 20" aria-hidden="true">
+        <rect class="timer-arc-rect" x="3" y="3" width="14" height="14" rx="2"/>
+      </svg>
+      <span class="timer-value"></span>
+      <input class="timer-input" type="text" inputmode="numeric" maxlength="2" style="display:none">
+    </button>
+
     <span class="hint" aria-hidden="true"></span>
 
   </header>
@@ -1818,6 +1831,8 @@
   <script src="intelligence-core.js"></script>
 
   <script src="ember.js"></script>
+
+  <script src="timer.js"></script>
 
   <script src="help.js"></script>
 
