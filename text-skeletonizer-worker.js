@@ -246,7 +246,7 @@ function process(text, level) {
     if (keyTerms.length) parts.push(`=== КЛЮЧЕВЫЕ ПОНЯТИЯ ===\n${keyTerms.join(', ')}`);
   }
   if (level === 'aggressive') {
-    const lists = _extractLists(text).slice(0, 15);
+    const lists = _extractLists(text).slice(0, 30);
     if (lists.length) {
       parts.push('=== СПИСКИ ===');
       lists.forEach(l => {
@@ -254,12 +254,12 @@ function process(text, level) {
         l.items.slice(0, cfg.maxBulletsPerSection).forEach(item => parts.push(`  - ${item}`));
       });
     }
-    const codeBlocks = _extractCodeBlocks(text).slice(0, 15);
+    const codeBlocks = _extractCodeBlocks(text).slice(0, 30);
     if (codeBlocks.length) {
       parts.push('=== КОД ===');
       codeBlocks.forEach(b => parts.push(`  [${b.lang || 'code'}] ${b.preview}`));
     }
-    const links = _extractLinks(text).slice(0, 15);
+    const links = _extractLinks(text).slice(0, 30);
     if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.join('\n')}`);
   }
   if (cfg.includeStats) {
