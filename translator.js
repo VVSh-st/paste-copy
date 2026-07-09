@@ -49,7 +49,6 @@ const Translator = (() => {
     { code: 'zh', name: '中文', flag: '🇨🇳' },
     { code: 'zh-TW', name: '繁體中文', flag: '🇹🇼' },
     { code: 'ja', name: '日本語', flag: '🇯🇵' },
-    { code: 'ko', name: '한국어', flag: '🇰🇷' },
   ];
 
   const LANG_BY_CODE = Object.fromEntries(LANGUAGES.map(l => [l.code, l]));
