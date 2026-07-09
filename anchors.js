@@ -338,45 +338,26 @@ const Anchors = (() => {
     if (charPos <= 0) return { x: pl, y: pt };
 
     const mirror = _getMirror(ta);
-    const value = ta.value.substring(0, Math.min(charPos, ta.value.length));
-    mirror.textContent = value;
+    mirror.textContent = '';
 
-    const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
-    let remaining = charPos;
-    let targetNode = null;
-    let targetOffset = 0;
-    let node;
-    while ((node = walker.nextNode())) {
-      if (remaining <= node.textContent.length) {
-        targetNode = node;
-        targetOffset = remaining;
-        break;
-      }
-      remaining -= node.textContent.length;
-    }
-
-    if (!targetNode) {
-      mirror.textContent = ta.value.substring(0, charPos);
-      return { x: pl, y: pt + mirror.scrollHeight };
-    }
+    const safePos = Math.min(charPos, ta.value.length);
+    const before = document.createElement('span');
+    before.textContent = ta.value.substring(0, safePos);
+    const marker = document.createElement('span');
+    marker.textContent = ta.value.substring(safePos, safePos + 1) || '.';
+    mirror.appendChild(before);
+    mirror.appendChild(marker);
 
     try {
-      const range = document.createRange();
-      range.setStart(targetNode, targetOffset);
-      range.collapse(true);
-      const marker = document.createElement('span');
-      marker.textContent = '\u200B';
-      range.insertNode(marker);
       const mr = marker.getBoundingClientRect();
       const mir = mirror.getBoundingClientRect();
       const x = pl + mr.left - mir.left;
       const y = pt + mr.top - mir.top;
-      if (marker.parentNode) marker.parentNode.removeChild(marker);
       return { x: x, y: y };
     } catch (_) {
-      mirror.querySelectorAll('span').forEach(m => m.remove());
-      mirror.textContent = ta.value.substring(0, charPos);
       return { x: pl, y: pt + mirror.scrollHeight };
+    } finally {
+      mirror.textContent = '';
     }
   }
 
