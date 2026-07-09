@@ -869,10 +869,12 @@ const TextExpander = (() => {
       btn.dataset.mode = mode;
       btn.title = title;
       btn.innerHTML = svg;
-      btn.classList.toggle('active', sh.mode === mode);
-      btn.setAttribute('aria-pressed', sh.mode === mode ? 'true' : 'false');
+      btn.classList.toggle('active', sh.mode === mode && !sh.digits);
+      btn.setAttribute('aria-pressed', sh.mode === mode && !sh.digits ? 'true' : 'false');
       btn.onclick = () => {
         _setShortenerMode(mode);
+        // Disable digits when selecting a mode
+        if (sh.digits) { _toggleShortenerDigits(); }
         const group = btn.closest('.te-shortener-modes');
         if (group) {
           group.querySelectorAll('.te-shortener-mode-btn[data-mode]').forEach(b => {
@@ -880,6 +882,12 @@ const TextExpander = (() => {
             b.classList.toggle('active', isActive);
             b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
           });
+          // Update digits button state
+          const digitsBtn = group.querySelector('.te-shortener-digits-btn');
+          if (digitsBtn) {
+            digitsBtn.classList.remove('active');
+            digitsBtn.setAttribute('aria-pressed', 'false');
+          }
         }
       };
       return btn;
@@ -900,6 +908,14 @@ const TextExpander = (() => {
         const next = _getShortenerSettings();
         btn.classList.toggle('active', next.digits);
         btn.setAttribute('aria-pressed', next.digits ? 'true' : 'false');
+        // When digits is ON, deselect all mode buttons (digits works independently)
+        const group = btn.closest('.te-shortener-modes');
+        if (group) {
+          group.querySelectorAll('.te-shortener-mode-btn[data-mode]').forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-pressed', 'false');
+          });
+        }
       };
       return btn;
     }
