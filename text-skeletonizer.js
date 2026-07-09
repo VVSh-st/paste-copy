@@ -304,15 +304,15 @@ const TextSkeletonizer = (() => {
       maxHeadingLength: 40,
       maxSentenceLength: 40,
       maxKeyTerms: 15,
-      maxSections: 15,
+      maxSections: 10,
       maxBulletsPerSection: 3,
       includeStats: true,
     };
     switch (level) {
       case 'light':
-        return { ...base, maxSections: 6, maxKeyTerms: 0, includeStats: true };
+        return { ...base, maxSections: 5, maxKeyTerms: 0, includeStats: true };
       case 'aggressive':
-        return { ...base, maxSections: 25, maxKeyTerms: 25, maxBulletsPerSection: 4 };
+        return { ...base, maxSections: 15, maxKeyTerms: 20, maxBulletsPerSection: 4 };
       default: // medium
         return base;
     }
