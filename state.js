@@ -196,6 +196,20 @@ const State = (() => {
     return item.enabled;
   }
 
+  function updateGlobalSnippetLive(id, fn) {
+    const item = globalSnippets.find(i => i.id === id);
+    if (!item) return;
+    try { fn(item); } catch (e) { console.error('[State.updateGlobalSnippetLive]', e); }
+    emitLive();
+  }
+
+  function updateGlobalSnippet(id, fn) {
+    const item = globalSnippets.find(i => i.id === id);
+    if (!item) return;
+    try { fn(item); } catch (e) { console.error('[State.updateGlobalSnippet]', e); }
+    emit();
+  }
+
   function clearGlobalSnippets() {
     if (!globalSnippets.length) return false;
     globalSnippets = [];
@@ -1366,7 +1380,7 @@ const State = (() => {
     getLayout, setLayout,
     load, serialize, onChange, onLive, onSnapshot, uid,
     searchAll, replaceAll, getAllSnippetsAndCommands,
-    addGlobalSnippet, removeGlobalSnippet, getGlobalSnippets, toggleGlobalSnippet, clearGlobalSnippets, mergeGlobalSnippets,
+    addGlobalSnippet, removeGlobalSnippet, getGlobalSnippets, toggleGlobalSnippet, updateGlobalSnippetLive, updateGlobalSnippet, clearGlobalSnippets, mergeGlobalSnippets,
     getDefaultTemplateId, setDefaultTemplateId,
     randomIcon, SUBTABS_COUNT,
   };
