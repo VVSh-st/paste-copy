@@ -30,7 +30,7 @@ const TextExpander = (() => {
   const MAX_SHORTCUT_LEN = 10;
   const MAX_DROPDOWN_ITEMS = 100;
   const VISIBLE_DROPDOWN_ITEMS = 6;
-  const DROPDOWN_ROW_HEIGHT = 28;
+  const DROPDOWN_ROW_HEIGHT = 26;
   const MAX_SELECTION_LEN = 50000;
 
   const SHORTENER_MODES = { WORD: 'word', ACRONYM: 'acronym', GLUE: 'glue' };
@@ -1165,6 +1165,11 @@ const TextExpander = (() => {
       if (!_dropdownEl) {
         _dropdownFocusedIdx = 0;
         _showDropdown(ta);
+        // _showDropdown calls _hideDropdown internally which clears _activeTa — restore it
+        _activeTa = ta;
+        _activeBlockId = blockId || ta.closest('.block')?.dataset?.id || null;
+        _dropdownStart = active.start;
+        _dropdownQuery = active.query;
       } else {
         _dropdownFocusedIdx = 0;
         _renderDropdownItems();
@@ -1369,17 +1374,12 @@ const TextExpander = (() => {
       shortcut.className = 'te-dd-shortcut';
       shortcut.textContent = _getShortcutValue(item);
 
-      const catBadge = document.createElement('span');
-      catBadge.className = 'te-dd-category';
-      catBadge.textContent = item.category;
-
       const preview = document.createElement('span');
       preview.className = 'te-dd-preview';
-      const pt = (item.text || '').length > 25 ? item.text.slice(0, 25) + '...' : (item.text || '');
+      const pt = (item.text || '').length > 40 ? item.text.slice(0, 40) + '...' : (item.text || '');
       preview.textContent = pt;
 
       row.appendChild(shortcut);
-      row.appendChild(catBadge);
       row.appendChild(preview);
 
       row.onmousedown = e => { e.preventDefault(); _insertExpansion(item); };
