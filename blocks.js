@@ -869,7 +869,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       addBtn.style.color = 'var(--green)';
       addBtn.onclick = e => {
         e.stopPropagation();
-        const type = prompt('Тип (text/snippets/commands/variable/sticky/todo/table):', 'text');
+        const type = prompt('Тип (text/commands/variable/sticky/todo/table):', 'text');
         if (type) State.addBlock(type, b.id);
       };
       actions.appendChild(addBtn);
@@ -3027,7 +3027,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         titleInp.className   = 'item-title-input';
         titleInp.value       = item.title || '';
         titleInp.placeholder = 'Заголовок';
-        titleInp.oninput = () => State.updateLive(() => { item.title = titleInp.value; });
+        titleInp.oninput = () => State.update(() => { item.title = titleInp.value; });
         titleInp.onblur  = () => State.snapshot();
 
         const valInp = document.createElement('textarea');
@@ -3035,7 +3035,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         valInp.value       = item.value || '';
         valInp.placeholder = 'Текст сниппета...';
         valInp.rows = 2;
-        valInp.oninput = () => State.updateLive(() => { item.value = valInp.value; });
+        valInp.oninput = () => State.update(() => { item.value = valInp.value; });
         valInp.onblur  = () => State.snapshot();
 
         const toggleBtn = document.createElement('button');
