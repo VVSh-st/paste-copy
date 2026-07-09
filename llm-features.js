@@ -2027,10 +2027,14 @@ window.LLMFeatures = (() => {
         _withAutoSnap('compress');
         const toksBefore = _LLMCore.estimateTokens(origText) || 0;
 
+        console.log('[compress] origText length:', origText.length, 'chars');
+
         // Сжатие skeletonizer'ом (бесплатно)
         if (typeof TextSkeletonizer !== 'undefined' && TextSkeletonizer.shouldCompress(origText.length)) {
           const level = TextSkeletonizer.recommendLevel(origText.length) || 'medium';
+          console.log('[compress] level:', level, 'origText.length:', origText.length);
           const skel = await TextSkeletonizer.processAsync(origText, { level });
+          console.log('[compress] skel.length:', skel.length, 'ratio:', (skel.length / origText.length * 100).toFixed(1) + '%');
           const toksAfter = _LLMCore.estimateTokens(skel) || 0;
           const pct = toksBefore > 0 ? Math.round((1 - toksAfter / toksBefore) * 100) : 0;
 
