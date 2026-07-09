@@ -301,18 +301,18 @@ const TextSkeletonizer = (() => {
 
   function _configForLevel(level) {
     const base = {
-      maxHeadingLength: 50,
-      maxSentenceLength: 60,
-      maxKeyTerms: 20,
-      maxSections: 20,
+      maxHeadingLength: 40,
+      maxSentenceLength: 40,
+      maxKeyTerms: 15,
+      maxSections: 15,
       maxBulletsPerSection: 3,
       includeStats: true,
     };
     switch (level) {
       case 'light':
-        return { ...base, maxSections: 8, maxKeyTerms: 0, includeStats: true };
+        return { ...base, maxSections: 6, maxKeyTerms: 0, includeStats: true };
       case 'aggressive':
-        return { ...base, maxSections: 30, maxKeyTerms: 30, maxBulletsPerSection: 4 };
+        return { ...base, maxSections: 25, maxKeyTerms: 25, maxBulletsPerSection: 4 };
       default: // medium
         return base;
     }
