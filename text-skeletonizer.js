@@ -514,8 +514,7 @@ const TextSkeletonizer = (() => {
     const words = text.split(/\s+/).filter(Boolean).length;
     const paragraphs = text.split(/\n{2,}/).filter(p => p.trim()).length;
     const headings = sections.length;
-    const kb = (chars / 1024).toFixed(1);
-    return `${kb} KB | ${words} слов | ${paragraphs} абзацев | ${headings} секций`;
+    return `${chars} символов | ${words} слов | ${paragraphs} абзацев | ${headings} секций`;
   }
 
   // ── Публичный API ──────────────────────────────────────────
