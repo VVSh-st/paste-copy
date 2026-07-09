@@ -2528,8 +2528,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const teBtn = document.createElement('button');
       teBtn.type = 'button';
       teBtn.className = 'font-ctrl-btn text-expander-btn';
-      teBtn.title = 'Text Expander — выдели текст (short) / панель (long)';
-      teBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M4 6h8M4 10h5"/><path d="M12 8l2 2-2 2"/></svg>';
+      teBtn.title = 'Текстовый экспандер — выдели текст (short) / панель (long)';
+      teBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 3h10M8 3v9"/><path d="M11 10l2 2-2 2"/></svg>';
       TextExpander._setupLongPress(teBtn, ta, b.id);
       footer.appendChild(teBtn);
     }
