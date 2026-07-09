@@ -1756,6 +1756,14 @@ window.LLMFeatures = (() => {
       summary:        'Резюме вкладки',
       variations:     '3 варианта',
     };
+
+    // Сжимаем длинный текст для summary (бесплатно)
+    let finalText = text;
+    if (modeAlias === 'summary' && typeof TextSkeletonizer !== 'undefined' && TextSkeletonizer.shouldCompress(text.length)) {
+      const level = TextSkeletonizer.recommendLevel(text.length) || 'medium';
+      finalText = TextSkeletonizer.process(text, { level });
+    }
+
     MiniChat.newSession();
     MiniChat.open();
     MiniChat.addSystemMessage('📊 ' + (labels[modeAlias] || modeAlias) + '...');
@@ -1766,7 +1774,7 @@ window.LLMFeatures = (() => {
     const targetSessionIdx = MiniChat.getSessionIndex();
 
     _LLMCore.request({
-      messages:   [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
+      messages:   [{ role: 'system', content: systemPrompt }, { role: 'user', content: finalText }],
       stream:     !isSummary,
       timeoutMs:  isSummary ? 180_000 : undefined,
       signal:     undefined,
@@ -1955,10 +1963,18 @@ window.LLMFeatures = (() => {
       if (_busy) return;
       if (!_guard()) return;
 
-      const text = window.Preview?.getText?.() ?? '';
+      let text = window.Preview?.getText?.() ?? '';
       if (!text) {
         window.Toast?.show?.('Превью пустое', 'error');
         return;
+      }
+
+      // Сжимаем длинный промпт skeletonizer'ом (бесплатно)
+      const origLen = text.length;
+      if (typeof TextSkeletonizer !== 'undefined' && TextSkeletonizer.shouldCompress(text.length)) {
+        const level = TextSkeletonizer.recommendLevel(text.length) || 'medium';
+        text = await TextSkeletonizer.processAsync(text, { level });
+        window.Toast?.show?.('Сжато: ' + origLen + ' → ' + text.length + ' символов', 'info');
       }
 
       _busy = true;
@@ -2003,18 +2019,33 @@ window.LLMFeatures = (() => {
     async function compress() {
       if (!_guard()) return;
       if (_compressing) return;
-      const text = window.Preview?.getText?.() ?? '';
-      if (!text) { window.Toast?.show('Превью пустое', 'error'); return; }
+      const origText = window.Preview?.getText?.() ?? '';
+      if (!origText) { window.Toast?.show('Превью пустое', 'error'); return; }
 
       _compressing = true;
       try {
         _withAutoSnap('compress');
-        const toksBefore = _LLMCore.estimateTokens(text) || 0;
+        const toksBefore = _LLMCore.estimateTokens(origText) || 0;
+
+        // Бесплатное сжатие skeletonizer'ом
+        let text = origText;
+        let usedSkeleton = false;
+        if (typeof TextSkeletonizer !== 'undefined' && TextSkeletonizer.shouldCompress(origText.length)) {
+          const level = TextSkeletonizer.recommendLevel(origText.length) || 'medium';
+          const skel = await TextSkeletonizer.processAsync(origText, { level });
+          const skelRatio = skel.length / origText.length;
+          if (skelRatio < 0.5) {
+            text = skel;
+            usedSkeleton = true;
+            window.Toast?.show?.('Skeletonizer: −' + Math.round((1 - skelRatio) * 100) + '%', 'info');
+          }
+        }
+
         MiniChat.newSession();
         MiniChat.open();
-        MiniChat.addSystemMessage('✂️ Сжимаю токены...');
+        MiniChat.addSystemMessage(usedSkeleton ? '✂️ Сжато skeletonizer + доработка LLM...' : '✂️ Сжимаю токены...');
         MiniChat.pushToHistory('user', text);
-        _showThinking('✂️ Сжимаю...');
+        _showThinking(usedSkeleton ? '✂️ Дорабатываю...' : '✂️ Сжимаю...');
 
         const result = await _LLMCore.request({
           messages: [
