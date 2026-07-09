@@ -65,6 +65,16 @@
 
 ### Завершено в этой сессии
 
+**Аудит llm-core.js** — 1 раунд (ответ 3 (11).txt), 6 исправлений из 8
+- **#3 [high]** SSE `[object Object]` — `typeof delta === 'string'` guard (Anthropic `message_delta` объект ломал вывод)
+- **#1 [high]** 429-backoff отрицательный — `baseRetries - retries` вместо `3 - retries`
+- **#2 [high]** Все HTTP ошибки ретраятся — теперь только 429 и 5xx
+- **#4 [medium]** Общий retry counter — `retries = baseRetries` после успешного ответа
+- **#6 [low]** SSE reader не отменяется — `reader.cancel().catch(()=>{})` после `[DONE]`
+- **#7 [low]** retries=0 невозможно — `|| 2` → `?? 2`
+- Пропущено: **#5** (пустой ответ ретраится — разумно), **#8** (estimateTokens CJK — опционально)
+- Коммит: `97ed4fb`
+
 **Аудит app.js** — 3 раунда (ответ 3 (8).txt + ответ 3 (9).txt + ответ 3 (10).txt), 10 исправлений
 - **#1 [критично]** Async IIFE `.catch()` — теперь ловит ошибки bootstrap + показывает пользователю
 - **#2 [критично]** `importFile`: `_importBusy` guard, `MAX_IMPORT_BYTES` 10MB, `reader.onerror`
@@ -158,6 +168,7 @@
 | `blocks.js` | `ta.spellcheck = b.spellcheck !== false` |
 | `translator.js` | удалён Korean |
 | `app.js` | catch bootstrap + importFile guards + revokeObjectURL 10s + resizer rAF + fullRender batching + magic numbers + empty preview toast |
+| `llm-core.js` | SSE typeof guard + retry backoff fix + non-retryable errors + retry reset + reader.cancel + retries=0 |
 
 ### Аудиторские файлы (не коммитятся)
 | Файл | Содержание |
@@ -175,6 +186,7 @@
 | `ответ 3 (8).txt` | Аудит app.js раунд 1 (Claude Sonnet 4) |
 | `ответ 3 (9).txt` | Аудит app.js раунд 2 (Claude Sonnet 4) |
 | `ответ 3 (10).txt` | Аудит app.js раунд 3 — финальный (Claude Sonnet 4) |
+| `ответ 3 (11).txt` | Аудит llm-core.js (Claude Sonnet 4) |
 
 ## Как работает
 - **TextExpander**: trigger `ё` → dropdown с фильтрацией → вставка с обработкой регистра
