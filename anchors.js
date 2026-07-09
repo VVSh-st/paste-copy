@@ -264,23 +264,12 @@ const Anchors = (() => {
       const del = document.createElement('span');
       del.className = 'anchor-palette-del';
       del.textContent = '✕';
-      del.title = 'Двойное нажатие — удалить';
-      let delClicks = 0;
-      let delTimer = null;
+      del.title = 'Удалить якорь';
       del.addEventListener('click', ev => {
         ev.stopPropagation();
-        delClicks++;
-        if (delClicks >= 2) {
-          clearTimeout(delTimer);
-          delClicks = 0;
-          removeAnchorById(a.id);
-          _showPalette(_palette?._anchorBtn);
-          Toast.show('Якорь удалён', 'success');
-          return;
-        }
-        del.classList.add('anchor-palette-del-pending');
-        clearTimeout(delTimer);
-        delTimer = setTimeout(() => { delClicks = 0; del.classList.remove('anchor-palette-del-pending'); }, PALETTE_DELETE_CONFIRM_MS);
+        removeAnchorById(a.id);
+        _showPalette(_palette?._anchorBtn);
+        Toast.show('Якорь удалён', 'success');
       });
 
       row.addEventListener('click', ev => {
@@ -312,7 +301,11 @@ const Anchors = (() => {
     }, 100);
   }
 
-  /* ---- mirror for line-wrap measurement ---- */
+  /* ---- mirror for line-wrap measurement ----
+     ⚠️  НЕ МЕНЯТЬ _measurePos / _renderMarkers / _renderMarkersNoGutter без веской причины.
+     Текущий паттерн (TreeWalker+Range через _getMirror на document.body + rawTop = pos.y - scrollY - taPt)
+     отлажен и работает корректно. Любые «улучшения» (span-based, local mirror, line-count)
+     приводили к систематическим сдвигам маркера на 1+ строку. ---- */
   let _mirror = null;
 
   function _getMirror(ta) {
