@@ -9,7 +9,7 @@
  * - Одиночный клик (idle) → счёт вперёд от 0:00
  * - Долгое нажатие (idle) → inline-ввод минут → обратный отсчёт
  * - Правый клик (активный) → сброс в idle
- * - Лимит (99 вверх / 0 вниз) → пульсация 3 мин или до клика
+ * - Лимит (99 вверх / 0 вниз) → пульсация 3 мин → звук → обратный отсчёт 99→0
  * - Персистентность через Storage._set/_get
  */
 
@@ -19,7 +19,7 @@ const SquareTimer = (() => {
   const MOVE_THRESHOLD = 10;
   const PULSE_BPM = 50;
   const PULSE_MAX_DURATION = 180000;
-  const TRAIL_DURATION = 2000;
+  const TRAIL_DURATION = 5000;
 
   let _initialized = false;
   let btn, arcSvg, arcRect, arcGhost, valueEl, inputEl;
@@ -54,7 +54,9 @@ const SquareTimer = (() => {
       _cachedPerimeter = arcRect.getTotalLength();
 
       arcGhost = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      arcGhost.setAttribute('d', arcRect.getAttribute('d'));
+      for (const attr of arcRect.attributes) {
+        arcGhost.setAttribute(attr.name, attr.value);
+      }
       arcGhost.classList.add('timer-arc-ghost');
       arcGhost.style.display = 'none';
       arcSvg.insertBefore(arcGhost, arcRect);
@@ -229,6 +231,37 @@ const SquareTimer = (() => {
     }
   }
 
+  // ── Sound (Web Audio API) ─────────────────────────────────────────────
+
+  function _playCompletionSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+      const startTime = ctx.currentTime;
+
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+
+        gain.gain.setValueAtTime(0, startTime + i * 0.12);
+        gain.gain.linearRampToValueAtTime(0.12, startTime + i * 0.12 + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + i * 0.12 + 0.6);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime + i * 0.12);
+        osc.stop(startTime + i * 0.12 + 0.7);
+      });
+
+      setTimeout(() => ctx.close(), 2000);
+    } catch (e) {
+      console.warn('[SquareTimer] Sound error:', e);
+    }
+  }
+
   // ── Timer Logic ───────────────────────────────────────────────────────
 
   function startCountUp() {
@@ -316,10 +349,16 @@ const SquareTimer = (() => {
 
   function onLimitReached() {
     stopTick();
+
     if (window.Ember && typeof Ember.notifyEdit === 'function') {
       Ember.notifyEdit();
     }
-    startPulse();
+
+    if (mode === 'up') {
+      startPulse();
+    } else {
+      resetToIdle();
+    }
   }
 
   // ── Pulse (пульсация после достижения лимита) ─────────────────────────
@@ -331,7 +370,9 @@ const SquareTimer = (() => {
     pulseIntervalId = setInterval(() => {
       const elapsed = Date.now() - pulseStartTime;
       if (elapsed >= PULSE_MAX_DURATION) {
-        resetToIdle();
+        stopPulse();
+        _playCompletionSound();
+        _startAutoCountdown();
       }
     }, 1000);
   }
@@ -342,6 +383,18 @@ const SquareTimer = (() => {
       clearInterval(pulseIntervalId);
       pulseIntervalId = null;
     }
+  }
+
+  function _startAutoCountdown() {
+    mode = 'down';
+    startTs = Date.now();
+    targetMinutes = 99;
+    _prevMinutes = null;
+    _prevSecondsInMinute = null;
+    _isFading = false;
+    saveState();
+    startTick();
+    updateDisplay();
   }
 
   // ── Display ───────────────────────────────────────────────────────────
@@ -408,7 +461,7 @@ const SquareTimer = (() => {
     arcGhost.style.transition = 'none';
     arcGhost.style.strokeDasharray = perimeter + ' ' + perimeter;
     arcGhost.style.strokeDashoffset = currentOffset;
-    arcGhost.style.opacity = '1';
+    arcGhost.style.opacity = '0.7';
     arcGhost.style.display = 'block';
 
     if (mode === 'down') {
@@ -420,10 +473,10 @@ const SquareTimer = (() => {
     void arcGhost.offsetWidth;
 
     arcGhost.style.transition =
-      'stroke-dashoffset ' + TRAIL_DURATION + 'ms cubic-bezier(0.4, 0, 1, 1), ' +
+      'stroke-dashoffset ' + TRAIL_DURATION + 'ms ease-in-out, ' +
       'opacity ' + TRAIL_DURATION + 'ms ease-in';
     arcGhost.style.strokeDashoffset = currentOffset - perimeter;
-    arcGhost.style.opacity = '0.15';
+    arcGhost.style.opacity = '0';
 
     const cleanup = () => {
       arcGhost.removeEventListener('transitionend', cleanup);
@@ -433,7 +486,7 @@ const SquareTimer = (() => {
       _isFading = false;
     };
 
-    _fadeTimeout = setTimeout(cleanup, TRAIL_DURATION + 100);
+    _fadeTimeout = setTimeout(cleanup, TRAIL_DURATION + 200);
 
     arcGhost.addEventListener('transitionend', function handler(e) {
       if (e.propertyName === 'stroke-dashoffset') {

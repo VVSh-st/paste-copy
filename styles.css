@@ -165,7 +165,7 @@ body {
   filter: drop-shadow(0 0 2px rgba(79,142,247,0.3));
 }
 #btn-timer .timer-arc-ghost {
-  stroke-opacity: 0.4;
+  stroke-opacity: 0.5;
   display: none;
 }
 .timer-digit-animate {
