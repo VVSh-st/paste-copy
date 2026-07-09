@@ -687,7 +687,6 @@ const Flowchart = (() => {
         e.preventDefault();
         e.stopPropagation();
         if (_canvases.length <= 1) return;
-        if (!confirm('Удалить полотно "' + cv.name + '"?')) return;
         _canvases = _canvases.filter(c => c.id !== cv.id);
         if (_activeCanvasId === cv.id) _activeCanvasId = _canvases[0].id;
         _saveCanvases(); _switchCanvas(_activeCanvasId); _renderCanvasPills();
