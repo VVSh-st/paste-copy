@@ -246,7 +246,7 @@ function process(text, level) {
     if (keyTerms.length) parts.push(`=== КЛЮЧЕВЫЕ ПОНЯТИЯ ===\n${keyTerms.join(', ')}`);
   }
   if (level === 'aggressive') {
-    const lists = _extractLists(text);
+    const lists = _extractLists(text).slice(0, 5);
     if (lists.length) {
       parts.push('=== СПИСКИ ===');
       lists.forEach(l => {
@@ -254,13 +254,13 @@ function process(text, level) {
         l.items.slice(0, cfg.maxBulletsPerSection).forEach(item => parts.push(`  - ${item}`));
       });
     }
-    const codeBlocks = _extractCodeBlocks(text);
+    const codeBlocks = _extractCodeBlocks(text).slice(0, 5);
     if (codeBlocks.length) {
       parts.push('=== КОД ===');
       codeBlocks.forEach(b => parts.push(`  [${b.lang || 'code'}] ${b.preview}`));
     }
-    const links = _extractLinks(text);
-    if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.slice(0, 10).join('\n')}`);
+    const links = _extractLinks(text).slice(0, 5);
+    if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.join('\n')}`);
   }
   if (cfg.includeStats) {
     const tmpResult = parts.join('\n');

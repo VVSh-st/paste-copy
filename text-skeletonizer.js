@@ -235,7 +235,7 @@ const TextSkeletonizer = (() => {
 
     // Списки (aggressive)
     if (level === 'aggressive') {
-      const lists = _extractLists(text);
+      const lists = _extractLists(text).slice(0, 5);
       if (lists.length) {
         parts.push('=== СПИСКИ ===');
         lists.forEach(l => {
@@ -247,7 +247,7 @@ const TextSkeletonizer = (() => {
 
     // Блоки кода (aggressive)
     if (level === 'aggressive') {
-      const codeBlocks = _extractCodeBlocks(text);
+      const codeBlocks = _extractCodeBlocks(text).slice(0, 5);
       if (codeBlocks.length) {
         parts.push('=== КОД ===');
         codeBlocks.forEach(b => parts.push(`  [${b.lang || 'code'}] ${b.preview}`));
@@ -256,8 +256,8 @@ const TextSkeletonizer = (() => {
 
     // Ссылки (aggressive)
     if (level === 'aggressive') {
-      const links = _extractLinks(text);
-      if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.slice(0, 10).join('\n')}`);
+      const links = _extractLinks(text).slice(0, 5);
+      if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.join('\n')}`);
     }
 
     // Статистика (все уровни) — считаем после сборки
