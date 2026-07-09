@@ -168,8 +168,7 @@ const Anchors = (() => {
         const pos = _measurePos(ta, s);
         const cs = getComputedStyle(ta);
         const pt = parseFloat(cs.paddingTop) || 0;
-        const bt = parseFloat(cs.borderTopWidth) || 0;
-        const target = Math.max(0, pos.y - bt - pt - ta.clientHeight / 2);
+        const target = Math.max(0, pos.y - pt - ta.clientHeight / 2);
         // Восстанавливаем скролл после auto-scroll браузера
         requestAnimationFrame(() => {
           ta.scrollTop = target;
@@ -341,6 +340,9 @@ const Anchors = (() => {
     const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
     if (!wrap) return { x: pl, y: pt };
 
+    const safePos = Math.min(charPos, ta.value.length);
+
+    // Mirror for x-measurement (word-wrap aware)
     const mirror = document.createElement('div');
     mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;';
     for (const prop of ['fontFamily','fontSize','fontWeight','fontStyle','fontVariantLigatures','fontFeatureSettings','fontKerning','letterSpacing','lineHeight','textTransform','textIndent','wordBreak','overflowWrap','tabSize','paddingTop','paddingRight','paddingBottom','paddingLeft']) {
@@ -350,7 +352,7 @@ const Anchors = (() => {
     wrap.appendChild(mirror);
 
     try {
-      const safePos = Math.min(charPos, ta.value.length);
+      // X from mirror
       const before = document.createElement('span');
       before.textContent = ta.value.substring(0, safePos);
       const marker = document.createElement('span');
@@ -359,10 +361,12 @@ const Anchors = (() => {
       mirror.appendChild(marker);
       const mr = marker.getBoundingClientRect();
       const mir = mirror.getBoundingClientRect();
-      // x: marker width relative to mirror (accounts for word-wrap)
-      const x = pl + mr.left - mir.left;
-      // y: absolute position from wrap top (marker is in mirror at wrap top:0)
-      const y = mr.top - mir.top;
+      const x = pl + (mr.left - mir.left);
+
+      // Y: use the same span-in-mirror approach as current line highlight
+      // which is known to work correctly
+      const y = pt + (mr.top - mir.top);
+
       return { x: x, y: y };
     } catch (_) {
       return { x: pl, y: pt + mirror.scrollHeight };
@@ -436,12 +440,17 @@ const Anchors = (() => {
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
     const taCs = getComputedStyle(ta);
-    const borderT = parseFloat(taCs.borderTopWidth) || 0;
-    const padT = parseFloat(taCs.paddingTop) || 0;
+
+    // Textarea offset from wrap (viewport-relative, constant regardless of scroll)
+    const taR = ta.getBoundingClientRect();
+    const wrapR = wrap.getBoundingClientRect();
+    const taOffsetFromWrap = taR.top - wrapR.top;
 
     blockAnchors.forEach((anchor, localIdx) => {
       const pos = _measurePos(ta, anchor.start);
-      const rawTop = pos.y - borderT - padT + scrollY;
+      // pos.y = pt + (mr.top - mir.top) = position from mirror top (includes pt)
+      // Convert to wrap-relative: add textarea offset from wrap, subtract scroll
+      const rawTop = pos.y + taOffsetFromWrap - scrollY;
       const wrapH = wrap.clientHeight;
 
       // Skip markers scrolled out of view
@@ -487,12 +496,12 @@ const Anchors = (() => {
     wrap.style.position = 'relative';
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
-    const taCs = getComputedStyle(ta);
-    const borderT = parseFloat(taCs.borderTopWidth) || 0;
-    const padT = parseFloat(taCs.paddingTop) || 0;
+    const taR = ta.getBoundingClientRect();
+    const wrapR = wrap.getBoundingClientRect();
+    const taOffsetFromWrap = taR.top - wrapR.top;
     blockAnchors.forEach(anchor => {
       const pos = _measurePos(ta, anchor.start);
-      const rawTop = pos.y - borderT - padT + scrollY;
+      const rawTop = pos.y + taOffsetFromWrap - scrollY;
       const wrapH = wrap.clientHeight;
       if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
       if (settings.lineMarkers) {
