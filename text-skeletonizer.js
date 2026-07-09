@@ -290,9 +290,9 @@ const TextSkeletonizer = (() => {
    * Рекомендуемый уровень сжатия по размеру текста.
    */
   function recommendLevel(textLength) {
-    if (textLength < 5000) return null; // не сжимать
-    if (textLength < 15000) return 'light';
-    if (textLength < 50000) return 'medium';
+    if (textLength < 5000) return null;
+    if (textLength < 10000) return 'light';
+    if (textLength < 20000) return 'medium';
     return 'aggressive';
   }
 
