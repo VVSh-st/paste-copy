@@ -431,6 +431,14 @@ const TextExpander = (() => {
 
   function generateSmartShortName(text) {
     const sh = _getShortenerSettings();
+
+    if (sh.digits) {
+      // Digits mode: use full word (ignore autoLength slider) + first free number from 1
+      const words = _getSignificantWords(text);
+      const base = (words[0] || 'txt').slice(0, MAX_SHORTCUT_LEN - 4);
+      return _nextNumberedCandidate(base);
+    }
+
     const maxLen = Math.max(2, Math.min(20, Number(_settings.autoLength) || AUTO_LENGTH_DEFAULT));
 
     let candidates = [];
@@ -440,11 +448,6 @@ const TextExpander = (() => {
       candidates = _getGlueCandidates(text, maxLen);
     } else {
       candidates = _getWordCandidates(text, maxLen);
-    }
-
-    if (sh.digits) {
-      const base = candidates[0] || 'txt';
-      return _nextNumberedCandidate(base);
     }
 
     const free = _firstFreeCandidate(candidates);
@@ -888,7 +891,7 @@ const TextExpander = (() => {
       btn.type = 'button';
       btn.className = 'te-shortener-mode-btn te-shortener-digits-btn';
       btn.dataset.digits = '1';
-      btn.title = 'Добавлять первую свободную цифру с 1';
+      btn.title = 'Самостоятельный режим: слово + цифра (1, 2, 3...)';
       btn.innerHTML = svg;
       btn.classList.toggle('active', sh.digits);
       btn.setAttribute('aria-pressed', sh.digits ? 'true' : 'false');
