@@ -100,6 +100,16 @@ const Flowchart = (() => {
     });
   }
 
+  /* ── SVG helpers ────────────────────────────────────────────────────── */
+
+  function _findNodeElement(target) {
+    while (target && target !== _svg) {
+      if (target.dataset?.nodeId) return target;
+      target = target.parentNode;
+    }
+    return null;
+  }
+
   /* ── Tooltip ────────────────────────────────────────────────────────── */
 
   function _closeTooltip() { if (_currentTooltip) { _currentTooltip.remove(); _currentTooltip = null; } }
@@ -675,7 +685,9 @@ const Flowchart = (() => {
       btn.addEventListener('click', () => _switchCanvas(cv.id));
       btn.addEventListener('contextmenu', e => {
         e.preventDefault();
+        e.stopPropagation();
         if (_canvases.length <= 1) return;
+        if (!confirm('Удалить полотно "' + cv.name + '"?')) return;
         _canvases = _canvases.filter(c => c.id !== cv.id);
         if (_activeCanvasId === cv.id) _activeCanvasId = _canvases[0].id;
         _saveCanvases(); _switchCanvas(_activeCanvasId); _renderCanvasPills();
@@ -815,7 +827,9 @@ const Flowchart = (() => {
     // Invisible hit-area for easier right-click deletion
     const hit = el.cloneNode();
     hit.setAttribute('stroke', 'transparent');
-    hit.setAttribute('stroke-width', '14');
+    hit.setAttribute('stroke-width', '35');
+    hit.setAttribute('fill', 'none');
+    hit.style.pointerEvents = 'stroke';
     hit.style.cursor = 'pointer';
     hit.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); _deleteEdge(fromId, toId); });
     return hit;
@@ -1244,7 +1258,7 @@ const Flowchart = (() => {
 
     _svg.addEventListener('mousedown', e => {
       if (_loading) return;
-      const nodeEl = e.target.closest('[data-node-id]');
+      const nodeEl = _findNodeElement(e.target);
       if (nodeEl) {
         const nodeId = nodeEl.dataset.nodeId;
         if (_connectMode) {
@@ -1280,7 +1294,7 @@ const Flowchart = (() => {
     });
 
     _svg.addEventListener('dblclick', e => {
-      const nodeEl = e.target.closest('[data-node-id]');
+      const nodeEl = _findNodeElement(e.target);
       if (!nodeEl) return;
       const node = _nodes.find(n => n.id === nodeEl.dataset.nodeId);
       if (!node) return;
@@ -1293,7 +1307,7 @@ const Flowchart = (() => {
     });
 
     _svg.addEventListener('contextmenu', e => {
-      const nodeEl = e.target.closest('[data-node-id]');
+      const nodeEl = _findNodeElement(e.target);
       if (!nodeEl) return;
       e.preventDefault();
       const nodeId = nodeEl.dataset.nodeId;
