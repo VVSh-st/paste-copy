@@ -325,6 +325,9 @@ const TextSkeletonizer = (() => {
     let currentSection = null;
     let inFence = false;
 
+    // Инициализируем "нулевую" секцию для текста до первого заголовка
+    currentSection = { level: 0, heading: '', preview: '', lines: [] };
+
     for (let i = 0; i < lines.length && sections.length < cfg.maxSections; i++) {
       const line = lines[i];
       if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; continue; }
@@ -332,11 +335,14 @@ const TextSkeletonizer = (() => {
       const headingMatch = line.match(/^ {0,3}(#{1,6})\s+(.+)/);
 
       if (headingMatch) {
-        if (currentSection) sections.push(currentSection);
+        if (currentSection && (currentSection.heading || currentSection.lines.length)) {
+          sections.push(currentSection);
+        }
         const level = headingMatch[1].length;
         const heading = headingMatch[2].trim().slice(0, cfg.maxHeadingLength);
         currentSection = { level, heading, preview: '', lines: [] };
-      } else if (currentSection && line.trim()) {
+      } else if (line.trim()) {
+        if (!currentSection) currentSection = { level: 0, heading: '', preview: '', lines: [] };
         currentSection.lines.push(line.trim());
         if (!currentSection.preview) {
           const sentence = _extractFirstSentence(line.trim());
@@ -344,7 +350,9 @@ const TextSkeletonizer = (() => {
         }
       }
     }
-    if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
+    if (currentSection && (currentSection.heading || currentSection.lines.length)) {
+      if (sections.length < cfg.maxSections) sections.push(currentSection);
+    }
 
     // Если нет заголовков — разбиваем по абзацам
     if (!sections.length) {
