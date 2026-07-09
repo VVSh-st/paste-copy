@@ -57,17 +57,17 @@ function _lemmatize(word) {
 function _configForLevel(level) {
   const base = {
     maxHeadingLength: 120,
-    maxSentenceLength: 200,
-    maxKeyTerms: 50,
-    maxSections: 100,
-    maxBulletsPerSection: 8,
+    maxSentenceLength: 150,
+    maxKeyTerms: 40,
+    maxSections: 80,
+    maxBulletsPerSection: 5,
     includeStats: true,
   };
   switch (level) {
     case 'light':
-      return { ...base, maxSections: 40, maxKeyTerms: 0, includeStats: true };
+      return { ...base, maxSections: 30, maxKeyTerms: 0, includeStats: true };
     case 'aggressive':
-      return { ...base, maxSections: 200, maxKeyTerms: 100, maxBulletsPerSection: 12 };
+      return { ...base, maxSections: 150, maxKeyTerms: 80, maxBulletsPerSection: 8 };
     default:
       return base;
   }
@@ -218,12 +218,12 @@ function _extractLinks(text) {
   return [...links];
 }
 
-function _computeStats(text, sections) {
+function _computeStats(text, sections, resultLength) {
   const chars = text.length;
   const words = text.split(/\s+/).filter(Boolean).length;
-  const paragraphs = text.split(/\n{2,}/).filter(p => p.trim()).length;
   const headings = sections.length;
-  return `${chars} символов | ${words} слов | ${paragraphs} абзацев | ${headings} секций`;
+  const ratio = resultLength > 0 ? (chars / resultLength).toFixed(1) : '?';
+  return `${chars} символов → ~${ratio}x сжатие | ${words} слов | ${headings} секций`;
 }
 
 function process(text, level) {
@@ -263,7 +263,8 @@ function process(text, level) {
     if (links.length) parts.push(`=== ССЫЛКИ ===\n${links.slice(0, 10).join('\n')}`);
   }
   if (cfg.includeStats) {
-    parts.push(`=== СТАТИСТИКА ===\n${_computeStats(text, sections)}`);
+    const tmpResult = parts.join('\n');
+    parts.push(`=== СТАТИСТИКА ===\n${_computeStats(text, sections, tmpResult.length)}`);
   }
   return parts.join('\n');
 }
