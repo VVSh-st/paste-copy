@@ -159,6 +159,13 @@ body {
   stroke-linecap: round; stroke-linejoin: round;
   transition: stroke-dashoffset 1s linear;
 }
+.timer-digit-animate {
+  animation: timerDigitFlip 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes timerDigitFlip {
+  0%   { opacity: 0.3; transform: scale(0.6); }
+  100% { opacity: 1;   transform: scale(1);   }
+}
 #btn-timer .timer-value {
   position: absolute; inset: 0;
   font-size: 16px; font-weight: 800;

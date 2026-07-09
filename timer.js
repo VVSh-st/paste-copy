@@ -32,6 +32,7 @@ const SquareTimer = (() => {
   let _longPressFired = false;
   let _pointerDownPos = null;
   let _longPressTimer = null;
+  let _prevMinutes = null;
 
   function init() {
     if (_initialized) return;
@@ -45,30 +46,25 @@ const SquareTimer = (() => {
     valueEl = btn.querySelector('.timer-value');
     inputEl = btn.querySelector('.timer-input');
 
-    // Кэшируем периметр + инвалидация при resize
     if (arcRect) {
       _cachedPerimeter = arcRect.getTotalLength();
       const ro = new ResizeObserver(() => { _cachedPerimeter = null; });
       ro.observe(btn);
     }
 
-    // Pointer Events для long-press
     btn.addEventListener('pointerdown', onPointerDown);
     btn.addEventListener('pointerup', onPointerUp);
     btn.addEventListener('pointermove', onPointerMove);
     btn.addEventListener('pointercancel', onPointerCancel);
     btn.addEventListener('lostpointercapture', onLostCapture);
 
-    // pointerleave — только для touch/stylus (mouse hover не отменяет long-press)
     btn.addEventListener('pointerleave', (e) => {
       if (e.pointerType === 'mouse') return;
       onPointerCancel(e);
     });
 
-    // Правый клик — сброс
     btn.addEventListener('contextmenu', onContextMenu);
 
-    // Восстановление из localStorage
     restoreState();
   }
 
@@ -77,6 +73,8 @@ const SquareTimer = (() => {
     stopPulse();
     clearLongPress();
     _pointerDownPos = null;
+    _prevMinutes = null;
+    _longPressFired = false;
     if (btn) {
       btn.removeEventListener('pointerdown', onPointerDown);
       btn.removeEventListener('pointerup', onPointerUp);
@@ -105,9 +103,11 @@ const SquareTimer = (() => {
   function onPointerUp(e) {
     if (e.button !== 0) return;
     clearLongPress();
+
+    // Жест был отменён (pointerleave, pointercancel, lostcapture на touch)
+    if (_pointerDownPos === null) return;
     _pointerDownPos = null;
 
-    // Сброс по клику во время пульсации
     if (pulseIntervalId) {
       resetToIdle();
       return;
@@ -118,7 +118,6 @@ const SquareTimer = (() => {
       return;
     }
 
-    // Короткий клик
     if (mode === null) {
       startCountUp();
     }
@@ -142,6 +141,7 @@ const SquareTimer = (() => {
 
   function onLostCapture() {
     clearLongPress();
+    _longPressFired = false;
     _pointerDownPos = null;
   }
 
@@ -222,6 +222,7 @@ const SquareTimer = (() => {
     mode = 'up';
     startTs = Date.now();
     targetMinutes = null;
+    _prevMinutes = null;
     saveState();
     startTick();
     updateDisplay();
@@ -231,10 +232,11 @@ const SquareTimer = (() => {
     mode = 'down';
     startTs = Date.now();
     targetMinutes = minutes;
+    _prevMinutes = null;
+    closeInlineInput();
     saveState();
     startTick();
     updateDisplay();
-    closeInlineInput();
   }
 
   function resetToIdle() {
@@ -246,6 +248,7 @@ const SquareTimer = (() => {
     mode = null;
     startTs = null;
     targetMinutes = null;
+    _prevMinutes = null;
     saveState();
     setIdleVisual();
   }
@@ -347,7 +350,15 @@ const SquareTimer = (() => {
 
     valueEl.style.display = 'flex';
     valueEl.classList.remove('timer-value-dim');
-    valueEl.textContent = minutes;
+
+    if (_prevMinutes !== null && minutes !== _prevMinutes) {
+      valueEl.textContent = minutes;
+      void valueEl.offsetWidth;
+      valueEl.classList.add('timer-digit-animate');
+    } else {
+      valueEl.textContent = minutes;
+    }
+    _prevMinutes = minutes;
 
     updateArc(progress, direction);
   }
@@ -374,6 +385,9 @@ const SquareTimer = (() => {
   }
 
   function setIdleVisual() {
+    _prevMinutes = null;
+    valueEl.classList.remove('timer-digit-animate');
+    void valueEl.offsetWidth;
     valueEl.style.display = 'flex';
     valueEl.textContent = '0';
     valueEl.classList.add('timer-value-dim');
@@ -415,7 +429,6 @@ const SquareTimer = (() => {
 
       const state = JSON.parse(raw);
 
-      // Строгая валидация полей
       if (!state || (state.mode !== 'up' && state.mode !== 'down')) {
         clearPersisted();
         setIdleVisual();
