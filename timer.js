@@ -19,9 +19,10 @@ const SquareTimer = (() => {
   const MOVE_THRESHOLD = 10;
   const PULSE_BPM = 50;
   const PULSE_MAX_DURATION = 180000;
+  const TRAIL_DURATION = 2000;
 
   let _initialized = false;
-  let btn, arcSvg, arcRect, valueEl, inputEl;
+  let btn, arcSvg, arcRect, arcGhost, valueEl, inputEl;
   let _cachedPerimeter = null;
   let mode = null;
   let startTs = null;
@@ -51,6 +52,13 @@ const SquareTimer = (() => {
 
     if (arcRect) {
       _cachedPerimeter = arcRect.getTotalLength();
+
+      arcGhost = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      arcGhost.setAttribute('d', arcRect.getAttribute('d'));
+      arcGhost.classList.add('timer-arc-ghost');
+      arcGhost.style.display = 'none';
+      arcSvg.insertBefore(arcGhost, arcRect);
+
       const ro = new ResizeObserver(() => { _cachedPerimeter = null; });
       ro.observe(btn);
     }
@@ -360,7 +368,6 @@ const SquareTimer = (() => {
       direction = 'ccw';
     }
 
-    // Детект перехода через границу минуты
     _checkMinuteBoundary(secondsInMinute, direction);
 
     valueEl.style.display = 'flex';
@@ -374,51 +381,67 @@ const SquareTimer = (() => {
       valueEl.textContent = minutes;
     }
     _prevMinutes = minutes;
+    _prevSecondsInMinute = secondsInMinute;
 
-    if (!_isFading) {
-      _applyArc(progress, direction);
-    }
+    _applyArc(progress, direction);
   }
 
   function _checkMinuteBoundary(secondsInMinute, direction) {
-    if (_prevSecondsInMinute === null) {
-      _prevSecondsInMinute = secondsInMinute;
-      return;
-    }
+    if (_prevSecondsInMinute === null) return;
 
     const crossed =
       (direction === 'cw'  && _prevSecondsInMinute === 59 && secondsInMinute === 0) ||
       (direction === 'ccw' && _prevSecondsInMinute === 0  && secondsInMinute === 59);
 
-    _prevSecondsInMinute = secondsInMinute;
-
     if (crossed && !_isFading) {
-      _startFadeTransition();
+      _startTrailTransition();
     }
   }
 
-  function _startFadeTransition() {
+  function _startTrailTransition() {
+    if (!arcGhost || !arcRect) return;
     _isFading = true;
 
-    arcSvg.style.transition = 'opacity 0.25s ease-out';
-    arcSvg.style.opacity = '0';
+    const perimeter = _cachedPerimeter || arcRect.getTotalLength();
+    const currentOffset = parseFloat(arcRect.style.strokeDashoffset) || 0;
 
-    _fadeTimeout = setTimeout(() => {
-      const perimeter = _cachedPerimeter || arcRect.getTotalLength();
-      arcRect.style.transition = 'none';
-      arcRect.style.strokeDasharray = perimeter;
-      arcRect.style.strokeDashoffset = perimeter;
+    arcGhost.style.transition = 'none';
+    arcGhost.style.strokeDasharray = perimeter + ' ' + perimeter;
+    arcGhost.style.strokeDashoffset = currentOffset;
+    arcGhost.style.opacity = '1';
+    arcGhost.style.display = 'block';
 
-      requestAnimationFrame(() => {
-        arcSvg.style.transition = 'opacity 0.25s ease-in';
-        arcSvg.style.opacity = '1';
+    if (mode === 'down') {
+      arcGhost.style.transform = 'scaleX(-1)';
+    } else {
+      arcGhost.style.transform = '';
+    }
 
-        setTimeout(() => {
-          arcSvg.style.transition = '';
-          _isFading = false;
-        }, 250);
-      });
-    }, 250);
+    void arcGhost.offsetWidth;
+
+    arcGhost.style.transition =
+      'stroke-dashoffset ' + TRAIL_DURATION + 'ms cubic-bezier(0.4, 0, 1, 1), ' +
+      'opacity ' + TRAIL_DURATION + 'ms ease-in';
+    arcGhost.style.strokeDashoffset = currentOffset - perimeter;
+    arcGhost.style.opacity = '0.15';
+
+    const cleanup = () => {
+      arcGhost.removeEventListener('transitionend', cleanup);
+      arcGhost.removeEventListener('transitioncancel', cleanup);
+      arcGhost.style.display = 'none';
+      arcGhost.style.transition = '';
+      _isFading = false;
+    };
+
+    _fadeTimeout = setTimeout(cleanup, TRAIL_DURATION + 100);
+
+    arcGhost.addEventListener('transitionend', function handler(e) {
+      if (e.propertyName === 'stroke-dashoffset') {
+        clearTimeout(_fadeTimeout);
+        cleanup();
+      }
+    });
+    arcGhost.addEventListener('transitioncancel', cleanup);
   }
 
   function _applyArc(progress, direction) {
@@ -432,7 +455,7 @@ const SquareTimer = (() => {
     const totalLength = _cachedPerimeter;
 
     arcRect.style.transition = 'stroke-dashoffset 0.95s linear';
-    arcRect.style.strokeDasharray = totalLength;
+    arcRect.style.strokeDasharray = totalLength + ' ' + totalLength;
     arcRect.style.strokeDashoffset = totalLength * (1 - progress);
 
     if (direction === 'ccw') {
@@ -447,6 +470,12 @@ const SquareTimer = (() => {
     _prevSecondsInMinute = null;
     _isFading = false;
     if (_fadeTimeout) { clearTimeout(_fadeTimeout); _fadeTimeout = null; }
+
+    if (arcGhost) {
+      arcGhost.style.transition = 'none';
+      arcGhost.style.display = 'none';
+      arcGhost.style.opacity = '';
+    }
 
     valueEl.classList.remove('timer-digit-animate');
     void valueEl.offsetWidth;
@@ -526,6 +555,8 @@ const SquareTimer = (() => {
         mode = state.mode;
         startTs = state.startTs;
         targetMinutes = null;
+        _prevMinutes = null;
+        _prevSecondsInMinute = null;
         startTick();
         updateDisplay();
 
@@ -543,6 +574,8 @@ const SquareTimer = (() => {
         mode = state.mode;
         startTs = state.startTs;
         targetMinutes = state.targetMinutes;
+        _prevMinutes = null;
+        _prevSecondsInMinute = null;
         startTick();
         updateDisplay();
       }
