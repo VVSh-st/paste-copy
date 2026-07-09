@@ -1075,6 +1075,44 @@ const TextExpander = (() => {
   // TRIGGER ENGINE (input-based, like slash)
   // ========================
 
+  // ========================
+  // LAYOUT NORMALIZATION
+  // ========================
+
+  // ЙЦУКЕН ↔ QWERTY mapping (letters only, lowercase)
+  const _LAT_TO_RUS = {
+    'q': 'й', 'w': 'ц', 'e': 'у', 'r': 'к', 't': 'е', 'y': 'н',
+    'u': 'г', 'i': 'ш', 'o': 'щ', 'p': 'з', '[': 'х', ']': 'ъ',
+    'a': 'ф', 's': 'ы', 'd': 'в', 'f': 'а', 'g': 'п', 'h': 'р',
+    'j': 'о', 'k': 'л', 'l': 'д', ';': 'ж', "'": 'э',
+    'z': 'я', 'x': 'ч', 'c': 'с', 'v': 'м', 'b': 'и', 'n': 'т',
+    'm': 'ь', ',': 'б', '.': 'ю', '/': '.'
+  };
+  const _RUS_TO_LAT = {};
+  for (const [lat, rus] of Object.entries(_LAT_TO_RUS)) {
+    _RUS_TO_LAT[rus] = lat;
+  }
+
+  function _convertLayout(str, mapping) {
+    return String(str).split('').map(ch => {
+      const lower = ch.toLowerCase();
+      const converted = mapping[lower];
+      if (!converted) return ch;
+      return ch === lower ? converted : converted.toUpperCase();
+    }).join('');
+  }
+
+  function _getLayoutAlternatives(query) {
+    const q = String(query || '').toLowerCase();
+    if (!q) return [];
+    const alt = _convertLayout(q, _LAT_TO_RUS).toLowerCase();
+    const altRev = _convertLayout(q, _RUS_TO_LAT).toLowerCase();
+    const out = [];
+    if (alt !== q) out.push(alt);
+    if (altRev !== q && !out.includes(altRev)) out.push(altRev);
+    return out;
+  }
+
   function _escapeRe(s) {
     return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
@@ -1108,8 +1146,14 @@ const TextExpander = (() => {
   function _findExactEnabledShortcut(query) {
     const q = String(query || '').toLowerCase();
     if (!q) return null;
+    const alts = _getLayoutAlternatives(query);
     for (const s of _shortcuts.values()) {
-      if (s.enabled && _getShortcutValue(s).toLowerCase() === q) return s;
+      if (!s.enabled) continue;
+      const sv = _getShortcutValue(s).toLowerCase();
+      if (sv === q) return s;
+      for (const a of alts) {
+        if (sv === a) return s;
+      }
     }
     return null;
   }
@@ -1301,15 +1345,21 @@ const TextExpander = (() => {
       return out;
     }
 
+    // Collect all query variants (original + layout alternatives)
+    const queries = [q, ..._getLayoutAlternatives(query)];
+
     const exact = [];
     const starts = [];
     const includes = [];
     for (const s of _shortcuts.values()) {
       if (!s.enabled) continue;
       const tl = _getShortcutValue(s).toLowerCase();
-      if (tl === q) exact.push(s);
-      else if (tl.startsWith(q)) starts.push(s);
-      else if (tl.includes(q)) includes.push(s);
+      let matched = false;
+      for (const qv of queries) {
+        if (tl === qv) { exact.push(s); matched = true; break; }
+        else if (tl.startsWith(qv) && !matched) { starts.push(s); matched = true; break; }
+        else if (tl.includes(qv) && !matched) { includes.push(s); matched = true; break; }
+      }
       if (exact.length + starts.length + includes.length >= MAX_DROPDOWN_ITEMS * 2) break;
     }
 
@@ -1317,8 +1367,14 @@ const TextExpander = (() => {
       const at = _getShortcutValue(a).toLowerCase();
       const bt = _getShortcutValue(b).toLowerCase();
       if (at.length !== bt.length) return at.length - bt.length;
-      const aIdx = at.indexOf(q);
-      const bIdx = bt.indexOf(q);
+      // Find best query match for position comparison
+      let aIdx = -1, bIdx = -1;
+      for (const qv of queries) {
+        const ai = at.indexOf(qv);
+        const bi = bt.indexOf(qv);
+        if (ai >= 0 && (aIdx < 0 || ai < aIdx)) aIdx = ai;
+        if (bi >= 0 && (bIdx < 0 || bi < bIdx)) bIdx = bi;
+      }
       if (aIdx !== bIdx) return aIdx - bIdx;
       const au = a.useCount || 0;
       const bu = b.useCount || 0;
