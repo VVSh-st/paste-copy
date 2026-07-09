@@ -58,16 +58,16 @@ function _configForLevel(level) {
   const base = {
     maxHeadingLength: 120,
     maxSentenceLength: 200,
-    maxKeyTerms: 30,
-    maxSections: 40,
-    maxBulletsPerSection: 5,
+    maxKeyTerms: 50,
+    maxSections: 100,
+    maxBulletsPerSection: 8,
     includeStats: true,
   };
   switch (level) {
     case 'light':
-      return { ...base, maxSections: 20, maxKeyTerms: 0, includeStats: true };
+      return { ...base, maxSections: 40, maxKeyTerms: 0, includeStats: true };
     case 'aggressive':
-      return { ...base, maxSections: 60, maxKeyTerms: 50, maxBulletsPerSection: 8 };
+      return { ...base, maxSections: 200, maxKeyTerms: 100, maxBulletsPerSection: 12 };
     default:
       return base;
   }
@@ -112,15 +112,22 @@ function _extractSections(text, cfg) {
   const lines = text.split('\n');
   let currentSection = null;
   let inFence = false;
+
+  // Инициализируем "нулевую" секцию для текста до первого заголовка
+  currentSection = { level: 0, heading: '', preview: '', lines: [] };
+
   for (let i = 0; i < lines.length && sections.length < cfg.maxSections; i++) {
     const line = lines[i];
     if (/^\s*(`{3}|~{3})/.test(line)) { inFence = !inFence; continue; }
     if (inFence) continue;
     const headingMatch = line.match(/^ {0,3}(#{1,6})\s+(.+)/);
     if (headingMatch) {
-      if (currentSection) sections.push(currentSection);
+      if (currentSection && (currentSection.heading || currentSection.lines.length)) {
+        sections.push(currentSection);
+      }
       currentSection = { level: headingMatch[1].length, heading: headingMatch[2].trim().slice(0, cfg.maxHeadingLength), preview: '', lines: [] };
-    } else if (currentSection && line.trim()) {
+    } else if (line.trim()) {
+      if (!currentSection) currentSection = { level: 0, heading: '', preview: '', lines: [] };
       currentSection.lines.push(line.trim());
       if (!currentSection.preview) {
         const sentence = _extractFirstSentence(line.trim());
@@ -128,7 +135,9 @@ function _extractSections(text, cfg) {
       }
     }
   }
-  if (currentSection && sections.length < cfg.maxSections) sections.push(currentSection);
+  if (currentSection && (currentSection.heading || currentSection.lines.length)) {
+    if (sections.length < cfg.maxSections) sections.push(currentSection);
+  }
   if (!sections.length) {
     const paragraphs = text.split(/\n{2,}/).filter(p => p.trim());
     paragraphs.slice(0, cfg.maxSections).forEach((p, i) => {
