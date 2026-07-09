@@ -65,7 +65,7 @@
 
 ### Завершено в этой сессии
 
-**Аудит app.js** — 1 раунд (ответ 3 (8).txt), 7 исправлений
+**Аудит app.js** — 2 раунда (ответ 3 (8).txt + ответ 3 (9).txt), 9 исправлений
 - **#1 [критично]** Async IIFE `.catch()` — теперь ловит ошибки bootstrap + показывает пользователю
 - **#2 [критично]** `importFile`: `_importBusy` guard, `MAX_IMPORT_BYTES` 10MB, `reader.onerror`
 - **#3 [важно]** `revokeObjectURL` 1с → 10с во всех местах скачивания (4 шт.)
@@ -74,6 +74,12 @@
 - **#6 [perf]** `State.onChange(queueFullRender)` вместо прямого `fullRender` — rAF batching
 - **#7 [читабельность]** Магические числа в `optWcEffectMs` → `WC_EFFECT_MIN_MS/MAX_MS/STEP_MS`
 - Коммит: `6591bc1`
+- Раунд 2 (ответ 3 (9).txt) — 2 из 4 внедрены:
+  - **#1 [важно]** Auto-backup перед деструктивным импортом (max 3 бэкапа в localStorage)
+  - **#2 [UX]** Preview resizer rAF batching (согласовано с column resizer)
+  - **#3 [читабельность]** Дублирование `setLayout`+`scheduleSave` — пропущено (рефакторинг 15+ обработчиков, высокий риск)
+  - **#4 [perf]** TreeWalker вместо `querySelectorAll` — пропущено (опциональная микро-оптимизация)
+  - Коммит: `d4b9a02`
 
 **Аудит text-skeletonizer.js** — 2 раунда, GPT-5.5-mini, оценка 8.5-9/10
 - Раунд 1 (`Ответ 2 (4).txt`): 2 high + 5 medium + 3 low → applied:
@@ -163,7 +169,8 @@
 | `аудит text-skeletonizer.txt` | Промпт для аудита text-skeletonizer.js |
 | `аудит text-skeletonizer-worker.txt` | Промпт для аудита text-skeletonizer-worker.js |
 | `аудит flowchart.txt` | Промпт для аудита flowchart.js |
-| `ответ 3 (8).txt` | Аудит app.js (Claude Sonnet 4) |
+| `ответ 3 (8).txt` | Аудит app.js раунд 1 (Claude Sonnet 4) |
+| `ответ 3 (9).txt` | Аудит app.js раунд 2 (Claude Sonnet 4) |
 
 ## Как работает
 - **TextExpander**: trigger `ё` → dropdown с фильтрацией → вставка с обработкой регистра
