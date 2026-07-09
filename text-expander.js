@@ -652,7 +652,7 @@ const TextExpander = (() => {
     if (_formShortcutInput) _formShortcutInput.value = '';
     if (_formTextarea) _formTextarea.value = '';
     if (_formCatSelect) _formCatSelect.value = _settings.categories[0] || 'General';
-    if (_formAddBtn) _formAddBtn.textContent = 'Add Key';
+    if (_formAddBtn) _formAddBtn.textContent = 'Добавить';
   }
 
   function _buildPanel() {
@@ -691,7 +691,7 @@ const TextExpander = (() => {
     header.className = 'te-header';
     const title = document.createElement('span');
     title.className = 'te-title';
-    title.textContent = 'Text Expander';
+    title.textContent = 'Текстовый экспандер';
     header.appendChild(title);
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -720,7 +720,7 @@ const TextExpander = (() => {
     const shortcutInput = document.createElement('input');
     shortcutInput.type = 'text';
     shortcutInput.className = 'te-input te-shortcut-input';
-    shortcutInput.placeholder = 'shortcut';
+    shortcutInput.placeholder = 'сокращение';
     shortcutInput.maxLength = MAX_SHORTCUT_LEN;
     shortcutInput.value = '';
 
@@ -738,7 +738,7 @@ const TextExpander = (() => {
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'te-add-btn';
-    addBtn.textContent = 'Add Key';
+    addBtn.textContent = 'Добавить';
 
     addBtn.onclick = () => {
       // Save global trigger first
@@ -828,7 +828,7 @@ const TextExpander = (() => {
     autoRow.className = 'te-row te-auto-row';
     const autoLabel = document.createElement('span');
     autoLabel.className = 'te-label';
-    autoLabel.textContent = 'Auto Length';
+    autoLabel.textContent = 'Длина';
     const autoSlider = document.createElement('input');
     autoSlider.type = 'range';
     autoSlider.min = '2';
@@ -916,7 +916,7 @@ const TextExpander = (() => {
     const filterAll = document.createElement('button');
     filterAll.type = 'button';
     filterAll.className = 'te-filter-btn active';
-    filterAll.textContent = 'All';
+    filterAll.textContent = 'Все';
     filterRow.appendChild(filterAll);
     _settings.categories.forEach(cat => {
       const btn = document.createElement('button');
@@ -992,7 +992,7 @@ const TextExpander = (() => {
 
     const thead = document.createElement('div');
     thead.className = 'te-table-head';
-    ['Enabled', 'Shortcut', 'Category', 'Preview', ''].forEach(label => {
+    ['Вкл', 'Сокращение', 'Категория', 'Текст', ''].forEach(label => {
       const span = document.createElement('span');
       span.textContent = label;
       thead.appendChild(span);
@@ -1040,7 +1040,7 @@ const TextExpander = (() => {
         if (_formShortcutInput) _formShortcutInput.value = _getShortcutValue(s);
         if (_formTextarea) _formTextarea.value = s.text || '';
         if (_formCatSelect) _formCatSelect.value = s.category;
-        if (_formAddBtn) _formAddBtn.textContent = 'Save';
+        if (_formAddBtn) _formAddBtn.textContent = 'Сохранить';
         if (_formBody) _formBody.scrollTop = 0;
       };
 
