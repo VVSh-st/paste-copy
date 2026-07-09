@@ -157,7 +157,7 @@ body {
 #btn-timer .timer-arc-rect {
   fill: none; stroke: var(--accent); stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
-  transition: stroke-dashoffset 0.9s linear;
+  transition: stroke-dashoffset 1s linear;
 }
 #btn-timer .timer-value {
   position: absolute; inset: 0;

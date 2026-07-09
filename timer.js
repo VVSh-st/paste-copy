@@ -20,8 +20,9 @@ const SquareTimer = (() => {
   const PULSE_BPM = 50;          // 50 ударов в минуту → ~1.2с интервал
   const PULSE_MAX_DURATION = 180000; // 3 минуты
 
+  let _initialized = false;
   let btn, arcSvg, arcRect, valueEl, inputEl;
-  let _cachedPerimeter = null;   // кэш длины периметра rect
+  let _cachedPerimeter = null;
   let mode = null;               // 'up' | 'down' | null
   let startTs = null;
   let targetMinutes = null;      // только для mode:'down'
@@ -33,6 +34,9 @@ const SquareTimer = (() => {
   let _longPressTimer = null;
 
   function init() {
+    if (_initialized) return;
+    _initialized = true;
+
     btn = document.getElementById('btn-timer');
     if (!btn) return;
 
@@ -41,9 +45,11 @@ const SquareTimer = (() => {
     valueEl = btn.querySelector('.timer-value');
     inputEl = btn.querySelector('.timer-input');
 
-    // Кэшируем периметр один раз
+    // Кэшируем периметр + инвалидация при resize
     if (arcRect) {
       _cachedPerimeter = arcRect.getTotalLength();
+      const ro = new ResizeObserver(() => { _cachedPerimeter = null; });
+      ro.observe(btn);
     }
 
     // Pointer Events для long-press
@@ -51,7 +57,13 @@ const SquareTimer = (() => {
     btn.addEventListener('pointerup', onPointerUp);
     btn.addEventListener('pointermove', onPointerMove);
     btn.addEventListener('pointercancel', onPointerCancel);
-    btn.addEventListener('pointerleave', onPointerCancel);
+    btn.addEventListener('lostpointercapture', onLostCapture);
+
+    // pointerleave — только для touch/stylus (mouse hover не отменяет long-press)
+    btn.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse') return;
+      onPointerCancel(e);
+    });
 
     // Правый клик — сброс
     btn.addEventListener('contextmenu', onContextMenu);
@@ -64,12 +76,13 @@ const SquareTimer = (() => {
     stopTick();
     stopPulse();
     clearLongPress();
+    _pointerDownPos = null;
     if (btn) {
       btn.removeEventListener('pointerdown', onPointerDown);
       btn.removeEventListener('pointerup', onPointerUp);
       btn.removeEventListener('pointermove', onPointerMove);
       btn.removeEventListener('pointercancel', onPointerCancel);
-      btn.removeEventListener('pointerleave', onPointerCancel);
+      btn.removeEventListener('lostpointercapture', onLostCapture);
       btn.removeEventListener('contextmenu', onContextMenu);
     }
   }
@@ -77,8 +90,8 @@ const SquareTimer = (() => {
   // ── Pointer Events ─────────────────────────────────────────────────────
 
   function onPointerDown(e) {
-    if (e.button !== 0) return; // только левый клик
-    if (inputEl.style.display !== 'none') return; // инпут активен
+    if (e.button !== 0) return;
+    if (inputEl.style.display !== 'none') return;
 
     _longPressFired = false;
     _pointerDownPos = { x: e.clientX, y: e.clientY };
@@ -92,6 +105,7 @@ const SquareTimer = (() => {
   function onPointerUp(e) {
     if (e.button !== 0) return;
     clearLongPress();
+    _pointerDownPos = null;
 
     // Сброс по клику во время пульсации
     if (pulseIntervalId) {
@@ -108,7 +122,6 @@ const SquareTimer = (() => {
     if (mode === null) {
       startCountUp();
     }
-    // Если таймер активен — no-op (по тикету)
   }
 
   function onPointerMove(e) {
@@ -127,6 +140,11 @@ const SquareTimer = (() => {
     _pointerDownPos = null;
   }
 
+  function onLostCapture() {
+    clearLongPress();
+    _pointerDownPos = null;
+  }
+
   function clearLongPress() {
     if (_longPressTimer) {
       clearTimeout(_longPressTimer);
@@ -141,7 +159,6 @@ const SquareTimer = (() => {
       e.preventDefault();
       resetToIdle();
     }
-    // В idle — не перехватываем, нативное меню работает
   }
 
   // ── Inline Input ──────────────────────────────────────────────────────
@@ -158,10 +175,14 @@ const SquareTimer = (() => {
     inputEl.onmousedown = ev => ev.stopPropagation();
 
     inputEl.onblur = () => {
-      const v = parseInt(inputEl.value, 10);
-      if (v >= 1 && v <= 99) {
-        startCountDown(v);
-      } else {
+      try {
+        const v = Number.parseInt(inputEl.value, 10);
+        if (Number.isFinite(v) && v >= 1 && v <= 99) {
+          startCountDown(v);
+        } else {
+          closeInlineInput();
+        }
+      } catch {
         closeInlineInput();
       }
     };
@@ -181,6 +202,7 @@ const SquareTimer = (() => {
   }
 
   function closeInlineInput() {
+    inputEl.value = '';
     inputEl.style.display = 'none';
     inputEl.onblur = null;
     inputEl.onkeydown = null;
@@ -218,6 +240,9 @@ const SquareTimer = (() => {
   function resetToIdle() {
     stopTick();
     stopPulse();
+    clearLongPress();
+    _longPressFired = false;
+    _pointerDownPos = null;
     mode = null;
     startTs = null;
     targetMinutes = null;
@@ -309,7 +334,7 @@ const SquareTimer = (() => {
       minutes = Math.floor(totalSeconds / 60);
       const secondsInMinute = totalSeconds % 60;
       progress = secondsInMinute / 60;
-      direction = 'cw'; // по часовой
+      direction = 'cw';
     } else {
       const totalSeconds = Math.floor(elapsed / 1000);
       const totalMinutesTarget = targetMinutes * 60;
@@ -317,7 +342,7 @@ const SquareTimer = (() => {
       minutes = Math.floor(remaining / 60);
       const secondsInMinute = remaining % 60;
       progress = 1 - (secondsInMinute / 60);
-      direction = 'ccw'; // против часовой
+      direction = 'ccw';
     }
 
     valueEl.style.display = 'flex';
@@ -332,7 +357,10 @@ const SquareTimer = (() => {
 
     arcSvg.style.display = 'block';
 
-    const totalLength = _cachedPerimeter || arcRect.getTotalLength();
+    if (_cachedPerimeter == null) {
+      _cachedPerimeter = arcRect.getTotalLength();
+    }
+    const totalLength = _cachedPerimeter;
     arcRect.style.strokeDasharray = totalLength;
 
     const offset = totalLength * (1 - progress);
@@ -355,9 +383,13 @@ const SquareTimer = (() => {
 
   // ── Persistence ───────────────────────────────────────────────────────
 
+  function safeSet(key, val) {
+    try { return Storage._set(key, val); } catch (e) { console.warn('[SquareTimer]', e); }
+  }
+
   function saveState() {
     if (mode === null) {
-      Storage._set(STORAGE_KEY, '');
+      safeSet(STORAGE_KEY, '');
       return;
     }
 
@@ -366,7 +398,11 @@ const SquareTimer = (() => {
       startTs,
       targetMinutes,
     };
-    Storage._set(STORAGE_KEY, JSON.stringify(state));
+    safeSet(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function clearPersisted() {
+    safeSet(STORAGE_KEY, '');
   }
 
   function restoreState() {
@@ -378,7 +414,21 @@ const SquareTimer = (() => {
       }
 
       const state = JSON.parse(raw);
-      if (!state || !state.mode || !state.startTs) {
+
+      // Строгая валидация полей
+      if (!state || (state.mode !== 'up' && state.mode !== 'down')) {
+        clearPersisted();
+        setIdleVisual();
+        return;
+      }
+      if (typeof state.startTs !== 'number' || state.startTs <= 0) {
+        clearPersisted();
+        setIdleVisual();
+        return;
+      }
+      if (state.mode === 'down' &&
+          (typeof state.targetMinutes !== 'number' || state.targetMinutes < 1 || state.targetMinutes > 99)) {
+        clearPersisted();
         setIdleVisual();
         return;
       }
@@ -390,8 +440,8 @@ const SquareTimer = (() => {
         const minutes = Math.floor(totalSeconds / 60);
 
         if (minutes >= 99) {
+          clearPersisted();
           setIdleVisual();
-          Storage._set(STORAGE_KEY, '');
           return;
         }
 
@@ -407,8 +457,8 @@ const SquareTimer = (() => {
         const remaining = totalMinutesTarget - totalSeconds;
 
         if (remaining <= 0) {
+          clearPersisted();
           setIdleVisual();
-          Storage._set(STORAGE_KEY, '');
           return;
         }
 
@@ -421,6 +471,7 @@ const SquareTimer = (() => {
 
     } catch (e) {
       console.warn('[SquareTimer] restore error:', e);
+      clearPersisted();
       setIdleVisual();
     }
   }
