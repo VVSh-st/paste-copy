@@ -9,7 +9,7 @@
  * - Одиночный клик (idle) → счёт вперёд от 0:00
  * - Долгое нажатие (idle) → inline-ввод минут → обратный отсчёт
  * - Правый клик (активный) → сброс в idle
- * - Лимит (99 вверх / 0 вниз) → пульсация 3 мин → звук → обратный отсчёт 99→0
+ * - Лимит (99 вверх / 0 вниз) → flash → пульсация 3 мин → звук → обратный отсчёт 99→0
  * - Персистентность через Storage._set/_get
  */
 
@@ -37,10 +37,59 @@ const SquareTimer = (() => {
   let _prevSecondsInMinute = null;
   let _isFading = false;
   let _fadeTimeout = null;
+  let _ghostRafId = null;
+
+  function _injectStyles() {
+    if (document.getElementById('square-timer-injected')) return;
+    const s = document.createElement('style');
+    s.id = 'square-timer-injected';
+    s.textContent = `
+      #btn-timer {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+      }
+      #btn-timer .timer-arc {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        pointer-events: none; overflow: visible;
+      }
+      #btn-timer.timer-flash {
+        animation: sqTimerFlash 0.7s ease;
+      }
+      @keyframes sqTimerFlash {
+        0%, 100% { filter: none; }
+        30%      { filter: drop-shadow(0 0 14px var(--accent)) brightness(1.4); }
+        60%      { filter: drop-shadow(0 0 6px  var(--accent)) brightness(1.1); }
+      }
+    `;
+    document.head.appendChild(s);
+  }
+
+  function _flashEffect() {
+    btn.classList.remove('timer-flash');
+    void btn.offsetWidth;
+    btn.classList.add('timer-flash');
+    setTimeout(() => btn.classList.remove('timer-flash'), 700);
+  }
+
+  function _cancelGhost() {
+    if (_ghostRafId) {
+      cancelAnimationFrame(_ghostRafId);
+      _ghostRafId = null;
+    }
+    if (arcGhost) {
+      arcGhost.style.transition = 'none';
+      arcGhost.style.display = 'none';
+      arcGhost.style.opacity = '';
+    }
+  }
 
   function init() {
     if (_initialized) return;
     _initialized = true;
+
+    _injectStyles();
 
     btn = document.getElementById('btn-timer');
     if (!btn) return;
@@ -85,6 +134,7 @@ const SquareTimer = (() => {
     stopTick();
     stopPulse();
     clearLongPress();
+    _cancelGhost();
     _isFading = false;
     if (_fadeTimeout) { clearTimeout(_fadeTimeout); _fadeTimeout = null; }
     _pointerDownPos = null;
@@ -297,6 +347,7 @@ const SquareTimer = (() => {
     stopTick();
     stopPulse();
     clearLongPress();
+    _cancelGhost();
     _isFading = false;
     if (_fadeTimeout) { clearTimeout(_fadeTimeout); _fadeTimeout = null; }
     _longPressFired = false;
@@ -354,6 +405,8 @@ const SquareTimer = (() => {
   function onLimitReached() {
     stopTick();
 
+    _flashEffect();
+
     if (window.Ember && typeof Ember.notifyEdit === 'function') {
       Ember.notifyEdit();
     }
@@ -361,7 +414,7 @@ const SquareTimer = (() => {
     if (mode === 'up') {
       startPulse();
     } else {
-      resetToIdle();
+      setTimeout(() => resetToIdle(), 700);
     }
   }
 
@@ -460,6 +513,7 @@ const SquareTimer = (() => {
     _isFading = true;
 
     const perimeter = _cachedPerimeter || arcRect.getTotalLength();
+    const startTime = performance.now();
 
     arcGhost.style.transition = 'none';
     arcGhost.style.strokeDasharray = perimeter + ' ' + perimeter;
@@ -467,31 +521,29 @@ const SquareTimer = (() => {
     arcGhost.style.opacity = '0.7';
     arcGhost.style.display = 'block';
 
-    void arcGhost.offsetWidth;
+    function animate(now) {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / TRAIL_DURATION, 1);
 
-    arcGhost.style.transition =
-      'stroke-dasharray ' + TRAIL_DURATION + 'ms ease-in-out, ' +
-      'opacity ' + TRAIL_DURATION + 'ms ease-in';
-    arcGhost.style.strokeDasharray = '0 ' + (perimeter * 2);
-    arcGhost.style.opacity = '0';
+      const ease = t < 0.5
+        ? 2 * t * t
+        : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
-    const cleanup = () => {
-      arcGhost.removeEventListener('transitionend', cleanup);
-      arcGhost.removeEventListener('transitioncancel', cleanup);
-      arcGhost.style.display = 'none';
-      arcGhost.style.transition = '';
-      _isFading = false;
-    };
+      const dashLen = perimeter * (1 - ease);
+      arcGhost.style.strokeDasharray = dashLen + ' ' + perimeter;
+      arcGhost.style.strokeDashoffset = '0';
+      arcGhost.style.opacity = String(0.7 * (1 - ease));
 
-    _fadeTimeout = setTimeout(cleanup, TRAIL_DURATION + 200);
-
-    arcGhost.addEventListener('transitionend', function handler(e) {
-      if (e.propertyName === 'stroke-dasharray') {
-        clearTimeout(_fadeTimeout);
-        cleanup();
+      if (t < 1) {
+        _ghostRafId = requestAnimationFrame(animate);
+      } else {
+        arcGhost.style.display = 'none';
+        _ghostRafId = null;
+        _isFading = false;
       }
-    });
-    arcGhost.addEventListener('transitioncancel', cleanup);
+    }
+
+    _ghostRafId = requestAnimationFrame(animate);
   }
 
   function _applyArc(progress, direction) {
@@ -520,12 +572,7 @@ const SquareTimer = (() => {
     _prevSecondsInMinute = null;
     _isFading = false;
     if (_fadeTimeout) { clearTimeout(_fadeTimeout); _fadeTimeout = null; }
-
-    if (arcGhost) {
-      arcGhost.style.transition = 'none';
-      arcGhost.style.display = 'none';
-      arcGhost.style.opacity = '';
-    }
+    _cancelGhost();
 
     valueEl.classList.remove('timer-digit-animate');
     void valueEl.offsetWidth;
