@@ -433,10 +433,11 @@ const TextExpander = (() => {
     const sh = _getShortenerSettings();
 
     if (sh.digits) {
-      // Digits mode: use full word (ignore autoLength slider) + first free number from 1
-      const words = _getSignificantWords(text);
-      const base = (words[0] || 'txt').slice(0, MAX_SHORTCUT_LEN - 4);
-      return _nextNumberedCandidate(base);
+      // Digits mode: pure number — first available from 1
+      for (let i = 1; i < 10000; i++) {
+        if (!exists(String(i))) return String(i);
+      }
+      return String(Date.now() % 10000);
     }
 
     const maxLen = Math.max(2, Math.min(20, Number(_settings.autoLength) || AUTO_LENGTH_DEFAULT));
@@ -899,7 +900,7 @@ const TextExpander = (() => {
       btn.type = 'button';
       btn.className = 'te-shortener-mode-btn te-shortener-digits-btn';
       btn.dataset.digits = '1';
-      btn.title = 'Самостоятельный режим: слово + цифра (1, 2, 3...)';
+      btn.title = 'Только цифры: 1, 2, 3... (первая свободная)';
       btn.innerHTML = svg;
       btn.classList.toggle('active', sh.digits);
       btn.setAttribute('aria-pressed', sh.digits ? 'true' : 'false');
