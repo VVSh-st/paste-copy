@@ -1264,11 +1264,11 @@ const Flowchart = (() => {
         if (_connectMode) {
           if (!_connectFrom) {
             _connectFrom = nodeId;
-            nodeEl.classList.add('fc-connect-source');
+            nodeEl.setAttribute('class', (nodeEl.getAttribute('class') || '') + ' fc-connect-source');
             window.Toast?.show('Теперь кликните на целевой блок', 'info');
           }
           else if (_connectFrom !== nodeId) {
-            const srcEl = _viewport.querySelector(`[data-node-id="${_connectFrom}"]`);
+            const srcEl = _viewport?.querySelector(`[data-node-id="${_connectFrom}"]`);
             if (srcEl) srcEl.classList.remove('fc-connect-source');
             _edges.push({ from: _connectFrom, to: nodeId, label: '' }); _connectFrom = null; _connectMode = false; _overlay.querySelector('.flowchart-connect').classList.remove('active'); _syncData(); _renderEdges();
           }
