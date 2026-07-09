@@ -27,7 +27,7 @@ const TextExpander = (() => {
   const PANEL_DEFAULT_H = 600;
   const PANEL_MIN_W = 350;
   const PANEL_MIN_H = 500;
-  const MAX_SHORTCUT_LEN = 10;
+  const MAX_SHORTCUT_LEN = 20;
   const MAX_DROPDOWN_ITEMS = 100;
   const VISIBLE_DROPDOWN_ITEMS = 6;
   const DROPDOWN_ROW_HEIGHT = 26;
