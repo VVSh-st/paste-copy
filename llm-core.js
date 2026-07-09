@@ -389,7 +389,7 @@ window.LLMCore = (() => {
         try {
           const json = JSON.parse(line);
           const delta = json.message?.content || json.message?.reasoning_content || '';
-          if (delta) { full += delta; onChunk?.(delta); }
+          if (delta && typeof delta === 'string') { full += delta; onChunk?.(delta); }
           if (json.done) return full;
         } catch {}
       }
@@ -840,7 +840,7 @@ window.LLMCore = (() => {
       if (!_bound) { _bindEvents(); _bound = true; }
       requestAnimationFrame(() => modal.querySelector('button, input, select, textarea')?.focus());
     }
-    function close() { const modal = document.getElementById('llm-settings-modal'); if (modal) modal.style.display = 'none'; }
+    function close() { const modal = document.getElementById('llm-settings-modal'); if (modal) modal.style.display = 'none'; document.querySelectorAll('.confirm-pending').forEach(btn => _clearDangerButton(btn)); }
     function _switchTab(name) {
       document.querySelectorAll('.llm-tab').forEach(t => t.classList.toggle('active', t.dataset.ltab === name));
       document.querySelectorAll('.llm-tab-panel').forEach(p => p.classList.toggle('active', p.id === 'ltab-' + name));
