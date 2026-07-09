@@ -817,13 +817,14 @@ const TextExpander = (() => {
       { label: 'title', token: '{{title}}' },
       { label: 'clipboard', token: '{{clipboard}}' },
       { label: 'cursor', token: '{{cursor}}' },
-      { label: 'blockIndex', token: '{{blockIndex}}' }
+      { label: 'blockIndex', token: '{{blockIndex}}' },
+      { label: 'llm', token: '{{llm:инструкция}}', title: 'Плейсхолдер LLM — заменяется ответом нейросети по инструкции внутри' }
     ].forEach(t => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'te-token-btn';
       btn.textContent = t.label;
-      btn.title = 'Вставить ' + t.token;
+      btn.title = t.title || 'Вставить ' + t.token;
       btn.onclick = () => _insertIntoTextarea(textarea, t.token);
       tokenBar.appendChild(btn);
     });
