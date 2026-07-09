@@ -10,94 +10,102 @@
 - Подозрение: race condition между `input` → `_showDropdown` и `selectionchange` → `_hideDropdown`
 - Следующий шаг: проверить `WordComplete.handleInput(ta)` — вызывается до `TextExpander.handleInput`, может модифицировать textarea и вызвать `selectionchange`, который закроет dropdown
 
-**Аудит text-linter.js** — 3 раунда, MiniMax M3
-- Раунд 1 (`Ответ (17).txt`): 0 critical, 0 high, 3 medium, 6 low
-  - `[medium] collectHintsFromLine infinite loop` — zero-length match guard
-  - `[medium] hasTemplatePlaceholderAtEdge dead code` — удалена
-  - `[medium] closeGear listener leak` — `closeGearFn` cleanup
-  - `[low] getBlockSelector fallback` — экранирование `]`/`)`
-  - `[low] renderHints data-line` — `escapeHtml(String(hint.line))`
-  - `[low] expandReplacement docs` — комментарий токенов
-  - `[low] panel.innerHTML` — SECURITY-комментарий
-  - `[low] removeInvisibleChars hint` — soft hyphen \\u00AD
-  - `[low] normalizeNbsp hint` — односложные союзы
-- Раунд 2 (`Ответ 2 (1).txt`): 1 high + 1 low → `collapseBlankLines` добавлен второй проход `/\n{3,}/g`
-- Раунд 3 (`Ответ 2 (2).txt`): 1 high + 1 low
-  - `[high] renderInlineDiff empty run collapse` — пустые ops (≥3) сворачиваются в `diff-run-summary` с числом строк
-  - `[low] stats.blanks` — считает оба прохода collapseBlankLines
-  - Добавлен CSS: `.diff-run-summary`, `.diff-run-count`
-
-**Аудит text-skeletonizer.js** (ожидание ответа аудитора)
-- Промпт: `аудит text-skeletonizer.txt` (MiniMax M3)
-- 508 строк, IIFE: извлечение структуры текста, лемматизация, Web Worker, кэш
-
 ### Завершено в этой сессии
 
-**Diff noise collapse** — сворачивание пустых строк в diff (Локальная причёска)
-- Задание: вместо N красных `↵` показывать один `↵ …N строк…`
-- Корень: `llm-features.js` (LLMFeatures.DiffEngine) — отдельный от `diff-engine.js` движок
-- Проблема: `compute()` выдавал один `del` op с 8 newlines, а `groupSize >= 3` его пропускал (groupSize=1)
-- Фикс: `_collapseWhitespaceRuns(ops)` — `totalNewlines >= 3` вместо `groupSize >= 3`
-- Рендер: `_renderClassicOp`/`_renderMatrixOp` — при `_collapsed` рендерят `↵ …N строк…`
-- CSS: `.diff-run-summary`/`.diff-run-count` в `styles.css` (snap-diff) и `text-linter.js` (shadow DOM)
+**Аудит text-skeletonizer.js** — 2 раунда, GPT-5.5-mini, оценка 8.5-9/10
+- Раунд 1 (`Ответ 2 (4).txt`): 2 high + 5 medium + 3 low → applied:
+  - `[high]` Worker result validation — `typeof result !== 'string'` → fallback
+  - `[medium]` Cache key: `level:text.length:hash` вместо `level:hash`
+  - `[medium]` `_setCache` + `_cacheKey` хелперы — единая LRU логика
+  - `[medium]` Negation window — 3 слова назад вместо 1
+  - `[low]` Удалён мёртвый параметр `opts` из `_configForLevel`
+- Раунд 2 (`Ответ 2 (5).txt`): 2 medium → applied:
+  - `[medium]` `slice().some()` → прямой цикл (убраны аллокации)
+  - `[medium]` JSDoc: `process()` = sync, `processAsync()` = async + Worker
+- Коммиты: `9862e28`, `744df66`
 
-1. **Аудит ninja-cursor.js** — 3 раунда, коммит `691740c` + новые фиксы
-   - Раунд 1 (MiniMax M3, `Ответ (8).txt`): 9 фиксов — `isConnected`, `whiteSpace`, `NBSP`, `--nc-offset-y`, `click` event, `MAX_SCROLL_FRAMES`, deferred resync, `_scrollMode`, `aria-hidden`
-   - Раунд 2 (MiniMax M3, `Ответ (15).txt`): 3 high + 6 medium + 3 low → applied: `_onInput` race (`_needResync` для edit events), `_disposed` flag + rAF guard, `_runTick` DRY helper, `_hide` сброс `_lastPos`
-   - Раунд 3 (MiniMax M3, `Ответ (16).txt`): 1 high + 2 medium + 2 low → applied: `_disposed` guard в `_tick` (до/после rAF) и `_animate` rAF-callback
+**Аудит text-skeletonizer-worker.js** — 1 раунд, GPT-5.5-mini, оценка 7.5-8/10 → ~9/10
+- (`Ответ 2 (6).txt`): 1 high + 3 medium → applied:
+  - `[high]` Negation window sync — 1→3 слова (drift с основным модулем)
+  - `[medium]` `e.data || {}` + try/catch вокруг деструктуризации
+  - `[medium]` `String(err.message || err)` вместо `err.message`
+  - `[medium]` `typeof text !== 'string'` guard
+- Коммит: `515e50d`
 
-2. **Аудит diff-engine.js** — 5 раундов, Codex GPT-5
-   - Раунд 1 (`Ответ (9).txt`): 1 critical + 3 high + 5 medium + 4 low → все applied
-   - Раунд 2 (`Ответ (10).txt`): 1 critical + 2 high + 4 medium + 4 low → applied: depth guard, empty tokens, escHtml, normalize fix
-   - Раунд 3 (`Ответ (11).txt`): 0 critical + 2 high + 3 medium + 3 low → applied: NaN depth, splitLinesPreserveBreaks self-contained, extractTextFromSnapshot typeof checks
-   - Раунд 4 (`Ответ (12).txt`): 2 high + 3 medium + 4 low → applied: computeDiff CRLF normalization, WeakSet cyclic refs, renderInlineDiff O(n²), escHtml control chars
-   - Раунд 5 (`Ответ (14).txt`): 1 high + 2 medium + 2 low → applied: `_lineDiff` unified, whitespace collapse, eq-merge across `\n`
+**Аудит text-expander.js** — 1 раунд, GPT-5.5-mini, оценка 8/10
+- (`Ответ 2 (7).txt`): 4 critical + 2 perf → applied:
+  - `[critical]` `_dropdownCleanup` — listener cleanup при destroy()/hideDropdown()
+  - `[critical]` `_dedupeShortcutsByKey` — spread entries перед итерацией
+  - `[critical]` `insertToken` — защита от async clipboard race
+  - `[critical]` localStorage corruption — Toast.show вместо пустого catch
+  - `[perf]` Mirror DOM — diff check `!==` перед textContent
+- Коммит: `65c7701`
 
-3. **TextExpander: useCount, smart candidates, dropdown** (коммит `574f1da`)
-   - `useCount`/`lastUsedAt` в shortcut: `_normalizeShortcut`, `_addShortcut`, `createFromSelection`
-   - Инкремент при успешной вставке (sync + async)
-   - Smart candidates: `_getWordCandidates`, `_getAcronymCandidates`, `_getGlueCandidates`
-   - `generateSmartShortName`: перебор альтернатив в режиме, fallback на цифры
-   - Ranking в dropdown: exact → starts (length ↑) → includes (position ↑), useCount tiebreak
-   - Dropdown: `VISIBLE=6`, `ROW_HEIGHT=28`, preview=25 символов, `scrollbar-width: thin`
-   - Mouse wheel навигация по пунктам dropdown
-   - Category в таблице: `max-width: 110px` + truncate
+**Spellcheck по умолчанию ВКЛ**
+- `state.js`: `spellCheck: false` → `spellCheck: true`
+- `blocks.js`: `ta.spellcheck = false` → `ta.spellcheck = b.spellcheck !== false`
+- Коммит: `0be0fd2`
+
+**Аудит flowchart.js** — 2 раунда, GPT-5.5-mini, оценка 7/10 → ~8.5/10
+- Раунд 1 (`Ответ 2 (8).txt`): 3 high + 4 medium + 2 low → applied:
+  - `[high]` `_forceLayout(reset)` — все узлы movable + сброс координат при mode switch
+  - `[medium]` Адаптивные итерации: `min(200, 60 + n*3)`
+  - `[medium]` Гравитация к центру для disconnected nodes
+  - `[low]` `cancelAnimationFrame(_inertiaRaf)` в `close()`
+  - `[low/medium]` XSS tooltip — innerHTML → DOM API
+  - `[medium]` LLM JSON validation — dedupe ids + filter invalid edges
+- Раунд 2 (`Ответ 2 (9).txt`): 2 high + 2 medium + 1 low → applied:
+  - `[high]` Edge hit-area — невидимый path 35px для контекстного меню
+  - `[medium]` Удаление узлов по ПКМ — прямое, без tooltip
+  - `[medium]` Удаление полотен по ПКМ — без удержания
+  - `[low]` Удалена кнопка "Обновить анализ" + spinning
+- Раунд 3 (`Ответ 2 (10).txt`): 1 high + 2 medium → applied:
+  - `[high]` SVG parent traversal — `_findNodeElement()` вместо `closest()`
+  - `[medium]` Edge hit-area увеличен до 35px + `pointerEvents: stroke`
+  - `[medium]` `confirm()` перед удалением полотна → позже убран по запросу
+- Баг-фикс: `insertBefore` ошибка — `_styleEdge` возвращает hit, append в callers
+- Баг-фикс: connect mode — `classList.add/remove` → `setAttribute` для SVG
+- Баг-фикс: orphan edges — fallback `_drawEdgeSimple` для edges не в `_routeData`
+- Коммиты: `dbf78c8`, `bae5367`, `5b788b5`, `bc75995`, `eb2b7ed`, `e48ce87`, `359f8fc`
+
+**Удаление Korean из переводчика**
+- `translator.js`: удалена запись `{ code: 'ko', name: '한국어', flag: '🇰🇷' }`
+- Коммит: `54d959b`
 
 ### Изменённые файлы
 | Файл | Что изменено |
 |------|-------------|
-| `ninja-cursor.js` | 9 аудит-фиксов (critical/high/medium/low) |
-| `diff-engine.js` | 11 аудит-фиксов + renderInlineDiff empty run collapse |
-| `llm-features.js` | `_collapseWhitespaceRuns` + `_renderClassicOp`/`_renderMatrixOp` collapsed handling |
-| `text-linter.js` | 10 аудит-фиксов + collapseBlankLines fix + CSS |
-| `text-expander.js` | useCount, smart candidates, dropdown ranking, wheel nav, 6 rows |
-| `styles.css` | `.te-table-category` max-width, `.te-dd-item` height 28px, `.text-expander-dropdown` scrollbar-width: thin, `.snap-diff-body .diff-run-summary/.diff-run-count` |
+| `text-skeletonizer.js` | cache key + LRU + worker validation + negation window + JSDoc |
+| `text-skeletonizer-worker.js` | negation sync + onmessage safety + type guard |
+| `text-expander.js` | dropdown cleanup + dedupe safety + insertToken + localStorage error + mirror diff |
+| `flowchart.js` | forceLayout fix + edge hit-area + node delete + canvas delete + XSS + LLM validation + SVG traversal + connect fix |
+| `state.js` | `spellCheck: true` |
+| `blocks.js` | `ta.spellcheck = b.spellcheck !== false` |
+| `translator.js` | удалён Korean |
 
 ### Аудиторские файлы (не коммитятся)
 | Файл | Содержание |
 |------|------------|
-| `Ответ (8).txt` | Аудит ninja-cursor.js v1 (MiniMax M3) |
-| `Ответ (10).txt` | Аудит diff-engine.js v1 (Codex GPT-5) |
-| `Ответ (11).txt` | Аудит diff-engine.js v2 (Codex GPT-5) |
-| `Ответ (12).txt` | Аудит diff-engine.js v3 (Codex GPT-5) |
-| `Ответ (13).txt` | Аудит diff-engine.js v4 (Codex GPT-5) |
-| `Ответ (14).txt` | Аудит diff-engine.js v5 — final (Codex GPT-5) |
-| `Ответ (15).txt` | Аудит ninja-cursor.js v2 (MiniMax M3) |
-| `Ответ (16).txt` | Аудит ninja-cursor.js v3 — final (MiniMax M3) |
-| `Ответ (17).txt` | Аудит text-linter.js v1 (MiniMax M3) |
-| `Ответ 2 (1).txt` | Аудит text-linter.js v2 — collapseBlankLines (MiniMax M3) |
-| `Ответ 2 (2).txt` | Аудит text-linter.js v3 — renderInlineDiff + stats (MiniMax M3) |
-| `аудит diff-engine.txt` | Промпт для аудита diff-engine.js |
-| `аудит text-linter.txt` | Промпт для аудита text-linter.js |
+| `Ответ 2 (4).txt` | Аудит text-skeletonizer.js v1 (GPT-5.5-mini) |
+| `Ответ 2 (5).txt` | Аудит text-skeletonizer.js v2 — re-audit (GPT-5.5-mini) |
+| `Ответ 2 (6).txt` | Аудит text-skeletonizer-worker.js (GPT-5.5-mini) |
+| `Ответ 2 (7).txt` | Аудит text-expander.js (GPT-5.5-mini) |
+| `Ответ 2 (8).txt` | Аудит flowchart.js v1 — focus on graph mode (GPT-5.5-mini) |
+| `Ответ 2 (9).txt` | Аудит flowchart.js v2 — UX удаления (GPT-5.5-mini) |
+| `Ответ 2 (10).txt` | Аудит flowchart.js v3 — connect + hit-area (GPT-5.5-mini) |
 | `аудит text-skeletonizer.txt` | Промпт для аудита text-skeletonizer.js |
+| `аудит text-skeletonizer-worker.txt` | Промпт для аудита text-skeletonizer-worker.js |
+| `аудит flowchart.txt` | Промпт для аудита flowchart.js |
 
 ## Как работает
 - **TextExpander**: trigger `ё` → dropdown с фильтрацией → вставка с обработкой регистра
 - **useCount**: инкремент при каждой вставке, влияет на ranking в dropdown и панели
 - **Smart candidates**: при автогенерации пробует слова/акроним/склейку по очереди, потом цифры
 - **NinjaCursor**: декоративный курсор-шлейф, mirror-div для caret rect, анимация через CSS
-- **DiffEngine (diff-engine.js)**: LCS по строкам (Int32Array), токенизация по словам (\b), fallback с рекурсивным построчным diff, нормализация CRLF. Используется в snap-diff overlay
-- **DiffEngine (llm-features.js)**: отдельный движок внутри `LLMFeatures`, используется text-linter'ом и LLM-фичами. `_collapseWhitespaceRuns` сворачивает пустые строки (totalNewlines ≥ 3) в одну метку `↵ …N строк…`
+- **DiffEngine (diff-engine.js)**: LCS по строкам (Int32Array), токенизация по словам (\b), fallback с рекурсивным построчным diff, нормализация CRLF
+- **DiffEngine (llm-features.js)**: отдельный движок внутри `LLMFeatures`, `_collapseWhitespaceRuns` сворачивает пустые строки (totalNewlines ≥ 3) в `↵ …N строк…`
+- **Flowchart**: SVG визуализация блок-схем/графов, Sugiyama layout (flow), force-directed (graph), LLM-интеграция, canvas management
+- **Spellcheck**: включён по умолчанию, переключается кнопкой в footer
 
 ## Следующий шаг
 1. Разобраться с багом моргания dropdown (race condition `selectionchange`)
