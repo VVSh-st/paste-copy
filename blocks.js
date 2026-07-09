@@ -1606,7 +1606,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
       b.subtabs[target].value += (b.subtabs[target].value ? '\n' : '') + text;
       patchSubtab(b, target);
-      ta.selectionStart = ta.selectionEnd = 0;
+      ta.selectionStart = ta.selectionEnd = hasSelection ? ta.value.length : 0;
       ta.focus();
       Toast.show('Скопировано ✓', 'success');
     });
