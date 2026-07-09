@@ -350,9 +350,9 @@ const Anchors = (() => {
 
     try {
       const mr = marker.getBoundingClientRect();
-      const mir = mirror.getBoundingClientRect();
-      const x = pl + mr.left - mir.left;
-      const y = pt + mr.top - mir.top;
+      const taR = ta.getBoundingClientRect();
+      const x = pl + (mr.left - taR.left);
+      const y = pt + (mr.top - taR.top);
       return { x: x, y: y };
     } catch (_) {
       return { x: pl, y: pt + mirror.scrollHeight };
@@ -426,11 +426,10 @@ const Anchors = (() => {
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
     const taCs = getComputedStyle(ta);
-    const taPt = parseFloat(taCs.paddingTop) || 0;
 
     blockAnchors.forEach((anchor, localIdx) => {
       const pos = _measurePos(ta, anchor.start);
-      const rawTop = pos.y - scrollY - taPt;
+      const rawTop = pos.y - scrollY;
       const wrapH = wrap.clientHeight;
 
       // Skip markers scrolled out of view
@@ -476,10 +475,9 @@ const Anchors = (() => {
     wrap.style.position = 'relative';
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
-    const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
     blockAnchors.forEach(anchor => {
       const pos = _measurePos(ta, anchor.start);
-      const rawTop = pos.y - scrollY - taPt;
+      const rawTop = pos.y - scrollY;
       const wrapH = wrap.clientHeight;
       if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
       if (settings.lineMarkers) {
