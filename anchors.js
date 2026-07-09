@@ -337,41 +337,44 @@ const Anchors = (() => {
     const pl = parseFloat(cs.paddingLeft) || 0;
     if (charPos <= 0) return { x: pl, y: pt };
 
-    const wrap = ta.closest('.current-line-wrap') || ta.parentElement;
-    if (!wrap) return { x: pl, y: pt };
+    const mirror = _getMirror(ta);
+    mirror.textContent = ta.value;
 
-    const safePos = Math.min(charPos, ta.value.length);
-
-    // Mirror for x-measurement (word-wrap aware)
-    const mirror = document.createElement('div');
-    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;box-sizing:border-box;';
-    for (const prop of ['fontFamily','fontSize','fontWeight','fontStyle','fontVariantLigatures','fontFeatureSettings','fontKerning','letterSpacing','lineHeight','textTransform','textIndent','wordBreak','overflowWrap','tabSize','paddingTop','paddingRight','paddingBottom','paddingLeft']) {
-      mirror.style[prop] = cs[prop];
+    const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
+    let remaining = charPos;
+    let targetNode = null;
+    let targetOffset = 0;
+    let node;
+    while ((node = walker.nextNode())) {
+      if (remaining <= node.textContent.length) {
+        targetNode = node;
+        targetOffset = remaining;
+        break;
+      }
+      remaining -= node.textContent.length;
     }
-    mirror.style.width = Math.max(0, ta.clientWidth) + 'px';
-    wrap.appendChild(mirror);
+
+    if (!targetNode) {
+      mirror.textContent = ta.value.substring(0, charPos);
+      return { x: pl, y: pt + mirror.scrollHeight };
+    }
 
     try {
-      // X from mirror
-      const before = document.createElement('span');
-      before.textContent = ta.value.substring(0, safePos);
+      const range = document.createRange();
+      range.setStart(targetNode, targetOffset);
+      range.collapse(true);
       const marker = document.createElement('span');
-      marker.textContent = ta.value.substring(safePos, safePos + 1) || '.';
-      mirror.appendChild(before);
-      mirror.appendChild(marker);
+      marker.textContent = '\u200B';
+      range.insertNode(marker);
       const mr = marker.getBoundingClientRect();
       const mir = mirror.getBoundingClientRect();
-      const x = pl + (mr.left - mir.left);
-
-      // Y: use the same span-in-mirror approach as current line highlight
-      // which is known to work correctly
-      const y = pt + (mr.top - mir.top);
-
+      const x = pl + mr.left - mir.left;
+      const y = pt + mr.top - mir.top;
+      marker.parentNode.removeChild(marker);
       return { x: x, y: y };
     } catch (_) {
+      mirror.textContent = ta.value.substring(0, charPos);
       return { x: pl, y: pt + mirror.scrollHeight };
-    } finally {
-      mirror.remove();
     }
   }
 
@@ -439,18 +442,11 @@ const Anchors = (() => {
 
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
-    const taCs = getComputedStyle(ta);
-
-    // Textarea offset from wrap (viewport-relative, constant regardless of scroll)
-    const taR = ta.getBoundingClientRect();
-    const wrapR = wrap.getBoundingClientRect();
-    const taOffsetFromWrap = taR.top - wrapR.top;
+    const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
 
     blockAnchors.forEach((anchor, localIdx) => {
       const pos = _measurePos(ta, anchor.start);
-      // pos.y = pt + (mr.top - mir.top) = position from mirror top (includes pt)
-      // Convert to wrap-relative: add textarea offset from wrap, subtract scroll
-      const rawTop = pos.y + taOffsetFromWrap - scrollY;
+      const rawTop = pos.y - scrollY - taPt;
       const wrapH = wrap.clientHeight;
 
       // Skip markers scrolled out of view
@@ -496,12 +492,10 @@ const Anchors = (() => {
     wrap.style.position = 'relative';
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
-    const taR = ta.getBoundingClientRect();
-    const wrapR = wrap.getBoundingClientRect();
-    const taOffsetFromWrap = taR.top - wrapR.top;
+    const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
     blockAnchors.forEach(anchor => {
       const pos = _measurePos(ta, anchor.start);
-      const rawTop = pos.y + taOffsetFromWrap - scrollY;
+      const rawTop = pos.y - scrollY - taPt;
       const wrapH = wrap.clientHeight;
       if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
       if (settings.lineMarkers) {
