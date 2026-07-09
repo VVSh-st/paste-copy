@@ -1332,6 +1332,15 @@ const State = (() => {
               items.push({ type: 'command', label: i.label || nv.slice(0, 30), value: nv, icon: '⚡' });
             }
           }
+        } else if (b.type === 'snippets') {
+          for (const i of (b.items || [])) {
+            if (!i.enabled) continue;
+            const nv = normalizeSnippetValue(i.value);
+            if (nv && !seen.has(nv)) {
+              seen.add(nv);
+              items.push({ type: 'snippet', label: i.title || nv.slice(0, 30), value: nv, icon: '💬' });
+            }
+          }
         } else if (b.type === 'group' && b.children) {
           collect(b.children);
         }
