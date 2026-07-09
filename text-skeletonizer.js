@@ -302,16 +302,16 @@ const TextSkeletonizer = (() => {
     const base = {
       maxHeadingLength: 120,
       maxSentenceLength: 200,
-      maxKeyTerms: 30,
-      maxSections: 40,
-      maxBulletsPerSection: 5,
+      maxKeyTerms: 50,
+      maxSections: 100,
+      maxBulletsPerSection: 8,
       includeStats: true,
     };
     switch (level) {
       case 'light':
-        return { ...base, maxSections: 20, maxKeyTerms: 0, includeStats: true };
+        return { ...base, maxSections: 40, maxKeyTerms: 0, includeStats: true };
       case 'aggressive':
-        return { ...base, maxSections: 60, maxKeyTerms: 50, maxBulletsPerSection: 8 };
+        return { ...base, maxSections: 200, maxKeyTerms: 100, maxBulletsPerSection: 12 };
       default: // medium
         return base;
     }
