@@ -963,7 +963,7 @@ const TextExpander = (() => {
 
   function _getPanelItems(activeFilter) {
     return [..._shortcuts.values()]
-      .filter(s => activeFilter === 'All' || s.category === activeFilter)
+      .filter(s => activeFilter === 'Все' || s.category === activeFilter)
       .sort((a, b) => {
         const au = a.useCount || 0;
         const bu = b.useCount || 0;
@@ -977,7 +977,7 @@ const TextExpander = (() => {
     if (!container) return;
     container.replaceChildren();
 
-    const activeFilter = body.querySelector('.te-filter-btn.active')?.textContent || 'All';
+    const activeFilter = body.querySelector('.te-filter-btn.active')?.textContent || 'Все';
     const items = _getPanelItems(activeFilter);
 
     if (!items.length) {
