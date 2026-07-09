@@ -1862,6 +1862,9 @@ const TextExpander = (() => {
       e.preventDefault(); e.stopPropagation();
       const item = _dropdownItems[_dropdownFocusedIdx];
       if (item) _insertExpansion(item);
+    } else if (e.key === 'Tab' && _dropdownItems.length === 1) {
+      e.preventDefault(); e.stopPropagation();
+      _insertExpansion(_dropdownItems[0]);
     } else if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation();
       _hideDropdown();
