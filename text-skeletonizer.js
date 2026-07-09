@@ -64,7 +64,7 @@ const TextSkeletonizer = (() => {
   function _initWorker() {
     if (_worker || typeof Worker === 'undefined') return;
     try {
-      _worker = new Worker('text-skeletonizer-worker.js');
+      _worker = new Worker('text-skeletonizer-worker.js?v=' + Date.now());
       _worker.onmessage = (e) => {
         const { id, result, error } = e.data;
         const cb = _workerCallbacks.get(id);
