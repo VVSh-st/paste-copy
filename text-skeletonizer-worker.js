@@ -56,18 +56,18 @@ function _lemmatize(word) {
 
 function _configForLevel(level) {
   const base = {
-    maxHeadingLength: 80,
-    maxSentenceLength: 100,
-    maxKeyTerms: 30,
-    maxSections: 60,
-    maxBulletsPerSection: 4,
+    maxHeadingLength: 50,
+    maxSentenceLength: 60,
+    maxKeyTerms: 20,
+    maxSections: 40,
+    maxBulletsPerSection: 3,
     includeStats: true,
   };
   switch (level) {
     case 'light':
-      return { ...base, maxSections: 20, maxKeyTerms: 0, includeStats: true };
+      return { ...base, maxSections: 15, maxKeyTerms: 0, includeStats: true };
     case 'aggressive':
-      return { ...base, maxSections: 100, maxKeyTerms: 50, maxBulletsPerSection: 6 };
+      return { ...base, maxSections: 80, maxKeyTerms: 40, maxBulletsPerSection: 5 };
     default:
       return base;
   }
