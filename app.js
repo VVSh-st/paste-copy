@@ -776,6 +776,8 @@
     if (!resizer || !panel) return;
 
     let dragging = false, startY = 0, startH = 0;
+    let _prevRafId = null;
+    let _prevPendingDy = 0;
 
     resizer.onmousedown = e => {
       if (panel.classList.contains('collapsed')) return;
@@ -789,14 +791,20 @@
 
     document.addEventListener('mousemove', e => {
       if (!dragging) return;
-      const h = Math.max(60, Math.min(window.innerHeight * 0.7, startH + (startY - e.clientY)));
-      panel.style.height = h + 'px';
-      State.setLayout({ previewHeight: h });
+      _prevPendingDy = startY - e.clientY;
+      if (_prevRafId) return;
+      _prevRafId = requestAnimationFrame(() => {
+        _prevRafId = null;
+        const h = Math.max(60, Math.min(window.innerHeight * 0.7, startH + _prevPendingDy));
+        panel.style.height = h + 'px';
+        State.setLayout({ previewHeight: h });
+      });
     });
 
     document.addEventListener('mouseup', () => {
       if (!dragging) return;
       dragging = false;
+      if (_prevRafId) { cancelAnimationFrame(_prevRafId); _prevRafId = null; }
       resizer.classList.remove('active');
       document.body.style.cursor = '';
       scheduleSave();
@@ -886,6 +894,15 @@
         } else {
           // Multiple tabs — replace all (with confirm)
           if (!confirm('Заменить все ' + existingTabsCount() + ' вкладок на ' + data.tabs.length + ' из файла?')) return;
+          // Auto-backup current state before destructive import
+          try {
+            const backup = JSON.stringify(State.serialize());
+            localStorage.setItem('import-backup-pre-' + Date.now(), backup);
+            const backupKeys = Object.keys(localStorage)
+              .filter(k => k.startsWith('import-backup-pre-'))
+              .sort();
+            while (backupKeys.length > 3) localStorage.removeItem(backupKeys.shift());
+          } catch (_) { /* quota exceeded — proceed anyway */ }
           State.load(data);
           Storage.save(State.serialize());
           Toast.show('Импортировано ' + data.tabs.length + ' вкладок ✓', 'success');
