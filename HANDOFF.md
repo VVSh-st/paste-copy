@@ -112,6 +112,7 @@
 - **KeyboardTrainer**: singleton-панель → toggle кнопкой → keydown → flash + auto RU/EN → mousemove → fade → long press → settings
 
 ## Следующий шаг
-1. Проверить таймер в браузере
-2. Настроить точное ~5x сжатие в TextSkeletonizer (aggressive конфиг)
-3. Рассмотреть паттерны prompt-loom.js для навигации
+1. Проверить таймер в браузере (направление обводки)
+2. Проверить клавиатуру в браузере (пропорциональный ресайз)
+3. Настроить точное ~5x сжатие в TextSkeletonizer (aggressive конфиг)
+4. Рассмотреть паттерны prompt-loom.js для навигации
