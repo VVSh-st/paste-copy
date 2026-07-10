@@ -10,12 +10,11 @@
  *  - CW/CCW через два разных path (без scaleX)
  *  - Мягкая цветовая температура через тень (последние 5 сек)
  *  - При лимите: дуга скрыта, пульсирует только box-shadow
- *  - Оптимизация в фоне: setInterval 1с вместо rAF
- *  - Stacking-анимация при смене цифр
+ *  - Оптимизация в фоне: без mask/glow/filter
+ *  - Stacking-анимация при смене цифр (old exits up, new enters down)
  *  - Particle trail за головой дуги
  *  - Micro-interactions: сжатие при касании
  *  - Corner glow при прохождении углов
- *  - Секундный отсчёт при 0 минут
  */
 
 const SquareTimer = (() => {
@@ -33,14 +32,12 @@ const SquareTimer = (() => {
   let startTs = null;
   let targetMinutes = null;
   let rafId = null;
-  let bgIntervalId = null;
   let pulseIntervalId = null;
   let pulseStartTime = null;
   let _longPressFired = false;
   let _pointerDownPos = null;
   let _longPressTimer = null;
   let _prevMin = null;
-  let _prevSec = null;
   let _isBackground = false;
 
   let _pathCW = null;
@@ -187,6 +184,7 @@ const SquareTimer = (() => {
       }
     }
 
+    // Сброс при полном обороте (progress перешёл через 0)
     if (headPos < P * 0.02) {
       _firedCorners.clear();
     }
@@ -230,8 +228,7 @@ const SquareTimer = (() => {
 
   function destroy() {
     stopTick(); stopPulse(); clearLongPress();
-    _stopBgInterval();
-    _pointerDownPos = null; _prevMin = null; _prevSec = null;
+    _pointerDownPos = null; _prevMin = null;
     _longPressFired = false;
     _initialized = false;
     _resizeObserver?.disconnect();
@@ -249,71 +246,16 @@ const SquareTimer = (() => {
   }
 
   /* ════════════════════════════════════════════════════════════════
-     VISIBILITY OPTIMIZATION (tab background → setInterval)
+     VISIBILITY OPTIMIZATION (tab background)
      ════════════════════════════════════════════════════════════════ */
 
   function _onVisibilityChange() {
-    if (document.hidden) {
-      if (mode && !_isBackground) {
-        _isBackground = true;
-        stopTick();
-        _startBgInterval();
-      }
-    } else {
-      if (_isBackground) {
-        _isBackground = false;
-        _stopBgInterval();
-        if (mode) startTick();
-      }
+    _isBackground = document.hidden;
+    if (_isBackground && mode) {
+      arcTail.style.maskImage = '';
+      arcHeadSeg.style.filter = '';
+      arcHeadDot.style.filter = '';
     }
-  }
-
-  function _startBgInterval() {
-    _stopBgInterval();
-    bgIntervalId = setInterval(() => {
-      if (!startTs || mode === null) return;
-      _tickBg();
-    }, 1000);
-  }
-
-  function _stopBgInterval() {
-    if (bgIntervalId) { clearInterval(bgIntervalId); bgIntervalId = null; }
-  }
-
-  function _tickBg() {
-    if (!startTs || mode === null) return;
-    const elapsed = (Date.now() - startTs) / 1000;
-
-    if (mode === 'up') {
-      const min = Math.floor(elapsed / 60);
-      if (min >= 99) { onLimitReached(); return; }
-      _updateDisplayBg(min, elapsed);
-    } else {
-      const rem = targetMinutes * 60 - Math.floor(elapsed);
-      if (rem <= 0) { onLimitReached(); return; }
-      _updateDisplayBg(Math.ceil(rem / 60), elapsed);
-    }
-  }
-
-  function _updateDisplayBg(minutes, elapsed) {
-    valueEl.style.display = 'flex';
-    valueEl.classList.remove('timer-value-dim');
-
-    const sec = mode === 'up'
-      ? Math.floor(elapsed % 60)
-      : Math.floor(((targetMinutes * 60 - elapsed) % 60 + 60) % 60);
-
-    const showSec = minutes === 0;
-    const display = showSec ? `${sec}` : `${minutes}`;
-    const key = `${minutes}:${sec}`;
-
-    if (_prevMin !== null && key !== _prevMin) {
-      valueEl.textContent = display;
-    } else if (_prevMin === null) {
-      valueEl.textContent = display;
-    }
-    _prevMin = key;
-    _prevSec = sec;
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -455,7 +397,7 @@ const SquareTimer = (() => {
   }
 
   function startCountUp() {
-    mode = 'up'; startTs = Date.now(); targetMinutes = null; _prevMin = null; _prevSec = null;
+    mode = 'up'; startTs = Date.now(); targetMinutes = null; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     arcSvg.style.display = 'block';
     _pulseRing();
@@ -463,7 +405,7 @@ const SquareTimer = (() => {
   }
 
   function startCountDown(m) {
-    mode = 'down'; startTs = Date.now(); targetMinutes = m; _prevMin = null; _prevSec = null;
+    mode = 'down'; startTs = Date.now(); targetMinutes = m; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     closeInlineInput(); arcSvg.style.display = 'block';
     _pulseRing();
@@ -471,9 +413,9 @@ const SquareTimer = (() => {
   }
 
   function resetToIdle() {
-    stopTick(); _stopBgInterval(); stopPulse(); clearLongPress();
+    stopTick(); stopPulse(); clearLongPress();
     _longPressFired = false; _pointerDownPos = null;
-    mode = null; startTs = null; targetMinutes = null; _prevMin = null; _prevSec = null;
+    mode = null; startTs = null; targetMinutes = null; _prevMin = null;
     btn.classList.remove('timer-pressed', 'timer-long-pressed');
     saveState(); setIdleVisual();
   }
@@ -502,11 +444,10 @@ const SquareTimer = (() => {
   }
 
   function onLimitReached() {
-    stopTick(); _stopBgInterval();
+    stopTick();
     _hideArc();
     _flashEffect();
     _liquidMorph();
-    safeSet(STORAGE_KEY, '');
     if (window.Ember?.notifyEdit) Ember.notifyEdit();
     startPulse();
   }
@@ -539,52 +480,35 @@ const SquareTimer = (() => {
   }
 
   function _startAutoCountdown() {
-    mode = 'down'; startTs = Date.now(); targetMinutes = 99; _prevMin = null; _prevSec = null;
+    mode = 'down'; startTs = Date.now(); targetMinutes = 99; _prevMin = null;
     arcSvg.style.display = 'block';
     saveState(); startTick();
   }
 
   /* ════════════════════════════════════════════════════════════════
-     DISPLAY (stacking animation + seconds)
+     DISPLAY (stacking animation)
      ════════════════════════════════════════════════════════════════ */
 
   function _updateDisplay(minutes, progress, dir) {
     valueEl.style.display = 'flex';
     valueEl.classList.remove('timer-value-dim');
 
-    // Секундный отсчёт при 0 минут
-    const sec = mode === 'up'
-      ? Math.floor((Date.now() - startTs) / 1000 % 60)
-      : Math.floor(((targetMinutes * 60 - (Date.now() - startTs) / 1000) % 60 + 60) % 60);
-
-    const showSec = minutes === 0;
-    const display = showSec ? `${sec}` : `${minutes}`;
-    const key = `${minutes}:${sec}`;
-
-    if (_prevMin !== null && key !== _prevMin) {
+    if (_prevMin !== null && minutes !== _prevMin) {
       // Stacking: старая цифра уезжает вверх с blur, новая въезжает снизу
       const oldEl = document.createElement('div');
       oldEl.className = 'timer-digit-old';
-      oldEl.textContent = _prevMin.split(':')[1] !== undefined && _prevMin.split(':')[0] === '0'
-        ? _prevMin.split(':')[1] : _prevMin;
-      const cs = getComputedStyle(valueEl);
-      ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'color'].forEach(p => {
-        oldEl.style.setProperty(p, cs.getPropertyValue(p));
-      });
+      oldEl.textContent = _prevMin;
+      oldEl.style.cssText = getComputedStyle(valueEl).cssText;
       oldEl.style.position = 'absolute';
       oldEl.style.inset = '0';
       oldEl.style.display = 'flex';
       oldEl.style.alignItems = 'center';
       oldEl.style.justifyContent = 'center';
-      oldEl.style.background = cs.background;
-      oldEl.style.webkitBackgroundClip = cs.webkitBackgroundClip;
-      oldEl.style.webkitTextFillColor = cs.webkitTextFillColor;
-      oldEl.style.filter = cs.filter;
 
       valueEl.parentNode.style.position = 'relative';
       valueEl.parentNode.appendChild(oldEl);
 
-      valueEl.textContent = display;
+      valueEl.textContent = minutes;
       void valueEl.offsetWidth;
       valueEl.classList.add('timer-digit-enter');
       oldEl.classList.add('timer-digit-old-exit');
@@ -593,10 +517,10 @@ const SquareTimer = (() => {
         oldEl.remove();
         valueEl.classList.remove('timer-digit-enter');
       }, 400);
-    } else if (_prevMin === null) {
-      valueEl.textContent = display;
+    } else {
+      valueEl.textContent = minutes;
     }
-    _prevMin = key;
+    _prevMin = minutes;
 
     _applyArc(progress, dir);
   }
@@ -657,7 +581,7 @@ const SquareTimer = (() => {
     arcHeadSeg.style.strokeDasharray  = hLen + ' ' + P;
     arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
-    // Точка-голова
+    // Точка-голова (еле заметная пульсация, цвет хвоста)
     const pt = arcTail.getPointAtLength(headPos);
     arcHeadDot.style.display = '';
     arcHeadDot.setAttribute('cx', pt.x);
@@ -672,25 +596,20 @@ const SquareTimer = (() => {
       _maybeSpawnParticle(pt.x, pt.y);
     }
 
-    // Кометный след с плавным fade (только в foreground)
+    // Кометный след (только в foreground)
     if (!_isBackground) {
       const cx = btn.offsetWidth / 2;
       const cy = btn.offsetHeight / 2;
       const headDeg = Math.atan2(pt.x - cx, -(pt.y - cy)) * (180 / Math.PI);
-      const headPct = (HEAD_FRAC * 100).toFixed(1);
-
       if (dir === 'cw') {
         const pct = ((headDeg % 360 + 360) % 360 / 360 * 100).toFixed(1);
-        const fadeStart = Math.max(0, parseFloat(pct) - parseFloat(headPct)).toFixed(1);
         arcTail.style.maskImage =
-          `conic-gradient(from 0deg at 50% 50%, ` +
-          `rgba(0,0,0,0) 0%, rgba(0,0,0,0) ${fadeStart}%, rgba(0,0,0,1) ${pct}%)`;
+          `conic-gradient(from 0deg at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,1) ${pct}%)`;
       } else {
         const span = ((360 - (headDeg % 360 + 360) % 360) / 360 * 100).toFixed(1);
-        const fadeEnd = Math.min(100, parseFloat(span) + parseFloat(headPct)).toFixed(1);
         arcTail.style.maskImage =
           `conic-gradient(from ${((headDeg % 360 + 360) % 360)}deg at 50% 50%, ` +
-          `rgba(0,0,0,1) 0%, rgba(0,0,0,0) ${fadeEnd}%)`;
+          `rgba(0,0,0,1) 0%, rgba(0,0,0,0) ${span}%)`;
       }
     }
 
@@ -710,7 +629,7 @@ const SquareTimer = (() => {
   /* ── idle ── */
 
   function setIdleVisual() {
-    _prevMin = null; _prevSec = null;
+    _prevMin = null;
     valueEl.classList.remove('timer-digit-animate', 'timer-digit-enter', 'timer-value-pulse');
     void valueEl.offsetWidth;
     valueEl.style.display = 'flex'; valueEl.textContent = '0'; valueEl.classList.add('timer-value-dim');
@@ -750,7 +669,7 @@ const SquareTimer = (() => {
       const elapsed = (Date.now() - s.startTs) / 1000;
       if (s.mode === 'up' && Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
       if (s.mode === 'down' && s.targetMinutes * 60 - Math.floor(elapsed) <= 0) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
-      mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null; _prevSec = null;
+      mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null;
       btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
       arcSvg.style.display = 'block'; startTick();
     } catch (e) { console.warn('[SquareTimer] restore:', e); safeSet(STORAGE_KEY, ''); setIdleVisual(); }
