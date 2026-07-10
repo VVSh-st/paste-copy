@@ -2263,6 +2263,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         { id: 'auto', label: 'Auto', svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l2.5 1.5"/></svg>' },
         { id: 'google', label: 'G', svg: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.2 6.8v2.6h3.7c-.15 1-.55 1.7-1.15 2.2l1.9 1.5c1.1-1 1.8-2.5 1.8-4.3 0-.4-.04-.8-.1-1.2H8.2z" opacity=".9"/><path d="M3.4 9.7l-.7.5-1.2 1C2.7 13.4 5.2 15 8.2 15c2.3 0 4.2-.8 5.6-2.1l-1.9-1.5c-.8.5-1.8.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8l-.3-.8z" opacity=".7"/><path d="M1.5 4.8C2 3.6 2.8 2.6 3.8 1.8L5.4 3c-.6.6-1 1.3-1.3 2.1L1.5 4.8z" opacity=".5"/><path d="M8 3c1.3 0 2.4.4 3.3 1.3L13 2.8C11.5 1.5 9.9.8 8 .8 5.2.8 2.7 2.4 1.5 4.8l2.4 1.9C4.4 5.1 6.1 3 8 3z" opacity=".6"/></svg>' },
         { id: 'microsoft', label: 'MS', svg: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6.5" height="6.5" rx=".5" opacity=".9"/><rect x="8.5" y="1" width="6.5" height="6.5" rx=".5" opacity=".7"/><rect x="1" y="8.5" width="6.5" height="6.5" rx=".5" opacity=".7"/><rect x="8.5" y="8.5" width="6.5" height="6.5" rx=".5" opacity=".5"/></svg>' },
+        { id: 'tencent', label: 'T', svg: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1C4.1 1 1 3.6 1 6.8c0 1.8 1 3.4 2.6 4.5L3 13l2.2-1.1c.9.3 1.9.4 2.8.4 3.9 0 7-2.6 7-5.8S11.9 1 8 1z" opacity=".85"/></svg>' },
       ];
       const curEngine = Translator.engine;
       engines.forEach(eng => {

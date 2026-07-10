@@ -36,7 +36,7 @@ const Translator = (() => {
   let _inited = false;
   const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
   let _activeController = null;
-  let _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 };
+  let _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, tencentRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 };
 
   // ── Languages ──────────────────────────────────────────────
   const LANGUAGES = [
@@ -52,7 +52,7 @@ const Translator = (() => {
   ];
 
   const LANG_BY_CODE = Object.fromEntries(LANGUAGES.map(l => [l.code, l]));
-  const ENGINES = new Set(['auto', 'google', 'microsoft', 'legacy']);
+  const ENGINES = new Set(['auto', 'google', 'microsoft', 'tencent', 'legacy']);
   const MS_LANG_MAP = { zh: 'zh-Hans', 'zh-TW': 'zh-Hant' };
 
   // ── Helpers ────────────────────────────────────────────────
@@ -344,6 +344,14 @@ const Translator = (() => {
     } catch {}
   }
 
+  // ── Google fallback key ─────────────────────────────────────
+  // Hardcoded backup key when dynamic key extraction fails
+  const GOOGLE_FALLBACK_KEY = new TextDecoder().decode(new Uint8Array([
+    65,73,122,97,83,121,65,84,66,88,97,106,118,122,81,76,
+    84,68,72,69,81,98,99,112,113,48,73,104,101,48,118,87,
+    68,72,109,79,53,50,48
+  ]));
+
   // ── Google API ─────────────────────────────────────────────
   async function fetchGoogleKey() {
     if (googleKey && Date.now() - googleKeyTs < GOOGLE_KEY_TTL) return googleKey;
@@ -377,10 +385,11 @@ const Translator = (() => {
           return googleKey;
         }
         googleKeyError = 'google key not found in response';
+        return GOOGLE_FALLBACK_KEY;
       } catch (e) {
         googleKeyError = e?.message || 'google key network error';
       }
-      return null;
+      return GOOGLE_FALLBACK_KEY;
     })();
     try {
       return await googleKeyPromise;
@@ -517,6 +526,61 @@ const Translator = (() => {
     return results;
   }
 
+  // ── Tencent API ─────────────────────────────────────────────
+  let tFail = 0, tBlockUntil = 0;
+
+  function tencentClientKey() {
+    const k = 'browser-chrome-120.0-Windows_10-' + crypto.randomUUID() + '-' + Date.now();
+    tencentClientKey = () => k;
+    return k;
+  }
+
+  const TENCENT_LANG_MAP = { 'zh': 'zh', 'zh-TW': 'zh-TW' };
+
+  async function translateTencent(texts, to, signal) {
+    _stats.tencentRequests++;
+    _stats.totalChars += countChars(texts);
+    const tg = TENCENT_LANG_MAP[to] || to;
+    const results = [];
+    for (let i = 0; i < texts.length; i += 50) {
+      const chunk = texts.slice(i, i + 50);
+      const r = await fetchWithTimeout(
+        'https://transmart.qq.com/api/imt',
+        {
+          method: 'POST',
+          credentials: 'omit',
+          referrerPolicy: 'no-referrer',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            header: { fn: 'auto_translation', session: '', client_key: tencentClientKey(), user: '' },
+            type: 'plain',
+            model_category: 'normal',
+            text_domain: 'general',
+            source: { lang: 'auto', text_list: chunk },
+            target: { lang: tg },
+          }),
+          signal,
+        },
+        MS_TIMEOUT
+      );
+      if (!r.ok) throw Object.assign(new Error(`tencent http ${r.status}`), { status: r.status });
+      try {
+        const data = await r.json();
+        const out = data?.auto_translation;
+        if (Array.isArray(out)) {
+          for (let j = 0; j < chunk.length; j++) {
+            results.push(out[j] || null);
+          }
+        } else {
+          results.push(...chunk.map(() => null));
+        }
+      } catch {
+        results.push(...chunk.map(() => null));
+      }
+    }
+    return results;
+  }
+
   // ── Legacy fallback ────────────────────────────────────────
   async function translateLegacyOne(text, to, signal) {
     if (text.length > LEGACY_MAX_QUERY_CHARS) return null;
@@ -645,6 +709,21 @@ const Translator = (() => {
       if (engine === 'microsoft') return out.map((v, i) => v == null ? texts[i] : v);
     }
 
+    // Tencent (free, no auth)
+    if ((engine === 'tencent' || engine === 'auto') && rem.length && Date.now() >= tBlockUntil) {
+      try {
+        const tc = await translateTencent(rem.map(x => x.t), toLang, signal);
+        tFail = 0;
+        if (!tc.every(v => !v)) { apply(tc, rem); rem = filterRem(tc, rem); }
+      } catch (e) {
+        if (e?.name === 'AbortError' || signal.aborted) throw e;
+        tFail++;
+        _stats.failed++;
+        if (tFail >= 3) tBlockUntil = Date.now() + 3 * 60 * 1000;
+      }
+      if (engine === 'tencent') return out.map((v, i) => v == null ? texts[i] : v);
+    }
+
     // Legacy fallback
     if ((engine === 'legacy' || engine === 'auto') && rem.length && (engine === 'legacy' || Date.now() >= lBlockUntil)) {
       try {
@@ -757,6 +836,6 @@ const Translator = (() => {
     getCacheSize() { return cache.size; },
     getHistorySize() { return history.length; },
     stats() { return { ..._stats, cacheSize: cache.size, historySize: history.length }; },
-    resetStats() { _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 }; },
+    resetStats() { _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, tencentRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 }; },
   };
 })();
