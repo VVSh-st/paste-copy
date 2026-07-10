@@ -386,7 +386,7 @@
   }
 
   window.addEventListener('resize', schedulePositionMenu);
-  window.addEventListener('scroll', schedulePositionMenu, true);
+  window.addEventListener('scroll', schedulePositionMenu, { capture: true, passive: true });
 
   function ensureReportModal() {
     if (reportModal?.isConnected) return reportModal;

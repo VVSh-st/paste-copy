@@ -1578,7 +1578,7 @@ body.querySelectorAll('.gs-tip[data-tip]').forEach(el => {
   el.addEventListener('focusin', () => showTip(el), { signal });
   el.addEventListener('focusout', removeTip, { signal });
 });
-body.addEventListener('scroll', removeTip, { capture: true, signal });
+body.addEventListener('scroll', removeTip, { capture: true, passive: true, signal });
 }
 function _bindModalEvents(body) {
 _bindSmartTips(body);

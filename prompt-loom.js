@@ -2217,7 +2217,7 @@
       if (active && !e.relatedTarget?.closest?.('[data-pl-tip]')) hide();
     }, true);
     document.addEventListener('keydown', hide, true);
-    document.addEventListener('scroll', hide, true);
+    document.addEventListener('scroll', hide, { capture: true, passive: true });
   }
 
   function injectStyles() {

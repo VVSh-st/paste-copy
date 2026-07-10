@@ -611,7 +611,7 @@ const Anchors = (() => {
           if (bel.isConnected) _renderMarkers(bel, ta);
         }, SCROLL_RENDER_DEBOUNCE_MS);
       }
-    }, true);
+    }, { capture: true, passive: true });
     document.addEventListener('focusin', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
