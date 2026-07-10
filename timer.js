@@ -23,6 +23,7 @@ const SquareTimer = (() => {
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
   const WARM_START_SEC = 55;
+  const MIN_VISIBLE_PROGRESS = 0.003;
 
   let _initialized = false;
   let btn, arcSvg, arcTail, arcHeadSeg, arcHeadDot, valueEl, inputEl;
@@ -213,7 +214,7 @@ const SquareTimer = (() => {
      ════════════════════════════════════════════════════════════════ */
 
   function onPointerDown(e) {
-    if (e.button !== 0 || inputEl.style.display !== 'none') return;
+    if (e.button !== 0 || (inputEl && getComputedStyle(inputEl).display !== 'none')) return;
     btn.setPointerCapture?.(e.pointerId);
     _longPressFired = false;
     _gestureCancelled = false;
@@ -416,6 +417,7 @@ const SquareTimer = (() => {
      ════════════════════════════════════════════════════════════════ */
 
   function startPulse() {
+    if (pulseIntervalId) return;
     pulseStartTime = Date.now();
     btn.classList.add('timer-pulsing');
     valueEl.classList.add('timer-digit-pulse-active');
@@ -453,6 +455,9 @@ const SquareTimer = (() => {
     valueEl.classList.remove('timer-value-dim');
 
     if (_prevMin !== null && minutes !== _prevMin) {
+      // Удаляем предыдущие overlay-элементы
+      valueEl.parentNode.querySelectorAll('.timer-digit-old').forEach(el => el.remove());
+
       // Stacking: старая цифра уезжает вверх с blur, новая въезжает снизу
       const oldEl = document.createElement('div');
       oldEl.className = 'timer-digit-old';
@@ -521,13 +526,8 @@ const SquareTimer = (() => {
     if (_perim == null) _perim = arcTail.getTotalLength();
     const P = _perim;
 
-    if (progress < 0.001) {
-      _hideArc();
-      _applyWarmGlow(progress);
-      return;
-    }
-
-    const headPos = progress * P;
+    const visualProgress = Math.max(progress, MIN_VISIBLE_PROGRESS);
+    const headPos = visualProgress * P;
 
     // Хвост
     arcTail.style.display = '';
@@ -587,6 +587,12 @@ const SquareTimer = (() => {
     valueEl.classList.remove('timer-digit-animate', 'timer-digit-enter', 'timer-value-pulse');
     void valueEl.offsetWidth;
     valueEl.style.display = 'flex'; valueEl.textContent = '0'; valueEl.classList.add('timer-value-dim');
+
+    if (inputEl) {
+      inputEl.style.display = 'none';
+      inputEl.value = '';
+      inputEl.onblur = inputEl.onkeydown = inputEl.onclick = inputEl.onmousedown = null;
+    }
 
     arcSvg.style.display = 'none'; arcSvg.style.opacity = '';
     _hideArc();
