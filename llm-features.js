@@ -244,7 +244,10 @@ window.LLMFeatures = (() => {
       });
       if (isSummary && String(result ?? '').trim()) MiniChat.appendChunk(result);
       MiniChat.finalizeLastMessage(result);
-      if (String(result ?? '').trim()) window.PromptLoom?.record?.(result, 'llm', { via: 'preview-feature', featureKey });
+      if (String(result ?? '').trim()) {
+        MiniChat.pushToHistory('assistant', result);
+        window.PromptLoom?.record?.(result, 'llm', { via: 'preview-feature', featureKey });
+      }
       window.Intelligence?.track?.('llm.action.success', {
         featureKey,
         outputChars: String(result ?? '').length
@@ -827,7 +830,10 @@ window.LLMFeatures = (() => {
           featureTag: 'rephrase',
         });
         MiniChat.finalizeLastMessage(result);
-        if (String(result ?? '').trim()) window.PromptLoom?.record?.(result, 'llm', { via: 'rephrase' });
+        if (String(result ?? '').trim()) {
+          MiniChat.pushToHistory('assistant', result);
+          window.PromptLoom?.record?.(result, 'llm', { via: 'rephrase' });
+        }
       } catch (e) {
         if (e.name !== 'AbortError') {
           MiniChat.addSystemMessage('Ошибка: ' + e.message);
@@ -863,7 +869,10 @@ window.LLMFeatures = (() => {
           featureTag: 'expand',
         });
         MiniChat.finalizeLastMessage(result);
-        if (String(result ?? '').trim()) window.PromptLoom?.record?.(result, 'llm', { via: 'expand' });
+        if (String(result ?? '').trim()) {
+          MiniChat.pushToHistory('assistant', result);
+          window.PromptLoom?.record?.(result, 'llm', { via: 'expand' });
+        }
       } catch (e) {
         if (e.name !== 'AbortError') {
           MiniChat.addSystemMessage('Ошибка: ' + e.message);
@@ -2066,6 +2075,7 @@ window.LLMFeatures = (() => {
           MiniChat.addSystemMessage('✂️ Сжато skeletonizer\'ом');
           MiniChat.appendChunk(skel);
           MiniChat.finalizeLastMessage(skel);
+          MiniChat.pushToHistory('assistant', skel);
           MiniChat.addSystemMessage(`Было ~${toksBefore} → стало ~${toksAfter} токенов (−${pct}%)`);
           window.Intelligence?.track?.('llm.action.success', {
             featureKey: 'compress',
