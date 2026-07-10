@@ -21,7 +21,6 @@ const SquareTimer = (() => {
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
   const WARM_START_SEC = 55;
-  const TAIL_CATCHUP_SECS = 5;
   const HEAD_PULSE_DURATION = 400;
 
   let _initialized = false;
@@ -442,16 +441,9 @@ const SquareTimer = (() => {
 
     const headPos = progress * P;
 
-    // Самопожирающий хвост: tail плавно догоняет head за 5 сек
-    const prevTail = parseFloat(arcTail.style.strokeDasharray) || 0;
-    const catchup = (TAIL_CATCHUP_SECS > 0) ? (P / TAIL_CATCHUP_SECS / 60) : Infinity; // px per frame at 60fps
-    let tailLen = prevTail + catchup;
-    if (tailLen > headPos) tailLen = headPos;
-    if (tailLen < headPos * 0.15) tailLen = headPos * 0.15; // минимум 15% от head
-
-    // Хвост
+    // Хвост (равномерная длина = headPos)
     arcTail.style.display = '';
-    arcTail.style.strokeDasharray  = tailLen.toFixed(1) + ' ' + P;
+    arcTail.style.strokeDasharray  = headPos + ' ' + P;
     arcTail.style.strokeDashoffset = '0';
 
     // Головной сегмент
