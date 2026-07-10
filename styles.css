@@ -209,56 +209,34 @@ body {
   display: none !important;
 }
 
-/* ── Цифра: неоновый 3D-glow ── */
+/* ── Цифра: металлический градиент + deep shadow ── */
 #btn-timer .timer-value {
   position: absolute; inset: 0;
   font-size: 16px; font-weight: 900;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   font-family: inherit;
-  color: #a8d8ff; pointer-events: none;
+  background: linear-gradient(180deg, #a8d0ff 0%, #4f8ef7 40%, #2a5cb8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  pointer-events: none;
   display: flex; align-items: center; justify-content: center;
-  text-shadow:
-    0 0 4px  rgba(120, 184, 255, 0.9),
-    0 0 12px rgba(79, 142, 247, 0.55),
-    0 0 28px rgba(79, 142, 247, 0.25),
-    0 2px 0  #2a5cb8,
-    0 4px 0  #1d4a8f,
-    0 6px 0  #15396b,
-    0 8px 14px rgba(0, 0, 0, 0.45);
-  transition: text-shadow 0.3s ease;
-}
-
-/* Active — усиление glow */
-#btn-timer.timer-active .timer-value {
-  text-shadow:
-    0 0 6px  rgba(120, 184, 255, 1),
-    0 0 18px rgba(79, 142, 247, 0.7),
-    0 0 36px rgba(79, 142, 247, 0.35),
-    0 2px 0  #2a5cb8,
-    0 4px 0  #1d4a8f,
-    0 6px 0  #15396b,
-    0 8px 14px rgba(0, 0, 0, 0.45);
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,0.6))
+          drop-shadow(0 1px 0 rgba(255,255,255,0.15));
 }
 
 /* Dim-состояние (idle) */
 #btn-timer .timer-value-dim {
-  color: #5a7a9a;
-  text-shadow:
-    0 0 3px rgba(79, 142, 247, 0.15),
-    0 2px 0 #1a2f4a,
-    0 4px 0 #142438,
-    0 6px 10px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, #7a9ab8 0%, #4a6a8a 40%, #2a4a6a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4));
 }
 
 /* ── Тень цифры при пульсе ── */
 #btn-timer.timer-pulsing .timer-value {
-  text-shadow:
-    0 0 8px rgba(239, 68, 68, 0.4),
-    0 2px 0 #2a5cb8,
-    0 4px 0 #1d4a8f,
-    0 6px 0 #15396b,
-    0 8px 14px rgba(0, 0, 0, 0.45);
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))
+          drop-shadow(0 3px 4px rgba(0,0,0,0.6));
 }
 
 /* ── Stacking: old exits ── */
