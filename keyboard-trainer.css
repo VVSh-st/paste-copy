@@ -5,7 +5,7 @@
   bottom: 24px;
   left: 24px;
   z-index: 9200;
-  background: rgba(30, 32, 40, 0.85);
+  background: rgba(30, 32, 40, var(--kb-bg-alpha, 0.85));
   border: 1px solid var(--border2, rgba(255,255,255,0.12));
   border-radius: var(--radius-lg, 12px);
   box-shadow: var(--shadow-lg, 0 4px 24px rgba(0,0,0,0.5));
@@ -82,7 +82,7 @@
   min-width: 0;
   height: 0;
   padding-bottom: 75%;
-  font-size: clamp(9px, 1.8vw, 15px);
+  font-size: var(--kb-font-size, 13px);
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: var(--text1, #e0e0e0);
   background: rgba(255,255,255,0.04);
@@ -95,8 +95,8 @@
 }
 
 .kb-key.kb-home {
-  border-color: rgba(180, 40, 40, 0.6);
-  border-width: 2px;
+  border-color: rgba(180, 40, 40, var(--kb-home-border-alpha, 0.6));
+  border-width: var(--kb-home-border-width, 2px);
 }
 
 .kb-key.kb-home.kb-home-highlight {
@@ -104,7 +104,7 @@
 }
 
 .kb-key.kb-flash {
-  background: rgba(100, 160, 255, 0.35) !important;
+  background: rgba(100, 160, 255, var(--kb-flash-alpha, 0.35)) !important;
   border-color: rgba(100, 160, 255, 0.6) !important;
 }
 

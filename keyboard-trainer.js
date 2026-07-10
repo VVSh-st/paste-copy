@@ -81,6 +81,11 @@ const KeyboardTrainer = (() => {
   let _opacity = 0.85;
   let _autoHideDelay = 1500;
   let _keyEls = {};
+  let _fontScale = 1;
+  let _homeBorderAlpha = 0.6;
+  let _homeBorderWidth = 2;
+  let _flashAlpha = 0.35;
+  let _resizeObserver = null;
 
   // Long press
   let _longPressTimer = null;
@@ -109,7 +114,11 @@ const KeyboardTrainer = (() => {
         showHomeRow: _showHomeRow,
         opacity: _opacity,
         autoHideDelay: _autoHideDelay,
-        layout: _currentLayout
+        layout: _currentLayout,
+        fontScale: _fontScale,
+        homeBorderAlpha: _homeBorderAlpha,
+        homeBorderWidth: _homeBorderWidth,
+        flashAlpha: _flashAlpha
       }));
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
@@ -124,6 +133,10 @@ const KeyboardTrainer = (() => {
       _opacity = typeof s.opacity === 'number' ? s.opacity : 0.85;
       _autoHideDelay = typeof s.autoHideDelay === 'number' ? s.autoHideDelay : 1500;
       _currentLayout = s.layout === 'en' ? 'en' : 'ru';
+      _fontScale = typeof s.fontScale === 'number' ? s.fontScale : 1;
+      _homeBorderAlpha = typeof s.homeBorderAlpha === 'number' ? s.homeBorderAlpha : 0.6;
+      _homeBorderWidth = typeof s.homeBorderWidth === 'number' ? s.homeBorderWidth : 2;
+      _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
 
@@ -183,11 +196,12 @@ const KeyboardTrainer = (() => {
       '</div>'
     ].join('\n');
 
-    _panel.style.opacity = _opacity;
     document.body.appendChild(_panel);
 
     _renderKeys();
     _initDragResize();
+    _applyVisualSettings();
+    _setupResizeObserver();
 
     return _panel;
   }
@@ -242,6 +256,32 @@ const KeyboardTrainer = (() => {
     });
   }
 
+  function _applyVisualSettings() {
+    if (!_panel) return;
+    _panel.style.setProperty('--kb-bg-alpha', _opacity);
+    _panel.style.setProperty('--kb-home-border-alpha', _homeBorderAlpha);
+    _panel.style.setProperty('--kb-home-border-width', _homeBorderWidth + 'px');
+    _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
+    _updateFontSize();
+  }
+
+  function _updateFontSize() {
+    if (!_panel) return;
+    var key = _panel.querySelector('.kb-key');
+    var keyWidth = key ? key.offsetWidth : 40;
+    var size = Math.round(keyWidth * 0.4 * _fontScale);
+    _panel.style.setProperty('--kb-font-size', Math.max(9, size) + 'px');
+  }
+
+  function _setupResizeObserver() {
+    if (_resizeObserver) return;
+    if (typeof ResizeObserver === 'undefined') return;
+    _resizeObserver = new ResizeObserver(function() {
+      _updateFontSize();
+    });
+    _resizeObserver.observe(_panel);
+  }
+
   // Flash on keydown
   function _flashKey(code) {
     var el = _keyEls[code];
@@ -256,7 +296,6 @@ const KeyboardTrainer = (() => {
     _panel.style.display = 'flex';
     _panel.classList.add('kb-active');
     _panel.classList.remove('kb-background');
-    _panel.style.opacity = _opacity;
     _isForeground = true;
     _scheduleAutoHide();
   }
@@ -411,9 +450,24 @@ const KeyboardTrainer = (() => {
       '  </label>',
       '</div>',
       '<div class="kb-settings-row">',
-      '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d\u043e\u0441\u0442\u044c</label>',
+      '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d\u043e\u0441\u0442\u044c \u0444\u043e\u043d\u0430</label>',
       '  <input type="range" id="kb-set-opacity" min="10" max="100" value="' + Math.round(_opacity * 100) + '">',
       '  <span id="kb-set-opacity-val">' + Math.round(_opacity * 100) + '%</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>\u0420\u0430\u0437\u043c\u0435\u0440 \u0431\u0443\u043a\u0432</label>',
+      '  <input type="range" id="kb-set-fontscale" min="50" max="200" value="' + Math.round(_fontScale * 100) + '">',
+      '  <span id="kb-set-fontscale-val">' + Math.round(_fontScale * 100) + '%</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>\u0420\u0430\u043c\u043a\u0430 \u0434\u043e\u043c.\u0440\u044f\u0434\u0430</label>',
+      '  <input type="range" id="kb-set-homeborder" min="0" max="100" value="' + Math.round(_homeBorderAlpha * 100) + '">',
+      '  <span id="kb-set-homeborder-val">' + Math.round(_homeBorderAlpha * 100) + '%</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>\u0412\u0441\u043f\u044b\u0448\u043a\u0430 \u043a\u043b\u0430\u0432\u0438\u0448\u0438</label>',
+      '  <input type="range" id="kb-set-flash" min="10" max="100" value="' + Math.round(_flashAlpha * 100) + '">',
+      '  <span id="kb-set-flash-val">' + Math.round(_flashAlpha * 100) + '%</span>',
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>\u0420\u0430\u0441\u043a\u043b\u0430\u0434\u043a\u0430</label>',
@@ -451,7 +505,34 @@ const KeyboardTrainer = (() => {
     opSlider.addEventListener('input', function(e) {
       _opacity = parseInt(e.target.value) / 100;
       opVal.textContent = e.target.value + '%';
-      if (_panel) _panel.style.opacity = _opacity;
+      _applyVisualSettings();
+      _save();
+    });
+
+    var fontSlider = _settingsPopup.querySelector('#kb-set-fontscale');
+    var fontVal = _settingsPopup.querySelector('#kb-set-fontscale-val');
+    fontSlider.addEventListener('input', function(e) {
+      _fontScale = parseInt(e.target.value) / 100;
+      fontVal.textContent = e.target.value + '%';
+      _applyVisualSettings();
+      _save();
+    });
+
+    var hbSlider = _settingsPopup.querySelector('#kb-set-homeborder');
+    var hbVal = _settingsPopup.querySelector('#kb-set-homeborder-val');
+    hbSlider.addEventListener('input', function(e) {
+      _homeBorderAlpha = parseInt(e.target.value) / 100;
+      hbVal.textContent = e.target.value + '%';
+      _applyVisualSettings();
+      _save();
+    });
+
+    var flashSlider = _settingsPopup.querySelector('#kb-set-flash');
+    var flashVal = _settingsPopup.querySelector('#kb-set-flash-val');
+    flashSlider.addEventListener('input', function(e) {
+      _flashAlpha = parseInt(e.target.value) / 100;
+      flashVal.textContent = e.target.value + '%';
+      _applyVisualSettings();
       _save();
     });
 
