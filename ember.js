@@ -166,6 +166,7 @@ const Ember = (() => {
   let testLabel = null;
   let allowTestMode = false;
   let testModeTimer = null;
+  let nextTestStepTimer = null;
   let allowTestModeTimer = null;
 
   // пасхалка
@@ -1967,7 +1968,7 @@ const Ember = (() => {
 
   function showTooltip() {
     if (!root) return;
-    hideTooltip(true);
+    clearDeferred(tooltipHideTimer);
     const h = Math.floor(hoursWithoutActivity());
     const rem = remainingSegments();
     const cold = rem <= 0 || intensity <= 0.03;
@@ -2846,7 +2847,9 @@ const Ember = (() => {
     segmentEffects = [];
     if (testLabel) { testLabel.remove(); testLabel = null; }
     clearDeferred(testModeTimer);
+    clearDeferred(nextTestStepTimer);
     testModeTimer = null;
+    nextTestStepTimer = null;
   }
 
   function setAllowTestMode(value = true, ttlMs = 60000) {
@@ -2956,7 +2959,7 @@ const Ember = (() => {
       for (let i = 0; i < 6; i++) defer(() => spawnCrumb(), i * 200);
     }
 
-    defer(runNextTest, 3300);
+    nextTestStepTimer = defer(runNextTest, 3300);
   }
 
   // ---------- основной кадр ----------
@@ -3056,6 +3059,17 @@ const Ember = (() => {
       sampleCaretPosition(now);
     }
 
+    applySegments();
+    const curRem = remainingSegments();
+    if (curRem <= 2 && curRem < lastWarnRemaining && curRem > 0) {
+      heatBoost = Math.max(heatBoost, 0.5);
+      if (!reduceMotion) {
+        for (let i = 0; i < 6; i++) defer(spawnSpark, i * 50);
+        ringImpulse = rand(4, 7) * (Math.random() < 0.5 ? 1 : -1);
+      }
+    }
+    lastWarnRemaining = curRem;
+
     if (reduceMotion) {
       heat = clamp(intensity + heatBoost * 0.15, 0, 1);
       const ashRaw = clamp(1 - intensity, 0, 1);
@@ -3076,7 +3090,6 @@ const Ember = (() => {
       setVar(root, '--rotation', '0deg');
       setVar(root, '--shadowScale', '1');
       setVar(root, '--shadowAlpha', '0.45');
-      applySegments();
       return;
     }
 
@@ -3131,15 +3144,6 @@ const Ember = (() => {
       updateCrackLayers(now, crackGlow);
       setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
 
-    applySegments();
-
-    const curRem = remainingSegments();
-    if (curRem <= 2 && curRem < lastWarnRemaining && curRem > 0) {
-      heatBoost = Math.max(heatBoost, 0.5);
-      for (let i = 0; i < 6; i++) defer(spawnSpark, i * 50);
-      ringImpulse = rand(4, 7) * (Math.random() < 0.5 ? 1 : -1);
-    }
-    lastWarnRemaining = curRem;
       advanceSegEffects(dt);
       applySegEffects();
       updateParticles(now, dt);
@@ -3853,7 +3857,9 @@ const Ember = (() => {
     allowTestMode = false;
     testMode = false;
     clearDeferred(testModeTimer);
+    clearDeferred(nextTestStepTimer);
     testModeTimer = null;
+    nextTestStepTimer = null;
     onClickCallback = null;
     if (styleCache) styleCache.clear();
 
