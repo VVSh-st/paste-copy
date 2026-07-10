@@ -496,6 +496,11 @@ const Ember = (() => {
     if (currentTabId) saveState();
     currentTabId = newTabId;
     state = loadState(currentTabId);
+    if (!state.lastInitTime) {
+      state.lastInitTime = Date.now();
+      state.updatedAt = state.lastInitTime;
+      saveState();
+    }
     setupBroadcast();
     spawnStart = performance.now();
     prevRemaining = remainingSegments();
@@ -3584,7 +3589,7 @@ const Ember = (() => {
     if (listenersBound || !root) return;
     handlers.mouseenter = () => { hover = true; syncAccessibleLabel(true); };
     handlers.mouseleave = () => { hover = false; hideTooltip(); };
-    handlers.rootFocus = () => { hover = true; syncAccessibleLabel(true); };
+    handlers.rootFocus = () => { hover = true; syncAccessibleLabel(true); showTooltip(); };
     handlers.rootBlur = () => { hover = false; hideTooltip(); };
     handlers.contextmenu = (e) => {
       if (!allowTestMode) return;
