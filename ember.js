@@ -1648,6 +1648,9 @@ const Ember = (() => {
     defer(() => {
       styleCache.delete(el);
       el.style.display = 'none';
+      el.style.left = '';
+      el.style.top = '';
+      el.style.animation = '';
       freeGlowEls.push(el);
     }, 250);
   }
@@ -1969,6 +1972,8 @@ const Ember = (() => {
   function showTooltip() {
     if (!root) return;
     clearDeferred(tooltipHideTimer);
+    clearDeferred(tooltipRemoveTimer);
+    tooltipRemoveTimer = null;
     const h = Math.floor(hoursWithoutActivity());
     const rem = remainingSegments();
     const cold = rem <= 0 || intensity <= 0.03;
@@ -3090,6 +3095,10 @@ const Ember = (() => {
       setVar(root, '--rotation', '0deg');
       setVar(root, '--shadowScale', '1');
       setVar(root, '--shadowAlpha', '0.45');
+      if (!nextAriaUpdate || performance.now() > nextAriaUpdate) {
+        syncAccessibleLabel();
+        nextAriaUpdate = performance.now() + 60000;
+      }
       return;
     }
 
@@ -3595,7 +3604,7 @@ const Ember = (() => {
         particles = [];
         activeSparks = 0;
         segmentEffects = [];
-        if (tooltipEl) { tooltipEl.style.opacity = '0'; defer(() => tooltipEl?.remove(), 300); }
+        hideTooltip();
       }
       const label = reduceMotion ? 'Economy ON ⚡' : 'Economy OFF 🔥';
       if (!root) return;
