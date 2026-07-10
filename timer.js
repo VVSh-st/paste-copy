@@ -35,39 +35,6 @@ const SquareTimer = (() => {
   let _prevMinutes = null;
   let _prevSecondsInMinute = null;
 
-  function _injectStyles() {
-    if (document.getElementById('square-timer-injected')) return;
-    const s = document.createElement('style');
-    s.id = 'square-timer-injected';
-    s.textContent = `
-      #btn-timer {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        outline: none !important;
-      }
-      #btn-timer .timer-arc {
-        position: absolute; inset: 0; width: 100%; height: 100%;
-        pointer-events: none; overflow: visible;
-      }
-      #btn-timer .timer-arc-rect {
-        transition: stroke-dashoffset 0.9s linear;
-      }
-      #btn-timer.timer-flash {
-        animation: sqTimerFlash 1.5s ease;
-      }
-      @keyframes sqTimerFlash {
-        0%   { filter: none; }
-        12%  { filter: brightness(1.6) drop-shadow(0 0 20px var(--accent)); }
-        28%  { filter: brightness(1.1) drop-shadow(0 0 8px var(--accent)); }
-        42%  { filter: brightness(1.5) drop-shadow(0 0 18px var(--accent)); }
-        58%  { filter: brightness(1.05) drop-shadow(0 0 6px var(--accent)); }
-        100% { filter: none; }
-      }
-    `;
-    document.head.appendChild(s);
-  }
-
   function _flashEffect() {
     btn.classList.remove('timer-flash');
     void btn.offsetWidth;
@@ -78,8 +45,6 @@ const SquareTimer = (() => {
   function init() {
     if (_initialized) return;
     _initialized = true;
-
-    _injectStyles();
 
     btn = document.getElementById('btn-timer');
     if (!btn) return;
@@ -383,11 +348,7 @@ const SquareTimer = (() => {
       Ember.notifyEdit();
     }
 
-    if (mode === 'up') {
-      startPulse();
-    } else {
-      setTimeout(() => resetToIdle(), 1500);
-    }
+    startPulse();
   }
 
   // ── Pulse (пульсация после достижения лимита) ─────────────────────────
@@ -400,8 +361,12 @@ const SquareTimer = (() => {
       const elapsed = Date.now() - pulseStartTime;
       if (elapsed >= PULSE_MAX_DURATION) {
         stopPulse();
-        _playCompletionSound();
-        _startAutoCountdown();
+        if (mode === 'up') {
+          _playCompletionSound();
+          _startAutoCountdown();
+        } else {
+          resetToIdle();
+        }
       }
     }, 1000);
   }
@@ -475,7 +440,7 @@ const SquareTimer = (() => {
     const totalLength = _cachedPerimeter;
 
     arcRect.style.strokeDasharray = totalLength + ' ' + totalLength;
-    arcRect.style.strokeDashoffset = totalLength * (1 - progress);
+    arcRect.style.strokeDashoffset = totalLength * progress;
 
     if (direction === 'ccw') {
       arcSvg.style.transform = 'scaleX(-1)';
