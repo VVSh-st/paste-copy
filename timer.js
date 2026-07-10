@@ -44,6 +44,7 @@ const SquareTimer = (() => {
   let _pathCCW = null;
   let _perim = null;
   let _radius = null;
+  let _resizeObserver = null;
 
   // Particles
   let _particlePool = [];
@@ -205,7 +206,8 @@ const SquareTimer = (() => {
     valueEl     = btn.querySelector('.timer-value');
     inputEl     = btn.querySelector('.timer-input');
 
-    new ResizeObserver(_invalidateCaches).observe(btn);
+    _resizeObserver = new ResizeObserver(_invalidateCaches);
+    _resizeObserver.observe(btn);
 
     btn.addEventListener('pointerdown',   onPointerDown);
     btn.addEventListener('pointerup',     onPointerUp);
@@ -225,6 +227,8 @@ const SquareTimer = (() => {
     _pointerDownPos = null; _prevMin = null;
     _longPressFired = false;
     _initialized = false;
+    _resizeObserver?.disconnect();
+    _resizeObserver = null;
     if (btn) {
       btn.removeEventListener('pointerdown',   onPointerDown);
       btn.removeEventListener('pointerup',     onPointerUp);
