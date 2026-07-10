@@ -21,11 +21,13 @@
 .kb-trainer-panel.kb-active {
   opacity: 1;
   pointer-events: auto;
+  z-index: 9200;
 }
 
 .kb-trainer-panel.kb-background {
   opacity: 0.15;
   pointer-events: none;
+  z-index: 1;
 }
 
 /* ── Title bar (drag handle) ──────────────────────────────────────── */
