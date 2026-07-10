@@ -337,11 +337,12 @@ body {
 .timer-particle {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(120,184,255,0.9) 0%, rgba(79,142,247,0) 70%);
+  background: radial-gradient(circle, rgba(120,184,255,1) 0%, rgba(79,142,247,0.6) 50%, rgba(79,142,247,0) 100%);
   pointer-events: none;
   z-index: 5;
   display: none;
   will-change: transform, opacity;
+  filter: drop-shadow(0 0 3px rgba(120,184,255,0.8));
 }
 
 /* ── Flash ── */

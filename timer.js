@@ -131,13 +131,13 @@ const SquareTimer = (() => {
     const dist  = 8 + Math.random() * 14;
     const dx = Math.cos(angle) * dist;
     const dy = Math.sin(angle) * dist;
-    const size = 2 + Math.random() * 3;
+    const size = 3 + Math.random() * 4;
     const dur = 400 + Math.random() * 300;
 
     el.style.left = x + 'px';
     el.style.top  = y + 'px';
     el.style.width = el.style.height = size + 'px';
-    el.style.opacity = '0.7';
+    el.style.opacity = '0.9';
     el.style.transition = `all ${dur}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
     el.style.display = '';
 
@@ -251,10 +251,17 @@ const SquareTimer = (() => {
 
   function _onVisibilityChange() {
     _isBackground = document.hidden;
-    if (_isBackground && mode) {
-      arcTail.style.maskImage = '';
-      arcHeadSeg.style.filter = '';
-      arcHeadDot.style.filter = '';
+
+    if (_isBackground) {
+      stopTick();
+      if (arcTail) arcTail.style.maskImage = '';
+      if (arcHeadSeg) arcHeadSeg.style.filter = '';
+      if (arcHeadDot) arcHeadDot.style.filter = '';
+      return;
+    }
+
+    if (mode !== null && !pulseIntervalId) {
+      startTick();
     }
   }
 
@@ -433,12 +440,17 @@ const SquareTimer = (() => {
 
     if (mode === 'up') {
       const min = Math.floor(elapsed / 60);
-      if (min >= 99) { onLimitReached(); return; }
+      if (min >= 99) {
+        _updateDisplay(99, 1, 'cw');
+        onLimitReached();
+        return;
+      }
       _updateDisplay(min, (elapsed % 60) / 60, 'cw');
     } else {
       const rem = targetMinutes * 60 - Math.floor(elapsed);
       if (rem <= 0) { onLimitReached(); return; }
-      _updateDisplay(Math.ceil(rem / 60), (elapsed % 60) / 60, 'ccw');
+      const display = rem < 60 ? rem : Math.ceil(rem / 60);
+      _updateDisplay(display, (elapsed % 60) / 60, 'ccw');
     }
     rafId = requestAnimationFrame(_tickRAF);
   }
