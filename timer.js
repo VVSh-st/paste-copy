@@ -57,6 +57,9 @@ const SquareTimer = (() => {
   // Pointerleave reference
   let _onPointerLeave = null;
 
+  // Gesture cancel flag
+  let _gestureCancelled = false;
+
   /* ════════════════════════════════════════════════════════════════
      ПЕРИМЕТР: путь с дугами в углах (повторяет border-radius)
      ════════════════════════════════════════════════════════════════ */
@@ -261,7 +264,9 @@ const SquareTimer = (() => {
 
   function onPointerDown(e) {
     if (e.button !== 0 || inputEl.style.display !== 'none') return;
+    btn.setPointerCapture?.(e.pointerId);
     _longPressFired = false;
+    _gestureCancelled = false;
     _pointerDownPos = { x: e.clientX, y: e.clientY };
 
     btn.classList.add('timer-pressed');
@@ -278,8 +283,12 @@ const SquareTimer = (() => {
     if (e.button !== 0) return;
     clearLongPress();
     btn.classList.remove('timer-pressed', 'timer-long-pressed');
+    if (btn.hasPointerCapture?.(e.pointerId)) {
+      btn.releasePointerCapture(e.pointerId);
+    }
     if (_pointerDownPos === null) return;
     _pointerDownPos = null;
+    if (_gestureCancelled) { _gestureCancelled = false; return; }
     if (pulseIntervalId) { resetToIdle(); return; }
     if (_longPressFired) { _longPressFired = false; return; }
     if (mode === null) startCountUp();
@@ -289,7 +298,11 @@ const SquareTimer = (() => {
     if (!_pointerDownPos || _longPressFired) return;
     const dx = e.clientX - _pointerDownPos.x;
     const dy = e.clientY - _pointerDownPos.y;
-    if (Math.hypot(dx, dy) > MOVE_THRESHOLD) clearLongPress();
+    if (Math.hypot(dx, dy) > MOVE_THRESHOLD) {
+      _gestureCancelled = true;
+      clearLongPress();
+      btn.classList.remove('timer-pressed');
+    }
   }
 
   function onPointerCancel() {
