@@ -367,7 +367,7 @@ if (b.type === 'snippets') b.items?.forEach(i    => { total += (i.value  || '').
 if (b.type === 'commands') b.items?.forEach(i    => { total += (i.value  || '').length; });
 }),
 );
-state.globalSnippets?.forEach?.(i => { total += (i.value || '').length; });
+state.layout?.globalSnippets?.items?.forEach?.(i => { total += (i.value || '').length; });
 return total;
 }
 function getStats() {

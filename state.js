@@ -852,7 +852,7 @@ const State = (() => {
       date: Date.now(),
       data,
     });
-    if (t.namedSnapshots.length > 30) t.namedSnapshots.pop();
+    if (t.namedSnapshots.length > 10) t.namedSnapshots.pop();
     emit();
   }
 
@@ -984,7 +984,7 @@ const State = (() => {
                 date: Number.isFinite(Number(s.date)) ? Number(s.date) : Date.now(),
                 data: s.data,
               }))
-              .slice(0, 30)
+              .slice(0, 10)
           : [],
         // [FIX] Нормализуем anchors — фильтруем невалидные элементы
         anchors:        Array.isArray(t.anchors)
@@ -1073,7 +1073,7 @@ const State = (() => {
         name:           t.name,
         separator:      t.separator,
         blocks:         t.blocks,
-        namedSnapshots: t.namedSnapshots || [],
+        namedSnapshots: (t.namedSnapshots || []).slice(0, 10),
         anchors:        t.anchors || [],
       })),
       activeTabId,
@@ -1085,7 +1085,6 @@ const State = (() => {
           items: serializedGlobalSnippets,
         },
       },
-      globalSnippets: serializedGlobalSnippets,
     };
     // TextExpander integration — include in Gist payload
     if (typeof TextExpander !== 'undefined') {
