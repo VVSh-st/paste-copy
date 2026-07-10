@@ -51,6 +51,7 @@ const SquareTimer = (() => {
 
   // Corner glow
   let _cornerGlowActive = false;
+  let _firedCorners = new Set();
 
   /* ════════════════════════════════════════════════════════════════
      ПЕРИМЕТР: путь с дугами в углах (повторяет border-radius)
@@ -162,7 +163,10 @@ const SquareTimer = (() => {
     const threshold = P * 0.008;
 
     for (const c of corners) {
+      const key = c.toString();
+      if (_firedCorners.has(key)) continue;
       if (Math.abs(headPos - c * P) < threshold) {
+        _firedCorners.add(key);
         _cornerGlowActive = true;
         btn.classList.add('timer-corner-glow');
         setTimeout(() => {
@@ -171,6 +175,11 @@ const SquareTimer = (() => {
         }, 500);
         break;
       }
+    }
+
+    // Сброс при полном обороте (progress перешёл через 0)
+    if (headPos < P * 0.02) {
+      _firedCorners.clear();
     }
   }
 
