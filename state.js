@@ -259,7 +259,7 @@ const State = (() => {
       block.activeSubtab = 0;
       block.subtabs      = Array.from({ length: SUBTABS_COUNT }, (_, i) => ({ label: String(i + 1), value: '' }));
       block.placeholder  = placeholder || '';
-      block.fontSize     = 12;
+      block.fontSize     = 13.5;
       block.height       = null;
     } else if (type === 'snippets') {
       block.items      = defaultSnippets();

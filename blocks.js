@@ -1619,7 +1619,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.spellcheck  = b.spellcheck !== false; // browser spellcheck, default ON (toggle via footer button)
     ta.value       = b.subtabs[b.activeSubtab].value || '';
     ta.placeholder = b.placeholder || 'Введите текст...';
-    ta.style.fontSize = (b.fontSize || 12) + 'px';
+    ta.style.fontSize = (b.fontSize || 13.5) + 'px';
     ta.rows = 5;
     if (b.height) ta.style.height = b.height + 'px';
 
@@ -1820,7 +1820,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!enabled) return;
 
       const cs = getComputedStyle(ta);
-      const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 12) * 1.65;
+      const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 13.5) * 1.65;
       const mirror = getLineMirror(cs);
       mirror.textContent = '';
 
@@ -2118,15 +2118,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const fDecBtn = mkBtn('font-ctrl-btn', 'A−', 'Уменьшить шрифт');
     fDecBtn.onclick = e => {
       e.stopPropagation();
-      State.updateLive(() => { b.fontSize = Math.max(8, Math.round(((b.fontSize || 12) - 0.5) * 2) / 2); });
-      ta.style.fontSize = (b.fontSize || 12) + 'px';
+      State.updateLive(() => { b.fontSize = Math.max(8, Math.round(((b.fontSize || 13.5) - 0.5) * 2) / 2); });
+      ta.style.fontSize = (b.fontSize || 13.5) + 'px';
     };
 
     const fIncBtn = mkBtn('font-ctrl-btn', 'A+', 'Увеличить шрифт');
     fIncBtn.onclick = e => {
       e.stopPropagation();
-      State.updateLive(() => { b.fontSize = Math.min(24, Math.round(((b.fontSize || 12) + 0.5) * 2) / 2); });
-      ta.style.fontSize = (b.fontSize || 12) + 'px';
+      State.updateLive(() => { b.fontSize = Math.min(24, Math.round(((b.fontSize || 13.5) + 0.5) * 2) / 2); });
+      ta.style.fontSize = (b.fontSize || 13.5) + 'px';
     };
 
     const pasteCursorBtn = mkBtn('font-ctrl-btn paste-cursor-btn', '', '');
