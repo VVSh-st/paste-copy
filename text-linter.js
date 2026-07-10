@@ -113,8 +113,8 @@ window.TextLinter = (() => {
       { key: 'trimLines', label: 'Обрезать края строк' },
       { key: 'collapseSpaces', label: 'Схлопывать лишние пробелы' },
       { key: 'punctuationSpacing', label: 'Пробелы у знаков препинания' },
-      { key: 'normalizeNbsp', label: 'Неразрывные пробелы после коротких предлогов', risky: true },
-      { key: 'removeInvisibleChars', label: 'Удалить невидимые символы (zero-width)', hint: 'Нулевые пробелы, символы соединения слов и другие невидимые Unicode-артефакты AI-текста' },
+      { key: 'normalizeNbsp', label: 'Неразрывные пробелы после коротких предлогов', risky: true, hint: 'Включает также односложные союзы (и, а, в, к…)' },
+      { key: 'removeInvisibleChars', label: 'Удалить невидимые символы (zero-width)', hint: 'Нулевые пробелы, символы соединения слов, soft hyphen (\\u00AD) и другие невидимые Unicode-артефакты AI-текста' },
       { key: 'normalizeDashes', label: 'Нормализовать тире (—, – → -)', risky: true, hint: 'Длинное и короткое тире заменяются дефисом' },
       { key: 'normalizeQuotes', label: 'Нормализовать кавычки («умные» → прямые)', risky: true, hint: '" " \' \' → " \' — ломает типографику, но безопасно для кода/JSON' },
       { key: 'normalizeEllipsis', label: 'Нормализовать многоточие (... → …)', hint: 'Три точки заменяются символом многоточия' },
@@ -166,6 +166,7 @@ window.TextLinter = (() => {
     return before === after ? 0 : Math.max(1, Math.abs(String(before ?? '').length - String(after ?? '').length));
   }
 
+  // Supported tokens: $1..$9, $<name>, $&, $`, $' — $0 is NOT supported.
   function expandReplacement(template, args) {
     const replacement = String(template ?? '');
     const hasGroups = args.length > 0 && args[args.length - 1] && typeof args[args.length - 1] === 'object' && !Array.isArray(args[args.length - 1]);
@@ -334,10 +335,7 @@ window.TextLinter = (() => {
     return PLACEHOLDER_RE.test(line.slice(from, to));
   }
 
-  function hasTemplatePlaceholderAtEdge(line) {
-    const source = String(line ?? '');
-    return /^\s*\{\{[^\n]*?\}\}/u.test(source) || /\{\{[^\n]*?\}\}\s*$/u.test(source);
-  }
+
 
   function processLine(rawLine, opts, stats) {
     const raw = String(rawLine ?? '');
@@ -502,17 +500,12 @@ window.TextLinter = (() => {
       const re = new RegExp(rule.re.source, rule.re.flags);
       let match;
       while ((match = re.exec(line))) {
+        if (match[0].length === 0) { re.lastIndex++; continue; }
         const matchIndex = getVisibleMatchStart(line, match);
-        if (overlapsPlaceholder(line, match.index, match[0].length)) {
-          if (match[0].length === 0) re.lastIndex++;
-          continue;
-        }
+        if (overlapsPlaceholder(line, match.index, match[0].length)) continue;
         const maskedSnippet = getHintSnippet(line, matchIndex);
         const snippet = masked.restore(maskedSnippet).replace(/\s+/g, ' ').trim();
-        if (!snippet) {
-          if (match[0].length === 0) re.lastIndex++;
-          continue;
-        }
+        if (!snippet) continue;
         hints.push({
           id: rule.id,
           line: lineIndex + 1,
@@ -532,12 +525,16 @@ window.TextLinter = (() => {
     let text = segment.map(line => processLine(line, opts, stats)).join('\n');
 
     if (opts.collapseBlankLines) {
-      text = text.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, match => {
-        const newlineCount = match.match(/\n/g)?.length || 0;
-        const removed = Math.max(1, newlineCount - 1);
-        inc(stats, 'blanks', removed);
+      let blanksRemoved = 0;
+      text = text.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, () => {
+        blanksRemoved++;
         return '\n';
       });
+      text = text.replace(/\n{3,}/g, () => {
+        blanksRemoved++;
+        return '\n\n';
+      });
+      if (blanksRemoved) inc(stats, 'blanks', blanksRemoved);
     }
 
     if (opts.paragraphBreaks) {
@@ -692,7 +689,7 @@ window.TextLinter = (() => {
 
   function getBlockSelector(blockId) {
     if (typeof blockId !== 'string' || !blockId) return '';
-    const escapedId = window.CSS?.escape ? CSS.escape(blockId) : blockId.replace(/"/g, '\\"');
+    const escapedId = window.CSS?.escape ? CSS.escape(blockId) : blockId.replace(/["\\\]\\)]/g, ch => '\\' + ch);
     return `[data-id="${escapedId}"]`;
   }
 
@@ -783,6 +780,8 @@ window.TextLinter = (() => {
       return `<label class="text-lint-gear-item${cls}"><input type="checkbox" data-lint-key="${item.key}"${chk}><span>${item.label}</span></label>`;
     }).join('');
 
+    // SECURITY: gearItems labels come from static getSettingMeta() — trusted strings.
+    // If dynamic labels are ever added, route them through escapeHtml first.
     panel.innerHTML =
       `<div class="llm-result-toolbar text-lint-result-toolbar">` +
         `<span class="llm-result-stats text-lint-result-stats">${formatStats(result)}${scope.hasSelection ? ' · выделение' : ''}</span>` +
@@ -801,16 +800,22 @@ window.TextLinter = (() => {
     if (ta.parentNode) ta.parentNode.insertBefore(panel, ta.nextSibling);
     else blockEl.appendChild(panel);
 
+    let closeGearFn = null;
+
     panel.querySelector('[data-action="accept"]')?.addEventListener('click', event => {
       const button = event.currentTarget;
       if (button?.disabled) return;
       if (button) button.disabled = true;
+      if (closeGearFn) document.removeEventListener('click', closeGearFn);
       panel.remove();
       applyResult(blockId, ta, scope, result, { removePanels: false });
       try { window.Blocks?.updateGroomBadge?.(blockId); } catch {}
     });
     panel.querySelector('[data-action="copy"]')?.addEventListener('click', () => copyFixedText(result.text));
-    panel.querySelector('[data-action="reject"]')?.addEventListener('click', () => panel.remove());
+    panel.querySelector('[data-action="reject"]')?.addEventListener('click', () => {
+      if (closeGearFn) document.removeEventListener('click', closeGearFn);
+      panel.remove();
+    });
     panel.querySelectorAll('[data-diff-size]').forEach(btn => {
       btn.addEventListener('click', () => {
         const step = btn.dataset.diffSize === 'inc' ? 0.5 : -0.5;
@@ -877,9 +882,11 @@ window.TextLinter = (() => {
           checkboxes.forEach(cb => setSetting(cb.dataset.lintKey, cb.checked));
           openPreview(blockId);
         }
-        document.removeEventListener('click', closeGear);
+        document.removeEventListener('click', closeGearFn);
+        closeGearFn = null;
       }
-      document.addEventListener('click', closeGear);
+      closeGearFn = closeGear;
+      document.addEventListener('click', closeGearFn);
     }
   }
 
@@ -931,9 +938,14 @@ window.TextLinter = (() => {
     panel.style.setProperty('--text-lint-diff-line-height', `${Math.round(next * 1.65 * 100) / 100}px`);
     const valueEl = panel.querySelector('.text-lint-diff-size-value');
     if (valueEl) valueEl.textContent = `${next}px`;
+    // Сохраняем размер напрямую в layout без emit(),
+    // иначе setLayout триггерит re-render блоков и панель удаляется.
     try {
       const lay = window.State?.getLayout?.();
-      if (lay) window.State?.setLayout?.({ llm: { ...(lay.llm ?? {}), diffFontSize: next } });
+      if (lay) {
+        if (!lay.llm) lay.llm = {};
+        lay.llm.diffFontSize = next;
+      }
     } catch {}
   }
 
@@ -976,7 +988,7 @@ window.TextLinter = (() => {
       `<summary>💡 Подсказки без автоправки: ${hints.length}</summary>` +
       `<ul>` +
         hints.slice(0, 8).map(hint =>
-          `<li><a href="#" class="text-lint-hint-link" data-line="${hint.line}">стр. ${hint.line}</a>: ${escapeHtml(hint.text)}${hint.snippet ? ` <code>${escapeHtml(hint.snippet)}</code>` : ''}</li>`
+          `<li><a href="#" class="text-lint-hint-link" data-line="${escapeHtml(String(hint.line))}">стр. ${hint.line}</a>: ${escapeHtml(hint.text)}${hint.snippet ? ` <code>${escapeHtml(hint.snippet)}</code>` : ''}</li>`
         ).join('') +
         (hints.length > 8 ? `<li class="text-lint-hint-muted">…ещё ${hints.length - 8}. Линтер не лезет с запятыми в драку без спроса.</li>` : '') +
       `</ul>` +
@@ -1249,6 +1261,18 @@ window.TextLinter = (() => {
       .text-lint-result-content .diff-classic-token,
       .text-lint-result-content .diff-matrix-token {
         font-size: 1em;
+      }
+      .text-lint-result-content .diff-run-summary {
+        display: inline-block;
+        padding: 0 4px;
+        border-radius: 4px;
+        font-style: italic;
+        opacity: 0.75;
+      }
+      .text-lint-result-content .diff-run-count {
+        margin-inline: 4px;
+        font-size: 0.85em;
+        opacity: 0.65;
       }
       .text-lint-no-changes {
         margin: 8px;
