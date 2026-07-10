@@ -16,6 +16,7 @@ const Ember = (() => {
     smolder: 10, heatRadiance: 11, glowPulse: 12, ashDrift: 13, gust: 14,
   };
   const MAX_EFFECTS = 3;
+  const MAX_SEG_EFFECTS = 2;
 
   let state = null;
   let currentTabId = null;
@@ -100,6 +101,7 @@ const Ember = (() => {
   let freeParticleIndices = [];
   let glowPool = [];
   let freeGlowEls = [];
+  let heatZonePool = [];
   let poolInited = false;
 
   let shimmerActive = false;
@@ -696,19 +698,18 @@ const Ember = (() => {
       zone._life -= dt;
       if (zone._life <= 0) {
         if (isExtraZone) {
-          zone.remove();
+          zone.style.display = 'none';
           styleCache.delete(zone);
+          heatZonePool.push(zone);
           return;
         }
         zone._life = rand(4000, 10000);
         zone._targetHeat = rand(0.4, 1.3);
         zone._targetX = rand(20, 80);
         zone._targetY = rand(20, 80);
-        if (Math.random() < 0.1 && zones.length < 6) {
-          const nz = document.createElement('div');
-          nz.className = 'heat-zone';
-          coreEl.insertBefore(nz, crustEl);
-          zones.push(nz);
+        if (Math.random() < 0.1 && zones.length < 6 && heatZonePool.length > 0) {
+          const nz = heatZonePool.pop();
+          nz.style.display = '';
           nz._life = rand(2000, 5000);
           nz._targetHeat = rand(0.3, 0.9);
           nz._targetX = rand(20, 80);
@@ -716,6 +717,7 @@ const Ember = (() => {
           nz._curHeat = 0.3;
           nz._curX = zone._curX;
           nz._curY = zone._curY;
+          zones.push(nz);
         }
       }
       const lerpSpeed = 0.0015 * dt;
@@ -1210,6 +1212,7 @@ const Ember = (() => {
   }
 
   function tryStartSeg(type, probability, durRangeMs, pickSeg) {
+    if (segmentEffects.length >= MAX_SEG_EFFECTS) return;
     if (segmentEffects.some(e => e.type === type)) return;
     if ((nextSegDue[type] ?? 0) > Date.now()) return;
     if (Math.random() >= probability) { rescheduleSegDue(type); return; }
@@ -1348,6 +1351,13 @@ const Ember = (() => {
       particleLayer.appendChild(el);
       glowPool.push(el);
       freeGlowEls.push(el);
+    }
+    for (let i = 0; i < 3; i++) {
+      const el = document.createElement('div');
+      el.className = 'heat-zone';
+      el.style.display = 'none';
+      coreEl.insertBefore(el, crustEl);
+      heatZonePool.push(el);
     }
     poolInited = true;
   }
@@ -3281,8 +3291,10 @@ const Ember = (() => {
     updateHeatZones(dt);
     if (!reduceMotion) {
       updateHotspots(now, dt);
-      updateWind(now, dt);
-      updateAttention(now, dt);
+      if (!lowFpsMode) {
+        updateWind(now, dt);
+        updateAttention(now, dt);
+      }
       maybeSpawnAnomalySpark(now);
     }
     updateMood(now);
@@ -3799,6 +3811,8 @@ const Ember = (() => {
     particlePool = [];
     glowPool.forEach(el => el.remove());
     glowPool = [];
+    heatZonePool.forEach(el => { el.remove(); styleCache.delete(el); });
+    heatZonePool = [];
     freeParticleIndices = [];
     freeGlowEls = [];
     poolInited = false;
