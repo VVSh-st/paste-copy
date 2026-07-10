@@ -451,7 +451,7 @@ const KeyboardTrainer = (() => {
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d\u043e\u0441\u0442\u044c \u0444\u043e\u043d\u0430</label>',
-      '  <input type="range" id="kb-set-opacity" min="10" max="100" value="' + Math.round(_opacity * 100) + '">',
+      '  <input type="range" id="kb-set-opacity" min="0" max="100" value="' + Math.round(_opacity * 100) + '">',
       '  <span id="kb-set-opacity-val">' + Math.round(_opacity * 100) + '%</span>',
       '</div>',
       '<div class="kb-settings-row">',

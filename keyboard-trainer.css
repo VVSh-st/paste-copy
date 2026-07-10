@@ -94,6 +94,7 @@
   line-height: 1;
   transition: background 0.1s, border-color 0.1s;
   position: relative;
+  transform: translateY(3px);
 }
 
 .kb-key.kb-home {
