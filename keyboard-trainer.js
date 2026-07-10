@@ -85,6 +85,7 @@ const KeyboardTrainer = (() => {
   let _homeBorderAlpha = 0.6;
   let _homeBorderWidth = 2;
   let _flashAlpha = 0.35;
+  let _stayVisible = false;
   let _resizeObserver = null;
 
   // Long press
@@ -118,7 +119,8 @@ const KeyboardTrainer = (() => {
         fontScale: _fontScale,
         homeBorderAlpha: _homeBorderAlpha,
         homeBorderWidth: _homeBorderWidth,
-        flashAlpha: _flashAlpha
+        flashAlpha: _flashAlpha,
+        stayVisible: _stayVisible
       }));
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
@@ -137,6 +139,7 @@ const KeyboardTrainer = (() => {
       _homeBorderAlpha = typeof s.homeBorderAlpha === 'number' ? s.homeBorderAlpha : 0.6;
       _homeBorderWidth = typeof s.homeBorderWidth === 'number' ? s.homeBorderWidth : 2;
       _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
+      _stayVisible = !!s.stayVisible;
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
 
@@ -262,6 +265,7 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-home-border-alpha', _homeBorderAlpha);
     _panel.style.setProperty('--kb-home-border-width', _homeBorderWidth + 'px');
     _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
+    _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
     _updateFontSize();
   }
 
@@ -480,6 +484,12 @@ const KeyboardTrainer = (() => {
       '  <label>\u0410\u0432\u0442\u043e-\u0441\u043a\u0440\u044b\u0442\u0438\u0435</label>',
       '  <input type="range" id="kb-set-delay" min="500" max="5000" step="100" value="' + _autoHideDelay + '">',
       '  <span id="kb-set-delay-val">' + _autoHideDelay + '\u043c\u0441</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
+      '    <input type="checkbox" id="kb-set-stayvisible" ' + (_stayVisible ? 'checked' : '') + '>',
+      '    \u041e\u0441\u0442\u0430\u0432\u0430\u0442\u044c\u0441\u044f \u0432\u0438\u0434\u0438\u043c\u043e\u0439 \u0432 \u0444\u043e\u043d\u0435',
+      '  </label>',
       '</div>'
     ].join('\n');
 
@@ -548,6 +558,12 @@ const KeyboardTrainer = (() => {
     delaySlider.addEventListener('input', function(e) {
       _autoHideDelay = parseInt(e.target.value);
       delayVal.textContent = _autoHideDelay + '\u043c\u0441';
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-stayvisible').addEventListener('change', function(e) {
+      _stayVisible = e.target.checked;
+      _applyVisualSettings();
       _save();
     });
 
