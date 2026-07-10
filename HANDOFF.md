@@ -71,10 +71,11 @@
 - Направление обводки: `strokeDashoffset = totalLength * progress`
 
 **Визуальная клавиатура для тренировки слепой печати (v1)**
-- Статус: базовая реализация завершена, нужна проверка в браузере
-- Коммит: `2fb41fd`
-- Файлы: `keyboard-trainer.js` (логика), `keyboard-trainer.css` (стили), `blocks.js` (кнопка), `index.html` (подключение)
-- Реализовано: singleton-панель, drag/resize (MiniChat), подсветка домашнего ряда (ФЫВА/ОЛДЖ), вспышка клавиш 250мс, авто RU/EN, auto-show/auto-hide, long press → настройки, persist через Storage
+- Статус: v1 + аудит-фикс, нужна проверка в браузере
+- Коммиты: `2fb41fd`, `f12a0bc`
+- Файлы: `keyboard-trainer.js`, `keyboard-trainer.css`, `blocks.js`, `index.html`
+- Реализовано: singleton-панель, drag/resize (MiniChat), подсветка домашнего ряда, вспышка 250мс, авто RU/EN, auto-show/auto-hide, long press → настройки, persist через Storage
+- Аудит-фиксы: LAYOUT_EN typo, детекция раскладки (digits), мёртвый код _tryDetectInitialLayout, CSS grid для пропорционального масштабирования, save только при изменении
 
 ### Изменённые файлы (эта сессия)
 | Файл | Что изменено |
