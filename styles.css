@@ -333,18 +333,6 @@ body {
   animation: cornerGlowPulse 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* ── Particle trail ── */
-.timer-particle {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(120,184,255,1) 0%, rgba(79,142,247,0.6) 50%, rgba(79,142,247,0) 100%);
-  pointer-events: none;
-  z-index: 5;
-  display: none;
-  will-change: transform, opacity;
-  filter: drop-shadow(0 0 3px rgba(120,184,255,0.8));
-}
-
 /* ── Flash ── */
 #btn-timer.timer-flash {
   animation: sqTimerFlash 1.5s ease;

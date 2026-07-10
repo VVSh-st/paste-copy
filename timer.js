@@ -12,7 +12,6 @@
  *  - При лимите: дуга скрыта, пульсирует только box-shadow
  *  - Оптимизация в фоне: без mask/glow/filter
  *  - Stacking-анимация при смене цифр (old exits up, new enters down)
- *  - Particle trail за головой дуги
  *  - Micro-interactions: сжатие при касании
  *  - Corner glow при прохождении углов
  */
@@ -24,7 +23,6 @@ const SquareTimer = (() => {
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
   const WARM_START_SEC = 55;
-  const PARTICLE_POOL_SIZE = 24;
 
   let _initialized = false;
   let btn, arcSvg, arcTail, arcHeadSeg, arcHeadDot, valueEl, inputEl;
@@ -45,10 +43,6 @@ const SquareTimer = (() => {
   let _perim = null;
   let _radius = null;
   let _resizeObserver = null;
-
-  // Particles
-  let _particlePool = [];
-  let _particleFrame = 0;
 
   // Corner glow
   let _cornerGlowActive = false;
@@ -106,57 +100,6 @@ const SquareTimer = (() => {
     _pathCW = null;
     _pathCCW = null;
     _radius = null;
-  }
-
-  /* ════════════════════════════════════════════════════════════════
-     PARTICLE SYSTEM
-     ════════════════════════════════════════════════════════════════ */
-
-  function _ensureParticlePool() {
-    if (_particlePool.length) return;
-    for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
-      const el = document.createElement('div');
-      el.className = 'timer-particle';
-      btn.appendChild(el);
-      _particlePool.push(el);
-    }
-  }
-
-  function _spawnParticle(x, y) {
-    _ensureParticlePool();
-    const el = _particlePool.pop();
-    if (!el) return;
-
-    const angle = Math.random() * Math.PI * 2;
-    const dist  = 8 + Math.random() * 14;
-    const dx = Math.cos(angle) * dist;
-    const dy = Math.sin(angle) * dist;
-    const size = 3 + Math.random() * 4;
-    const dur = 400 + Math.random() * 300;
-
-    el.style.left = x + 'px';
-    el.style.top  = y + 'px';
-    el.style.width = el.style.height = size + 'px';
-    el.style.opacity = '0.9';
-    el.style.transition = `all ${dur}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
-    el.style.display = '';
-
-    requestAnimationFrame(() => {
-      el.style.transform = `translate(${dx}px, ${dy}px)`;
-      el.style.opacity = '0';
-    });
-
-    setTimeout(() => {
-      el.style.display = 'none';
-      el.style.transition = 'none';
-      el.style.transform = '';
-      _particlePool.push(el);
-    }, dur);
-  }
-
-  function _maybeSpawnParticle(headX, headY) {
-    if (++_particleFrame % 3 !== 0) return;
-    _spawnParticle(headX, headY);
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -606,11 +549,6 @@ const SquareTimer = (() => {
 
     // Corner glow
     _checkCornerGlow(headPos, P);
-
-    // Particle trail (только в foreground)
-    if (!_isBackground) {
-      _maybeSpawnParticle(pt.x, pt.y);
-    }
 
     // Кометный след (только в foreground)
     if (!_isBackground) {
