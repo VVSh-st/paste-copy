@@ -3519,6 +3519,7 @@ const Ember = (() => {
   let lowFpsMode = false;
 
   function animate(timestamp) {
+    rafId = null;
     if (destroyed || !root) return;
     if (lastFrame === 0) lastFrame = timestamp;
     const dt = Math.min(timestamp - lastFrame, 50);
@@ -3527,7 +3528,10 @@ const Ember = (() => {
       return;
     }
     lastFrame = timestamp;
-    if (reduceMotion && reducedMotionTimer) return;
+    if (reduceMotion && reducedMotionTimer) {
+      rafId = null;
+      return;
+    }
     fpsHistory.push(dt);
     if (fpsHistory.length > 30) fpsHistory.shift();
     if (fpsHistory.length >= 20) {
@@ -3727,6 +3731,7 @@ const Ember = (() => {
         particles = [];
         activeSparks = 0;
         segmentEffects = [];
+        hideTooltip();
       }
       stopLoop();
       if (!document.hidden && onScreen) startLoop();
@@ -3853,10 +3858,15 @@ const Ember = (() => {
     breathPatternIdx = 0;
     nextBreathSwitch = 0;
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
+    attn.dirX = 0; attn.hotX = 50; attn.hotY = 50; attn.activeHsIdx = -1;
     focusState = 'active'; focusTimer = 0;
     temperament.curiosity = 0; temperament.nervousness = 0;
     temperament.tiredness = 0; temperament.satisfaction = 0;
     gaze.x = 0; gaze.y = 0; gaze.strength = 0;
+    mouse.x = 0; mouse.y = 0; mouse.lastSampleX = 0; mouse.lastSampleY = 0; mouse.lastSampleTime = 0; mouse.speed = 0;
+    caret.x = 0; caret.y = 0; caret.active = false; caret.typing = false;
+    cursorLean.x = 0; cursorLean.y = 0; cursorLean.squish = 0; cursorLean.scale = 1; cursorLean.tiltX = 0; cursorLean.tiltY = 0;
+    peek.state = 'idle'; peek.timer = 0; peek.leanX = 0; peek.leanY = 0; peek.blinkPhase = 0; peek.noticeDelay = 0; peek.lookDuration = 0; peek.leanProgress = 0; peek.cooldown = 0;
     anticipation.active = false;
     egg.active = false; egg.triggeredToday = false;
     egg._ringDone = false; egg._burstDone = false;
@@ -3911,6 +3921,7 @@ const Ember = (() => {
     segments = [];
     zones = [];
     hotspots = [];
+    crackLayers = [];
     active.clear();
     segmentEffects = [];
     Object.keys(nextDue).forEach(k => delete nextDue[k]);
@@ -3920,6 +3931,14 @@ const Ember = (() => {
     fpsHistory.length = 0;
     lowFpsMode = false;
     lastFrame = 0;
+    heatOffsetX = 0; heatOffsetY = 0;
+    heatTargetX = 0; heatTargetY = 0;
+    nextHeatShift = 0;
+    nextAshSpawn = 0;
+    nextSparkCheck = 0;
+    nextAnomalySparkAt = 0;
+    nextMouseSample = 0;
+    nextCaretSample = 0;
   }
 
   return {
