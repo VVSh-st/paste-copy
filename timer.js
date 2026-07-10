@@ -53,6 +53,9 @@ const SquareTimer = (() => {
   let _cornerGlowActive = false;
   let _firedCorners = new Set();
 
+  // Pointerleave reference
+  let _onPointerLeave = null;
+
   /* ════════════════════════════════════════════════════════════════
      ПЕРИМЕТР: путь с дугами в углах (повторяет border-radius)
      ════════════════════════════════════════════════════════════════ */
@@ -193,6 +196,8 @@ const SquareTimer = (() => {
 
     btn         = document.getElementById('btn-timer');
     if (!btn) return;
+
+    _onPointerLeave = e => { if (e.pointerType !== 'mouse') onPointerCancel(e); };
     arcSvg      = btn.querySelector('.timer-arc');
     arcTail     = btn.querySelector('.timer-arc-tail');
     arcHeadSeg  = btn.querySelector('.timer-arc-head-segment');
@@ -207,7 +212,7 @@ const SquareTimer = (() => {
     btn.addEventListener('pointermove',   onPointerMove);
     btn.addEventListener('pointercancel', onPointerCancel);
     btn.addEventListener('lostpointercapture', onLostCapture);
-    btn.addEventListener('pointerleave',  e => { if (e.pointerType !== 'mouse') onPointerCancel(e); });
+    btn.addEventListener('pointerleave',  _onPointerLeave);
     btn.addEventListener('contextmenu',   onContextMenu);
 
     document.addEventListener('visibilitychange', _onVisibilityChange);
@@ -219,12 +224,14 @@ const SquareTimer = (() => {
     stopTick(); stopPulse(); clearLongPress();
     _pointerDownPos = null; _prevMin = null;
     _longPressFired = false;
+    _initialized = false;
     if (btn) {
       btn.removeEventListener('pointerdown',   onPointerDown);
       btn.removeEventListener('pointerup',     onPointerUp);
       btn.removeEventListener('pointermove',   onPointerMove);
       btn.removeEventListener('pointercancel', onPointerCancel);
       btn.removeEventListener('lostpointercapture', onLostCapture);
+      btn.removeEventListener('pointerleave',  _onPointerLeave);
       btn.removeEventListener('contextmenu',   onContextMenu);
     }
     document.removeEventListener('visibilitychange', _onVisibilityChange);
@@ -645,6 +652,7 @@ const SquareTimer = (() => {
       if (s.mode === 'up' && Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
       if (s.mode === 'down' && s.targetMinutes * 60 - Math.floor(elapsed) <= 0) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
       mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null;
+      btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
       arcSvg.style.display = 'block'; startTick();
     } catch (e) { console.warn('[SquareTimer] restore:', e); safeSet(STORAGE_KEY, ''); setIdleVisual(); }
   }
