@@ -434,8 +434,14 @@ const SquareTimer = (() => {
   function startPulse() {
     pulseStartTime = Date.now();
     btn.classList.add('timer-pulsing');
+    valueEl.classList.add('timer-digit-pulse-active');
     pulseIntervalId = setInterval(() => {
-      if (Date.now() - pulseStartTime >= PULSE_MAX_DURATION) {
+      const elapsed = Date.now() - pulseStartTime;
+      if (elapsed >= PULSE_MAX_DURATION - 30000) {
+        valueEl.classList.remove('timer-digit-pulse-active');
+        valueEl.classList.add('timer-digit-pulse-urgent');
+      }
+      if (elapsed >= PULSE_MAX_DURATION) {
         stopPulse();
         mode === 'up' ? (_playCompletionSound(), _startAutoCountdown()) : resetToIdle();
       }
@@ -444,6 +450,7 @@ const SquareTimer = (() => {
 
   function stopPulse() {
     btn.classList.remove('timer-pulsing');
+    valueEl.classList.remove('timer-digit-pulse-active', 'timer-digit-pulse-urgent');
     if (pulseIntervalId) { clearInterval(pulseIntervalId); pulseIntervalId = null; }
   }
 
@@ -549,11 +556,22 @@ const SquareTimer = (() => {
     arcHeadSeg.style.strokeDasharray  = hLen + ' ' + P;
     arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
-    // Точка-голова
+    // Точка-голова с пульсацией
     const pt = arcTail.getPointAtLength(headPos);
     arcHeadDot.style.display = '';
     arcHeadDot.setAttribute('cx', pt.x);
     arcHeadDot.setAttribute('cy', pt.y);
+
+    const pulsePhase = (Date.now() % 800) / 800;
+    const dotPulse = 1 + Math.sin(pulsePhase * Math.PI * 2) * 0.2;
+    arcHeadDot.setAttribute('r', (3.5 * dotPulse).toFixed(1));
+
+    if (!_isBackground) {
+      const glowR = 6 + Math.sin(pulsePhase * Math.PI * 2) * 2;
+      arcHeadDot.style.filter =
+        `drop-shadow(0 0 ${glowR}px rgba(120,184,255,0.8)) ` +
+        `drop-shadow(0 0 ${glowR * 2}px rgba(79,142,247,0.4))`;
+    }
 
     // Corner glow
     _checkCornerGlow(headPos, P);
