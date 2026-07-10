@@ -1891,6 +1891,13 @@ const Ember = (() => {
     const ae = document.activeElement;
     const editable = ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable);
     if (!editable) { caret.active = false; return; }
+    if (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT') {
+      const rect = ae.getBoundingClientRect();
+      caret.x = rect.left + 12;
+      caret.y = rect.top + 12;
+      caret.active = rect.width > 0 && rect.height > 0;
+      return;
+    }
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) { caret.active = false; return; }
     const range = sel.getRangeAt(0);
@@ -3578,7 +3585,6 @@ const Ember = (() => {
       clearDeferred(_clickTimer);
       reduceMotion = !reduceMotion;
       root.classList.toggle('reduced-motion-runtime', reduceMotion);
-      reduceMotionFrameSkip = 0;
       if (reduceMotion) {
         particles.forEach(p => releaseEl(p.el));
         particles = [];
@@ -3640,6 +3646,9 @@ const Ember = (() => {
       mouse.y = clamp(e.clientY, -margin, vh + margin);
     };
     handlers.selectionchange = () => {
+      const ae = document.activeElement;
+      const editable = ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable);
+      if (!editable) { caret.active = false; return; }
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) { caret.active = false; return; }
       const range = sel.getRangeAt(0);
@@ -3842,6 +3851,9 @@ const Ember = (() => {
     testLabel = null;
     allowTestModeTimer = null;
     allowTestMode = false;
+    testMode = false;
+    clearDeferred(testModeTimer);
+    testModeTimer = null;
     onClickCallback = null;
     if (styleCache) styleCache.clear();
 
