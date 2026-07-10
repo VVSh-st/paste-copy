@@ -340,6 +340,32 @@ body {
   100% { filter: none; }
 }
 
+/* ── Pulse Ring при старте ── */
+.timer-pulse-ring {
+  position: absolute;
+  inset: -8px;
+  border: 2px solid rgba(79,142,247,0.5);
+  border-radius: inherit;
+  animation: pulseRingExpand 0.8s cubic-bezier(0.4,0,0.2,1) forwards;
+  pointer-events: none;
+}
+@keyframes pulseRingExpand {
+  0%   { opacity: 1; transform: scale(0.95); }
+  100% { opacity: 0; transform: scale(1.15); }
+}
+
+/* ── Liquid Morph при лимите ── */
+.timer-liquid-morph {
+  animation: liquidBlob 1.2s cubic-bezier(0.4,0,0.2,1);
+}
+@keyframes liquidBlob {
+  0%   { border-radius: 12px; transform: scale(1); }
+  25%  { border-radius: 20px 12px 24px 8px; transform: scale(1.03); }
+  50%  { border-radius: 8px 24px 12px 20px; transform: scale(0.98); }
+  75%  { border-radius: 16px 8px 18px 12px; transform: scale(1.01); }
+  100% { border-radius: 12px; transform: scale(1); }
+}
+
 /* ===== DROPDOWNS ===== */
 .dropdown { position: relative; }
 .dropdown-menu {

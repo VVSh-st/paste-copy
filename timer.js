@@ -357,10 +357,25 @@ const SquareTimer = (() => {
     setTimeout(() => btn.classList.remove('timer-flash'), 1500);
   }
 
+  function _pulseRing() {
+    const ring = document.createElement('div');
+    ring.className = 'timer-pulse-ring';
+    btn.appendChild(ring);
+    setTimeout(() => ring.remove(), 800);
+  }
+
+  function _liquidMorph() {
+    btn.classList.remove('timer-liquid-morph');
+    void btn.offsetWidth;
+    btn.classList.add('timer-liquid-morph');
+    setTimeout(() => btn.classList.remove('timer-liquid-morph'), 1200);
+  }
+
   function startCountUp() {
     mode = 'up'; startTs = Date.now(); targetMinutes = null; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     arcSvg.style.display = 'block';
+    _pulseRing();
     saveState(); startTick();
   }
 
@@ -368,6 +383,7 @@ const SquareTimer = (() => {
     mode = 'down'; startTs = Date.now(); targetMinutes = m; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     closeInlineInput(); arcSvg.style.display = 'block';
+    _pulseRing();
     saveState(); startTick();
   }
 
@@ -406,6 +422,7 @@ const SquareTimer = (() => {
     stopTick();
     _hideArc();
     _flashEffect();
+    _liquidMorph();
     if (window.Ember?.notifyEdit) Ember.notifyEdit();
     startPulse();
   }
