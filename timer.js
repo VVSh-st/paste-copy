@@ -5,12 +5,13 @@
  * Анимация 60fps через requestAnimationFrame.
  *
  * Орбита:
- *  - Хвост (opacity 0.35) + головной сегмент (opacity 1 + glow) + точка-голова
+ *  - Самопожирающий хвост: tail плавно догоняет head за 5 сек (smoothstep)
+ *  - Пульс головы при 12ч: кратковременное увеличение dot+segment
  *  - Путь повторяет border-radius кнопки (скруглённые углы)
  *  - CW/CCW через два разных path (без scaleX)
- *  - Плавный fade на стыке минут (smoothstep)
  *  - Мягкая цветовая температура через тень (последние 5 сек)
  *  - При лимите: дуга скрыта, пульсирует только box-shadow
+ *  - Оптимизация в фоне: без mask/glow/filter
  */
 
 const SquareTimer = (() => {
@@ -19,8 +20,9 @@ const SquareTimer = (() => {
   const MOVE_THRESHOLD = 10;
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
-  const FADE_SECS = 1.2;
   const WARM_START_SEC = 55;
+  const TAIL_CATCHUP_SECS = 5;
+  const HEAD_PULSE_DURATION = 400;
 
   let _initialized = false;
   let btn, arcSvg, arcTail, arcHeadSeg, arcHeadDot, valueEl, inputEl;
@@ -34,6 +36,9 @@ const SquareTimer = (() => {
   let _pointerDownPos = null;
   let _longPressTimer = null;
   let _prevMin = null;
+  let _prevHeadPos = null;
+  let _headPulseTs = null;
+  let _isBackground = false;
 
   let _pathCW = null;
   let _pathCCW = null;
@@ -115,12 +120,15 @@ const SquareTimer = (() => {
     btn.addEventListener('pointerleave',  e => { if (e.pointerType !== 'mouse') onPointerCancel(e); });
     btn.addEventListener('contextmenu',   onContextMenu);
 
+    document.addEventListener('visibilitychange', _onVisibilityChange);
+
     restoreState();
   }
 
   function destroy() {
     stopTick(); stopPulse(); clearLongPress();
-    _pointerDownPos = null; _prevMin = null; _longPressFired = false;
+    _pointerDownPos = null; _prevMin = null; _prevHeadPos = null; _headPulseTs = null;
+    _longPressFired = false;
     if (btn) {
       btn.removeEventListener('pointerdown',   onPointerDown);
       btn.removeEventListener('pointerup',     onPointerUp);
@@ -128,6 +136,20 @@ const SquareTimer = (() => {
       btn.removeEventListener('pointercancel', onPointerCancel);
       btn.removeEventListener('lostpointercapture', onLostCapture);
       btn.removeEventListener('contextmenu',   onContextMenu);
+    }
+    document.removeEventListener('visibilitychange', _onVisibilityChange);
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+     VISIBILITY OPTIMIZATION (tab background)
+     ════════════════════════════════════════════════════════════════ */
+
+  function _onVisibilityChange() {
+    _isBackground = document.hidden;
+    if (_isBackground && mode) {
+      arcTail.style.maskImage = '';
+      arcHeadSeg.style.filter = '';
+      arcHeadDot.style.filter = '';
     }
   }
 
@@ -233,14 +255,14 @@ const SquareTimer = (() => {
   }
 
   function startCountUp() {
-    mode = 'up'; startTs = Date.now(); targetMinutes = null; _prevMin = null;
+    mode = 'up'; startTs = Date.now(); targetMinutes = null; _prevMin = null; _prevHeadPos = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     arcSvg.style.display = 'block';
     saveState(); startTick();
   }
 
   function startCountDown(m) {
-    mode = 'down'; startTs = Date.now(); targetMinutes = m; _prevMin = null;
+    mode = 'down'; startTs = Date.now(); targetMinutes = m; _prevMin = null; _prevHeadPos = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     closeInlineInput(); arcSvg.style.display = 'block';
     saveState(); startTick();
@@ -249,7 +271,7 @@ const SquareTimer = (() => {
   function resetToIdle() {
     stopTick(); stopPulse(); clearLongPress();
     _longPressFired = false; _pointerDownPos = null;
-    mode = null; startTs = null; targetMinutes = null; _prevMin = null;
+    mode = null; startTs = null; targetMinutes = null; _prevMin = null; _prevHeadPos = null; _headPulseTs = null;
     saveState(); setIdleVisual();
   }
 
@@ -305,7 +327,7 @@ const SquareTimer = (() => {
   }
 
   function _startAutoCountdown() {
-    mode = 'down'; startTs = Date.now(); targetMinutes = 99; _prevMin = null;
+    mode = 'down'; startTs = Date.now(); targetMinutes = 99; _prevMin = null; _prevHeadPos = null;
     arcSvg.style.display = 'block';
     saveState(); startTick();
   }
@@ -329,25 +351,10 @@ const SquareTimer = (() => {
     _applyArc(progress, dir);
   }
 
-  /* ── opacity fade на стыке минут (smoothstep) ── */
-
-  function _arcOpacity(progress) {
-    const fade = FADE_SECS / 60;
-    if (progress <= 0 || progress >= 1) return 0;
-    if (progress < fade) {
-      const t = progress / fade;
-      return t * t * (3 - 2 * t);
-    }
-    if (progress > 1 - fade) {
-      const t = (1 - progress) / fade;
-      return t * t * (3 - 2 * t);
-    }
-    return 1;
-  }
-
   /* ── цветовая температура (мягкая тень) ── */
 
   function _applyWarmGlow(progress) {
+    if (_isBackground) return;
     const ws = WARM_START_SEC / 60;
     if (progress < ws) {
       arcHeadSeg.style.filter = '';
@@ -363,6 +370,52 @@ const SquareTimer = (() => {
     ].join(' ');
     arcHeadSeg.style.filter = f;
     arcHeadDot.style.filter = f;
+  }
+
+  /* ── пульс головы при пересечении 12ч ── */
+
+  function _checkHeadPulse(headPos, progress) {
+    if (_prevHeadPos === null) { _prevHeadPos = headPos; return; }
+
+    // Определяем пересечение 12ч: headPos < prevHeadPos (сброс на 0)
+    if (headPos < _prevHeadPos - 0.1) {
+      _headPulseTs = performance.now();
+    }
+    _prevHeadPos = headPos;
+
+    if (_headPulseTs === null) return;
+
+    const elapsed = performance.now() - _headPulseTs;
+    if (elapsed > HEAD_PULSE_DURATION) { _headPulseTs = null; return; }
+
+    // smoothstep pulse: 1 → 1.4 → 1
+    const t = elapsed / HEAD_PULSE_DURATION;
+    const scale = 1 + 0.4 * Math.sin(t * Math.PI);
+    arcHeadDot.style.transform = `scale(${scale.toFixed(2)})`;
+    arcHeadSeg.style.strokeWidth = (2 + 0.8 * Math.sin(t * Math.PI)).toFixed(1);
+  }
+
+  /* ── контур-подсветка при прохождении угла ── */
+
+  let _cornerFlashTimer = null;
+
+  function _checkCornerFlash(headPos, P) {
+    const corners = [0.25, 0.5, 0.75]; // доля периметра: правый верхний, правый нижний, левый нижний
+    const threshold = P * 0.005; // 0.5% периметра — зона угла
+
+    for (const c of corners) {
+      const cornerPos = c * P;
+      if (Math.abs(headPos - cornerPos) < threshold) {
+        if (!_cornerFlashTimer) {
+          btn.classList.add('timer-corner-flash');
+          _cornerFlashTimer = setTimeout(() => {
+            btn.classList.remove('timer-corner-flash');
+            _cornerFlashTimer = null;
+          }, 200);
+        }
+        break;
+      }
+    }
   }
 
   /* ── основная отрисовка дуги ── */
@@ -381,43 +434,59 @@ const SquareTimer = (() => {
     if (_perim == null) _perim = arcTail.getTotalLength();
     const P = _perim;
 
-    arcSvg.style.opacity = _arcOpacity(progress);
-
     if (progress < 0.001) {
       _hideArc();
       _applyWarmGlow(progress);
       return;
     }
 
-    const vis = progress * P;
+    const headPos = progress * P;
 
+    // Самопожирающий хвост: tail плавно догоняет head за 5 сек
+    const prevTail = parseFloat(arcTail.style.strokeDasharray) || 0;
+    const catchup = (TAIL_CATCHUP_SECS > 0) ? (P / TAIL_CATCHUP_SECS / 60) : Infinity; // px per frame at 60fps
+    let tailLen = prevTail + catchup;
+    if (tailLen > headPos) tailLen = headPos;
+    if (tailLen < headPos * 0.15) tailLen = headPos * 0.15; // минимум 15% от head
+
+    // Хвост
     arcTail.style.display = '';
-    arcTail.style.strokeDasharray  = vis + ' ' + P;
+    arcTail.style.strokeDasharray  = tailLen.toFixed(1) + ' ' + P;
     arcTail.style.strokeDashoffset = '0';
 
-    const hLen = Math.min(vis, P * HEAD_FRAC);
+    // Головной сегмент
+    const hLen = Math.min(headPos, P * HEAD_FRAC);
     arcHeadSeg.style.display = '';
     arcHeadSeg.style.strokeDasharray  = hLen + ' ' + P;
-    arcHeadSeg.style.strokeDashoffset = -(vis - hLen);
+    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
-    const pt = arcTail.getPointAtLength(vis);
+    // Точка-голова
+    const pt = arcTail.getPointAtLength(headPos);
     arcHeadDot.style.display = '';
     arcHeadDot.setAttribute('cx', pt.x);
     arcHeadDot.setAttribute('cy', pt.y);
 
-    // кометный след: mask-image с conic-gradient
-    const cx = btn.offsetWidth / 2;
-    const cy = btn.offsetHeight / 2;
-    const headDeg = Math.atan2(pt.x - cx, -(pt.y - cy)) * (180 / Math.PI);
-    if (dir === 'cw') {
-      const pct = ((headDeg % 360 + 360) % 360 / 360 * 100).toFixed(1);
-      arcTail.style.maskImage =
-        `conic-gradient(from 0deg at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,1) ${pct}%)`;
-    } else {
-      const span = ((360 - (headDeg % 360 + 360) % 360) / 360 * 100).toFixed(1);
-      arcTail.style.maskImage =
-        `conic-gradient(from ${((headDeg % 360 + 360) % 360)}deg at 50% 50%, ` +
-        `rgba(0,0,0,1) 0%, rgba(0,0,0,0) ${span}%)`;
+    // Пульс головы при 12ч
+    _checkHeadPulse(headPos, progress);
+
+    // Контур-подсветка при прохождении угла (~25%, 50%, 75% периметра)
+    _checkCornerFlash(headPos, P);
+
+    // Кометный след (только в foreground)
+    if (!_isBackground) {
+      const cx = btn.offsetWidth / 2;
+      const cy = btn.offsetHeight / 2;
+      const headDeg = Math.atan2(pt.x - cx, -(pt.y - cy)) * (180 / Math.PI);
+      if (dir === 'cw') {
+        const pct = ((headDeg % 360 + 360) % 360 / 360 * 100).toFixed(1);
+        arcTail.style.maskImage =
+          `conic-gradient(from 0deg at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,1) ${pct}%)`;
+      } else {
+        const span = ((360 - (headDeg % 360 + 360) % 360) / 360 * 100).toFixed(1);
+        arcTail.style.maskImage =
+          `conic-gradient(from ${((headDeg % 360 + 360) % 360)}deg at 50% 50%, ` +
+          `rgba(0,0,0,1) 0%, rgba(0,0,0,0) ${span}%)`;
+      }
     }
 
     _applyWarmGlow(progress);
@@ -425,29 +494,26 @@ const SquareTimer = (() => {
 
   function _hideArc() {
     if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.maskImage = ''; }
-    if (arcHeadSeg) arcHeadSeg.style.display = 'none';
-    if (arcHeadDot) arcHeadDot.style.display = 'none';
+    if (arcHeadSeg) { arcHeadSeg.style.display = 'none'; arcHeadSeg.style.strokeWidth = ''; }
+    if (arcHeadDot) { arcHeadDot.style.display = 'none'; arcHeadDot.style.transform = ''; }
+    if (_cornerFlashTimer) { clearTimeout(_cornerFlashTimer); _cornerFlashTimer = null; }
+    btn.classList.remove('timer-corner-flash');
   }
 
   /* ── idle ── */
 
   function setIdleVisual() {
-    _prevMin = null;
-    valueEl.classList.remove('timer-digit-animate');
-    void valueEl.offsetWidth;
-    valueEl.style.display = 'flex';
-    valueEl.textContent = '0';
-    valueEl.classList.add('timer-value-dim');
+    _prevMin = null; _prevHeadPos = null; _headPulseTs = null;
+    valueEl.classList.remove('timer-digit-animate'); void valueEl.offsetWidth;
+    valueEl.style.display = 'flex'; valueEl.textContent = '0'; valueEl.classList.add('timer-value-dim');
 
-    arcSvg.style.display = 'none';
-    arcSvg.style.opacity = '';
+    arcSvg.style.display = 'none'; arcSvg.style.opacity = '';
     _hideArc();
-    arcTail.style.stroke = '';    arcTail.style.maskImage = '';
+    arcTail.style.stroke = '';  arcTail.style.maskImage = '';
     arcHeadSeg.style.stroke = ''; arcHeadSeg.style.filter = '';
-    arcHeadDot.style.fill = '';   arcHeadDot.style.filter = '';
+    arcHeadDot.style.fill = '';  arcHeadDot.style.filter = '';
 
-    btn.classList.remove('timer-pulsing', 'timer-active');
-    btn.classList.add('timer-idle');
+    btn.classList.remove('timer-pulsing', 'timer-active'); btn.classList.add('timer-idle');
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -473,18 +539,11 @@ const SquareTimer = (() => {
         safeSet(STORAGE_KEY, ''); setIdleVisual(); return;
       }
       const elapsed = (Date.now() - s.startTs) / 1000;
-      if (s.mode === 'up') {
-        if (Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
-      } else {
-        if (s.targetMinutes * 60 - Math.floor(elapsed) <= 0) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
-      }
-      mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null;
-      arcSvg.style.display = 'block';
-      startTick();
-    } catch (e) {
-      console.warn('[SquareTimer] restore:', e);
-      safeSet(STORAGE_KEY, ''); setIdleVisual();
-    }
+      if (s.mode === 'up' && Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
+      if (s.mode === 'down' && s.targetMinutes * 60 - Math.floor(elapsed) <= 0) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
+      mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null; _prevHeadPos = null;
+      arcSvg.style.display = 'block'; startTick();
+    } catch (e) { console.warn('[SquareTimer] restore:', e); safeSet(STORAGE_KEY, ''); setIdleVisual(); }
   }
 
   return { init, destroy };
@@ -492,6 +551,4 @@ const SquareTimer = (() => {
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => SquareTimer.init());
-} else {
-  SquareTimer.init();
-}
+} else { SquareTimer.init(); }
