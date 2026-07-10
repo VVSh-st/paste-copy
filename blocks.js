@@ -2512,6 +2512,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     footer.appendChild(thesaurusBtn);
     body.appendChild(thesaurusDropdown);
 
+    // Keyboard Trainer — click: toggle, long press: settings
+    if (typeof KeyboardTrainer !== 'undefined') {
+      const kbBtn = document.createElement('button');
+      kbBtn.type = 'button';
+      kbBtn.className = 'font-ctrl-btn kb-trainer-btn';
+      kbBtn.title = 'Визуальная клавиатура — клик (toggle) / долгий клик (настройки)';
+      kbBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="1" y="4" width="14" height="8" rx="1.5"/><line x1="4" y1="7" x2="4" y2="7.01" stroke-width="2"/><line x1="6.5" y1="7" x2="6.5" y2="7.01" stroke-width="2"/><line x1="9" y1="7" x2="9" y2="7.01" stroke-width="2"/><line x1="11.5" y1="7" x2="11.5" y2="7.01" stroke-width="2"/><line x1="4" y1="9.5" x2="12" y2="9.5"/></svg>';
+      KeyboardTrainer.setupButton(kbBtn);
+      footer.appendChild(kbBtn);
+    }
+
     // Text Expander — short click: create from selection, long press: open panel
     if (typeof TextExpander !== 'undefined') {
       const teBtn = document.createElement('button');

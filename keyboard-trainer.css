@@ -1,0 +1,195 @@
+/* ── Keyboard Trainer ─────────────────────────────────────────────── */
+
+.kb-trainer-panel {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9200;
+  background: rgba(30, 32, 40, 0.85);
+  border: 1px solid var(--border2, rgba(255,255,255,0.12));
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: var(--shadow-lg, 0 4px 24px rgba(0,0,0,0.5));
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  min-width: 420px;
+  min-height: 120px;
+  transition: opacity 0.3s ease;
+}
+
+.kb-trainer-panel.kb-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.kb-trainer-panel.kb-background {
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+/* ── Title bar (drag handle) ──────────────────────────────────────── */
+
+.kb-trainer-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg3, rgba(40,42,52,0.9));
+  border-bottom: 1px solid var(--border2, rgba(255,255,255,0.08));
+  cursor: move;
+  font-size: 11px;
+  color: var(--text2, #aaa);
+  flex-shrink: 0;
+}
+
+.kb-trainer-bar svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.5;
+}
+
+.kb-trainer-bar .kb-lang-label {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text3, #777);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Keyboard body ────────────────────────────────────────────────── */
+
+.kb-trainer-body {
+  padding: 6px 8px;
+  overflow: hidden;
+}
+
+.kb-row {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.kb-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 30px;
+  padding: 2px 4px;
+  font-size: 13px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: var(--text1, #e0e0e0);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  text-align: center;
+  line-height: 1;
+  transition: background 0.1s, border-color 0.1s;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.kb-key.kb-home {
+  border-color: rgba(180, 40, 40, 0.6);
+  border-width: 2px;
+}
+
+.kb-key.kb-home.kb-home-highlight {
+  background: rgba(180, 40, 40, 0.15);
+}
+
+.kb-key.kb-flash {
+  background: rgba(100, 160, 255, 0.35) !important;
+  border-color: rgba(100, 160, 255, 0.6) !important;
+}
+
+/* Wide keys */
+.kb-key.kb-w15 { min-width: 42px; }
+.kb-key.kb-w20 { min-width: 56px; }
+.kb-key.kb-space { min-width: 180px; }
+
+/* ── Resize handle ────────────────────────────────────────────────── */
+
+.kb-trainer-resize {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  opacity: 0.3;
+}
+
+.kb-trainer-resize:hover {
+  opacity: 0.6;
+}
+
+.kb-trainer-resize svg {
+  width: 14px;
+  height: 14px;
+  stroke: var(--text2, #888);
+}
+
+/* ── Settings popup ───────────────────────────────────────────────── */
+
+.kb-settings-popup {
+  position: fixed;
+  z-index: 9300;
+  background: var(--bg2, #1e2028);
+  border: 1px solid var(--border2, rgba(255,255,255,0.12));
+  border-radius: 10px;
+  padding: 14px 18px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text1, #e0e0e0);
+  min-width: 220px;
+}
+
+.kb-settings-popup h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2, #aaa);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kb-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kb-settings-row label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.kb-settings-row input[type="range"] {
+  width: 120px;
+  accent-color: var(--accent, #5b8def);
+}
+
+.kb-settings-row select {
+  background: var(--bg3, #2a2c36);
+  color: var(--text1, #e0e0e0);
+  border: 1px solid var(--border2, rgba(255,255,255,0.12));
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.kb-settings-row input[type="checkbox"] {
+  accent-color: var(--accent, #5b8def);
+}
+
+/* ── Button in footer ─────────────────────────────────────────────── */
+
+.kb-trainer-btn.kb-trainer-active {
+  color: var(--accent, #5b8def);
+}
