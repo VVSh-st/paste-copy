@@ -835,6 +835,8 @@ const State = (() => {
   function saveNamedSnapshot(name) {
     const t = getActive();
     if (!t) return;
+    // Skip auto-generated LLM snapshots — they waste storage with full block copies
+    if (String(name || '').startsWith('[LLM]')) return;
     if (!t.namedSnapshots) t.namedSnapshots = [];
 
     // [FIX] Защита от JSON.stringify крэша
@@ -974,10 +976,11 @@ const State = (() => {
         blocks:         _deduplicateCommandsBlocks(migrate(Array.isArray(t.blocks) ? t.blocks : [])),
         history:        [],
         historyIdx:     -1,
-        // [FIX] Нормализуем namedSnapshots — фильтруем невалидные элементы
+        // [FIX] Нормализуем namedSnapshots — фильтруем невалидные, удаляем [LLM] compress
         namedSnapshots: Array.isArray(t.namedSnapshots)
           ? t.namedSnapshots
               .filter(s => s && typeof s === 'object' && !Array.isArray(s) && _isValidSnapshotData(s.data))
+              .filter(s => !String(s.name || '').startsWith('[LLM]'))
               .map(s => ({
                 id:   s.id || uid(),
                 name: String(s.name || ''),
@@ -1073,7 +1076,7 @@ const State = (() => {
         name:           t.name,
         separator:      t.separator,
         blocks:         t.blocks,
-        namedSnapshots: (t.namedSnapshots || []).slice(0, 10),
+        namedSnapshots: (t.namedSnapshots || []).filter(s => !String(s.name || '').startsWith('[LLM]')).slice(0, 10),
         anchors:        t.anchors || [],
       })),
       activeTabId,
