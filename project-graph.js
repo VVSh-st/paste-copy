@@ -66,6 +66,7 @@
 
   let graph = normalizeGraph(loadGraph());
   let saveTimer = null;
+  let _saveRetries = 0;
   let lastSnapshotAt = 0;
   let lastSnapshotHash = '';
   let lastStructureHash = '';
@@ -140,9 +141,11 @@
   function loadGraph() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
+      if (!raw) return {};
+      return JSON.parse(raw);
     } catch (e) {
-      console.warn('[ProjectGraph] load failed', e);
+      console.warn('[ProjectGraph] load failed, clearing corrupted data', e);
+      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
       return {};
     }
   }
@@ -240,10 +243,14 @@
       const serialized = JSON.stringify({ ...graph, updatedAt: nextUpdatedAt });
       localStorage.setItem(STORAGE_KEY, serialized);
       graph.updatedAt = nextUpdatedAt;
+      _saveRetries = 0;
     } catch (err) {
       console.warn('[ProjectGraph] save failed:', err);
       if (err?.name !== 'QuotaExceededError') {
-        saveTimer = setTimeout(saveNow, 5000);
+        _saveRetries += 1;
+        if (_saveRetries <= 3) {
+          saveTimer = setTimeout(saveNow, 5000);
+        }
       }
     }
   }
@@ -682,7 +689,7 @@
     return similarityFromSets(roleA, roleB);
   }
 
-  function structureSimilarity(a, b) {
+  function structureSimilarity(a, b, roleScoreHint) {
     const cacheId = item => {
       const signature = [
         item?.id && item.id !== 'current' ? item.id : '',
@@ -705,7 +712,7 @@
     const titleA = String(a?.structureSignature || '').split(' > ').filter(Boolean);
     const titleB = String(b?.structureSignature || '').split(' > ').filter(Boolean);
     const titleScore = similarityFromSets(titleA, titleB);
-    const roleScore = roleSimilarity(a, b);
+    const roleScore = typeof roleScoreHint === 'number' ? roleScoreHint : roleSimilarity(a, b);
     const blockScore = similarityFromSets(a?.blockHashes || [], b?.blockHashes || []);
     const countA = Math.max(1, Number(a?.blockCount || 0));
     const countB = Math.max(1, Number(b?.blockCount || 0));
@@ -988,11 +995,14 @@
     const roleStats = {};
     graph.promptSnapshots
       .filter(snapshot => snapshot.tabId !== current.tabId)
-      .map(snapshot => ({
-        snapshot,
-        roleScore: roleSimilarity(current, snapshot),
-        structureScore: structureSimilarity(current, snapshot)
-      }))
+      .map(snapshot => {
+        const roleScore = roleSimilarity(current, snapshot);
+        return {
+          snapshot,
+          roleScore,
+          structureScore: structureSimilarity(current, snapshot, roleScore)
+        };
+      })
       .filter(match => Math.max(match.roleScore, match.structureScore * 0.82) >= minScore)
       .forEach(match => {
         const roles = Array.isArray(match.snapshot.blockRoles) && match.snapshot.blockRoles.length
