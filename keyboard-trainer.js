@@ -29,7 +29,7 @@ const KeyboardTrainer = (() => {
     'Minus':'-','Equal':'=',
     'KeyQ':'q','KeyW':'w','KeyE':'e','KeyR':'r','KeyT':'t',
     'KeyY':'y','KeyU':'u','KeyI':'i','KeyO':'o','KeyP':'p',
-    'BracketLeft':'[',']':']','Backslash':'\\',
+    'BracketLeft':'[','BracketRight':']','Backslash':'\\',
     'KeyA':'a','KeyS':'s','KeyD':'d','KeyF':'f','KeyG':'g',
     'KeyH':'h','KeyJ':'j','KeyK':'k','KeyL':'l','Semicolon':';',
     'Quote':"'",
@@ -76,6 +76,7 @@ const KeyboardTrainer = (() => {
   let _panel = null;
   let _settingsPopup = null;
   let _currentLayout = 'ru';
+  let _layoutDetected = false;
   let _showHomeRow = true;
   let _opacity = 0.85;
   let _autoHideDelay = 1500;
@@ -132,17 +133,23 @@ const KeyboardTrainer = (() => {
     const ruChar = LAYOUT_RU[e.code];
     const enChar = LAYOUT_EN[e.code];
     if (!ruChar || !enChar) return;
+    if (ruChar === enChar) return;
     const actual = e.key.length === 1 ? e.key.toLowerCase() : '';
     if (!actual) return;
+    const prev = _currentLayout;
     if (actual === ruChar) _currentLayout = 'ru';
     else if (actual === enChar) _currentLayout = 'en';
-    _updateLangLabel();
-    _save();
+    if (_currentLayout !== prev) {
+      _layoutDetected = true;
+      _updateLangLabel();
+      _updateLayoutLabels();
+      _save();
+    }
   }
 
   // Chromium getLayoutMap fallback
   async function _tryDetectInitialLayout() {
-    if (_currentLayout) return;
+    if (_layoutDetected) return;
     try {
       if ('keyboard' in navigator && navigator.keyboard && navigator.keyboard.getLayoutMap) {
         const map = await navigator.keyboard.getLayoutMap();
@@ -150,10 +157,12 @@ const KeyboardTrainer = (() => {
         if (keyF) {
           const ch = keyF.toLowerCase();
           _currentLayout = ch === '\u0444' ? 'ru' : 'en';
+          _layoutDetected = true;
         }
       }
     } catch(e) { /* ignore */ }
     _updateLangLabel();
+    _updateLayoutLabels();
   }
 
   // DOM
@@ -191,6 +200,7 @@ const KeyboardTrainer = (() => {
     ROWS.forEach(function(row) {
       const rowEl = document.createElement('div');
       rowEl.className = 'kb-row';
+      rowEl.dataset.count = row.length;
 
       row.forEach(function(k) {
         const el = document.createElement('div');

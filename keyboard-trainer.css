@@ -65,20 +65,24 @@
 }
 
 .kb-row {
-  display: flex;
-  justify-content: center;
+  display: grid;
   gap: 2px;
   margin-bottom: 2px;
 }
+
+.kb-row[data-count="13"] { grid-template-columns: repeat(13, 1fr); }
+.kb-row[data-count="11"] { grid-template-columns: repeat(11, 1fr); }
+.kb-row[data-count="10"] { grid-template-columns: repeat(10, 1fr); }
+.kb-row[data-count="1"]  { grid-template-columns: 1fr; }
 
 .kb-key {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 30px;
-  padding: 2px 4px;
-  font-size: 13px;
+  min-width: 0;
+  height: 0;
+  padding-bottom: 75%;
+  font-size: clamp(9px, 1.8vw, 15px);
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: var(--text1, #e0e0e0);
   background: rgba(255,255,255,0.04);
@@ -88,7 +92,6 @@
   line-height: 1;
   transition: background 0.1s, border-color 0.1s;
   position: relative;
-  flex-shrink: 0;
 }
 
 .kb-key.kb-home {
@@ -106,9 +109,7 @@
 }
 
 /* Wide keys */
-.kb-key.kb-w15 { min-width: 42px; }
-.kb-key.kb-w20 { min-width: 56px; }
-.kb-key.kb-space { min-width: 180px; }
+.kb-key.kb-space { grid-column: span 5; }
 
 /* ── Resize handle ────────────────────────────────────────────────── */
 
