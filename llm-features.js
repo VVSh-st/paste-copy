@@ -1456,6 +1456,23 @@ window.LLMFeatures = (() => {
       }).join('');
     }
 
+    // Статический рендер без анимаций — для большого количества токенов.
+    function _renderStaticOp(op) {
+      if (op.type === 'eq') return escapeHtml(op.text);
+
+      if (op._collapsed) {
+        const tag = op.type === 'del' ? 'del' : 'ins';
+        const cls = op.type === 'del' ? 'diff-del diff-run-summary' : 'diff-ins diff-run-summary';
+        const firstChar = String(op.text ?? '').charAt(0);
+        const visible = firstChar === '\n' ? '↵' : firstChar === ' ' ? '·' : firstChar === '\t' ? '⇥' : escapeHtml(firstChar);
+        return `<${tag} class="${cls}" title="Скрыто ${op._totalLines} пустых строк" data-collapsed="${op._totalLines}">${visible}<span class="diff-run-count"> …${op._totalLines} строк…</span></${tag}>`;
+      }
+
+      const tag = op.type === 'del' ? 'del' : 'ins';
+      const cls = op.type === 'del' ? 'diff-del' : 'diff-ins';
+      return `<${tag} class="${cls}">${escapeHtml(op.text ?? '')}</${tag}>`;
+    }
+
     function _countChangedTokens(ops) {
       return ops.reduce((sum, op) => {
         if (op.type === 'eq') return sum;
@@ -1502,19 +1519,29 @@ window.LLMFeatures = (() => {
       return result;
     }
 
+    // При большом количестве изменённых токенов отключаем анимации,
+    // иначе браузер зависает на сотнях 3D-transform + blur-слоёв.
+    const ANIM_TOKEN_LIMIT = 300;
+
     function renderHtml(ops, mode = 'classic', options = {}) {
       const collapsed = _collapseWhitespaceRuns(ops);
+      const totalTokens = _countChangedTokens(collapsed);
 
       if (mode === 'matrix') {
         const idxRef = { value: 0 };
         const durationMs = _clampEffectMs(options.durationMs);
-        const totalTokens = _countChangedTokens(collapsed);
-        return collapsed.map(op => _renderMatrixOp(op, idxRef, totalTokens, durationMs)).join('');
+        if (totalTokens <= ANIM_TOKEN_LIMIT) {
+          return collapsed.map(op => _renderMatrixOp(op, idxRef, totalTokens, durationMs)).join('');
+        }
+        // Too many tokens — render static (no animations)
+        return collapsed.map(op => _renderStaticOp(op)).join('');
       }
 
       const idxRef = { value: 0 };
-      const totalTokens = _countChangedTokens(collapsed);
-      return collapsed.map(op => _renderClassicOp(op, idxRef, totalTokens)).join('');
+      if (totalTokens <= ANIM_TOKEN_LIMIT) {
+        return collapsed.map(op => _renderClassicOp(op, idxRef, totalTokens)).join('');
+      }
+      return collapsed.map(op => _renderStaticOp(op)).join('');
     }
 
     return { compute, renderHtml };
