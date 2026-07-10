@@ -2337,7 +2337,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.value = prev.value;
         ta.setSelectionRange(prev.selStart, prev.selEnd);
         ta.dispatchEvent(new Event('input', { bubbles: true }));
-        Toast.show('↩ Откат (' + translateBtn._undoStack.length + ' осталось)');
         if (!translateBtn._undoStack.length) {
           translateBtn._undoStack = null;
           translateBtn.dataset.state = '';
@@ -2356,15 +2355,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const targetLang = Translator.targetLang;
       const srcLang = Translator.detectLang(textToTranslate);
 
-      if (srcLang && srcLang.code === targetLang) {
-        Toast.show('Текст уже на ' + (srcLang?.name || targetLang));
-        return;
-      }
-
-      const langName = Translator.LANG_BY_CODE[targetLang]?.name || targetLang;
+      if (srcLang && srcLang.code === targetLang) return;
       translateBtn.classList.add('translating');
       translateBtn.textContent = '⏳';
-      Toast.show('Перевод → ' + langName + '...');
 
       // Последовательно, сохраняя переносы и шаблоны
       const lines = textToTranslate.split('\n');
@@ -2373,10 +2366,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         : Translator.translateProtected(textToTranslate, targetLang);
 
       translatePromise.then(result => {
-        if (!result || result === textToTranslate) {
-          Toast.show('Не удалось перевести');
-          return;
-        }
+        if (!result || result === textToTranslate) return;
 
         Translator.addHistory(textToTranslate, result, srcLang?.code || '?', targetLang);
 
@@ -2396,11 +2386,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           ta.value = finalResult;
         }
         ta.dispatchEvent(new Event('input', { bubbles: true }));
-        Toast.show('✓ Переведено → ' + langName + ' (клик ↩ — откат ' + translateBtn._undoStack.length + ')');
         if (typeof Ember !== 'undefined') Ember.triggerReaction('translate');
       }).catch(err => {
         console.error('[Translator]', err);
-        Toast.show('Ошибка перевода: ' + err.message);
       }).finally(() => {
         translateBtn.classList.remove('translating');
         translateBtn.innerHTML = TRANSLATE_SVG;
