@@ -405,11 +405,26 @@ const SquareTimer = (() => {
     arcHeadDot.setAttribute('cx', pt.x);
     arcHeadDot.setAttribute('cy', pt.y);
 
+    // кометный след: mask-image с conic-gradient
+    const cx = btn.offsetWidth / 2;
+    const cy = btn.offsetHeight / 2;
+    const headDeg = Math.atan2(pt.x - cx, -(pt.y - cy)) * (180 / Math.PI);
+    if (dir === 'cw') {
+      const pct = ((headDeg % 360 + 360) % 360 / 360 * 100).toFixed(1);
+      arcTail.style.maskImage =
+        `conic-gradient(from 0deg at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,1) ${pct}%)`;
+    } else {
+      const span = ((360 - (headDeg % 360 + 360) % 360) / 360 * 100).toFixed(1);
+      arcTail.style.maskImage =
+        `conic-gradient(from ${((headDeg % 360 + 360) % 360)}deg at 50% 50%, ` +
+        `rgba(0,0,0,1) 0%, rgba(0,0,0,0) ${span}%)`;
+    }
+
     _applyWarmGlow(progress);
   }
 
   function _hideArc() {
-    if (arcTail)    arcTail.style.display    = 'none';
+    if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.maskImage = ''; }
     if (arcHeadSeg) arcHeadSeg.style.display = 'none';
     if (arcHeadDot) arcHeadDot.style.display = 'none';
   }
@@ -427,8 +442,9 @@ const SquareTimer = (() => {
     arcSvg.style.display = 'none';
     arcSvg.style.opacity = '';
     _hideArc();
-    arcTail.style.stroke = '';    arcHeadSeg.style.stroke = '';    arcHeadDot.style.fill = '';
-    arcHeadSeg.style.filter = ''; arcHeadDot.style.filter = '';
+    arcTail.style.stroke = '';    arcTail.style.maskImage = '';
+    arcHeadSeg.style.stroke = ''; arcHeadSeg.style.filter = '';
+    arcHeadDot.style.fill = '';   arcHeadDot.style.filter = '';
 
     btn.classList.remove('timer-pulsing', 'timer-active');
     btn.classList.add('timer-idle');

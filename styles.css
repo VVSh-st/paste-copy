@@ -159,7 +159,7 @@ body {
   pointer-events: none; overflow: visible;
 }
 
-/* ── Хвост: тусклая основная дуга ── */
+/* ── Хвост: тусклая основная дуга + кометный градиент ── */
 #btn-timer .timer-arc-tail {
   fill: none;
   stroke: var(--accent);
@@ -167,6 +167,8 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.35;
+  -webkit-mask-type: alpha;
+  mask-type: alpha;
 }
 
 /* ── Головной сегмент: яркая часть в конце хвоста ── */
@@ -182,13 +184,19 @@ body {
     drop-shadow(0 0 5px rgba(79, 142, 247, 0.35));
 }
 
-/* ── Точка-голова: светящийся circle на кончике ── */
+/* ── Точка-голова: светящийся circle на кончике + дыхание ── */
 #btn-timer .timer-arc-head-dot {
   fill: var(--accent);
   opacity: 1;
   filter:
     drop-shadow(0 0 3px rgba(79, 142, 247, 0.6))
     drop-shadow(0 0 6px rgba(79, 142, 247, 0.5));
+  animation: headDotBreathe 2.4s ease-in-out infinite;
+  will-change: opacity;
+}
+@keyframes headDotBreathe {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
 }
 
 /* ── Скрытие дуги в idle ── */
@@ -221,11 +229,11 @@ body {
 #btn-timer .timer-value-dim { color: var(--text2); opacity: 0.45; }
 
 .timer-digit-animate {
-  animation: timerDigitFlip 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: timerDigitFadeUp 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-@keyframes timerDigitFlip {
-  0%   { opacity: 0.3; transform: scale(0.6); }
-  100% { opacity: 1;   transform: scale(1);   }
+@keyframes timerDigitFadeUp {
+  0%   { opacity: 0;   transform: translateY(3px) scale(0.92); }
+  100% { opacity: 1;   transform: translateY(0)   scale(1);    }
 }
 
 /* ── Inline-ввод ── */
@@ -245,7 +253,14 @@ body {
 }
 @keyframes timerPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-  50%      { box-shadow: 0 0 8px 3px rgba(239, 68, 68, 0.22); }
+  50%      { box-shadow: 0 0 14px 5px rgba(239, 68, 68, 0.45); }
+}
+
+/* ── Мягкое свечение рамки при активном таймере ── */
+#btn-timer.timer-active {
+  box-shadow:
+    inset 0 0 8px rgba(79, 142, 247, 0.06),
+    inset 0 0 2px rgba(79, 142, 247, 0.1);
 }
 
 /* ── Flash ── */
