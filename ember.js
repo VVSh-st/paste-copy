@@ -394,6 +394,8 @@ const Ember = (() => {
       sourceTabId: normalized.sourceTabId,
     };
     persistMergedState();
+    syncAccessibleLabel(true);
+    if (tooltipEl) showTooltip();
   }
 
   function saveState() {
@@ -446,6 +448,7 @@ const Ember = (() => {
     state.sourceTabId = currentTabId;
     saveState();
     broadcast();
+    syncAccessibleLabel(true);
     if (tooltipEl) showTooltip();
   }
 
@@ -498,6 +501,8 @@ const Ember = (() => {
     prevRemaining = remainingSegments();
     lastWarnRemaining = remainingSegments();
     prevAppliedRemaining = -1;
+    syncAccessibleLabel(true);
+    if (tooltipEl) showTooltip();
   }
 
   // ---------- расчёт жизни угля ----------
@@ -3863,6 +3868,8 @@ const Ember = (() => {
     tooltipText = '';
     tooltipHideTimer = null;
     tooltipRemoveTimer = null;
+    state = null;
+    currentTabId = null;
     testLabel = null;
     allowTestModeTimer = null;
     allowTestMode = false;
