@@ -184,13 +184,12 @@ body {
     drop-shadow(0 0 5px rgba(79, 142, 247, 0.35));
 }
 
-/* ── Точка-голова: светящийся circle на кончике + пульсация ── */
+/* ── Точка-голова: плавный переход в хвост ── */
 #btn-timer .timer-arc-head-dot {
-  fill: #a8d8ff;
-  opacity: 1;
+  fill: var(--accent);
+  opacity: 0.8;
   filter:
-    drop-shadow(0 0 4px rgba(120,184,255,0.8));
-  transition: r 0.1s ease-out;
+    drop-shadow(0 0 2px rgba(79, 142, 247, 0.4));
 }
 
 /* ── Скрытие дуги в idle ── */
