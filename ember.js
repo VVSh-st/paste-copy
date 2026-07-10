@@ -3867,6 +3867,14 @@ const Ember = (() => {
     caret.x = 0; caret.y = 0; caret.active = false; caret.typing = false;
     cursorLean.x = 0; cursorLean.y = 0; cursorLean.squish = 0; cursorLean.scale = 1; cursorLean.tiltX = 0; cursorLean.tiltY = 0;
     peek.state = 'idle'; peek.timer = 0; peek.leanX = 0; peek.leanY = 0; peek.blinkPhase = 0; peek.noticeDelay = 0; peek.lookDuration = 0; peek.leanProgress = 0; peek.cooldown = 0;
+    hover = false; hoverVal = 0;
+    spawnCore = 1; spawnGlow = 1; spawnRing = 1;
+    intensity = 1; breathPhase = 0; breathScale = 1; heat = 1;
+    crackGlowMod = 0; ashCoverage = 0;
+    typedChars = 0; heatBoost = 0;
+    shimmerActive = false; shimmerEnd = 0; nextShimmerCheck = 0;
+    browserFocused = true; onScreen = true; hasActiveSquash = false;
+    statusState = null; statusBurstDone = false; statusTimer = null;
     anticipation.active = false;
     egg.active = false; egg.triggeredToday = false;
     egg._ringDone = false; egg._burstDone = false;
@@ -3884,6 +3892,7 @@ const Ember = (() => {
     allowTestModeTimer = null;
     allowTestMode = false;
     testMode = false;
+    testQueue = []; testIndex = 0;
     clearDeferred(testModeTimer);
     clearDeferred(nextTestStepTimer);
     testModeTimer = null;
