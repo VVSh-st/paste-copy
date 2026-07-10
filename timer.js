@@ -303,7 +303,7 @@ const SquareTimer = (() => {
       ? Math.floor(elapsed % 60)
       : Math.floor(((targetMinutes * 60 - elapsed) % 60 + 60) % 60);
 
-    const showSec = mode === 'up' ? minutes === 0 : (targetMinutes * 60 - Math.floor(elapsed)) < 60;
+    const showSec = minutes === 0;
     const display = showSec ? `${sec}` : `${minutes}`;
     const key = `${minutes}:${sec}`;
 
@@ -552,13 +552,12 @@ const SquareTimer = (() => {
     valueEl.style.display = 'flex';
     valueEl.classList.remove('timer-value-dim');
 
-    // Секундный отсчёт только в последнюю минуту
-    const elapsed = (Date.now() - startTs) / 1000;
+    // Секундный отсчёт при 0 минут
     const sec = mode === 'up'
-      ? Math.floor(elapsed % 60)
-      : Math.floor(((targetMinutes * 60 - elapsed) % 60 + 60) % 60);
+      ? Math.floor((Date.now() - startTs) / 1000 % 60)
+      : Math.floor(((targetMinutes * 60 - (Date.now() - startTs) / 1000) % 60 + 60) % 60);
 
-    const showSec = mode === 'up' ? minutes === 0 : (targetMinutes * 60 - Math.floor(elapsed)) < 60;
+    const showSec = minutes === 0;
     const display = showSec ? `${sec}` : `${minutes}`;
     const key = `${minutes}:${sec}`;
 
