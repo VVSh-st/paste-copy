@@ -193,10 +193,11 @@ const SquareTimer = (() => {
 
   function init() {
     if (_initialized) return;
-    _initialized = true;
 
     btn         = document.getElementById('btn-timer');
     if (!btn) return;
+
+    _initialized = true;
 
     _onPointerLeave = e => { if (e.pointerType !== 'mouse') onPointerCancel(e); };
     arcSvg      = btn.querySelector('.timer-arc');
