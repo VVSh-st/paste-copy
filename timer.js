@@ -158,19 +158,16 @@ const SquareTimer = (() => {
   function _checkCornerGlow(headPos, P) {
     if (_cornerGlowActive) return;
 
-    const corners = [0.25, 0.5, 0.75];
+    const corner = 0.5; // только 50% (нижний правый угол)
     const threshold = P * 0.008;
 
-    for (const c of corners) {
-      if (Math.abs(headPos - c * P) < threshold) {
-        _cornerGlowActive = true;
-        btn.classList.add('timer-corner-glow');
-        setTimeout(() => {
-          btn.classList.remove('timer-corner-glow');
-          _cornerGlowActive = false;
-        }, 600);
-        break;
-      }
+    if (Math.abs(headPos - corner * P) < threshold) {
+      _cornerGlowActive = true;
+      btn.classList.add('timer-corner-glow');
+      setTimeout(() => {
+        btn.classList.remove('timer-corner-glow');
+        _cornerGlowActive = false;
+      }, 500);
     }
   }
 
