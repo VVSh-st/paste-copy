@@ -184,19 +184,13 @@ body {
     drop-shadow(0 0 5px rgba(79, 142, 247, 0.35));
 }
 
-/* ── Точка-голова: светящийся circle на кончике + дыхание ── */
+/* ── Точка-голова: светящийся circle на кончике ── */
 #btn-timer .timer-arc-head-dot {
   fill: var(--accent);
   opacity: 1;
   filter:
     drop-shadow(0 0 3px rgba(79, 142, 247, 0.6))
     drop-shadow(0 0 6px rgba(79, 142, 247, 0.5));
-  animation: headDotBreathe 2.4s ease-in-out infinite;
-  will-change: opacity;
-}
-@keyframes headDotBreathe {
-  0%, 100% { opacity: 0.6; }
-  50%      { opacity: 1; }
 }
 
 /* ── Скрытие дуги в idle ── */

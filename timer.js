@@ -21,7 +21,6 @@ const SquareTimer = (() => {
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
   const WARM_START_SEC = 55;
-  const HEAD_PULSE_DURATION = 400;
 
   let _initialized = false;
   let btn, arcSvg, arcTail, arcHeadSeg, arcHeadDot, valueEl, inputEl;
@@ -35,8 +34,6 @@ const SquareTimer = (() => {
   let _pointerDownPos = null;
   let _longPressTimer = null;
   let _prevMin = null;
-  let _prevHeadPos = null;
-  let _headPulseTs = null;
   let _isBackground = false;
 
   let _pathCW = null;
@@ -126,7 +123,7 @@ const SquareTimer = (() => {
 
   function destroy() {
     stopTick(); stopPulse(); clearLongPress();
-    _pointerDownPos = null; _prevMin = null; _prevHeadPos = null; _headPulseTs = null;
+    _pointerDownPos = null; _prevMin = null;
     _longPressFired = false;
     if (btn) {
       btn.removeEventListener('pointerdown',   onPointerDown);
@@ -254,14 +251,14 @@ const SquareTimer = (() => {
   }
 
   function startCountUp() {
-    mode = 'up'; startTs = Date.now(); targetMinutes = null; _prevMin = null; _prevHeadPos = null;
+    mode = 'up'; startTs = Date.now(); targetMinutes = null; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     arcSvg.style.display = 'block';
     saveState(); startTick();
   }
 
   function startCountDown(m) {
-    mode = 'down'; startTs = Date.now(); targetMinutes = m; _prevMin = null; _prevHeadPos = null;
+    mode = 'down'; startTs = Date.now(); targetMinutes = m; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     closeInlineInput(); arcSvg.style.display = 'block';
     saveState(); startTick();
@@ -270,7 +267,7 @@ const SquareTimer = (() => {
   function resetToIdle() {
     stopTick(); stopPulse(); clearLongPress();
     _longPressFired = false; _pointerDownPos = null;
-    mode = null; startTs = null; targetMinutes = null; _prevMin = null; _prevHeadPos = null; _headPulseTs = null;
+    mode = null; startTs = null; targetMinutes = null; _prevMin = null;
     saveState(); setIdleVisual();
   }
 
@@ -326,7 +323,7 @@ const SquareTimer = (() => {
   }
 
   function _startAutoCountdown() {
-    mode = 'down'; startTs = Date.now(); targetMinutes = 99; _prevMin = null; _prevHeadPos = null;
+    mode = 'down'; startTs = Date.now(); targetMinutes = 99; _prevMin = null;
     arcSvg.style.display = 'block';
     saveState(); startTick();
   }
@@ -369,29 +366,6 @@ const SquareTimer = (() => {
     ].join(' ');
     arcHeadSeg.style.filter = f;
     arcHeadDot.style.filter = f;
-  }
-
-  /* ── пульс головы при пересечении 12ч ── */
-
-  function _checkHeadPulse(headPos, progress) {
-    if (_prevHeadPos === null) { _prevHeadPos = headPos; return; }
-
-    // Определяем пересечение 12ч: headPos < prevHeadPos (сброс на 0)
-    if (headPos < _prevHeadPos - 0.1) {
-      _headPulseTs = performance.now();
-    }
-    _prevHeadPos = headPos;
-
-    if (_headPulseTs === null) return;
-
-    const elapsed = performance.now() - _headPulseTs;
-    if (elapsed > HEAD_PULSE_DURATION) { _headPulseTs = null; return; }
-
-    // smoothstep pulse: 1 → 1.4 → 1
-    const t = elapsed / HEAD_PULSE_DURATION;
-    const scale = 1 + 0.4 * Math.sin(t * Math.PI);
-    arcHeadDot.style.transform = `scale(${scale.toFixed(2)})`;
-    arcHeadSeg.style.strokeWidth = (2 + 0.8 * Math.sin(t * Math.PI)).toFixed(1);
   }
 
   /* ── контур-подсветка при прохождении угла ── */
@@ -458,9 +432,6 @@ const SquareTimer = (() => {
     arcHeadDot.setAttribute('cx', pt.x);
     arcHeadDot.setAttribute('cy', pt.y);
 
-    // Пульс головы при 12ч
-    _checkHeadPulse(headPos, progress);
-
     // Контур-подсветка при прохождении угла (~25%, 50%, 75% периметра)
     _checkCornerFlash(headPos, P);
 
@@ -486,8 +457,8 @@ const SquareTimer = (() => {
 
   function _hideArc() {
     if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.maskImage = ''; }
-    if (arcHeadSeg) { arcHeadSeg.style.display = 'none'; arcHeadSeg.style.strokeWidth = ''; }
-    if (arcHeadDot) { arcHeadDot.style.display = 'none'; arcHeadDot.style.transform = ''; }
+    if (arcHeadSeg) arcHeadSeg.style.display = 'none';
+    if (arcHeadDot) arcHeadDot.style.display = 'none';
     if (_cornerFlashTimer) { clearTimeout(_cornerFlashTimer); _cornerFlashTimer = null; }
     btn.classList.remove('timer-corner-flash');
   }
@@ -495,7 +466,7 @@ const SquareTimer = (() => {
   /* ── idle ── */
 
   function setIdleVisual() {
-    _prevMin = null; _prevHeadPos = null; _headPulseTs = null;
+    _prevMin = null;
     valueEl.classList.remove('timer-digit-animate'); void valueEl.offsetWidth;
     valueEl.style.display = 'flex'; valueEl.textContent = '0'; valueEl.classList.add('timer-value-dim');
 
@@ -533,7 +504,7 @@ const SquareTimer = (() => {
       const elapsed = (Date.now() - s.startTs) / 1000;
       if (s.mode === 'up' && Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
       if (s.mode === 'down' && s.targetMinutes * 60 - Math.floor(elapsed) <= 0) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
-      mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null; _prevHeadPos = null;
+      mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null;
       arcSvg.style.display = 'block'; startTick();
     } catch (e) { console.warn('[SquareTimer] restore:', e); safeSet(STORAGE_KEY, ''); setIdleVisual(); }
   }
