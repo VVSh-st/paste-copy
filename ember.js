@@ -3376,6 +3376,7 @@ const Ember = (() => {
     // --- pose layer ---
     const pose = createPose();
 
+    if (anticipation.active) applyAnticipationPose(pose, now);
     if (sigh) applySighPose(pose, sigh);
     if (calmBurn) applyCalmBurnPose(pose, calmBurn);
     if (wiggle) applyWigglePose(pose, wiggle);
@@ -3822,6 +3823,8 @@ const Ember = (() => {
     hazeTrackX = 0;
     emberMood = 'calm';
     residualHeat = 0;
+    ringAngle = 0;
+    bobPhase = 0;
     breathPatternIdx = 0;
     nextBreathSwitch = 0;
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;

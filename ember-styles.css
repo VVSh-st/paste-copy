@@ -6,7 +6,7 @@
   position: relative;
 }
 
-.ember-slot::after {
+.ember::after {
   content: '';
   position: absolute;
   left: 50%; bottom: -4px;
@@ -572,7 +572,8 @@
   .ember-ash,
   .ember-spark,
   .ember-ash-overlay,
-  .ember-crack-layer {
+  .ember-crack-layer,
+  .segment {
     transition: none !important;
   }
 }
