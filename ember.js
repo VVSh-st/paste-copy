@@ -3216,6 +3216,7 @@ const Ember = (() => {
       setVar(root, '--glow', idleGlow.toFixed(3));
       setVar(root, '--brightness', idleBright.toFixed(3));
       setVar(root, '--coreHue', (15 + intensity * 35).toFixed(1));
+      setVar(root, '--coreLight', (35 + intensity * 35).toFixed(1) + '%');
       setVar(root, '--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3));
 
       setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
@@ -3845,6 +3846,7 @@ const Ember = (() => {
     anticipation.active = false;
     egg.active = false; egg.triggeredToday = false;
     egg._ringDone = false; egg._burstDone = false;
+    eggCharCount = 0; eggTriggeredDay = null;
     previewScare.active = false;
     flashHeat = 0; coreHeatReserve = 0;
     breathHoldUntil = 0;
