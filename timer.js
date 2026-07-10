@@ -448,7 +448,11 @@ const SquareTimer = (() => {
       _updateDisplay(min, (elapsed % 60) / 60, 'cw');
     } else {
       const rem = targetMinutes * 60 - Math.floor(elapsed);
-      if (rem <= 0) { onLimitReached(); return; }
+      if (rem <= 0) {
+        valueEl.textContent = '0';
+        onLimitReached();
+        return;
+      }
       const display = rem < 60 ? rem : Math.ceil(rem / 60);
       _updateDisplay(display, (elapsed % 60) / 60, 'ccw');
     }
