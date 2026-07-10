@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * Square Timer — квадратный таймер с обводкой по периметру.
+ * Square Timer — квадратный таймер с орбитальной дугой по периметру.
  * Полностью независим от Preview.copy().
  *
  * Логика:
@@ -11,6 +11,12 @@
  * - Правый клик (активный) → сброс в idle
  * - Лимит (99 вверх / 0 вниз) → flash → пульсация 3 мин → звук → обратный отсчёт 99→0
  * - Персистентность через Storage._set/_get
+ *
+ * Анимация:
+ * - 60fps через requestAnimationFrame
+ * - Два независимых SVG-пути (CW/CCW) от 12 часов
+ * - Хвост (opacity 0.35) + головной сегмент (opacity 1.0 + glow) + точка-голова
+ * - Цветовая температура: последние 5 сек → синий→amber
  */
 
 const SquareTimer = (() => {
@@ -21,19 +27,23 @@ const SquareTimer = (() => {
   const PULSE_MAX_DURATION = 180000;
 
   let _initialized = false;
-  let btn, arcSvg, arcRect, valueEl, inputEl;
-  let _cachedPerimeter = null;
+  let btn, arcSvg, valueEl, inputEl;
+  let arcTail, arcHeadSegment, arcHeadDot;
   let mode = null;
   let startTs = null;
   let targetMinutes = null;
-  let intervalId = null;
+  let rafId = null;
   let pulseIntervalId = null;
   let pulseStartTime = null;
   let _longPressFired = false;
   let _pointerDownPos = null;
   let _longPressTimer = null;
-  let _prevMinutes = null;
-  let _prevSecondsInMinute = null;
+  let _prevDisplayMinutes = null;
+
+  // Кеш путей и периметра
+  let _pathCW = null;
+  let _pathCCW = null;
+  let _cachedPerimeter = null;
 
   function _flashEffect() {
     btn.classList.remove('timer-flash');
@@ -41,6 +51,32 @@ const SquareTimer = (() => {
     btn.classList.add('timer-flash');
     setTimeout(() => btn.classList.remove('timer-flash'), 1500);
   }
+
+  // ── Периметр путь (CW и CCW) ───────────────────────────────────────
+
+  function _getPerimeterPath(dir) {
+    const s = btn.offsetWidth;
+    const half = s / 2;
+
+    if (dir === 'cw') {
+      return `M ${half},0 L ${s},0 L ${s},${s} L 0,${s} L 0,0 Z`;
+    } else {
+      return `M ${half},0 L 0,0 L 0,${s} L ${s},${s} L ${s},0 Z`;
+    }
+  }
+
+  function _updatePaths() {
+    _pathCW = _getPerimeterPath('cw');
+    _pathCCW = _getPerimeterPath('ccw');
+  }
+
+  function _invalidateCaches() {
+    _cachedPerimeter = null;
+    _pathCW = null;
+    _pathCCW = null;
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────
 
   function init() {
     if (_initialized) return;
@@ -50,15 +86,14 @@ const SquareTimer = (() => {
     if (!btn) return;
 
     arcSvg = btn.querySelector('.timer-arc');
-    arcRect = btn.querySelector('.timer-arc-rect');
+    arcTail = btn.querySelector('.timer-arc-tail');
+    arcHeadSegment = btn.querySelector('.timer-arc-head-segment');
+    arcHeadDot = btn.querySelector('.timer-arc-head-dot');
     valueEl = btn.querySelector('.timer-value');
     inputEl = btn.querySelector('.timer-input');
 
-    if (arcRect) {
-      _cachedPerimeter = arcRect.getTotalLength();
-      const ro = new ResizeObserver(() => { _cachedPerimeter = null; });
-      ro.observe(btn);
-    }
+    const ro = new ResizeObserver(() => _invalidateCaches());
+    ro.observe(btn);
 
     btn.addEventListener('pointerdown', onPointerDown);
     btn.addEventListener('pointerup', onPointerUp);
@@ -81,8 +116,7 @@ const SquareTimer = (() => {
     stopPulse();
     clearLongPress();
     _pointerDownPos = null;
-    _prevMinutes = null;
-    _prevSecondsInMinute = null;
+    _prevDisplayMinutes = null;
     _longPressFired = false;
     if (btn) {
       btn.removeEventListener('pointerdown', onPointerDown);
@@ -94,7 +128,7 @@ const SquareTimer = (() => {
     }
   }
 
-  // ── Pointer Events ─────────────────────────────────────────────────────
+  // ── Pointer Events ─────────────────────────────────────────────────
 
   function onPointerDown(e) {
     if (e.button !== 0) return;
@@ -160,7 +194,7 @@ const SquareTimer = (() => {
     }
   }
 
-  // ── Context Menu (правый клик) ────────────────────────────────────────
+  // ── Context Menu (правый клик) ────────────────────────────────────
 
   function onContextMenu(e) {
     if (mode !== null || pulseIntervalId) {
@@ -169,7 +203,7 @@ const SquareTimer = (() => {
     }
   }
 
-  // ── Inline Input ──────────────────────────────────────────────────────
+  // ── Inline Input ──────────────────────────────────────────────────
 
   function openInlineInput() {
     if (mode !== null) return;
@@ -224,7 +258,7 @@ const SquareTimer = (() => {
     }
   }
 
-  // ── Sound (Web Audio API) ─────────────────────────────────────────────
+  // ── Sound (Web Audio API) ─────────────────────────────────────────
 
   function _playCompletionSound() {
     try {
@@ -255,33 +289,31 @@ const SquareTimer = (() => {
     }
   }
 
-  // ── Timer Logic ───────────────────────────────────────────────────────
+  // ── Timer Logic ───────────────────────────────────────────────────
 
   function startCountUp() {
     mode = 'up';
     startTs = Date.now();
     targetMinutes = null;
-    _prevMinutes = null;
-    _prevSecondsInMinute = null;
+    _prevDisplayMinutes = null;
     btn.classList.remove('timer-idle');
     btn.classList.add('timer-active');
+    arcSvg.style.display = 'block';
     saveState();
     startTick();
-    updateDisplay();
   }
 
   function startCountDown(minutes) {
     mode = 'down';
     startTs = Date.now();
     targetMinutes = minutes;
-    _prevMinutes = null;
-    _prevSecondsInMinute = null;
+    _prevDisplayMinutes = null;
     btn.classList.remove('timer-idle');
     btn.classList.add('timer-active');
     closeInlineInput();
+    arcSvg.style.display = 'block';
     saveState();
     startTick();
-    updateDisplay();
   }
 
   function resetToIdle() {
@@ -293,51 +325,52 @@ const SquareTimer = (() => {
     mode = null;
     startTs = null;
     targetMinutes = null;
-    _prevMinutes = null;
-    _prevSecondsInMinute = null;
+    _prevDisplayMinutes = null;
     saveState();
     setIdleVisual();
   }
 
+  // ── rAF Loop ──────────────────────────────────────────────────────
+
   function startTick() {
     stopTick();
-    intervalId = setInterval(tick, 1000);
+    rafId = requestAnimationFrame(_tickRAF);
   }
 
   function stopTick() {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
     }
   }
 
-  function tick() {
-    if (!startTs) return;
+  function _tickRAF() {
+    if (!startTs || mode === null) return;
 
-    const elapsed = Date.now() - startTs;
+    const now = Date.now();
+    const elapsed = (now - startTs) / 1000;
 
     if (mode === 'up') {
-      const totalSeconds = Math.floor(elapsed / 1000);
-      const minutes = Math.floor(totalSeconds / 60);
+      const totalSec = Math.floor(elapsed);
+      const minutes = Math.floor(totalSec / 60);
+      if (minutes >= 99) { onLimitReached(); return; }
 
-      if (minutes >= 99) {
-        onLimitReached();
-        return;
-      }
+      const secInMin = elapsed % 60;
+      const progress = secInMin / 60;
+      _updateDisplay(minutes, progress, 'cw');
 
-      updateDisplay();
     } else if (mode === 'down') {
-      const totalSeconds = Math.floor(elapsed / 1000);
-      const totalMinutesTarget = targetMinutes * 60;
-      const remaining = totalMinutesTarget - totalSeconds;
+      const totalSec = Math.floor(elapsed);
+      const remaining = targetMinutes * 60 - totalSec;
+      if (remaining <= 0) { onLimitReached(); return; }
 
-      if (remaining <= 0) {
-        onLimitReached();
-        return;
-      }
-
-      updateDisplay();
+      const minutes = Math.floor(remaining / 60);
+      const secInMin = elapsed % 60;
+      const progress = secInMin / 60;
+      _updateDisplay(minutes, progress, 'ccw');
     }
+
+    rafId = requestAnimationFrame(_tickRAF);
   }
 
   function onLimitReached() {
@@ -351,7 +384,7 @@ const SquareTimer = (() => {
     startPulse();
   }
 
-  // ── Pulse (пульсация после достижения лимита) ─────────────────────────
+  // ── Pulse (пульсация после достижения лимита) ─────────────────────
 
   function startPulse() {
     pulseStartTime = Date.now();
@@ -383,75 +416,108 @@ const SquareTimer = (() => {
     mode = 'down';
     startTs = Date.now();
     targetMinutes = 99;
-    _prevMinutes = null;
-    _prevSecondsInMinute = null;
+    _prevDisplayMinutes = null;
+    arcSvg.style.display = 'block';
     saveState();
     startTick();
-    updateDisplay();
   }
 
-  // ── Display ───────────────────────────────────────────────────────────
+  // ── Display ───────────────────────────────────────────────────────
 
-  function updateDisplay() {
-    if (!startTs) return;
-
-    const elapsed = Date.now() - startTs;
-    let minutes, progress, direction, secondsInMinute;
-
-    if (mode === 'up') {
-      const totalSeconds = Math.floor(elapsed / 1000);
-      minutes = Math.floor(totalSeconds / 60);
-      secondsInMinute = totalSeconds % 60;
-      progress = secondsInMinute / 60;
-      direction = 'cw';
-    } else {
-      const totalSeconds = Math.floor(elapsed / 1000);
-      const totalMinutesTarget = targetMinutes * 60;
-      const remaining = totalMinutesTarget - totalSeconds;
-      minutes = Math.floor(remaining / 60);
-      secondsInMinute = remaining % 60;
-      progress = 1 - (secondsInMinute / 60);
-      direction = 'ccw';
-    }
-
+  function _updateDisplay(minutes, progress, direction) {
+    // Цифра
     valueEl.style.display = 'flex';
     valueEl.classList.remove('timer-value-dim');
 
-    if (_prevMinutes !== null && minutes !== _prevMinutes) {
+    if (_prevDisplayMinutes !== null && minutes !== _prevDisplayMinutes) {
       valueEl.textContent = minutes;
       void valueEl.offsetWidth;
       valueEl.classList.add('timer-digit-animate');
     } else {
       valueEl.textContent = minutes;
     }
-    _prevMinutes = minutes;
-    _prevSecondsInMinute = secondsInMinute;
+    _prevDisplayMinutes = minutes;
 
+    // Дуга
     _applyArc(progress, direction);
   }
 
   function _applyArc(progress, direction) {
-    if (!arcRect) return;
+    if (!arcTail) return;
     arcSvg.style.display = 'block';
 
+    // Выбираем путь
+    if (_pathCW === null || _pathCCW === null) _updatePaths();
+    const pathD = (direction === 'cw') ? _pathCW : _pathCCW;
+    if (!pathD) return;
+
+    // Устанавливаем `d` всем трём элементам
+    arcTail.setAttribute('d', pathD);
+    arcHeadSegment.setAttribute('d', pathD);
+
+    // Периметр (кеш)
     if (_cachedPerimeter == null) {
-      _cachedPerimeter = arcRect.getTotalLength();
+      _cachedPerimeter = arcTail.getTotalLength();
     }
-    const totalLength = _cachedPerimeter;
+    const P = _cachedPerimeter;
 
-    arcRect.style.strokeDasharray = totalLength + ' ' + totalLength;
-    arcRect.style.strokeDashoffset = totalLength * progress;
-
-    if (direction === 'ccw') {
-      arcSvg.style.transform = 'scaleX(-1)';
-    } else {
-      arcSvg.style.transform = '';
+    // Невидимо при progress ≈ 0
+    if (progress < 0.005) {
+      arcTail.style.display = 'none';
+      arcHeadSegment.style.display = 'none';
+      arcHeadDot.style.display = 'none';
+      return;
     }
+
+    const visibleLen = progress * P;
+
+    // Хвост (тусклый, полная длина прогресса)
+    arcTail.style.display = '';
+    arcTail.style.strokeDasharray = visibleLen + ' ' + P;
+    arcTail.style.strokeDashoffset = '0';
+
+    // Головной сегмент (яркий, последние ~10% хвоста)
+    const headLen = Math.min(visibleLen, P * 0.10);
+    arcHeadSegment.style.display = '';
+    arcHeadSegment.style.strokeDasharray = headLen + ' ' + P;
+    arcHeadSegment.style.strokeDashoffset = -(visibleLen - headLen);
+
+    // Точка-голова (на кончике дуги)
+    const endPoint = arcTail.getPointAtLength(visibleLen);
+    arcHeadDot.style.display = '';
+    arcHeadDot.setAttribute('cx', endPoint.x);
+    arcHeadDot.setAttribute('cy', endPoint.y);
+
+    // Цветовая температура
+    _applyColorTemperature(progress);
   }
 
+  // ── Цветовая температура ──────────────────────────────────────────
+
+  function _applyColorTemperature(progress) {
+    const WARM_START = 55 / 60;
+    if (progress < WARM_START) {
+      arcTail.style.stroke = '';
+      arcHeadSegment.style.stroke = '';
+      arcHeadDot.style.fill = '';
+      return;
+    }
+
+    const t = (progress - WARM_START) / (1 - WARM_START);
+    const h = 217 + (30 - 217) * t;
+    const s = 100;
+    const l = 64 + (60 - 64) * t;
+    const color = `hsl(${h.toFixed(1)}, ${s}%, ${l.toFixed(1)}%)`;
+
+    arcTail.style.stroke = color;
+    arcHeadSegment.style.stroke = color;
+    arcHeadDot.style.fill = color;
+  }
+
+  // ── Idle ──────────────────────────────────────────────────────────
+
   function setIdleVisual() {
-    _prevMinutes = null;
-    _prevSecondsInMinute = null;
+    _prevDisplayMinutes = null;
 
     valueEl.classList.remove('timer-digit-animate');
     void valueEl.offsetWidth;
@@ -459,14 +525,21 @@ const SquareTimer = (() => {
     valueEl.textContent = '0';
     valueEl.classList.add('timer-value-dim');
 
-    arcSvg.style.opacity = '';
     arcSvg.style.display = 'none';
+    arcTail.style.display = 'none';
+    arcHeadSegment.style.display = 'none';
+    arcHeadDot.style.display = 'none';
+
+    arcTail.style.stroke = '';
+    arcHeadSegment.style.stroke = '';
+    arcHeadDot.style.fill = '';
+
     btn.classList.remove('timer-pulsing');
     btn.classList.remove('timer-active');
     btn.classList.add('timer-idle');
   }
 
-  // ── Persistence ───────────────────────────────────────────────────────
+  // ── Persistence ───────────────────────────────────────────────────
 
   function safeSet(key, val) {
     try { return Storage._set(key, val); } catch (e) { console.warn('[SquareTimer]', e); }
@@ -532,10 +605,9 @@ const SquareTimer = (() => {
         mode = state.mode;
         startTs = state.startTs;
         targetMinutes = null;
-        _prevMinutes = null;
-        _prevSecondsInMinute = null;
+        _prevDisplayMinutes = null;
+        arcSvg.style.display = 'block';
         startTick();
-        updateDisplay();
 
       } else if (state.mode === 'down') {
         const totalSeconds = Math.floor(elapsed / 1000);
@@ -551,10 +623,9 @@ const SquareTimer = (() => {
         mode = state.mode;
         startTs = state.startTs;
         targetMinutes = state.targetMinutes;
-        _prevMinutes = null;
-        _prevSecondsInMinute = null;
+        _prevDisplayMinutes = null;
+        arcSvg.style.display = 'block';
         startTick();
-        updateDisplay();
       }
 
     } catch (e) {
@@ -564,7 +635,7 @@ const SquareTimer = (() => {
     }
   }
 
-  // ── Public API ────────────────────────────────────────────────────────
+  // ── Public API ────────────────────────────────────────────────────
 
   return { init, destroy };
 })();

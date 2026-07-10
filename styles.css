@@ -160,12 +160,38 @@ body {
   pointer-events: none; overflow: visible;
 }
 #btn-timer.timer-idle .timer-arc { display: none; }
-#btn-timer .timer-arc-rect {
-  fill: none; stroke: var(--accent); stroke-width: 2;
-  stroke-linecap: round; stroke-linejoin: round;
-  stroke-opacity: 0.85;
-  filter: drop-shadow(0 0 2px rgba(79,142,247,0.3));
-  transition: stroke-dashoffset 0.9s linear;
+/* Хвост: тусклая основная дуга */
+#btn-timer .timer-arc-tail {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.35;
+}
+/* Головной сегмент: яркая часть в конце хвоста */
+#btn-timer .timer-arc-head-segment {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 2px var(--accent))
+    drop-shadow(0 0 5px rgba(79, 142, 247, 0.35));
+}
+/* Точка-голова */
+#btn-timer .timer-arc-head-dot {
+  fill: var(--accent);
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 3px var(--accent))
+    drop-shadow(0 0 6px rgba(79, 142, 247, 0.5));
+}
+/* Скрытие всех arc-элементов в idle */
+#btn-timer.timer-idle .timer-arc-tail,
+#btn-timer.timer-idle .timer-arc-head-segment,
+#btn-timer.timer-idle .timer-arc-head-dot {
+  display: none;
 }
 .timer-digit-animate {
   animation: timerDigitFlip 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -6299,7 +6325,7 @@ body.help-open {
 }
 .te-input-row-compact {
   display: grid;
-  grid-template-columns: 44px 140px 1fr auto;
+  grid-template-columns: 44px 150px 1fr auto;
   gap: 8px;
   align-items: center;
 }
