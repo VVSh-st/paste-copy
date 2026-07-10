@@ -24,7 +24,7 @@ const SquareTimer = (() => {
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
   const WARM_START_SEC = 55;
-  const PARTICLE_POOL_SIZE = 8;
+  const PARTICLE_POOL_SIZE = 24;
 
   let _initialized = false;
   let btn, arcSvg, arcTail, arcHeadSeg, arcHeadDot, valueEl, inputEl;
@@ -438,7 +438,7 @@ const SquareTimer = (() => {
     } else {
       const rem = targetMinutes * 60 - Math.floor(elapsed);
       if (rem <= 0) { onLimitReached(); return; }
-      _updateDisplay(Math.floor(rem / 60), (elapsed % 60) / 60, 'ccw');
+      _updateDisplay(Math.ceil(rem / 60), (elapsed % 60) / 60, 'ccw');
     }
     rafId = requestAnimationFrame(_tickRAF);
   }
