@@ -649,9 +649,15 @@ const Ember = (() => {
       const added = remaining - prevRemaining;
       const totalWindow = clamp(300 + added * 20, 300, 500);
       const step = totalWindow / added;
+      const maxDelay = (added - 1) * step;
       for (let i = prevRemaining; i < remaining; i++) {
         segments[i].style.setProperty('--reveal-delay', ((i - prevRemaining) * step).toFixed(0));
       }
+      defer(() => {
+        for (let i = prevRemaining; i < remaining; i++) {
+          segments[i].style.removeProperty('--reveal-delay');
+        }
+      }, totalWindow + 50);
     }
     segments.forEach((seg, i) => seg.classList.toggle('active', i < remaining));
     prevRemaining = remaining;
@@ -3130,7 +3136,7 @@ const Ember = (() => {
     applySegments();
 
     const curRem = remainingSegments();
-    if (curRem <= 2 && curRem < lastWarnRemaining && curRem > 0 && !egg.active) {
+    if (curRem <= 2 && curRem < lastWarnRemaining && curRem > 0) {
       heatBoost = Math.max(heatBoost, 0.5);
       for (let i = 0; i < 6; i++) defer(spawnSpark, i * 50);
       ringImpulse = rand(4, 7) * (Math.random() < 0.5 ? 1 : -1);
