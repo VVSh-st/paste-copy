@@ -388,9 +388,9 @@ const Ember = (() => {
     if (!isNewer) return;
 
     state = {
-      lastEditTime: Math.max(currentEdit, nextEdit),
+      lastEditTime: normalized.lastEditTime,
       lastInitTime: Math.max(state.lastInitTime || 0, normalized.lastInitTime || 0),
-      updatedAt: Math.max(currentUpdatedAt, nextUpdatedAt),
+      updatedAt: normalized.updatedAt,
       sourceTabId: normalized.sourceTabId,
     };
     persistMergedState();
@@ -431,7 +431,7 @@ const Ember = (() => {
     } catch {}
     handlers.storageSync = (e) => {
       if (!e.key || !e.newValue) return;
-      if (!e.key.startsWith(STORAGE_KEY_PREFIX)) return;
+      if (e.key !== getStorageKey(currentTabId)) return;
       try {
         const s = JSON.parse(e.newValue);
         applyRemoteState(s);
@@ -652,7 +652,6 @@ const Ember = (() => {
       const added = remaining - prevRemaining;
       const totalWindow = clamp(300 + added * 20, 300, 500);
       const step = totalWindow / added;
-      const maxDelay = (added - 1) * step;
       for (let i = prevRemaining; i < remaining; i++) {
         segments[i].style.setProperty('--reveal-delay', ((i - prevRemaining) * step).toFixed(0));
       }
@@ -939,7 +938,6 @@ const Ember = (() => {
     const mag = eff.mag ?? 1;
     const side = eff.side ?? (Math.random() < 0.5 ? -1 : 1);
 
-    const snap = p < 0.08 ? easeOutQuad(p / 0.08) : 0;
     const bulge = p >= 0.08 && p < 0.22 ? Math.sin((p - 0.08) / 0.14 * Math.PI) : 0;
     const tremor = p >= 0.22 ? Math.sin((p - 0.22) * 40) * Math.exp(-(p - 0.22) * 6) : 0;
 
@@ -1293,7 +1291,9 @@ const Ember = (() => {
             setVar(seg, '--seg-scaleX', (1 - flash * 0.35).toFixed(3));
             setVar(seg, '--seg-scaleY', (1 + flash * 0.2).toFixed(3));
           }
-          const neighbor = segments[e.segIdx - 1] || segments[e.segIdx + 1];
+          const neighbor = Math.random() < 0.5
+            ? (segments[e.segIdx - 1] || segments[e.segIdx + 1])
+            : (segments[e.segIdx + 1] || segments[e.segIdx - 1]);
           if (neighbor && flash > 0.3) {
             markSegmentDirty(neighbor);
             setVar(neighbor, '--seg-flash', (flash * 0.3).toFixed(3));
@@ -2210,6 +2210,12 @@ const Ember = (() => {
 
         cursorLean.x += ((peek.leanX + swayX) - cursorLean.x) * peekLerp;
         cursorLean.y += ((peek.leanY + swayY) - cursorLean.y) * peekLerp;
+
+        // лёгкий наклон «головой» синхронно с покачиванием
+        const tiltTargetX = -(peek.leanY + swayY) * 0.3;
+        const tiltTargetY = (peek.leanX + swayX) * 0.3;
+        cursorLean.tiltX += (tiltTargetX - cursorLean.tiltX) * peekLerp;
+        cursorLean.tiltY += (tiltTargetY - cursorLean.tiltY) * peekLerp;
 
         // лёгкое «моргание» — кратковременная деформация в середине
         const blinkWindow = lookT > 0.4 && lookT < 0.6;
@@ -3395,8 +3401,6 @@ const Ember = (() => {
         eff.skipGeometry = false;
       }
     });
-
-    const tm = testMode ? 4 : 1;
 
     tiltCurrent += (tiltTarget - tiltCurrent) * clamp(0.08 * (dt / 16.7), 0, 1);
     crackGlowMod = 0;
