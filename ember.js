@@ -1169,13 +1169,13 @@ const Ember = (() => {
     const hasDeform = absSqBr > 0.005 || Math.abs(msX) > 0.05 || Math.abs(msY) > 0.05 || uB > 0.05 || lS > 0.05 || sB > 0.05;
     if (hasDeform) {
       hasActiveSquash = true;
-      coreEl.style.animation = 'none';
-      coreEl.style.borderRadius =
-        `${(48+sqBr*4.5+uB*24-lS*9).toFixed(1)}% ${(52-sqBr*4.5+sB*18-uB*12).toFixed(1)}% ${(52-sqBr*6+lS*21-sB*9).toFixed(1)}% ${(48+sqBr*6+msX*9).toFixed(1)}% / ${(50-sqBr*12+msY*15-uB*12).toFixed(1)}% ${(46+sqBr*6+msX*6).toFixed(1)}% ${(50+sqBr*9+lS*15).toFixed(1)}% ${(50-sqBr*6+msY*9).toFixed(1)}%`;
+      setStyle(coreEl, 'animation', 'none');
+      setStyle(coreEl, 'borderRadius',
+        `${(48+sqBr*4.5+uB*24-lS*9).toFixed(1)}% ${(52-sqBr*4.5+sB*18-uB*12).toFixed(1)}% ${(52-sqBr*6+lS*21-sB*9).toFixed(1)}% ${(48+sqBr*6+msX*9).toFixed(1)}% / ${(50-sqBr*12+msY*15-uB*12).toFixed(1)}% ${(46+sqBr*6+msX*6).toFixed(1)}% ${(50+sqBr*9+lS*15).toFixed(1)}% ${(50-sqBr*6+msY*9).toFixed(1)}%`);
     } else if (hasActiveSquash) {
       hasActiveSquash = false;
-      coreEl.style.animation = '';
-      coreEl.style.borderRadius = '';
+      setStyle(coreEl, 'animation', '');
+      setStyle(coreEl, 'borderRadius', '');
     }
 
     setVar(coreEl, '--cursorLeanX', cursorLean.x.toFixed(1));
@@ -3302,8 +3302,8 @@ const Ember = (() => {
     // haze — динамическое обновление с cursor/wind
     if (hazeEl) {
       const hazeIntensity = clamp(intensity * 0.45 + coreHeatReserve * 0.22 + heatBoost * 0.35 + windGust * 0.12, 0, 1);
-      hazeEl.style.opacity = hazeIntensity.toFixed(3);
-      hazeEl.style.setProperty('--hazeShiftX', (gaze.x * 0.08 + windGust * 6).toFixed(2) + 'px');
+      setStyle(hazeEl, 'opacity', hazeIntensity.toFixed(3));
+      setVar(hazeEl, '--hazeShiftX', (gaze.x * 0.08 + windGust * 6).toFixed(2) + 'px');
     }
 
     applyStatus();
@@ -3411,7 +3411,7 @@ const Ember = (() => {
     updateCrackLayers(now, crackGlow);
 
     const waveOffset = ((now * 0.00003) % 1) * 100;
-    if (heatWaveEl) heatWaveEl.style.setProperty('--waveOffset', waveOffset.toFixed(1) + '%');
+    if (heatWaveEl) setVar(heatWaveEl, '--waveOffset', waveOffset.toFixed(1) + '%');
 
     commitPose(pose, now, dt);
     setVar(root, '--breathScale', breathScale.toFixed(4));
@@ -3420,11 +3420,11 @@ const Ember = (() => {
 
     if (hotAttnEl) {
       if (attn.hotHeat > 0.01) {
-        hotAttnEl.style.left = clamp(attn.hotX, 15, 85) + '%';
-        hotAttnEl.style.top = clamp(attn.hotY, 15, 85) + '%';
-        hotAttnEl.style.opacity = clamp(attn.hotHeat * 0.7, 0, 0.8).toFixed(3);
+        setStyle(hotAttnEl, 'left', clamp(attn.hotX, 15, 85) + '%');
+        setStyle(hotAttnEl, 'top', clamp(attn.hotY, 15, 85) + '%');
+        setStyle(hotAttnEl, 'opacity', clamp(attn.hotHeat * 0.7, 0, 0.8).toFixed(3));
       } else {
-        hotAttnEl.style.opacity = '0';
+        setStyle(hotAttnEl, 'opacity', '0');
       }
     }
 
