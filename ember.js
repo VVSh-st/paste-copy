@@ -38,8 +38,6 @@ const Ember = (() => {
   let hotAttnEl = null;
   let statusState = null;
   let statusTimer = null;
-  let statusSince = 0;
-  let statusUntil = 0;
   let statusBurstDone = false;
 
   let hover = false;
@@ -57,8 +55,6 @@ const Ember = (() => {
   let heatOffsetX = 0, heatOffsetY = 0;
   let heatTargetX = 0, heatTargetY = 0;
   let nextHeatShift = 0;
-  let heatPhase = 0;
-  const heatPhaseSpeed = 0.0009;
 
   let residualHeat = 0;
 
@@ -456,14 +452,10 @@ const Ember = (() => {
     if (!root) return;
     clearDeferred(statusTimer);
     statusState = type;
-    statusSince = performance.now();
     statusBurstDone = false;
     if (type === 'saving' || type === 'saved' || type === 'error') {
       const dur = type === 'error' ? 2500 : 1500;
-      statusUntil = performance.now() + dur;
-      statusTimer = defer(() => { statusState = null; statusUntil = 0; }, dur);
-    } else {
-      statusUntil = 0;
+      statusTimer = defer(() => { statusState = null; }, dur);
     }
     if (tooltipEl) showTooltip();
   }
@@ -687,7 +679,6 @@ const Ember = (() => {
     }
     heatOffsetX += (heatTargetX - heatOffsetX) * clamp(0.003 * dt, 0, 1);
     heatOffsetY += (heatTargetY - heatOffsetY) * clamp(0.003 * dt, 0, 1);
-    heatPhase += heatPhaseSpeed * dt;
 
     const nextZones = [];
     zones.forEach((zone, i) => {
@@ -723,7 +714,7 @@ const Ember = (() => {
           nz._curHeat = 0.3;
           nz._curX = zone._curX;
           nz._curY = zone._curY;
-          zones.push(nz);
+          nextZones.push(nz);
         }
       }
       const lerpSpeed = 0.0015 * dt;
@@ -3839,6 +3830,9 @@ const Ember = (() => {
     temperament.tiredness = 0; temperament.satisfaction = 0;
     gaze.x = 0; gaze.y = 0; gaze.strength = 0;
     anticipation.active = false;
+    egg.active = false; egg.triggeredToday = false;
+    egg._ringDone = false; egg._burstDone = false;
+    previewScare.active = false;
     flashHeat = 0; coreHeatReserve = 0;
     breathHoldUntil = 0;
     tooltipEl = null;
