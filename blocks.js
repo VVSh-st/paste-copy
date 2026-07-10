@@ -1848,12 +1848,18 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       lineHighlight.style.background = lay.currentLineColor || 'rgba(79,142,247,0.18)';
     }
 
-    ['focus', 'click', 'keyup', 'select', 'input', 'scroll'].forEach(evt => {
-      ta.addEventListener(evt, () => {
-        requestAnimationFrame(updateCurrentLineHighlight);
-        requestAnimationFrame(() => requestAnimationFrame(updateCurrentLineHighlight));
+    let _lineHighlightRaf = 0;
+    function _scheduleLineHighlight() {
+      if (_lineHighlightRaf) return;
+      _lineHighlightRaf = requestAnimationFrame(() => {
+        _lineHighlightRaf = 0;
+        updateCurrentLineHighlight();
       });
+    }
+    ['focus', 'click', 'keyup', 'select', 'input'].forEach(evt => {
+      ta.addEventListener(evt, _scheduleLineHighlight);
     });
+    ta.addEventListener('scroll', _scheduleLineHighlight, { passive: true });
     ta.addEventListener('blur', () => {
       updateCurrentLineHighlight();
       if (lineMirror?.parentNode) lineMirror.parentNode.removeChild(lineMirror);
