@@ -5,13 +5,16 @@
  * Анимация 60fps через requestAnimationFrame.
  *
  * Орбита:
- *  - Самопожирающий хвост: tail плавно догоняет head за 5 сек (smoothstep)
- *  - Пульс головы при 12ч: кратковременное увеличение dot+segment
+ *  - Хвост + головной сегмент + точка-голова
  *  - Путь повторяет border-radius кнопки (скруглённые углы)
  *  - CW/CCW через два разных path (без scaleX)
  *  - Мягкая цветовая температура через тень (последние 5 сек)
  *  - При лимите: дуга скрыта, пульсирует только box-shadow
  *  - Оптимизация в фоне: без mask/glow/filter
+ *  - Stacking-анимация при смене цифр (old exits up, new enters down)
+ *  - Particle trail за головой дуги
+ *  - Micro-interactions: сжатие при касании
+ *  - Corner glow при прохождении углов
  */
 
 const SquareTimer = (() => {
@@ -21,6 +24,7 @@ const SquareTimer = (() => {
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
   const WARM_START_SEC = 55;
+  const PARTICLE_POOL_SIZE = 8;
 
   let _initialized = false;
   let btn, arcSvg, arcTail, arcHeadSeg, arcHeadDot, valueEl, inputEl;
@@ -40,6 +44,13 @@ const SquareTimer = (() => {
   let _pathCCW = null;
   let _perim = null;
   let _radius = null;
+
+  // Particles
+  let _particlePool = [];
+  let _particleFrame = 0;
+
+  // Corner glow
+  let _cornerGlowActive = false;
 
   /* ════════════════════════════════════════════════════════════════
      ПЕРИМЕТР: путь с дугами в углах (повторяет border-radius)
@@ -87,6 +98,80 @@ const SquareTimer = (() => {
     _pathCW = null;
     _pathCCW = null;
     _radius = null;
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+     PARTICLE SYSTEM
+     ════════════════════════════════════════════════════════════════ */
+
+  function _ensureParticlePool() {
+    if (_particlePool.length) return;
+    for (let i = 0; i < PARTICLE_POOL_SIZE; i++) {
+      const el = document.createElement('div');
+      el.className = 'timer-particle';
+      btn.appendChild(el);
+      _particlePool.push(el);
+    }
+  }
+
+  function _spawnParticle(x, y) {
+    _ensureParticlePool();
+    const el = _particlePool.pop();
+    if (!el) return;
+
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = 8 + Math.random() * 14;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist;
+    const size = 2 + Math.random() * 3;
+    const dur = 400 + Math.random() * 300;
+
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    el.style.width = el.style.height = size + 'px';
+    el.style.opacity = '0.7';
+    el.style.transition = `all ${dur}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
+    el.style.display = '';
+
+    requestAnimationFrame(() => {
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      el.style.opacity = '0';
+    });
+
+    setTimeout(() => {
+      el.style.display = 'none';
+      el.style.transition = 'none';
+      el.style.transform = '';
+      _particlePool.push(el);
+    }, dur);
+  }
+
+  function _maybeSpawnParticle(headX, headY) {
+    if (++_particleFrame % 3 !== 0) return;
+    _spawnParticle(headX, headY);
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+     CORNER GLOW
+     ════════════════════════════════════════════════════════════════ */
+
+  function _checkCornerGlow(headPos, P) {
+    if (_cornerGlowActive) return;
+
+    const corners = [0.25, 0.5, 0.75];
+    const threshold = P * 0.008;
+
+    for (const c of corners) {
+      if (Math.abs(headPos - c * P) < threshold) {
+        _cornerGlowActive = true;
+        btn.classList.add('timer-corner-glow');
+        setTimeout(() => {
+          btn.classList.remove('timer-corner-glow');
+          _cornerGlowActive = false;
+        }, 600);
+        break;
+      }
+    }
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -150,19 +235,28 @@ const SquareTimer = (() => {
   }
 
   /* ════════════════════════════════════════════════════════════════
-     POINTER EVENTS
+     POINTER EVENTS + MICRO-INTERACTIONS
      ════════════════════════════════════════════════════════════════ */
 
   function onPointerDown(e) {
     if (e.button !== 0 || inputEl.style.display !== 'none') return;
     _longPressFired = false;
     _pointerDownPos = { x: e.clientX, y: e.clientY };
-    _longPressTimer = setTimeout(() => { _longPressFired = true; openInlineInput(); }, LONG_PRESS_MS);
+
+    btn.classList.add('timer-pressed');
+
+    _longPressTimer = setTimeout(() => {
+      _longPressFired = true;
+      btn.classList.remove('timer-pressed');
+      btn.classList.add('timer-long-pressed');
+      openInlineInput();
+    }, LONG_PRESS_MS);
   }
 
   function onPointerUp(e) {
     if (e.button !== 0) return;
     clearLongPress();
+    btn.classList.remove('timer-pressed', 'timer-long-pressed');
     if (_pointerDownPos === null) return;
     _pointerDownPos = null;
     if (pulseIntervalId) { resetToIdle(); return; }
@@ -177,8 +271,12 @@ const SquareTimer = (() => {
     if (Math.hypot(dx, dy) > MOVE_THRESHOLD) clearLongPress();
   }
 
-  function onPointerCancel() { clearLongPress(); _longPressFired = false; _pointerDownPos = null; }
-  function onLostCapture()   { onPointerCancel(); }
+  function onPointerCancel() {
+    clearLongPress();
+    _longPressFired = false; _pointerDownPos = null;
+    btn.classList.remove('timer-pressed', 'timer-long-pressed');
+  }
+  function onLostCapture() { onPointerCancel(); }
 
   function clearLongPress() {
     if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
@@ -268,6 +366,7 @@ const SquareTimer = (() => {
     stopTick(); stopPulse(); clearLongPress();
     _longPressFired = false; _pointerDownPos = null;
     mode = null; startTs = null; targetMinutes = null; _prevMin = null;
+    btn.classList.remove('timer-pressed', 'timer-long-pressed');
     saveState(); setIdleVisual();
   }
 
@@ -329,16 +428,37 @@ const SquareTimer = (() => {
   }
 
   /* ════════════════════════════════════════════════════════════════
-     DISPLAY
+     DISPLAY (stacking animation)
      ════════════════════════════════════════════════════════════════ */
 
   function _updateDisplay(minutes, progress, dir) {
     valueEl.style.display = 'flex';
     valueEl.classList.remove('timer-value-dim');
+
     if (_prevMin !== null && minutes !== _prevMin) {
+      // Stacking: старая цифра уезжает вверх с blur, новая въезжает снизу
+      const oldEl = document.createElement('div');
+      oldEl.className = 'timer-digit-old';
+      oldEl.textContent = _prevMin;
+      oldEl.style.cssText = getComputedStyle(valueEl).cssText;
+      oldEl.style.position = 'absolute';
+      oldEl.style.inset = '0';
+      oldEl.style.display = 'flex';
+      oldEl.style.alignItems = 'center';
+      oldEl.style.justifyContent = 'center';
+
+      valueEl.parentNode.style.position = 'relative';
+      valueEl.parentNode.appendChild(oldEl);
+
       valueEl.textContent = minutes;
       void valueEl.offsetWidth;
-      valueEl.classList.add('timer-digit-animate');
+      valueEl.classList.add('timer-digit-enter');
+      oldEl.classList.add('timer-digit-old-exit');
+
+      setTimeout(() => {
+        oldEl.remove();
+        valueEl.classList.remove('timer-digit-enter');
+      }, 400);
     } else {
       valueEl.textContent = minutes;
     }
@@ -368,29 +488,6 @@ const SquareTimer = (() => {
     arcHeadDot.style.filter = f;
   }
 
-  /* ── контур-подсветка при прохождении угла ── */
-
-  let _cornerFlashTimer = null;
-
-  function _checkCornerFlash(headPos, P) {
-    const corners = [0.25, 0.5, 0.75]; // доля периметра: правый верхний, правый нижний, левый нижний
-    const threshold = P * 0.005; // 0.5% периметра — зона угла
-
-    for (const c of corners) {
-      const cornerPos = c * P;
-      if (Math.abs(headPos - cornerPos) < threshold) {
-        if (!_cornerFlashTimer) {
-          btn.classList.add('timer-corner-flash');
-          _cornerFlashTimer = setTimeout(() => {
-            btn.classList.remove('timer-corner-flash');
-            _cornerFlashTimer = null;
-          }, 200);
-        }
-        break;
-      }
-    }
-  }
-
   /* ── основная отрисовка дуги ── */
 
   function _applyArc(progress, dir) {
@@ -415,7 +512,7 @@ const SquareTimer = (() => {
 
     const headPos = progress * P;
 
-    // Хвост (равномерная длина = headPos)
+    // Хвост
     arcTail.style.display = '';
     arcTail.style.strokeDasharray  = headPos + ' ' + P;
     arcTail.style.strokeDashoffset = '0';
@@ -432,8 +529,13 @@ const SquareTimer = (() => {
     arcHeadDot.setAttribute('cx', pt.x);
     arcHeadDot.setAttribute('cy', pt.y);
 
-    // Контур-подсветка при прохождении угла (~25%, 50%, 75% периметра)
-    _checkCornerFlash(headPos, P);
+    // Corner glow
+    _checkCornerGlow(headPos, P);
+
+    // Particle trail (только в foreground)
+    if (!_isBackground) {
+      _maybeSpawnParticle(pt.x, pt.y);
+    }
 
     // Кометный след (только в foreground)
     if (!_isBackground) {
@@ -459,15 +561,18 @@ const SquareTimer = (() => {
     if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.maskImage = ''; }
     if (arcHeadSeg) arcHeadSeg.style.display = 'none';
     if (arcHeadDot) arcHeadDot.style.display = 'none';
-    if (_cornerFlashTimer) { clearTimeout(_cornerFlashTimer); _cornerFlashTimer = null; }
-    btn.classList.remove('timer-corner-flash');
+    if (_cornerGlowActive) {
+      btn.classList.remove('timer-corner-glow');
+      _cornerGlowActive = false;
+    }
   }
 
   /* ── idle ── */
 
   function setIdleVisual() {
     _prevMin = null;
-    valueEl.classList.remove('timer-digit-animate'); void valueEl.offsetWidth;
+    valueEl.classList.remove('timer-digit-animate', 'timer-digit-enter', 'timer-value-pulse');
+    void valueEl.offsetWidth;
     valueEl.style.display = 'flex'; valueEl.textContent = '0'; valueEl.classList.add('timer-value-dim');
 
     arcSvg.style.display = 'none'; arcSvg.style.opacity = '';
@@ -476,7 +581,8 @@ const SquareTimer = (() => {
     arcHeadSeg.style.stroke = ''; arcHeadSeg.style.filter = '';
     arcHeadDot.style.fill = '';  arcHeadDot.style.filter = '';
 
-    btn.classList.remove('timer-pulsing', 'timer-active'); btn.classList.add('timer-idle');
+    btn.classList.remove('timer-pulsing', 'timer-active', 'timer-pressed', 'timer-long-pressed');
+    btn.classList.add('timer-idle');
   }
 
   /* ════════════════════════════════════════════════════════════════
