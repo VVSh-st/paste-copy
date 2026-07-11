@@ -682,6 +682,11 @@ const KeyboardTrainer = (() => {
       '  <span id="kb-set-labelalpha-val">' + Math.round(_labelAlpha * 100) + '%</span>',
       '</div>',
       '<div class="kb-settings-row">',
+      '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d. \u043a\u043b\u0430\u0432\u0438\u0448</label>',
+      '  <input type="range" id="kb-set-keybgalpha" min="0" max="100" value="' + Math.round(_keyBgAlpha * 100) + '">',
+      '  <span id="kb-set-keybgalpha-val">' + Math.round(_keyBgAlpha * 100) + '%</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
       '  <label>\u0420\u0430\u043c\u043a\u0430 \u0434\u043e\u043c.\u0440\u044f\u0434\u0430</label>',
       '  <input type="range" id="kb-set-homeborder" min="0" max="100" value="' + Math.round(_homeBorderAlpha * 100) + '">',
       '  <span id="kb-set-homeborder-val">' + Math.round(_homeBorderAlpha * 100) + '%</span>',
@@ -807,6 +812,15 @@ const KeyboardTrainer = (() => {
     labelAlphaSlider.addEventListener('input', function(e) {
       _labelAlpha = parseInt(e.target.value, 10) / 100;
       labelAlphaVal.textContent = e.target.value + '%';
+      _applyVisualSettings();
+      _save();
+    });
+
+    var keyBgAlphaSlider = _settingsPopup.querySelector('#kb-set-keybgalpha');
+    var keyBgAlphaVal = _settingsPopup.querySelector('#kb-set-keybgalpha-val');
+    keyBgAlphaSlider.addEventListener('input', function(e) {
+      _keyBgAlpha = parseInt(e.target.value, 10) / 100;
+      keyBgAlphaVal.textContent = e.target.value + '%';
       _applyVisualSettings();
       _save();
     });
