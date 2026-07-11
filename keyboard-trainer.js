@@ -368,7 +368,7 @@ const KeyboardTrainer = (() => {
       // On-screen extra keys — explicit grid positions
       if (_onScreenMode) {
         var ek = null;
-        if (row === ROWS[0])       ek = { code: 'Backspace', label: '\u232b',  col: 27, span: 1, finger: 'l-pinky' };
+        if (row === ROWS[0])       ek = { code: 'Backspace', label: '',  col: 27, span: 1, finger: 'l-pinky' };
         else if (row === ROWS[2])  ek = { code: 'Enter',    label: 'Enter', col: 25, span: 3, finger: 'r-pinky' };
         if (ek) {
           var el = document.createElement('div');
