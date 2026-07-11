@@ -664,18 +664,14 @@ const KeyboardTrainer = (() => {
     el.addEventListener('pointercancel', onCancel);
     el.addEventListener('pointerleave', onCancel);
     el.addEventListener('pointermove', onMove);
-  }
-
-  function _removeKeyClick(el, code) {
-    el.replaceWith(el.cloneNode(true));
-    delete _keyEls[code];
+    el._clickBound = true;
   }
 
   function _updateClickHandlers() {
     if (!_panel) return;
     Object.keys(_keyEls).forEach(function(code) {
       var el = _keyEls[code];
-      if (_onScreenMode) {
+      if (_onScreenMode && !el._clickBound) {
         _setupKeyClick(el, code);
       }
     });
