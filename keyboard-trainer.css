@@ -234,6 +234,30 @@
   cursor: pointer;
 }
 
+/* ── Settings spoiler ──────────────────────────────────────────── */
+
+.kb-spoiler-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 4px 0;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text2, #aaa);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+.kb-spoiler-header:hover { color: var(--text1, #e0e0e0); }
+.kb-spoiler-arrow { font-size: 9px; transition: transform 0.15s; }
+.kb-spoiler-body {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+}
+.kb-spoiler-body.kb-spoiler-open { display: flex; }
+
 /* ── Button in footer ─────────────────────────────────────────────── */
 
 .kb-trainer-btn.kb-trainer-active {
