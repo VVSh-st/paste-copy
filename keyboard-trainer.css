@@ -71,7 +71,7 @@
 
 .kb-row {
   display: grid;
-  grid-template-columns: repeat(27, minmax(var(--kb-key-size, 40px), 1fr));
+  grid-template-columns: repeat(27, 1fr);
   gap: 1px;
   margin-bottom: 1px;
   grid-auto-rows: var(--kb-key-size, 40px);
