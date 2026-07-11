@@ -378,6 +378,9 @@
 .kb-trainer-panel.kb-active.kb-onscreen.kb-mouse-through {
   pointer-events: auto;
 }
+.kb-trainer-panel.kb-active.kb-onscreen.kb-mouse-through .kb-trainer-resize {
+  pointer-events: auto;
+}
 
 /* On-screen overrides background pointer-events */
 .kb-trainer-panel.kb-onscreen.kb-background {
