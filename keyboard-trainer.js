@@ -542,7 +542,7 @@ const KeyboardTrainer = (() => {
   // ── On-screen keyboard ────────────────────────────────────────
 
   function _insertChar(ch) {
-    var el = document.activeElement;
+    var el = _lastFocusedEl || document.activeElement;
     if (!el) return;
     if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
       var start = el.selectionStart, end = el.selectionEnd;
@@ -561,11 +561,13 @@ const KeyboardTrainer = (() => {
 
   var _keyLongPressTimers = {};
   var _keyLongPressFired = {};
+  var _lastFocusedEl = null;
 
   function _setupKeyClick(el, code) {
     var _startX = 0, _startY = 0;
     var onDown = function(e) {
       if (e.button && e.button !== 0) return;
+      _lastFocusedEl = document.activeElement;
       _keyLongPressFired[code] = false;
       _startX = e.clientX;
       _startY = e.clientY;
