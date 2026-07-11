@@ -1575,7 +1575,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else {
         Search.open();
       }
-      ta.focus();
     });
     searchBtn.classList.add('block-search-btn');
     const insertBtn   = makeToolBtn(svgIcon('lightning'), 'Вставить сниппет', e => { e.stopPropagation(); showSnippetDropdown(insertBtn, ta); });
