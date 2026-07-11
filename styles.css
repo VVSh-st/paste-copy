@@ -1988,7 +1988,7 @@ textarea.block-textarea:focus {
 /* Block footer */
 .block-footer { display: flex; align-items: center; gap: 4px; padding: 1px 0 1px; margin-top: 1px; }
 .block-counter-badge {
-  margin-left: auto; font-size: 9px; color: var(--text3);
+  margin-left: auto; font-size: 9px; color: var(--text3); opacity: 0.55;
   font-family: var(--mono); letter-spacing: 0.2px;
   white-space: nowrap; padding: 1px 4px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
