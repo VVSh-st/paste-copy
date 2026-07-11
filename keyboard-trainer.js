@@ -87,6 +87,7 @@ const KeyboardTrainer = (() => {
   let _flashAlpha = 0.35;
   let _stayVisible = false;
   let _resizeObserver = null;
+  let _savedBounds = null;
 
   // Long press
   let _longPressTimer = null;
@@ -120,7 +121,11 @@ const KeyboardTrainer = (() => {
         homeBorderAlpha: _homeBorderAlpha,
         homeBorderWidth: _homeBorderWidth,
         flashAlpha: _flashAlpha,
-        stayVisible: _stayVisible
+        stayVisible: _stayVisible,
+        panelLeft: _panel ? _panel.style.left : '',
+        panelTop: _panel ? _panel.style.top : '',
+        panelWidth: _panel ? _panel.style.width : '',
+        panelHeight: _panel ? _panel.style.height : ''
       }));
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
@@ -140,6 +145,12 @@ const KeyboardTrainer = (() => {
       _homeBorderWidth = typeof s.homeBorderWidth === 'number' ? s.homeBorderWidth : 2;
       _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
       _stayVisible = !!s.stayVisible;
+      _savedBounds = {
+        left: s.panelLeft || '',
+        top: s.panelTop || '',
+        width: s.panelWidth || '',
+        height: s.panelHeight || ''
+      };
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
 
@@ -205,6 +216,7 @@ const KeyboardTrainer = (() => {
     _initDragResize();
     _applyVisualSettings();
     _setupResizeObserver();
+    _applySavedBounds();
 
     return _panel;
   }
@@ -284,6 +296,18 @@ const KeyboardTrainer = (() => {
       _updateFontSize();
     });
     _resizeObserver.observe(_panel);
+  }
+
+  function _applySavedBounds() {
+    if (!_panel || !_savedBounds) return;
+    if (_savedBounds.left) _panel.style.left = _savedBounds.left;
+    if (_savedBounds.top) _panel.style.top = _savedBounds.top;
+    if (_savedBounds.width) _panel.style.width = _savedBounds.width;
+    if (_savedBounds.height) _panel.style.height = _savedBounds.height;
+    if (_savedBounds.left || _savedBounds.top) {
+      _panel.style.right = 'auto';
+      _panel.style.bottom = 'auto';
+    }
   }
 
   // Flash on keydown
@@ -430,7 +454,10 @@ const KeyboardTrainer = (() => {
       }
     }
 
-    function onEnd() { _dragging = _resizing = false; }
+    function onEnd() {
+      if (_dragging || _resizing) _save();
+      _dragging = _resizing = false;
+    }
 
     document.addEventListener('mousemove', onMove, { passive: true });
     document.addEventListener('mouseup', onEnd);
