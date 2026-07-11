@@ -205,6 +205,7 @@ const KeyboardTrainer = (() => {
       _showHomeRow = s.showHomeRow !== false;
       _opacity = typeof s.opacity === 'number' ? s.opacity : 0.85;
       _autoHideDelay = typeof s.autoHideDelay === 'number' ? s.autoHideDelay : 1500;
+      _autoHideDelay = Math.max(0, Math.min(30000, _autoHideDelay));
       _currentLayout = s.layout === 'en' ? 'en' : 'ru';
       _fontScale = typeof s.fontScale === 'number' ? s.fontScale : 1;
       _homeBorderAlpha = typeof s.homeBorderAlpha === 'number' ? s.homeBorderAlpha : 0.6;
@@ -398,6 +399,12 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-font-size', Math.max(9, size) + 'px');
   }
 
+  function _formatDelay(ms) {
+    if (ms <= 0) return '0 c';
+    var sec = ms / 1000;
+    return (sec % 1 === 0 ? sec.toFixed(0) : sec.toFixed(1)) + ' c';
+  }
+
   function _isProblemKey(code) {
     if (PROBLEM_CODES.rightPinky.has(code)) return true;
     if (PROBLEM_CODES.punctuation.has(code)) return true;
@@ -461,6 +468,7 @@ const KeyboardTrainer = (() => {
 
   function _scheduleAutoHide() {
     clearTimeout(_autoHideTimer);
+    if (_autoHideDelay <= 0) return;
     _autoHideTimer = setTimeout(_goBackground, _autoHideDelay);
   }
 
@@ -646,8 +654,8 @@ const KeyboardTrainer = (() => {
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>\u0410\u0432\u0442\u043e-\u0441\u043a\u0440\u044b\u0442\u0438\u0435</label>',
-      '  <input type="range" id="kb-set-delay" min="500" max="5000" step="100" value="' + _autoHideDelay + '">',
-      '  <span id="kb-set-delay-val">' + _autoHideDelay + '\u043c\u0441</span>',
+      '  <input type="range" id="kb-set-delay" min="0" max="30000" step="500" value="' + _autoHideDelay + '">',
+      '  <span id="kb-set-delay-val">' + _formatDelay(_autoHideDelay) + '</span>',
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>',
@@ -768,8 +776,8 @@ const KeyboardTrainer = (() => {
     var delaySlider = _settingsPopup.querySelector('#kb-set-delay');
     var delayVal = _settingsPopup.querySelector('#kb-set-delay-val');
     delaySlider.addEventListener('input', function(e) {
-      _autoHideDelay = parseInt(e.target.value);
-      delayVal.textContent = _autoHideDelay + '\u043c\u0441';
+      _autoHideDelay = parseInt(e.target.value, 10);
+      delayVal.textContent = _formatDelay(_autoHideDelay);
       _save();
     });
 
