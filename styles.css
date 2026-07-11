@@ -1226,7 +1226,7 @@ textarea.block-textarea:focus {
 
 /* ===== MISC BADGES ===== */
 .char-badge {
-  font-size: 11px; color: var(--text3); margin-left: 4px;
+  font-size: 10px; color: var(--text3); margin-left: 4px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 99px; padding: 1px 7px;
 }
