@@ -292,6 +292,13 @@
   border-color: rgba(100, 160, 255, 0.6) !important;
 }
 
+/* ── On-screen keyboard mode ──────────────────────────────────── */
+
+.kb-trainer-panel.kb-onscreen .kb-key { cursor: pointer; }
+.kb-trainer-panel.kb-onscreen .kb-key:active { transform: scale(0.95); }
+.kb-trainer-panel.kb-onscreen .kb-lang-handle { cursor: pointer; opacity: 0.7; }
+.kb-trainer-panel.kb-onscreen .kb-lang-handle:hover { opacity: 1; }
+
 /* ── Slim mode ──────────────────────────────────────────────────── */
 
 .kb-trainer-panel.kb-slim {
@@ -348,4 +355,9 @@
 
 .kb-trainer-panel.kb-active.kb-mouse-through .kb-trainer-resize {
   pointer-events: none;
+}
+
+/* On-screen overrides mouse-through */
+.kb-trainer-panel.kb-active.kb-onscreen.kb-mouse-through {
+  pointer-events: auto;
 }

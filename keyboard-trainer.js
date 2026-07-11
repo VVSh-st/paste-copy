@@ -128,6 +128,7 @@ const KeyboardTrainer = (() => {
   const STORAGE_KEY = 'kb-trainer-state';
   let _enabled = false;
   let _panel = null;
+  let _langHandleEl = null;
   let _settingsPopup = null;
   let _currentLayout = 'ru';
   let _layoutDetected = false;
@@ -148,6 +149,7 @@ const KeyboardTrainer = (() => {
   let _showShiftedSymbols = false;
   let _ghostMode = false;
   let _slimMode = false;
+  let _onScreenMode = false;
   let _problemKeysOnly = false;
   let _focusLayerEnabled = true;
   let _resizeObserver = null;
@@ -196,6 +198,7 @@ const KeyboardTrainer = (() => {
         showShiftedSymbols: _showShiftedSymbols,
         ghostMode: _ghostMode,
         slimMode: _slimMode,
+        onScreenMode: _onScreenMode,
         problemKeysOnly: _problemKeysOnly,
         focusLayerEnabled: _focusLayerEnabled,
         panelLeft: _panel ? _panel.style.left : '',
@@ -230,6 +233,7 @@ const KeyboardTrainer = (() => {
       _showShiftedSymbols = !!s.showShiftedSymbols;
       _ghostMode = !!s.ghostMode;
       _slimMode = !!s.slimMode;
+      _onScreenMode = !!s.onScreenMode;
       _problemKeysOnly = !!s.problemKeysOnly;
       _focusLayerEnabled = s.focusLayerEnabled !== false;
       _savedBounds = {
@@ -297,7 +301,10 @@ const KeyboardTrainer = (() => {
 
     document.body.appendChild(_panel);
 
+    _langHandleEl = _panel.querySelector('.kb-lang-handle');
+    _setupLangHandleClick();
     _renderKeys();
+    _updateClickHandlers();
     _initDragResize();
     _applyVisualSettings();
     _setupResizeObserver();
@@ -403,7 +410,8 @@ const KeyboardTrainer = (() => {
     _panel.classList.toggle('kb-fingers-on', _showFingerZones);
     _panel.classList.toggle('kb-ghost', _ghostMode);
     _panel.classList.toggle('kb-slim', _slimMode);
-    _panel.classList.toggle('kb-mouse-through', _mouseThrough);
+    _panel.classList.toggle('kb-mouse-through', _mouseThrough && !_onScreenMode);
+    _panel.classList.toggle('kb-onscreen', _onScreenMode);
     _panel.classList.toggle('kb-problem-mode', _problemKeysOnly);
     _panel.classList.toggle('kb-focus-layer-on', _focusLayerEnabled);
     _updateFontSize();
@@ -529,6 +537,94 @@ const KeyboardTrainer = (() => {
   function _onMouseMove() {
     if (!_enabled || !_isForeground) return;
     _scheduleAutoHide();
+  }
+
+  // ── On-screen keyboard ────────────────────────────────────────
+
+  function _insertChar(ch) {
+    var el = document.activeElement;
+    if (!el) return;
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+      var start = el.selectionStart, end = el.selectionEnd;
+      el.setRangeText(ch, start, end, 'end');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (el.isContentEditable) {
+      document.execCommand('insertText', false, ch);
+    }
+  }
+
+  function _getLayout() {
+    return _currentLayout === 'en' ? LAYOUT_EN : LAYOUT_RU;
+  }
+
+  var _keyLongPressTimers = {};
+  var _keyLongPressFired = {};
+
+  function _setupKeyClick(el, code) {
+    var _startX = 0, _startY = 0;
+    var onDown = function(e) {
+      if (e.button && e.button !== 0) return;
+      _keyLongPressFired[code] = false;
+      _startX = e.clientX;
+      _startY = e.clientY;
+      _keyLongPressTimers[code] = setTimeout(function() {
+        if (!_onScreenMode) return;
+        _keyLongPressFired[code] = true;
+        var spec = _getLayout()[code];
+        if (spec && spec.shift) {
+          _insertChar(spec.shift);
+          _flashKey(code);
+        }
+      }, LONG_PRESS_MS);
+    };
+    var onUp = function(e) {
+      clearTimeout(_keyLongPressTimers[code]);
+      if (_keyLongPressFired[code]) { _keyLongPressFired[code] = false; return; }
+      if (!_onScreenMode) return;
+      var spec = _getLayout()[code];
+      if (spec) _insertChar(spec.base);
+      _flashKey(code);
+    };
+    var onMove = function(e) {
+      var dx = e.clientX - _startX, dy = e.clientY - _startY;
+      if (Math.sqrt(dx * dx + dy * dy) > LONG_PRESS_MOVE_THRESHOLD) {
+        clearTimeout(_keyLongPressTimers[code]);
+      }
+    };
+    var onCancel = function() { clearTimeout(_keyLongPressTimers[code]); };
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onCancel);
+    el.addEventListener('pointerleave', onCancel);
+    el.addEventListener('pointermove', onMove);
+  }
+
+  function _removeKeyClick(el, code) {
+    el.replaceWith(el.cloneNode(true));
+    delete _keyEls[code];
+  }
+
+  function _updateClickHandlers() {
+    if (!_panel) return;
+    Object.keys(_keyEls).forEach(function(code) {
+      var el = _keyEls[code];
+      if (_onScreenMode) {
+        _setupKeyClick(el, code);
+      }
+    });
+  }
+
+  function _setupLangHandleClick() {
+    if (!_langHandleEl) return;
+    _langHandleEl.addEventListener('click', function() {
+      if (!_onScreenMode) return;
+      _currentLayout = _currentLayout === 'ru' ? 'en' : 'ru';
+      _updateLangLabel();
+      _updateLayoutLabels();
+      _save();
+    });
   }
 
   // Long press (settings open)
@@ -750,6 +846,12 @@ const KeyboardTrainer = (() => {
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>',
+      '    <input type="checkbox" id="kb-set-onscreen" ' + (_onScreenMode ? 'checked' : '') + '>',
+      '    \u042d\u043a\u0440\u0430\u043d\u043d\u044b\u0439 \u0440\u0435\u0436\u0438\u043c',
+      '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
       '    <input type="checkbox" id="kb-set-problem" ' + (_problemKeysOnly ? 'checked' : '') + '>',
       '    \u0422\u043e\u043b\u044c\u043a\u043e \u043f\u0440\u043e\u0431\u043b\u0435\u043c\u043d\u044b\u0435',
       '  </label>',
@@ -897,6 +999,7 @@ const KeyboardTrainer = (() => {
     _settingsPopup.querySelector('#kb-set-shifted').addEventListener('change', function(e) {
       _showShiftedSymbols = e.target.checked;
       _renderKeys();
+      _updateClickHandlers();
       _applyVisualSettings();
       _save();
     });
@@ -910,6 +1013,13 @@ const KeyboardTrainer = (() => {
     _settingsPopup.querySelector('#kb-set-slim').addEventListener('change', function(e) {
       _slimMode = e.target.checked;
       _applyVisualSettings();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-onscreen').addEventListener('change', function(e) {
+      _onScreenMode = e.target.checked;
+      _applyVisualSettings();
+      _updateClickHandlers();
       _save();
     });
 
