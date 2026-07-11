@@ -180,6 +180,7 @@ const KeyboardTrainer = (() => {
   // Persistence
   function _save() {
     try {
+      var boundsVisible = _panel && _panel.style.display !== 'none';
       Storage._set(STORAGE_KEY, JSON.stringify({
         enabled: _enabled,
         showHomeRow: _showHomeRow,
@@ -202,10 +203,10 @@ const KeyboardTrainer = (() => {
         onScreenMode: _onScreenMode,
         problemKeysOnly: _problemKeysOnly,
         focusLayerEnabled: _focusLayerEnabled,
-        panelLeft: _panel ? (_panel.style.left || Math.round(_panel.getBoundingClientRect().left) + 'px') : '',
-        panelTop: _panel ? (_panel.style.top || Math.round(_panel.getBoundingClientRect().top) + 'px') : '',
-        panelWidth: _panel ? (_panel.style.width || _panel.offsetWidth + 'px') : '',
-        panelHeight: _panel ? (_panel.style.height || _panel.offsetHeight + 'px') : ''
+        panelLeft: boundsVisible ? (_panel.style.left || Math.round(_panel.getBoundingClientRect().left) + 'px') : '',
+        panelTop: boundsVisible ? (_panel.style.top || Math.round(_panel.getBoundingClientRect().top) + 'px') : '',
+        panelWidth: boundsVisible ? (_panel.style.width || _panel.offsetWidth + 'px') : '',
+        panelHeight: boundsVisible ? (_panel.style.height || _panel.offsetHeight + 'px') : ''
       }));
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
