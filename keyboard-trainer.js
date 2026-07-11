@@ -406,8 +406,10 @@ const KeyboardTrainer = (() => {
     if (!_panel) return;
     var layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
     Object.keys(_keyEls).forEach(function(code) {
+      var el = _keyEls[code];
+      if (el.classList.contains('kb-key-extra')) return;
       var spec = layout[code] || {};
-      var label = _keyEls[code].querySelector('.kb-key-label');
+      var label = el.querySelector('.kb-key-label');
       if (label) label.textContent = spec.base || '';
       var shifted = _keyEls[code].querySelector('.kb-key-shifted');
       if (shifted) {
@@ -623,7 +625,7 @@ const KeyboardTrainer = (() => {
   function _setupKeyClick(el, code) {
     var _startX = 0, _startY = 0;
     var onDown = function(e) {
-      if (e.button && e.button !== 0) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       _lastFocusedEl = document.activeElement;
       _keyLongPressFired[code] = false;
       _startX = e.clientX;
@@ -704,7 +706,7 @@ const KeyboardTrainer = (() => {
   // Long press (settings open)
   function _setupLongPress(btn) {
     var onStart = function(e) {
-      if (e.button && e.button !== 0) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       _longPressFired = false;
       var startX = e.clientX;
       var startY = e.clientY;
@@ -751,7 +753,7 @@ const KeyboardTrainer = (() => {
     }
 
     function onStart(e, mode) {
-      if (mode === 'drag' && e.target.closest('button')) return;
+      if (mode === 'drag' && e.target.closest && e.target.closest('button')) return;
       if (mode === 'drag') {
         _dragging = true;
         var rect = _panel.getBoundingClientRect();
