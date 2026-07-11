@@ -312,6 +312,7 @@ const KeyboardTrainer = (() => {
         el.dataset.code = k.code;
 
         if (k.w === 'space') {
+          el.classList.add('kb-key-space');
           el.style.gridColumn = startCol + ' / span 14';
         } else if (idx === 0 && startCol > 1) {
           el.style.gridColumn = startCol + ' / span 2';

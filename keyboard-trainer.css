@@ -13,8 +13,9 @@
   flex-direction: column;
   overflow: hidden;
   user-select: none;
-  min-width: 420px;
-  min-height: 120px;
+  width: fit-content;
+  min-width: 0;
+  min-height: 0;
   transition: opacity 0.3s ease;
 }
 
@@ -55,8 +56,9 @@
 /* ── Keyboard body ────────────────────────────────────────────────── */
 
 .kb-trainer-body {
-  padding: 6px 8px;
+  padding: 6px 8px 8px 8px;
   overflow: hidden;
+  width: fit-content;
 }
 
 .kb-row {
@@ -64,6 +66,7 @@
   grid-template-columns: repeat(28, 1fr);
   gap: 1px;
   margin-bottom: 1px;
+  grid-auto-rows: var(--kb-key-size, 40px);
 }
 
 /* ── Finger zones ─────────────────────────────────────────────── */
@@ -82,7 +85,7 @@
   display: grid;
   place-items: center;
   min-width: 0;
-  aspect-ratio: 1 / 1;
+  height: var(--kb-key-size, 40px);
   font-size: var(--kb-font-size, 13px);
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: var(--kb-label-color, var(--text1, #e0e0e0));
@@ -109,6 +112,10 @@
   line-height: 1;
   opacity: 0.6;
   pointer-events: none;
+}
+
+.kb-key-space {
+  height: var(--kb-key-size, 40px);
 }
 
 .kb-key.kb-home {
