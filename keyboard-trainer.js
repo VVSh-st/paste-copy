@@ -528,6 +528,7 @@ const KeyboardTrainer = (() => {
 
   function _clampPanelToViewport() {
     if (!_panel) return;
+    if (_panel.style.display === 'none') return;
     var rect = _panel.getBoundingClientRect();
     var w = Math.min(rect.width, window.innerWidth);
     var h = Math.min(rect.height, window.innerHeight);
@@ -557,6 +558,7 @@ const KeyboardTrainer = (() => {
     _panel.classList.add('kb-active');
     _panel.classList.remove('kb-background');
     _isForeground = true;
+    _clampPanelToViewport();
     _scheduleAutoHide();
   }
 
