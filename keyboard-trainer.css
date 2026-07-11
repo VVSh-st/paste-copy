@@ -273,6 +273,10 @@
   box-shadow: none;
 }
 
+.kb-trainer-panel.kb-slim .kb-key {
+  background: rgba(30, 32, 40, var(--kb-bg-alpha, 0.85));
+}
+
 .kb-trainer-panel.kb-slim .kb-lang-handle,
 .kb-trainer-panel.kb-slim .kb-trainer-resize {
   opacity: 0.08;
