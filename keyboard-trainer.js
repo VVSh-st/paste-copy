@@ -106,6 +106,24 @@ const KeyboardTrainer = (() => {
     Space:'thumb'
   };
 
+  // Problem key categories
+  const PROBLEM_CODES = {
+    rightPinky: new Set([
+      'Digit0','Minus','Equal',
+      'KeyP','BracketLeft','BracketRight','Backslash',
+      'Semicolon','Quote','Slash'
+    ]),
+    punctuation: new Set([
+      'Backquote','Minus','Equal',
+      'BracketLeft','BracketRight','Backslash',
+      'Semicolon','Quote','Comma','Period','Slash'
+    ]),
+    digits: new Set([
+      'Digit1','Digit2','Digit3','Digit4','Digit5',
+      'Digit6','Digit7','Digit8','Digit9','Digit0'
+    ])
+  };
+
   // State
   const STORAGE_KEY = 'kb-trainer-state';
   let _enabled = false;
@@ -124,6 +142,9 @@ const KeyboardTrainer = (() => {
   let _stayVisible = false;
   let _showFingerZones = true;
   let _showShiftedSymbols = false;
+  let _ghostMode = false;
+  let _problemKeysOnly = false;
+  let _focusLayerEnabled = true;
   let _resizeObserver = null;
   let _savedBounds = null;
 
@@ -162,6 +183,9 @@ const KeyboardTrainer = (() => {
         stayVisible: _stayVisible,
         showFingerZones: _showFingerZones,
         showShiftedSymbols: _showShiftedSymbols,
+        ghostMode: _ghostMode,
+        problemKeysOnly: _problemKeysOnly,
+        focusLayerEnabled: _focusLayerEnabled,
         panelLeft: _panel ? _panel.style.left : '',
         panelTop: _panel ? _panel.style.top : '',
         panelWidth: _panel ? _panel.style.width : '',
@@ -187,6 +211,9 @@ const KeyboardTrainer = (() => {
       _stayVisible = !!s.stayVisible;
       _showFingerZones = s.showFingerZones !== false;
       _showShiftedSymbols = !!s.showShiftedSymbols;
+      _ghostMode = !!s.ghostMode;
+      _problemKeysOnly = !!s.problemKeysOnly;
+      _focusLayerEnabled = s.focusLayerEnabled !== false;
       _savedBounds = {
         left: s.panelLeft || '',
         top: s.panelTop || '',
@@ -350,7 +377,11 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
     _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
     _panel.classList.toggle('kb-fingers-on', _showFingerZones);
+    _panel.classList.toggle('kb-ghost', _ghostMode);
+    _panel.classList.toggle('kb-problem-mode', _problemKeysOnly);
+    _panel.classList.toggle('kb-focus-layer-on', _focusLayerEnabled);
     _updateFontSize();
+    _updateProblemKeys();
   }
 
   function _updateFontSize() {
@@ -359,6 +390,21 @@ const KeyboardTrainer = (() => {
     var keyWidth = key ? key.offsetWidth : 40;
     var size = Math.round(keyWidth * 0.4 * _fontScale);
     _panel.style.setProperty('--kb-font-size', Math.max(9, size) + 'px');
+  }
+
+  function _isProblemKey(code) {
+    if (PROBLEM_CODES.rightPinky.has(code)) return true;
+    if (PROBLEM_CODES.punctuation.has(code)) return true;
+    if (PROBLEM_CODES.digits.has(code)) return true;
+    return false;
+  }
+
+  function _updateProblemKeys() {
+    if (!_panel) return;
+    Object.keys(_keyEls).forEach(function(code) {
+      var el = _keyEls[code];
+      if (el) el.classList.toggle('kb-problem-key', _isProblemKey(code));
+    });
   }
 
   function _setupResizeObserver() {
@@ -601,6 +647,24 @@ const KeyboardTrainer = (() => {
       '    <input type="checkbox" id="kb-set-shifted" ' + (_showShiftedSymbols ? 'checked' : '') + '>',
       '    \u0421\u0438\u043c\u0432\u043e\u043b\u044b \u0441\u043e Shift',
       '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
+      '    <input type="checkbox" id="kb-set-ghost" ' + (_ghostMode ? 'checked' : '') + '>',
+      '    \u0420\u0435\u0436\u0438\u043c \u043f\u0440\u0438\u0437\u0440\u0430\u043a\u0430',
+      '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
+      '    <input type="checkbox" id="kb-set-problem" ' + (_problemKeysOnly ? 'checked' : '') + '>',
+      '    \u0422\u043e\u043b\u044c\u043a\u043e \u043f\u0440\u043e\u0431\u043b\u0435\u043c\u043d\u044b\u0435',
+      '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
+      '    <input type="checkbox" id="kb-set-focuslayer" ' + (_focusLayerEnabled ? 'checked' : '') + '>',
+      '    \u0424\u043e\u043a\u0443\u0441\u043d\u044b\u0439 \u0441\u043b\u043e\u0439',
+      '  </label>',
       '</div>'
     ].join('\n');
 
@@ -687,6 +751,24 @@ const KeyboardTrainer = (() => {
     _settingsPopup.querySelector('#kb-set-shifted').addEventListener('change', function(e) {
       _showShiftedSymbols = e.target.checked;
       _renderKeys();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-ghost').addEventListener('change', function(e) {
+      _ghostMode = e.target.checked;
+      _applyVisualSettings();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-problem').addEventListener('change', function(e) {
+      _problemKeysOnly = e.target.checked;
+      _applyVisualSettings();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-focuslayer').addEventListener('change', function(e) {
+      _focusLayerEnabled = e.target.checked;
+      _applyVisualSettings();
       _save();
     });
 

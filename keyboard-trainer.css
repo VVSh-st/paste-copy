@@ -61,7 +61,7 @@
 
 .kb-row {
   display: grid;
-  grid-template-columns: repeat(26, 1fr);
+  grid-template-columns: repeat(28, 1fr);
   gap: 1px;
   margin-bottom: 1px;
 }
@@ -209,4 +209,59 @@
 
 .kb-trainer-btn.kb-trainer-active {
   color: var(--accent, #5b8def);
+}
+
+/* ── Ghost mode ─────────────────────────────────────────────────── */
+
+.kb-trainer-panel.kb-ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.kb-trainer-panel.kb-ghost .kb-key {
+  background: transparent;
+  border-color: transparent;
+}
+
+.kb-trainer-panel.kb-ghost .kb-key-label,
+.kb-trainer-panel.kb-ghost .kb-key-shifted {
+  opacity: 1;
+}
+
+.kb-trainer-panel.kb-ghost .kb-lang-handle,
+.kb-trainer-panel.kb-ghost .kb-trainer-resize {
+  opacity: 0.08;
+}
+
+.kb-trainer-panel.kb-ghost .kb-key.kb-flash {
+  background: rgba(100, 160, 255, var(--kb-flash-alpha, 0.35)) !important;
+  border-color: rgba(100, 160, 255, 0.6) !important;
+}
+
+/* ── Problem keys mode ──────────────────────────────────────────── */
+
+.kb-trainer-panel.kb-problem-mode .kb-key {
+  opacity: 0.12;
+}
+
+.kb-trainer-panel.kb-problem-mode .kb-key.kb-problem-key {
+  opacity: 1;
+}
+
+.kb-trainer-panel.kb-problem-mode .kb-key.kb-flash,
+.kb-trainer-panel.kb-problem-mode .kb-key.kb-home {
+  opacity: 1;
+}
+
+/* ── Focus layer ────────────────────────────────────────────────── */
+
+.kb-trainer-panel.kb-focus-layer-on .kb-key.kb-home {
+  box-shadow: inset 0 0 0 1px rgba(210, 90, 90, 0.38);
+}
+
+.kb-trainer-panel.kb-focus-layer-on .kb-key.kb-flash {
+  box-shadow:
+    inset 0 0 0 2px rgba(120, 190, 255, 0.95),
+    0 0 14px rgba(120, 190, 255, 0.28);
 }
