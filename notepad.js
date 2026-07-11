@@ -336,48 +336,8 @@ const Notepad = (() => {
     const titleLabel = document.createElement('span');
     titleLabel.className   = 'notepad-title-label';
     titleLabel.textContent = state.title;
-    titleLabel.title       = 'Двойной клик — переименовать';
 
-    const titleInput = document.createElement('input');
-    titleInput.className     = 'notepad-title-input';
-    titleInput.value         = state.title;
-    titleInput.spellcheck    = false;
-    titleInput.style.display = 'none';
-
-    let titleEditing = false;
-    titleLabel.ondblclick = e => {
-      e.stopPropagation();
-      titleEditing = true;
-      titleLabel.style.display = 'none';
-      titleInput.style.display = '';
-      titleInput.value = state.title;
-      titleInput.focus();
-      titleInput.select();
-    };
-    const commitTitle = () => {
-      if (!titleEditing) return;
-      titleEditing = false;
-      if (titleInput.style.display === 'none') return;
-      const v = titleInput.value.trim();
-      if (v) state.title = v;
-      titleInput.value = state.title;
-      titleLabel.textContent   = state.title;
-      titleLabel.style.display = '';
-      titleInput.style.display = 'none';
-      _persist(state);
-    };
-    titleInput.onblur    = commitTitle;
-    titleInput.onkeydown = e => {
-      if (e.key === 'Enter')  { e.preventDefault(); commitTitle(); }
-      if (e.key === 'Escape') {
-        titleEditing = false;
-        titleInput.value = state.title;
-        titleInput.style.display = 'none';
-        titleLabel.style.display = '';
-      }
-    };
-
-    titleWrap.append(titleLabel, titleInput);
+    titleWrap.append(titleLabel);
 
     // minBtn and closeBtn are proper <button> elements for keyboard accessibility
     const minBtn = document.createElement('button');
@@ -395,7 +355,8 @@ const Notepad = (() => {
     closeBtn.addEventListener('click', e => { e.stopPropagation(); _closeNotepad(state); });
 
     header.append(iconEl, titleWrap, minBtn, closeBtn);
-    _makeDraggable(header, win, state, titleInput);
+    header.style.cursor = 'grab';
+    _makeDraggable(header, win, state);
     return header;
   }
 
