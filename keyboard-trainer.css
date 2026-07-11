@@ -85,7 +85,7 @@
   aspect-ratio: 1 / 1;
   font-size: var(--kb-font-size, 13px);
   font-family: 'Segoe UI', system-ui, sans-serif;
-  color: var(--text1, #e0e0e0);
+  color: var(--kb-label-color, var(--text1, #e0e0e0));
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 4px;
@@ -203,6 +203,16 @@
 
 .kb-settings-row input[type="checkbox"] {
   accent-color: var(--accent, #5b8def);
+}
+
+.kb-settings-row input[type="color"] {
+  width: 36px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border2, rgba(255,255,255,0.12));
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
 }
 
 /* ── Button in footer ─────────────────────────────────────────────── */

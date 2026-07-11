@@ -139,6 +139,7 @@ const KeyboardTrainer = (() => {
   let _homeBorderAlpha = 0.6;
   let _homeBorderWidth = 2;
   let _flashAlpha = 0.35;
+  let _labelColor = '#e0e0e0';
   let _stayVisible = false;
   let _showFingerZones = true;
   let _showShiftedSymbols = false;
@@ -180,6 +181,7 @@ const KeyboardTrainer = (() => {
         homeBorderAlpha: _homeBorderAlpha,
         homeBorderWidth: _homeBorderWidth,
         flashAlpha: _flashAlpha,
+        labelColor: _labelColor,
         stayVisible: _stayVisible,
         showFingerZones: _showFingerZones,
         showShiftedSymbols: _showShiftedSymbols,
@@ -208,6 +210,7 @@ const KeyboardTrainer = (() => {
       _homeBorderAlpha = typeof s.homeBorderAlpha === 'number' ? s.homeBorderAlpha : 0.6;
       _homeBorderWidth = typeof s.homeBorderWidth === 'number' ? s.homeBorderWidth : 2;
       _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
+      _labelColor = typeof s.labelColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.labelColor) ? s.labelColor : '#e0e0e0';
       _stayVisible = !!s.stayVisible;
       _showFingerZones = s.showFingerZones !== false;
       _showShiftedSymbols = !!s.showShiftedSymbols;
@@ -377,6 +380,7 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-home-border-alpha', _homeBorderAlpha);
     _panel.style.setProperty('--kb-home-border-width', _homeBorderWidth + 'px');
     _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
+    _panel.style.setProperty('--kb-label-color', _labelColor);
     _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
     _panel.classList.toggle('kb-fingers-on', _showFingerZones);
     _panel.classList.toggle('kb-ghost', _ghostMode);
@@ -488,10 +492,12 @@ const KeyboardTrainer = (() => {
     var onStart = function(e) {
       if (e.button && e.button !== 0) return;
       _longPressFired = false;
-      _longPressStart = { x: e.clientX, y: e.clientY };
+      var startX = e.clientX;
+      var startY = e.clientY;
+      _longPressStart = { x: startX, y: startY };
       _longPressTimer = setTimeout(function() {
         _longPressFired = true;
-        _openSettings(e.clientX, e.clientY);
+        _openSettings(startX, startY);
       }, LONG_PRESS_MS);
     };
 
@@ -501,6 +507,7 @@ const KeyboardTrainer = (() => {
       var dy = e.clientY - _longPressStart.y;
       if (Math.sqrt(dx * dx + dy * dy) > LONG_PRESS_MOVE_THRESHOLD) {
         clearTimeout(_longPressTimer);
+        _longPressStart = null;
       }
     };
 
@@ -611,9 +618,19 @@ const KeyboardTrainer = (() => {
       '  <span id="kb-set-fontscale-val">' + Math.round(_fontScale * 100) + '%</span>',
       '</div>',
       '<div class="kb-settings-row">',
+      '  <label>\u0426\u0432\u0435\u0442 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432</label>',
+      '  <input type="color" id="kb-set-labelcolor" value="' + _labelColor + '">',
+      '  <span id="kb-set-labelcolor-val">' + _labelColor + '</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
       '  <label>\u0420\u0430\u043c\u043a\u0430 \u0434\u043e\u043c.\u0440\u044f\u0434\u0430</label>',
       '  <input type="range" id="kb-set-homeborder" min="0" max="100" value="' + Math.round(_homeBorderAlpha * 100) + '">',
       '  <span id="kb-set-homeborder-val">' + Math.round(_homeBorderAlpha * 100) + '%</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>\u0422\u043e\u043b\u0449. \u0440\u0430\u043c\u043a\u0438</label>',
+      '  <input type="range" id="kb-set-homeborder-width" min="0" max="6" step="1" value="' + _homeBorderWidth + '">',
+      '  <span id="kb-set-homeborder-width-val">' + _homeBorderWidth + 'px</span>',
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>\u0412\u0441\u043f\u044b\u0448\u043a\u0430 \u043a\u043b\u0430\u0432\u0438\u0448\u0438</label>',
@@ -705,11 +722,29 @@ const KeyboardTrainer = (() => {
       _save();
     });
 
+    var labelColorInput = _settingsPopup.querySelector('#kb-set-labelcolor');
+    var labelColorVal = _settingsPopup.querySelector('#kb-set-labelcolor-val');
+    labelColorInput.addEventListener('input', function(e) {
+      _labelColor = e.target.value;
+      labelColorVal.textContent = _labelColor;
+      _applyVisualSettings();
+      _save();
+    });
+
     var hbSlider = _settingsPopup.querySelector('#kb-set-homeborder');
     var hbVal = _settingsPopup.querySelector('#kb-set-homeborder-val');
     hbSlider.addEventListener('input', function(e) {
       _homeBorderAlpha = parseInt(e.target.value) / 100;
       hbVal.textContent = e.target.value + '%';
+      _applyVisualSettings();
+      _save();
+    });
+
+    var hbWidthSlider = _settingsPopup.querySelector('#kb-set-homeborder-width');
+    var hbWidthVal = _settingsPopup.querySelector('#kb-set-homeborder-width-val');
+    hbWidthSlider.addEventListener('input', function(e) {
+      _homeBorderWidth = parseInt(e.target.value);
+      hbWidthVal.textContent = _homeBorderWidth + 'px';
       _applyVisualSettings();
       _save();
     });
@@ -840,6 +875,7 @@ const KeyboardTrainer = (() => {
     if (_enabled) {
       _buildPanel();
       _show();
+      _tryDetectInitialLayout();
       document.addEventListener('keydown', _onKeyDown, true);
       document.addEventListener('mousemove', _onMouseMove, { passive: true });
     }
