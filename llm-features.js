@@ -426,6 +426,24 @@ window.LLMFeatures = (() => {
     setTimeout(() => document.addEventListener('contextmenu', _thesaurusCloseOnContext, true), 0);
   }
 
+  function _extractSentenceContext(value, pos) {
+    const sentRe = /[.!?…]+(?:\s|$)/g;
+    let bestEnd = value.length;
+    let m;
+    while ((m = sentRe.exec(value)) !== null) {
+      if (m.index + m[0].length > pos) { bestEnd = m.index + m[0].length; break; }
+    }
+    let bestStart = 0;
+    sentRe.lastIndex = 0;
+    let prevEnd = 0;
+    while ((m = sentRe.exec(value)) !== null) {
+      if (m.index + m[0].length <= pos) prevEnd = m.index + m[0].length;
+      else break;
+    }
+    bestStart = prevEnd;
+    return value.slice(bestStart, bestEnd).trim();
+  }
+
   async function _thesaurusAtCursor() {
     let ta = document.activeElement;
     if (ta?.tagName !== 'TEXTAREA' || !ta.classList.contains('block-textarea')) {
@@ -455,7 +473,7 @@ window.LLMFeatures = (() => {
     while (end < savedValue.length && wordRe.test(savedValue[end])) end++;
     const word = sel || savedValue.slice(start, end).trim();
     if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
-    const ctx = savedValue.slice(Math.max(0, pos - 100), pos + 100);
+    const ctx = _extractSentenceContext(savedValue, pos);
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
       const result = await _LLMCore.request({
@@ -517,7 +535,7 @@ window.LLMFeatures = (() => {
     while (we < savedValue.length && wordRe.test(savedValue[we])) we++;
     const word = sel || savedValue.slice(ws, we).trim();
     if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
-    const ctx = savedValue.slice(Math.max(0, pos - 100), pos + 100);
+    const ctx = _extractSentenceContext(savedValue, pos);
     _showThinking(`◕ Тезаурус: «${word}»`);
     try {
       const result = await _LLMCore.request({
@@ -579,7 +597,7 @@ window.LLMFeatures = (() => {
     while (we < savedValue.length && wordRe.test(savedValue[we])) we++;
     const word = sel || savedValue.slice(ws, we).trim();
     if (!word) { window.Toast?.show('Выделите слово или поставьте курсор', 'error'); return; }
-    const ctx = savedValue.slice(Math.max(0, pos - 100), pos + 100);
+    const ctx = _extractSentenceContext(savedValue, pos);
     _showThinking(`◕ Антонимы: «${word}»`);
     try {
       const result = await _LLMCore.request({
