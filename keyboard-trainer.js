@@ -141,6 +141,7 @@ const KeyboardTrainer = (() => {
   let _flashAlpha = 0.35;
   let _labelColor = '#e0e0e0';
   let _keyBgAlpha = 0.04;
+  let _labelAlpha = 1;
   let _mouseThrough = false;
   let _stayVisible = false;
   let _showFingerZones = true;
@@ -149,6 +150,8 @@ const KeyboardTrainer = (() => {
   let _problemKeysOnly = false;
   let _focusLayerEnabled = true;
   let _resizeObserver = null;
+  let _metricsRaf1 = 0;
+  let _metricsRaf2 = 0;
   let _savedBounds = null;
 
   // Long press
@@ -185,6 +188,7 @@ const KeyboardTrainer = (() => {
         flashAlpha: _flashAlpha,
         labelColor: _labelColor,
         keyBgAlpha: _keyBgAlpha,
+        labelAlpha: _labelAlpha,
         mouseThrough: _mouseThrough,
         stayVisible: _stayVisible,
         showFingerZones: _showFingerZones,
@@ -217,6 +221,7 @@ const KeyboardTrainer = (() => {
       _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
       _labelColor = typeof s.labelColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.labelColor) ? s.labelColor : '#e0e0e0';
       _keyBgAlpha = typeof s.keyBgAlpha === 'number' ? Math.max(0, Math.min(1, s.keyBgAlpha)) : 0.04;
+      _labelAlpha = typeof s.labelAlpha === 'number' ? Math.max(0, Math.min(1, s.labelAlpha)) : 1;
       _mouseThrough = !!s.mouseThrough;
       _stayVisible = !!s.stayVisible;
       _showFingerZones = s.showFingerZones !== false;
@@ -389,7 +394,8 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-home-border-width', _homeBorderWidth + 'px');
     _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
     _panel.style.setProperty('--kb-label-color', _labelColor);
-    _panel.style.setProperty('--kb-label-alpha', _keyBgAlpha);
+    _panel.style.setProperty('--kb-label-alpha', _labelAlpha);
+    _panel.style.setProperty('--kb-key-bg-alpha', _keyBgAlpha);
     _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
     _panel.classList.toggle('kb-fingers-on', _showFingerZones);
     _panel.classList.toggle('kb-ghost', _ghostMode);
@@ -445,8 +451,13 @@ const KeyboardTrainer = (() => {
   }
 
   function _scheduleMetricsUpdate() {
-    requestAnimationFrame(function() {
-      requestAnimationFrame(_updateFontSize);
+    if (_metricsRaf1 || _metricsRaf2) return;
+    _metricsRaf1 = requestAnimationFrame(function() {
+      _metricsRaf1 = 0;
+      _metricsRaf2 = requestAnimationFrame(function() {
+        _metricsRaf2 = 0;
+        _updateFontSize();
+      });
     });
   }
 
@@ -598,16 +609,22 @@ const KeyboardTrainer = (() => {
       if (_dragging || _resizing) e.preventDefault();
       var pos = getClientPos(e);
       if (_dragging) {
-        _panel.style.left = (pos.x - _dragOffset.x) + 'px';
-        _panel.style.top = (pos.y - _dragOffset.y) + 'px';
+        var rect = _panel.getBoundingClientRect();
+        var nextLeft = Math.max(0, Math.min(window.innerWidth - rect.width, pos.x - _dragOffset.x));
+        var nextTop = Math.max(0, Math.min(window.innerHeight - rect.height, pos.y - _dragOffset.y));
+        _panel.style.left = nextLeft + 'px';
+        _panel.style.top = nextTop + 'px';
         _panel.style.right = 'auto';
         _panel.style.bottom = 'auto';
       }
       if (_resizing) {
         var dx = pos.x - _resizeStartPos.x;
         var dy = pos.y - _resizeStartPos.y;
-        _panel.style.width = Math.max(300, _resizeStartRect.w + dx) + 'px';
-        _panel.style.height = Math.max(120, _resizeStartRect.h + dy) + 'px';
+        var rect2 = _panel.getBoundingClientRect();
+        var maxWidth = window.innerWidth - rect2.left;
+        var maxHeight = window.innerHeight - rect2.top;
+        _panel.style.width = Math.min(maxWidth, Math.max(300, _resizeStartRect.w + dx)) + 'px';
+        _panel.style.height = Math.min(maxHeight, Math.max(120, _resizeStartRect.h + dy)) + 'px';
       }
     }
 
@@ -657,8 +674,8 @@ const KeyboardTrainer = (() => {
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d. \u0431\u0443\u043a\u0432</label>',
-      '  <input type="range" id="kb-set-keybg" min="0" max="100" value="' + Math.round(_keyBgAlpha * 100) + '">',
-      '  <span id="kb-set-keybg-val">' + Math.round(_keyBgAlpha * 100) + '%</span>',
+      '  <input type="range" id="kb-set-labelalpha" min="0" max="100" value="' + Math.round(_labelAlpha * 100) + '">',
+      '  <span id="kb-set-labelalpha-val">' + Math.round(_labelAlpha * 100) + '%</span>',
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>\u0420\u0430\u043c\u043a\u0430 \u0434\u043e\u043c.\u0440\u044f\u0434\u0430</label>',
@@ -775,11 +792,11 @@ const KeyboardTrainer = (() => {
       _save();
     });
 
-    var keyBgSlider = _settingsPopup.querySelector('#kb-set-keybg');
-    var keyBgVal = _settingsPopup.querySelector('#kb-set-keybg-val');
-    keyBgSlider.addEventListener('input', function(e) {
-      _keyBgAlpha = parseInt(e.target.value, 10) / 100;
-      keyBgVal.textContent = e.target.value + '%';
+    var labelAlphaSlider = _settingsPopup.querySelector('#kb-set-labelalpha');
+    var labelAlphaVal = _settingsPopup.querySelector('#kb-set-labelalpha-val');
+    labelAlphaSlider.addEventListener('input', function(e) {
+      _labelAlpha = parseInt(e.target.value, 10) / 100;
+      labelAlphaVal.textContent = e.target.value + '%';
       _applyVisualSettings();
       _save();
     });
