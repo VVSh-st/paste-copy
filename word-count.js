@@ -263,7 +263,9 @@ const WordCount = (() => {
 
   function _onFocusIn(e) {
     const newTa = e.target;
-    if (!newTa.classList?.contains('block-textarea') || newTa === _ta) return;
+    const isBlockTextarea = newTa.classList?.contains('block-textarea');
+    const isNotepadTextarea = newTa.tagName === 'TEXTAREA' && newTa.closest('.notepad-body');
+    if ((!isBlockTextarea && !isNotepadTextarea) || newTa === _ta) return;
     _ta = newTa;
     _lastSourceText = '';
     _lastSel = '';

@@ -672,17 +672,6 @@ const Notepad = (() => {
       _mkDiv(),
       prevTabBtn, tabsWrap, nextTabBtn,
       _mkDiv(),
-      (() => {
-        const wcBtn = document.createElement('button');
-        wcBtn.type = 'button';
-        wcBtn.className = 'notepad-tool-btn';
-        wcBtn.title = 'Подсчёт слов';
-        wcBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><line x1="4" y1="5" x2="16" y2="5"/><line x1="4" y1="10" x2="12" y2="10"/><line x1="4" y1="15" x2="8" y2="15"/></svg>';
-        if (typeof WordCount !== 'undefined') {
-          WordCount.setupButton(wcBtn, getTa());
-        }
-        return wcBtn;
-      })(),
       countSpan,
     );
     return toolbar;
