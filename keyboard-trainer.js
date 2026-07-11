@@ -41,34 +41,50 @@ const KeyboardTrainer = (() => {
   // Physical codes for home row (left hand, right hand)
   const HOME_CODES = ['KeyA','KeyS','KeyD','KeyF','KeyJ','KeyK','KeyL','Semicolon'];
 
-  // Visual rows for rendering
+  // Visual rows for rendering (offset: fractional grid offset for physical keyboard shape)
   const ROWS = [
-    [
+    { offset: 0, keys: [
       {code:'Backquote',w:1},{code:'Digit1',w:1},{code:'Digit2',w:1},{code:'Digit3',w:1},
       {code:'Digit4',w:1},{code:'Digit5',w:1},{code:'Digit6',w:1},{code:'Digit7',w:1},
       {code:'Digit8',w:1},{code:'Digit9',w:1},{code:'Digit0',w:1},{code:'Minus',w:1},
       {code:'Equal',w:1}
-    ],
-    [
+    ]},
+    { offset: 0.5, keys: [
       {code:'KeyQ',w:1},{code:'KeyW',w:1},{code:'KeyE',w:1},{code:'KeyR',w:1},
       {code:'KeyT',w:1},{code:'KeyY',w:1},{code:'KeyU',w:1},{code:'KeyI',w:1},
       {code:'KeyO',w:1},{code:'KeyP',w:1},{code:'BracketLeft',w:1},
       {code:'BracketRight',w:1},{code:'Backslash',w:1}
-    ],
-    [
+    ]},
+    { offset: 0.75, keys: [
       {code:'KeyA',w:1},{code:'KeyS',w:1},{code:'KeyD',w:1},{code:'KeyF',w:1},
       {code:'KeyG',w:1},{code:'KeyH',w:1},{code:'KeyJ',w:1},{code:'KeyK',w:1},
       {code:'KeyL',w:1},{code:'Semicolon',w:1},{code:'Quote',w:1}
-    ],
-    [
+    ]},
+    { offset: 1.25, keys: [
       {code:'KeyZ',w:1},{code:'KeyX',w:1},{code:'KeyC',w:1},{code:'KeyV',w:1},
       {code:'KeyB',w:1},{code:'KeyN',w:1},{code:'KeyM',w:1},{code:'Comma',w:1},
       {code:'Period',w:1},{code:'Slash',w:1}
-    ],
-    [
+    ]},
+    { offset: 3, keys: [
       {code:'Space',w:'space'}
-    ]
+    ]}
   ];
+
+  // Finger zone mapping for color coding
+  const FINGER_MAP = {
+    Backquote:'l-pinky',Digit1:'l-pinky',Digit2:'l-ring',Digit3:'l-middle',
+    Digit4:'l-index',Digit5:'l-index',Digit6:'r-index',Digit7:'r-index',
+    Digit8:'r-middle',Digit9:'r-ring',Digit0:'r-pinky',Minus:'r-pinky',Equal:'r-pinky',
+    KeyQ:'l-pinky',KeyW:'l-ring',KeyE:'l-middle',KeyR:'l-index',KeyT:'l-index',
+    KeyY:'r-index',KeyU:'r-index',KeyI:'r-middle',KeyO:'r-ring',KeyP:'r-pinky',
+    BracketLeft:'r-pinky',BracketRight:'r-pinky',Backslash:'r-pinky',
+    KeyA:'l-pinky',KeyS:'l-ring',KeyD:'l-middle',KeyF:'l-index',KeyG:'l-index',
+    KeyH:'r-index',KeyJ:'r-index',KeyK:'r-middle',KeyL:'r-ring',
+    Semicolon:'r-pinky',Quote:'r-pinky',
+    KeyZ:'l-pinky',KeyX:'l-ring',KeyC:'l-middle',KeyV:'l-index',KeyB:'l-index',
+    KeyN:'r-index',KeyM:'r-index',Comma:'r-middle',Period:'r-ring',Slash:'r-pinky',
+    Space:'thumb'
+  };
 
   // State
   const STORAGE_KEY = 'kb-trainer-state';
@@ -86,6 +102,7 @@ const KeyboardTrainer = (() => {
   let _homeBorderWidth = 2;
   let _flashAlpha = 0.35;
   let _stayVisible = false;
+  let _showFingerZones = true;
   let _resizeObserver = null;
   let _savedBounds = null;
 
@@ -122,6 +139,7 @@ const KeyboardTrainer = (() => {
         homeBorderWidth: _homeBorderWidth,
         flashAlpha: _flashAlpha,
         stayVisible: _stayVisible,
+        showFingerZones: _showFingerZones,
         panelLeft: _panel ? _panel.style.left : '',
         panelTop: _panel ? _panel.style.top : '',
         panelWidth: _panel ? _panel.style.width : '',
@@ -145,6 +163,7 @@ const KeyboardTrainer = (() => {
       _homeBorderWidth = typeof s.homeBorderWidth === 'number' ? s.homeBorderWidth : 2;
       _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
       _stayVisible = !!s.stayVisible;
+      _showFingerZones = s.showFingerZones !== false;
       _savedBounds = {
         left: s.panelLeft || '',
         top: s.panelTop || '',
@@ -225,11 +244,13 @@ const KeyboardTrainer = (() => {
     ROWS.forEach(function(row) {
       const rowEl = document.createElement('div');
       rowEl.className = 'kb-row';
+      if (row.offset) rowEl.dataset.offset = row.offset;
 
-      row.forEach(function(k) {
+      row.keys.forEach(function(k) {
         const el = document.createElement('div');
         const isHome = HOME_CODES.includes(k.code);
-        el.className = 'kb-key' + (isHome ? ' kb-home' : '');
+        const finger = FINGER_MAP[k.code];
+        el.className = 'kb-key' + (isHome ? ' kb-home' : '') + (finger ? ' kb-finger-' + finger : '');
         if (isHome && _showHomeRow) el.classList.add('kb-home-highlight');
         el.dataset.code = k.code;
 
@@ -283,6 +304,7 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-home-border-width', _homeBorderWidth + 'px');
     _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
     _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
+    _panel.classList.toggle('kb-fingers-on', _showFingerZones);
     _updateFontSize();
   }
 
@@ -522,6 +544,12 @@ const KeyboardTrainer = (() => {
       '    <input type="checkbox" id="kb-set-stayvisible" ' + (_stayVisible ? 'checked' : '') + '>',
       '    \u041e\u0441\u0442\u0430\u0432\u0430\u0442\u044c\u0441\u044f \u0432\u0438\u0434\u0438\u043c\u043e\u0439 \u0432 \u0444\u043e\u043d\u0435',
       '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
+      '    <input type="checkbox" id="kb-set-fingers" ' + (_showFingerZones ? 'checked' : '') + '>',
+      '    \u0417\u043e\u043d\u044b \u043f\u0430\u043b\u044c\u0446\u0435\u0432',
+      '  </label>',
       '</div>'
     ].join('\n');
 
@@ -595,6 +623,12 @@ const KeyboardTrainer = (() => {
 
     _settingsPopup.querySelector('#kb-set-stayvisible').addEventListener('change', function(e) {
       _stayVisible = e.target.checked;
+      _applyVisualSettings();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-fingers').addEventListener('change', function(e) {
+      _showFingerZones = e.target.checked;
       _applyVisualSettings();
       _save();
     });
