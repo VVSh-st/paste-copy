@@ -576,6 +576,8 @@ const KeyboardTrainer = (() => {
       _startY = e.clientY;
       _keyLongPressTimers[code] = setTimeout(function() {
         if (!_onScreenMode) return;
+        if (!_isForeground) _show();
+        else _scheduleAutoHide();
         _keyLongPressFired[code] = true;
         var spec = _getLayout()[code];
         if (spec && spec.shift) {
@@ -589,6 +591,8 @@ const KeyboardTrainer = (() => {
       clearTimeout(_keyLongPressTimers[code]);
       if (_keyLongPressFired[code]) { _keyLongPressFired[code] = false; return; }
       if (!_onScreenMode) return;
+      if (!_isForeground) _show();
+      else _scheduleAutoHide();
       var spec = _getLayout()[code];
       if (spec) _insertChar(spec.base);
       _flashKey(code);
