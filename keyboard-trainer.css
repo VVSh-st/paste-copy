@@ -252,7 +252,7 @@
 
 .kb-trainer-panel.kb-ghost .kb-key-label,
 .kb-trainer-panel.kb-ghost .kb-key-shifted {
-  opacity: 1;
+  opacity: var(--kb-label-alpha, 1);
 }
 
 .kb-trainer-panel.kb-ghost .kb-lang-handle,
