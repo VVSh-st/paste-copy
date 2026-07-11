@@ -119,7 +119,7 @@
   left: 2px;
   font-size: 0.55em;
   line-height: 1;
-  opacity: 0.6;
+  opacity: calc(0.6 * var(--kb-label-alpha, 1));
   pointer-events: none;
 }
 
