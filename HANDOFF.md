@@ -76,6 +76,7 @@
 - `_tryDetectInitialLayout()`: `_save()` при изменении раскладки
 - `focusin`/`selectionchange` слушатели для отслеживания `_lastFocusedEl`
 - `_clearKeyLongPressTimers()` перед `_renderKeys()`
+- **WordCount + Блокнот**: `_onFocusIn` в `word-count.js` подхватывает `textarea` из `.notepad-body` — popup подсчёта слов автоматически переключается на текст Блокнота при фокусе
 - **Поиск**: кнопка лупы на текстовом блоке → `Search.open(sel)` → крестик очистки в полях ввода
 
 ## Следующий шаг
