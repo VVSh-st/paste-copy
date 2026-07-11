@@ -398,6 +398,7 @@ const KeyboardTrainer = (() => {
     var keyWidth = key ? key.offsetWidth : 40;
     var size = Math.round(keyWidth * 0.4 * _fontScale);
     _panel.style.setProperty('--kb-font-size', Math.max(9, size) + 'px');
+    _panel.style.setProperty('--kb-key-size', Math.max(28, Math.round(keyWidth)) + 'px');
   }
 
   function _formatDelay(ms) {
