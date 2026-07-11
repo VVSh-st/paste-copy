@@ -578,6 +578,7 @@ const KeyboardTrainer = (() => {
         if (spec && spec.shift) {
           _insertChar(spec.shift);
           _flashKey(code);
+          if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
         }
       }, LONG_PRESS_MS);
     };
@@ -588,6 +589,7 @@ const KeyboardTrainer = (() => {
       var spec = _getLayout()[code];
       if (spec) _insertChar(spec.base);
       _flashKey(code);
+      if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
     };
     var onMove = function(e) {
       var dx = e.clientX - _startX, dy = e.clientY - _startY;
