@@ -426,9 +426,12 @@ const KeyboardTrainer = (() => {
     if (_resizeObserver) return;
     if (typeof ResizeObserver === 'undefined') return;
     _resizeObserver = new ResizeObserver(function() {
-      _updateFontSize();
+      requestAnimationFrame(_updateFontSize);
     });
     _resizeObserver.observe(_panel);
+    window.addEventListener('resize', function() {
+      if (_enabled && _panel) requestAnimationFrame(_updateFontSize);
+    });
   }
 
   function _applySavedBounds() {
@@ -592,7 +595,10 @@ const KeyboardTrainer = (() => {
     }
 
     function onEnd() {
-      if (_dragging || _resizing) _save();
+      if (_dragging || _resizing) {
+        _save();
+        _updateFontSize();
+      }
       _dragging = _resizing = false;
     }
 
