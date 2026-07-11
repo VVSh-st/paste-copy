@@ -2,117 +2,83 @@
 
 ## Текущий статус
 
-### Завершено в этой сессии
+### Поиск и замена — кнопка поиска на текстовых блоках
 
-**Text-Expander: полный рефакторинг UI и поведения**
-- Дропдаун: убран бейдж категории, формат "shortcut — текст", авто-ширина
-- Баг: меню появлялось и исчезало — `_showDropdown()` вызывал `_hideDropdown()` который обнулял `_activeTa`. Исправлено
-- Нормализация раскладки: ЙЦУКЕН ↔ QWERTY — shortcut матчится из любой раскладки
-- Tab принимает suggestion когда остался 1 элемент
-- Перевод UI на русский: заголовок, кнопки, плейсхолдеры, тултипы, колонки таблицы
-- Баг "Все": после перевода фильтр "All" → "Все" ломал сравнение. Исправлено
-- MAX_SHORTCUT_LEN: 10 → 20
-- Digits режим: standalone генератор чистых чисел (1, 2, 3...), сбрасывает word/acronym/glue
-- Прокрутка: только список сокращений, не весь блок панели
-- Токен `{{llm:...}}` добавлен в панель токенов
-- Закрытие панели по ЛКМ вне панели
-- Категория: фиксированная ширина 80px
-- Shortcut input: 140px
-- Иконка экспандера: обновлена (T со стрелкой расширения)
-- Коммиты: `c9cb7b1`..`3dbd931` (14 коммитов)
+- Кнопка «Поиск» (лупа) в тулбаре текстового блока между «Вставить из буфера» и «Вставить сниппет`
+- SVG-иконка `search` (лупа) в стиле UI
+- Клик: если выделен текст → вставляет в строку поиска (Ctrl+F) и открывает; если нет → просто открывает поиск
+- `Search.open(presetQuery)` — принимает необязательный параметр для предзаполнения
+- Крестик очистки в поле поиска (`#search-clear`) и в поле «Заменить на...» (`#replace-clear`)
+- Обработчик клика на `document` проверяет `.block-search-btn` чтобы не закрывать панель
 
-**AI-трансформация: баг с </text> тегами**
-- LLM иногда оборачивал ответ в `<text>` теги. Добавлена очистка перед вставкой
-- Коммит: `9a643d7`
+### Keyboard Trainer — новые фичи (сессия)
 
-**Anchors: дебаунскролла**
-- `_renderMarkersNoGutter` вызывался на каждый scroll event без дебаунса → лаги
-- Добавлен дебаунс 16ms
-- Коммит: `c3bb5ff`
+**Slim-режим**
+- Прозрачная панель (фон/бордер/тень = transparent), клавиши сохраняют собственный фон
+- Клавиши: `rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85))`
+- Зоны пальцев: усиленная opacity (0.18-0.25) для видимости на тёмном фоне
+- Чекбокс «Slim» в меню настроек
 
-**TextSkeletonizer: интеграция в LLM-фичи**
-- `audit()`: автоматически сжимает длинный промпт перед аудитом
-- `compress()`: теперь только skeletonizer (бесплатно), без LLM-шага
-- `summary()`: сжимает длинный текст перед резюмированием
-- Лимиты увеличены (maxSections 100, maxKeyTerms 50)
-- Баг: текст до первого заголовка терялся — добавлена zero-section
-- Worker синхронизирован с основным файлом (cache-busting URL)
-- Статистика: показывает `~Nx` сжатие вместо KB
-- Aggressive конфиг подстроен под ~5x сжатие
-- Коммиты: `1ea946e`..`7b26393`
+**Прозрачность клавиш — слайдер**
+- `--kb-key-bg-alpha` управляет фоном клавиш во всех режимах
+- Finger zones: зоны пальцев через `box-shadow` (inset), не перезаписывают `background`
+- Focus layer: комбинируется с зонами через `var(--kb-finger-shadow, none)`
+- Слайдер «Прозрачн. клавиш» в меню (0-100%)
 
-**Переводчик: Tencent engine + Google fallback**
-- Tencent: бесплатный API `transmart.qq.com`, без авторизации, batch до 50
-- Pipeline auto: `google → microsoft → tencent → legacy`
-- Google fallback key: резервный ключ при провале динамического извлечения
-- Кнопка "T" в селекторе движков
-- Коммит: `03e0f9b`
+**Экранный режим (on-screen keyboard)**
+- Чекбокс «Экранный режим» в настройках
+- Клик по клавише → вставка символа в активный элемент (`_insertChar`)
+- Долгий клик (450ms) → вставка `spec.shift || spec.base.toUpperCase()` (заглавные/символы)
+- `_lastFocusedEl` — запоминает фокус до клика, восстанавливает после вставки
+- `e.preventDefault()` на `pointerdown` панели (исключая resize/drag) — фокус не уходит
+- Клик между клавишами не теряет фокус
+- Автоскрытие: клик будит панель из фона
+- Extra-клавиши (только в on-screen):
+  - Backspace — col 27, span 1 (пустая кнопка)
+  - Enter — col 25, span 3, подпись «Enter»
+  - Зоны пальцев: Backspace = `l-pinky`, Enter = `r-pinky`
+- RU/EN handle кликабельный — переключает раскладку
+- Mouse-through отключается в on-screen режиме
+- Ghost mode работает в on-screen (explicit CSS override)
+- Resize handle кликабельный в on-screen + mouse-through
 
-**Переводчик: убраны toast-уведомления**
-- Удалены: "Переведено → ...", "Откат (...)", "Текст уже на ...", "Не удалось перевести", "Ошибка перевода: ..."
-- Осталась только визуальная индикация (⏳ на кнопке)
-- Коммит: `00d6aa7`
+**Меню настроек — спойлер**
+- Спойлер «Визуал» (свернут по умолчанию): подсветка дом.ряда, все слайдеры, раскладка
+- Авто-скрытие: слайдер + «Оставаться видимой в фоне»
+- Чекбоксы: зоны пальцев, символы со Shift, ghost, slim, on-screen, проблемные, фокусный слой, пропуск кликов
 
-**State size: purge [LLM] compress snapshots (7.2MB → 3.9MB)**
-- Diagnostics: namedSnapshots хранили полные копии блоков таба. 10 снапшотов `[LLM] compress` × 284KB = 2.8MB на таб
-- `saveNamedSnapshot`: пропускает `[LLM]` имена (авто-генерация, жрёт хранилище)
-- `serialize` + `load`: фильтрует `[LLM]` снапшоты, очищает старые данные
-- Итого: 9.97MB → 3.9MB
-- Коммиты: `bcdfb03`, `d99eb17`
-
-### В работе
-
-**Квадратный таймер (обводка по периметру)**
-- Статус: 3 фикса применены, нужна проверка в браузере
-- Коммит: `d14899c`
-- Файлы: `timer.js`, `index.html`
-- Удалён `_injectStyles()` (перебивал стили `!important`), добавлен `tb-btn-accent` на кнопку
-- Пульсация теперь работает для обоих режимов (up и down)
-- Направление обводки: `strokeDashoffset = totalLength * progress`
-
-**Визуальная клавиатура для тренировки слепой печати (v1)**
-- Статус: v1 + аудит-фикс, нужна проверка в браузере
-- Коммиты: `2fb41fd`, `f12a0bc`
-- Файлы: `keyboard-trainer.js`, `keyboard-trainer.css`, `blocks.js`, `index.html`
-- Реализовано: singleton-панель, drag/resize (MiniChat), подсветка домашнего ряда, вспышка 250мс, авто RU/EN, auto-show/auto-hide, long press → настройки, persist через Storage
-- Аудит-фиксы: LAYOUT_EN typo, детекция раскладки (digits), мёртвый код _tryDetectInitialLayout, CSS grid для пропорционального масштабирования, save только при изменении
-
-### Изменённые файлы (эта сессия)
+### Изменённые файлы
 | Файл | Что изменено |
 |------|-------------|
-| `text-expander.js` | Дропдаун redesign + bug fix + layout normalization + Tab accept + digits standalone + llm token + outside click + русский перевод |
-| `styles.css` | Дропдаун auto-width + прокрутка таблицы + категория 80px + shortcut overflow + input width |
-| `blocks.js` | Иконка экспандера + тултип на русском + убраны toast переводчика |
-| `ai-transform.js` | Очистка `<text>` тегов из ответа LLM |
-| `anchors.js` | Дебаунс `_renderMarkersNoGutter` на scroll |
-| `llm-features.js` | Интеграция TextSkeletonizer в audit/compress/summary |
-| `text-skeletonizer.js` | Лимиты + zero-section + stats ~Nx + aggressive config |
-| `text-skeletonizer-worker.js` | Синхронизация с основным файлом |
-| `translator.js` | Tencent engine + Google fallback key + stats |
-| `keyboard-trainer.js` | Новый модуль: плавающая клавиатура, drag/resize, flash, RU/EN, settings |
-| `keyboard-trainer.css` | Стили панели клавиатуры и popup настроек |
-| `blocks.js` | Кнопка keyboard-trainer в футере блока |
-| `index.html` | Подключение keyboard-trainer.css и keyboard-trainer.js |
+| `blocks.js` | Кнопка поиска (лупа) в тулбаре текстового блока |
+| `ui.js` | `Search.open(presetQuery)`, крестик поиска/замены, обработчик `.block-search-btn` |
+| `index.html` | Кнопки `#search-clear`, `#replace-clear` |
+| `styles.css` | Стили `.search-clear-btn` |
+| `keyboard-trainer.js` | Slim mode, on-screen mode, extra keys (Backspace/Enter), спойлер меню, key opacity slider, long press → uppercase |
+| `keyboard-trainer.css` | Slim, on-screen, finger zones через box-shadow, focus layer combo, ghost override, extra keys, spoiler |
 
 ## Как работает
-- **TextExpander**: trigger `ё` → dropdown (auto-width, "shortcut — текст") → Tab/Enter/клик
-- **Layout normalization**: ЙЦУКЕН/QWERTY — shortcut матчится из любой раскладки
-- **Digits mode**: standalone — генерирует чистые числа 1, 2, 3... (первая свободная)
-- **TextSkeletonizer**: извлекает структуру (заголовки, термины, списки, код, ссылки)
-  - light: ~20x сжатие | medium: ~10x | aggressive: ~5x
-  - Интегрирован в audit/compress/summary как бесплатная альтернатива LLM
-- **Translator**: auto pipeline → Google → Microsoft → Tencent → Legacy
-  - Tencent: бесплатный, без auth, batch
-  - Google fallback: резервный ключ при провале
-- **NinjaCursor**: декоративный курсор-шлейф
-- **DiffEngine**: LCS по строкам, токенизация по словам
-- **Flowchart**: SVG визуализация блок-схем
-- **Spellcheck**: включён по умолчанию
-- **Anchors**: `TreeWalker` + `Range` через `_getMirror` (⚠️ не менять)
-- **KeyboardTrainer**: singleton-панель → toggle кнопкой → keydown → flash + auto RU/EN → mousemove → fade → long press → settings
+- **KeyboardTrainer**: singleton-панель → toggle кнопкой → keydown → flash + auto RU/EN → drag/resize с viewport clamp + сохранением → настройки через long-press → ghost/slim/on-screen/problem/focus/mouse-through режимы → зоны пальцев → shifted-символы → цвет символов → прозрачность букв/фона клавиш → stay visible → экстранный режим (клик = ввод, long press = uppercase)
+
+### Аудиторские фиксы (Доработка 3)
+- `_clampPanelToViewport()`: `getComputedStyle()` вместо inline `display` проверки — clamp не работает на скрытой панели
+- `_save()`: bounds всегда через `getBoundingClientRect()`, `boundsVisible` через `getComputedStyle()`
+- `_applySavedBounds()`: убран clamp — bounds применяются как есть, clamp только в `_show()`
+- `_insertChar/_insertKey`: `_isTextInput()` helper для проверки input type, fallback `selectionStart` на `value.length`
+- contentEditable: сохранение/восстановление `Range` через `_lastEditableRange`
+- `_updateLayoutLabels()`: пропуск `.kb-key-extra` (Enter label не очищается)
+- `PointerEvent.button`: `e.pointerType === 'mouse'` guard для touch/pen совместимости
+- `e.target.closest` guard в drag-start
+- Auto-hide: `_scheduleAutoHide()` отменяет предыдущий таймер, on-screen toggle чистит таймер
+- Settings: `pointerdown` вместо `mousedown` для outside click
+- `toggle()`: `_buildPanel()` до `_save()`, `_closeSettings()` при disable, `_cancelMetricsUpdate()`, disconnect ResizeObserver
+- `setupButton()`: guard `_kbTrainerBound` от повторных обработчиков
+- `_tryDetectInitialLayout()`: `_save()` при изменении раскладки
+- `focusin`/`selectionchange` слушатели для отслеживания `_lastFocusedEl`
+- `_clearKeyLongPressTimers()` перед `_renderKeys()`
+- **Поиск**: кнопка лупы на текстовом блоке → `Search.open(sel)` → крестик очистки в полях ввода
 
 ## Следующий шаг
-1. Проверить таймер в браузере (направление обводки)
-2. Проверить клавиатуру в браузере (пропорциональный ресайз)
-3. Настроить точное ~5x сжатие в TextSkeletonizer (aggressive конфиг)
-4. Рассмотреть паттерны prompt-loom.js для навигации
+1. Проверить клавиатуру в браузере (все режимы, настройки, resize, on-screen)
+2. Next-key hint (подсказка следующей клавиши)
+3. Статистика ошибок по пальцам/клавишам
