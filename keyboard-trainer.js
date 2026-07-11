@@ -37,23 +37,23 @@ const KeyboardTrainer = (() => {
     'Digit7':{base:'7',shift:'&'},'Digit8':{base:'8',shift:'*'},
     'Digit9':{base:'9',shift:'('},'Digit0':{base:'0',shift:')'},
     'Minus':{base:'-',shift:'_'},'Equal':{base:'=',shift:'+'},
-    'KeyQ':{base:'q',shift:'Q'},'KeyW':{base:'w',shift:'W'},
-    'KeyE':{base:'e',shift:'E'},'KeyR':{base:'r',shift:'R'},
-    'KeyT':{base:'t',shift:'T'},'KeyY':{base:'y',shift:'Y'},
-    'KeyU':{base:'u',shift:'U'},'KeyI':{base:'i',shift:'I'},
-    'KeyO':{base:'o',shift:'O'},'KeyP':{base:'p',shift:'P'},
+    'KeyQ':{base:'q'},'KeyW':{base:'w'},
+    'KeyE':{base:'e'},'KeyR':{base:'r'},
+    'KeyT':{base:'t'},'KeyY':{base:'y'},
+    'KeyU':{base:'u'},'KeyI':{base:'i'},
+    'KeyO':{base:'o'},'KeyP':{base:'p'},
     'BracketLeft':{base:'[',shift:'{'},'BracketRight':{base:']',shift:'}'},
     'Backslash':{base:'\\',shift:'|'},
-    'KeyA':{base:'a',shift:'A'},'KeyS':{base:'s',shift:'S'},
-    'KeyD':{base:'d',shift:'D'},'KeyF':{base:'f',shift:'F'},
-    'KeyG':{base:'g',shift:'G'},'KeyH':{base:'h',shift:'H'},
-    'KeyJ':{base:'j',shift:'J'},'KeyK':{base:'k',shift:'K'},
-    'KeyL':{base:'l',shift:'L'},'Semicolon':{base:';',shift:':'},
+    'KeyA':{base:'a'},'KeyS':{base:'s'},
+    'KeyD':{base:'d'},'KeyF':{base:'f'},
+    'KeyG':{base:'g'},'KeyH':{base:'h'},
+    'KeyJ':{base:'j'},'KeyK':{base:'k'},
+    'KeyL':{base:'l'},'Semicolon':{base:';',shift:':'},
     'Quote':{base:"'",shift:'"'},
-    'KeyZ':{base:'z',shift:'Z'},'KeyX':{base:'x',shift:'X'},
-    'KeyC':{base:'c',shift:'C'},'KeyV':{base:'v',shift:'V'},
-    'KeyB':{base:'b',shift:'B'},'KeyN':{base:'n',shift:'N'},
-    'KeyM':{base:'m',shift:'M'},'Comma':{base:',',shift:'<'},
+    'KeyZ':{base:'z'},'KeyX':{base:'x'},
+    'KeyC':{base:'c'},'KeyV':{base:'v'},
+    'KeyB':{base:'b'},'KeyN':{base:'n'},
+    'KeyM':{base:'m'},'Comma':{base:',',shift:'<'},
     'Period':{base:'.',shift:'>'},'Slash':{base:'/',shift:'?'},
     'Space':{base:' '}
   };
@@ -226,10 +226,12 @@ const KeyboardTrainer = (() => {
   // Layout detection
   function _detectLayout(e) {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
-    const ruChar = LAYOUT_RU[e.code];
-    const enChar = LAYOUT_EN[e.code];
-    if (!ruChar || !enChar) return;
-    if (ruChar === enChar) return;
+    const ruSpec = LAYOUT_RU[e.code];
+    const enSpec = LAYOUT_EN[e.code];
+    if (!ruSpec || !enSpec) return;
+    const ruChar = ruSpec.base || '';
+    const enChar = enSpec.base || '';
+    if (!ruChar || !enChar || ruChar === enChar) return;
     const actual = e.key.length === 1 ? e.key.toLowerCase() : '';
     if (!actual) return;
     const prev = _currentLayout;
