@@ -1568,6 +1568,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     });
 
+    const searchBtn   = makeToolBtn(svgIcon('search'), 'Поиск (Ctrl+F)', () => {
+      ta.focus();
+      const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+      if (sel) {
+        Search.open(sel);
+      } else {
+        Search.open();
+      }
+    });
     const insertBtn   = makeToolBtn(svgIcon('lightning'), 'Вставить сниппет', e => { e.stopPropagation(); showSnippetDropdown(insertBtn, ta); });
     const loomBtn     = makeToolBtn(svgIcon('loom'),      'Prompt Loom: последние фрагменты (\\)', e => {
       e.stopPropagation();
@@ -1611,7 +1620,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       Toast.show('Скопировано ✓', 'success');
     });
 
-    [undoBtn, redoBtn, cutBtn, copyBtn, pasteBtn, makeDivider(), insertBtn, loomBtn, makeDivider(), clearBtn, saveBtn, transferBtn, makeDivider(), Anchors.createBlockAnchorButtons(b.id, ta)]
+    [undoBtn, redoBtn, cutBtn, copyBtn, pasteBtn, makeDivider(), searchBtn, insertBtn, loomBtn, makeDivider(), clearBtn, saveBtn, transferBtn, makeDivider(), Anchors.createBlockAnchorButtons(b.id, ta)]
       .forEach(el => tools.appendChild(el));
     body.appendChild(tools);
 
@@ -3712,6 +3721,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       redo:      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 6H7a3.5 3.5 0 0 0 0 7h3"/><polyline points="12.5,2.5 12.5,6 9,6"/></svg>',
       eye:       '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/></svg>',
       eyeOff:    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><line x1="2" y1="2" x2="14" y2="14"/></svg>',
+      search:    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
     };
     return m[name] || '';
   }

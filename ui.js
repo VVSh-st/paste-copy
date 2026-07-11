@@ -1137,10 +1137,13 @@ const Search = (() => {
 
   /* ---- open / close ---- */
 
-  function open() {
+  function open(presetQuery) {
     if (!panel) return;
     _open = true;
     panel.style.display = 'flex';
+    if (presetQuery && searchInput) {
+      searchInput.value = presetQuery;
+    }
     searchInput?.focus();
     searchInput?.select();
     doSearch();
