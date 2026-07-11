@@ -1218,19 +1218,25 @@ const KeyboardTrainer = (() => {
   // Toggle (called from button click)
   function toggle() {
     _enabled = !_enabled;
-    _save();
-    _updateAllButtons();
 
     if (_enabled) {
       _buildPanel();
+      _save();
+      _updateAllButtons();
       _show();
       _tryDetectInitialLayout();
       document.addEventListener('keydown', _onKeyDown, true);
       document.addEventListener('mousemove', _onMouseMove, { passive: true });
     } else {
+      _save();
+      _updateAllButtons();
       document.removeEventListener('keydown', _onKeyDown, true);
       document.removeEventListener('mousemove', _onMouseMove);
       _cancelMetricsUpdate();
+      if (_resizeObserver) {
+        _resizeObserver.disconnect();
+        _resizeObserver = null;
+      }
       if (_onWindowResize) {
         window.removeEventListener('resize', _onWindowResize);
         _onWindowResize = null;
