@@ -147,6 +147,7 @@ const KeyboardTrainer = (() => {
   let _showFingerZones = true;
   let _showShiftedSymbols = false;
   let _ghostMode = false;
+  let _slimMode = false;
   let _problemKeysOnly = false;
   let _focusLayerEnabled = true;
   let _resizeObserver = null;
@@ -194,6 +195,7 @@ const KeyboardTrainer = (() => {
         showFingerZones: _showFingerZones,
         showShiftedSymbols: _showShiftedSymbols,
         ghostMode: _ghostMode,
+        slimMode: _slimMode,
         problemKeysOnly: _problemKeysOnly,
         focusLayerEnabled: _focusLayerEnabled,
         panelLeft: _panel ? _panel.style.left : '',
@@ -227,6 +229,7 @@ const KeyboardTrainer = (() => {
       _showFingerZones = s.showFingerZones !== false;
       _showShiftedSymbols = !!s.showShiftedSymbols;
       _ghostMode = !!s.ghostMode;
+      _slimMode = !!s.slimMode;
       _problemKeysOnly = !!s.problemKeysOnly;
       _focusLayerEnabled = s.focusLayerEnabled !== false;
       _savedBounds = {
@@ -399,6 +402,7 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
     _panel.classList.toggle('kb-fingers-on', _showFingerZones);
     _panel.classList.toggle('kb-ghost', _ghostMode);
+    _panel.classList.toggle('kb-slim', _slimMode);
     _panel.classList.toggle('kb-mouse-through', _mouseThrough);
     _panel.classList.toggle('kb-problem-mode', _problemKeysOnly);
     _panel.classList.toggle('kb-focus-layer-on', _focusLayerEnabled);
@@ -730,6 +734,12 @@ const KeyboardTrainer = (() => {
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>',
+      '    <input type="checkbox" id="kb-set-slim" ' + (_slimMode ? 'checked' : '') + '>',
+      '    Slim',
+      '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
       '    <input type="checkbox" id="kb-set-problem" ' + (_problemKeysOnly ? 'checked' : '') + '>',
       '    \u0422\u043e\u043b\u044c\u043a\u043e \u043f\u0440\u043e\u0431\u043b\u0435\u043c\u043d\u044b\u0435',
       '  </label>',
@@ -864,6 +874,12 @@ const KeyboardTrainer = (() => {
 
     _settingsPopup.querySelector('#kb-set-ghost').addEventListener('change', function(e) {
       _ghostMode = e.target.checked;
+      _applyVisualSettings();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-slim').addEventListener('change', function(e) {
+      _slimMode = e.target.checked;
       _applyVisualSettings();
       _save();
     });

@@ -265,6 +265,19 @@
   border-color: rgba(100, 160, 255, 0.6) !important;
 }
 
+/* ── Slim mode ──────────────────────────────────────────────────── */
+
+.kb-trainer-panel.kb-slim {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.kb-trainer-panel.kb-slim .kb-lang-handle,
+.kb-trainer-panel.kb-slim .kb-trainer-resize {
+  opacity: 0.08;
+}
+
 /* ── Problem keys mode ──────────────────────────────────────────── */
 
 .kb-trainer-panel.kb-problem-mode .kb-key {
