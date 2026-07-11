@@ -303,6 +303,18 @@
   color: var(--kb-label-color, var(--text1, #e0e0e0));
 }
 .kb-trainer-panel.kb-onscreen .kb-key-extra:hover { opacity: 1; }
+/* Ghost mode works in on-screen */
+.kb-trainer-panel.kb-onscreen.kb-ghost .kb-key {
+  background: transparent;
+  border-color: transparent;
+}
+.kb-trainer-panel.kb-onscreen.kb-ghost .kb-key.kb-flash {
+  background: rgba(100, 160, 255, var(--kb-flash-alpha, 0.35)) !important;
+  border-color: rgba(100, 160, 255, 0.6) !important;
+}
+.kb-trainer-panel.kb-onscreen.kb-ghost .kb-key-extra {
+  background: transparent;
+}
 
 /* ── Slim mode ──────────────────────────────────────────────────── */
 

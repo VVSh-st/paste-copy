@@ -626,10 +626,13 @@ const KeyboardTrainer = (() => {
           if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
         } else {
           var spec = _getLayout()[code];
-          if (spec && spec.shift) {
-            _insertChar(spec.shift);
-            _flashKey(code);
-            if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
+          if (spec) {
+            var ch = spec.shift || (spec.base ? spec.base.toUpperCase() : '');
+            if (ch) {
+              _insertChar(ch);
+              _flashKey(code);
+              if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
+            }
           }
         }
       }, LONG_PRESS_MS);
@@ -1080,8 +1083,9 @@ const KeyboardTrainer = (() => {
 
     _settingsPopup.querySelector('#kb-set-onscreen').addEventListener('change', function(e) {
       _onScreenMode = e.target.checked;
-      _applyVisualSettings();
+      _renderKeys();
       _updateClickHandlers();
+      _applyVisualSettings();
       _save();
     });
 
