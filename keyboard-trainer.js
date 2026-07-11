@@ -180,7 +180,7 @@ const KeyboardTrainer = (() => {
   // Persistence
   function _save() {
     try {
-      var boundsVisible = _panel && _panel.style.display !== 'none';
+      var boundsVisible = _panel && window.getComputedStyle(_panel).display !== 'none';
       Storage._set(STORAGE_KEY, JSON.stringify({
         enabled: _enabled,
         showHomeRow: _showHomeRow,
@@ -203,10 +203,10 @@ const KeyboardTrainer = (() => {
         onScreenMode: _onScreenMode,
         problemKeysOnly: _problemKeysOnly,
         focusLayerEnabled: _focusLayerEnabled,
-        panelLeft: boundsVisible ? (_panel.style.left || Math.round(_panel.getBoundingClientRect().left) + 'px') : '',
-        panelTop: boundsVisible ? (_panel.style.top || Math.round(_panel.getBoundingClientRect().top) + 'px') : '',
-        panelWidth: boundsVisible ? (_panel.style.width || _panel.offsetWidth + 'px') : '',
-        panelHeight: boundsVisible ? (_panel.style.height || _panel.offsetHeight + 'px') : ''
+        panelLeft: boundsVisible ? Math.round(_panel.getBoundingClientRect().left) + 'px' : '',
+        panelTop: boundsVisible ? Math.round(_panel.getBoundingClientRect().top) + 'px' : '',
+        panelWidth: boundsVisible ? Math.round(_panel.getBoundingClientRect().width) + 'px' : '',
+        panelHeight: boundsVisible ? Math.round(_panel.getBoundingClientRect().height) + 'px' : ''
       }));
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
@@ -524,20 +524,22 @@ const KeyboardTrainer = (() => {
       _panel.style.right = 'auto';
       _panel.style.bottom = 'auto';
     }
-    _clampPanelToViewport();
   }
 
   function _clampPanelToViewport() {
     if (!_panel) return;
-    if (_panel.style.display === 'none') return;
+    var cs = window.getComputedStyle(_panel);
+    if (cs.display === 'none') return;
     var rect = _panel.getBoundingClientRect();
     var w = Math.min(rect.width, window.innerWidth);
     var h = Math.min(rect.height, window.innerHeight);
     if (w !== rect.width) _panel.style.width = Math.max(300, w) + 'px';
     if (h !== rect.height) _panel.style.height = Math.max(120, h) + 'px';
     rect = _panel.getBoundingClientRect();
-    var left = Math.max(0, Math.min(window.innerWidth - rect.width, rect.left));
-    var top = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top));
+    var maxLeft = Math.max(0, window.innerWidth - rect.width);
+    var maxTop = Math.max(0, window.innerHeight - rect.height);
+    var left = Math.min(maxLeft, Math.max(0, rect.left));
+    var top = Math.min(maxTop, Math.max(0, rect.top));
     _panel.style.left = left + 'px';
     _panel.style.top = top + 'px';
     _panel.style.right = 'auto';
