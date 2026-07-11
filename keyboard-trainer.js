@@ -365,15 +365,14 @@ const KeyboardTrainer = (() => {
         _keyEls[k.code] = el;
       });
 
-      // On-screen extra keys — explicit grid positions to avoid auto-placement conflicts
+      // On-screen extra keys — explicit grid positions
       if (_onScreenMode) {
         var ek = null;
-        if (row === ROWS[0])       ek = { code: 'Backspace', label: '\u232b', col: 27, span: 1 };
-        else if (row === ROWS[2])  ek = { code: 'Enter',    label: '\u21b5', col: 25, span: 3 };
-        else if (row === ROWS[3])  ek = { code: 'ShiftLeft',label: '\u21e7', col: 24, span: 4 };
+        if (row === ROWS[0])       ek = { code: 'Backspace', label: 'Bksp',  col: 27, span: 1, finger: 'l-pinky' };
+        else if (row === ROWS[2])  ek = { code: 'Enter',    label: 'Enter', col: 25, span: 3, finger: 'r-pinky' };
         if (ek) {
           var el = document.createElement('div');
-          el.className = 'kb-key kb-key-extra';
+          el.className = 'kb-key kb-key-extra kb-finger-' + ek.finger;
           el.dataset.code = ek.code;
           el.style.gridColumn = ek.col + ' / span ' + ek.span;
           var glyph = document.createElement('span');
@@ -597,11 +596,6 @@ const KeyboardTrainer = (() => {
       }
     } else if (code === 'Enter') {
       _insertChar('\n');
-    } else if (code === 'ShiftLeft') {
-      _currentLayout = _currentLayout === 'ru' ? 'en' : 'ru';
-      _updateLangLabel();
-      _updateLayoutLabels();
-      _save();
     }
   }
 
@@ -626,8 +620,7 @@ const KeyboardTrainer = (() => {
         if (!_isForeground) _show();
         else _scheduleAutoHide();
         _keyLongPressFired[code] = true;
-        if (code === 'Backspace' || code === 'Enter' || code === 'ShiftLeft') {
-          // Long press on extra keys: repeat action
+        if (code === 'Backspace' || code === 'Enter') {
           _insertKey(code);
           _flashKey(code);
           if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
@@ -647,7 +640,7 @@ const KeyboardTrainer = (() => {
       if (!_onScreenMode) return;
       if (!_isForeground) _show();
       else _scheduleAutoHide();
-      if (code === 'Backspace' || code === 'Enter' || code === 'ShiftLeft') {
+      if (code === 'Backspace' || code === 'Enter') {
         _insertKey(code);
       } else {
         var spec = _getLayout()[code];
