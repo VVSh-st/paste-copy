@@ -539,6 +539,7 @@ const KeyboardTrainer = (() => {
 
   function _scheduleAutoHide() {
     clearTimeout(_autoHideTimer);
+    if (_onScreenMode) return;
     if (_autoHideDelay <= 0) return;
     _autoHideTimer = setTimeout(_goBackground, _autoHideDelay);
   }
@@ -588,6 +589,10 @@ const KeyboardTrainer = (() => {
     }
     if (el.isContentEditable) {
       if (el.isConnected) el.focus();
+      if (_lastEditableRange) {
+        var sel = window.getSelection && window.getSelection();
+        if (sel) { sel.removeAllRanges(); sel.addRange(_lastEditableRange); }
+      }
       document.execCommand('insertText', false, ch);
     }
   }
@@ -607,6 +612,10 @@ const KeyboardTrainer = (() => {
         el.dispatchEvent(new Event('input', { bubbles: true }));
       } else if (el.isContentEditable) {
         if (el.isConnected) el.focus();
+        if (_lastEditableRange) {
+          var sel = window.getSelection && window.getSelection();
+          if (sel) { sel.removeAllRanges(); sel.addRange(_lastEditableRange); }
+        }
         document.execCommand('delete');
       }
     } else if (code === 'Enter') {
@@ -621,12 +630,18 @@ const KeyboardTrainer = (() => {
   var _keyLongPressTimers = {};
   var _keyLongPressFired = {};
   var _lastFocusedEl = null;
+  var _lastEditableRange = null;
 
   function _setupKeyClick(el, code) {
     var _startX = 0, _startY = 0;
     var onDown = function(e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       _lastFocusedEl = document.activeElement;
+      _lastEditableRange = null;
+      if (_lastFocusedEl && _lastFocusedEl.isContentEditable) {
+        var sel = window.getSelection && window.getSelection();
+        if (sel && sel.rangeCount) _lastEditableRange = sel.getRangeAt(0).cloneRange();
+      }
       _keyLongPressFired[code] = false;
       _startX = e.clientX;
       _startY = e.clientY;
@@ -1099,9 +1114,11 @@ const KeyboardTrainer = (() => {
 
     _settingsPopup.querySelector('#kb-set-onscreen').addEventListener('change', function(e) {
       _onScreenMode = e.target.checked;
+      clearTimeout(_autoHideTimer);
       _renderKeys();
       _updateClickHandlers();
       _applyVisualSettings();
+      if (_onScreenMode && _panel) _show();
       _save();
     });
 
@@ -1173,6 +1190,11 @@ const KeyboardTrainer = (() => {
 
   // Button setup (called from blocks.js)
   function setupButton(btn) {
+    if (btn._kbTrainerBound) {
+      btn.classList.toggle('kb-trainer-active', _enabled);
+      return;
+    }
+    btn._kbTrainerBound = true;
     btn.addEventListener('click', function(e) {
       if (_longPressFired) {
         _longPressFired = false;
