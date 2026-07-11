@@ -402,11 +402,13 @@ const KeyboardTrainer = (() => {
 
   function _updateFontSize() {
     if (!_panel) return;
-    var key = _panel.querySelector('.kb-key');
-    var keyWidth = key ? key.offsetWidth : 40;
-    var size = Math.round(keyWidth * 0.4 * _fontScale);
+    var panelWidth = _panel.offsetWidth || 420;
+    var bodyPadding = 16;
+    var contentWidth = Math.max(100, panelWidth - bodyPadding);
+    var keySize = Math.round(contentWidth / 14);
+    var size = Math.round(keySize * 0.4 * _fontScale);
     _panel.style.setProperty('--kb-font-size', Math.max(9, size) + 'px');
-    _panel.style.setProperty('--kb-key-size', Math.max(28, Math.round(keyWidth)) + 'px');
+    _panel.style.setProperty('--kb-key-size', Math.max(28, keySize) + 'px');
   }
 
   function _formatDelay(ms) {
