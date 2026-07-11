@@ -140,6 +140,8 @@ const KeyboardTrainer = (() => {
   let _homeBorderWidth = 2;
   let _flashAlpha = 0.35;
   let _labelColor = '#e0e0e0';
+  let _keyBgAlpha = 0.04;
+  let _mouseThrough = false;
   let _stayVisible = false;
   let _showFingerZones = true;
   let _showShiftedSymbols = false;
@@ -182,6 +184,8 @@ const KeyboardTrainer = (() => {
         homeBorderWidth: _homeBorderWidth,
         flashAlpha: _flashAlpha,
         labelColor: _labelColor,
+        keyBgAlpha: _keyBgAlpha,
+        mouseThrough: _mouseThrough,
         stayVisible: _stayVisible,
         showFingerZones: _showFingerZones,
         showShiftedSymbols: _showShiftedSymbols,
@@ -212,6 +216,8 @@ const KeyboardTrainer = (() => {
       _homeBorderWidth = typeof s.homeBorderWidth === 'number' ? s.homeBorderWidth : 2;
       _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
       _labelColor = typeof s.labelColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.labelColor) ? s.labelColor : '#e0e0e0';
+      _keyBgAlpha = typeof s.keyBgAlpha === 'number' ? Math.max(0, Math.min(1, s.keyBgAlpha)) : 0.04;
+      _mouseThrough = !!s.mouseThrough;
       _stayVisible = !!s.stayVisible;
       _showFingerZones = s.showFingerZones !== false;
       _showShiftedSymbols = !!s.showShiftedSymbols;
@@ -383,9 +389,11 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-home-border-width', _homeBorderWidth + 'px');
     _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
     _panel.style.setProperty('--kb-label-color', _labelColor);
+    _panel.style.setProperty('--kb-key-bg-alpha', _keyBgAlpha);
     _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
     _panel.classList.toggle('kb-fingers-on', _showFingerZones);
     _panel.classList.toggle('kb-ghost', _ghostMode);
+    _panel.classList.toggle('kb-mouse-through', _mouseThrough);
     _panel.classList.toggle('kb-problem-mode', _problemKeysOnly);
     _panel.classList.toggle('kb-focus-layer-on', _focusLayerEnabled);
     _updateFontSize();
@@ -426,11 +434,17 @@ const KeyboardTrainer = (() => {
     if (_resizeObserver) return;
     if (typeof ResizeObserver === 'undefined') return;
     _resizeObserver = new ResizeObserver(function() {
-      requestAnimationFrame(_updateFontSize);
+      _scheduleMetricsUpdate();
     });
     _resizeObserver.observe(_panel);
     window.addEventListener('resize', function() {
-      if (_enabled && _panel) requestAnimationFrame(_updateFontSize);
+      if (_enabled && _panel) _scheduleMetricsUpdate();
+    });
+  }
+
+  function _scheduleMetricsUpdate() {
+    requestAnimationFrame(function() {
+      requestAnimationFrame(_updateFontSize);
     });
   }
 
@@ -597,7 +611,7 @@ const KeyboardTrainer = (() => {
     function onEnd() {
       if (_dragging || _resizing) {
         _save();
-        _updateFontSize();
+        _scheduleMetricsUpdate();
       }
       _dragging = _resizing = false;
     }
@@ -637,6 +651,11 @@ const KeyboardTrainer = (() => {
       '  <label>\u0426\u0432\u0435\u0442 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432</label>',
       '  <input type="color" id="kb-set-labelcolor" value="' + _labelColor + '">',
       '  <span id="kb-set-labelcolor-val">' + _labelColor + '</span>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d. \u043a\u043b\u0430\u0432\u0438\u0448</label>',
+      '  <input type="range" id="kb-set-keybg" min="0" max="100" value="' + Math.round(_keyBgAlpha * 100) + '">',
+      '  <span id="kb-set-keybg-val">' + Math.round(_keyBgAlpha * 100) + '%</span>',
       '</div>',
       '<div class="kb-settings-row">',
       '  <label>\u0420\u0430\u043c\u043a\u0430 \u0434\u043e\u043c.\u0440\u044f\u0434\u0430</label>',
@@ -700,6 +719,12 @@ const KeyboardTrainer = (() => {
       '    <input type="checkbox" id="kb-set-focuslayer" ' + (_focusLayerEnabled ? 'checked' : '') + '>',
       '    \u0424\u043e\u043a\u0443\u0441\u043d\u044b\u0439 \u0441\u043b\u043e\u0439',
       '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
+      '    <input type="checkbox" id="kb-set-mousethrough" ' + (_mouseThrough ? 'checked' : '') + '>',
+      '    \u041f\u0440\u043e\u043f\u0443\u0441\u043a \u043a\u043b\u0438\u043a\u043e\u0432',
+      '  </label>',
       '</div>'
     ].join('\n');
 
@@ -743,6 +768,15 @@ const KeyboardTrainer = (() => {
     labelColorInput.addEventListener('input', function(e) {
       _labelColor = e.target.value;
       labelColorVal.textContent = _labelColor;
+      _applyVisualSettings();
+      _save();
+    });
+
+    var keyBgSlider = _settingsPopup.querySelector('#kb-set-keybg');
+    var keyBgVal = _settingsPopup.querySelector('#kb-set-keybg-val');
+    keyBgSlider.addEventListener('input', function(e) {
+      _keyBgAlpha = parseInt(e.target.value, 10) / 100;
+      keyBgVal.textContent = e.target.value + '%';
       _applyVisualSettings();
       _save();
     });
@@ -821,6 +855,12 @@ const KeyboardTrainer = (() => {
 
     _settingsPopup.querySelector('#kb-set-focuslayer').addEventListener('change', function(e) {
       _focusLayerEnabled = e.target.checked;
+      _applyVisualSettings();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-mousethrough').addEventListener('change', function(e) {
+      _mouseThrough = e.target.checked;
       _applyVisualSettings();
       _save();
     });
