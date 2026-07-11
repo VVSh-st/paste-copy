@@ -438,6 +438,7 @@ const KeyboardTrainer = (() => {
     _panel.classList.toggle('kb-onscreen', _onScreenMode);
     _panel.classList.toggle('kb-problem-mode', _problemKeysOnly);
     _panel.classList.toggle('kb-focus-layer-on', _focusLayerEnabled);
+    _panel.classList.toggle('kb-stay-visible', _stayVisible);
     _updateFontSize();
     _updateProblemKeys();
   }
@@ -565,16 +566,26 @@ const KeyboardTrainer = (() => {
 
   // ── On-screen keyboard ────────────────────────────────────────
 
+  function _isTextInput(el) {
+    if (!el) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    if (el.tagName !== 'INPUT') return false;
+    var type = (el.type || 'text').toLowerCase();
+    return ['text','search','url','tel','password','email'].includes(type);
+  }
+
   function _insertChar(ch) {
     var el = _lastFocusedEl || document.activeElement;
     if (!el) return;
-    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-      var start = el.selectionStart, end = el.selectionEnd;
+    if (_isTextInput(el)) {
+      var start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+      var end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
       el.setRangeText(ch, start, end, 'end');
       el.dispatchEvent(new Event('input', { bubbles: true }));
       return;
     }
     if (el.isContentEditable) {
+      if (el.isConnected) el.focus();
       document.execCommand('insertText', false, ch);
     }
   }
@@ -583,8 +594,9 @@ const KeyboardTrainer = (() => {
     var el = _lastFocusedEl || document.activeElement;
     if (!el) return;
     if (code === 'Backspace') {
-      if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-        var start = el.selectionStart, end = el.selectionEnd;
+      if (_isTextInput(el)) {
+        var start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+        var end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
         if (start !== end) {
           el.setRangeText('', start, end, 'end');
         } else if (start > 0) {
@@ -592,6 +604,7 @@ const KeyboardTrainer = (() => {
         }
         el.dispatchEvent(new Event('input', { bubbles: true }));
       } else if (el.isContentEditable) {
+        if (el.isConnected) el.focus();
         document.execCommand('delete');
       }
     } else if (code === 'Enter') {
@@ -797,7 +810,7 @@ const KeyboardTrainer = (() => {
       _dragging = _resizing = false;
     }
 
-    document.addEventListener('mousemove', onMove, { passive: true });
+    document.addEventListener('mousemove', onMove, { passive: false });
     document.addEventListener('mouseup', onEnd);
     document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend', onEnd);
@@ -1042,6 +1055,11 @@ const KeyboardTrainer = (() => {
     delaySlider.addEventListener('input', function(e) {
       _autoHideDelay = parseInt(e.target.value, 10);
       delayVal.textContent = _formatDelay(_autoHideDelay);
+      if (_enabled && _panel && _isForeground) {
+        _scheduleAutoHide();
+      } else {
+        clearTimeout(_autoHideTimer);
+      }
       _save();
     });
 
