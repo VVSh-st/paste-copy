@@ -426,7 +426,8 @@ window.LLMFeatures = (() => {
     setTimeout(() => document.addEventListener('contextmenu', _thesaurusCloseOnContext, true), 0);
   }
 
-  function _extractSentenceContext(value, pos) {
+  function _extractSentenceContext(value, pos, maxLen) {
+    maxLen = maxLen || 500;
     const sentRe = /[.!?…]+(?:\s|$)/g;
     let bestEnd = value.length;
     let m;
@@ -441,7 +442,13 @@ window.LLMFeatures = (() => {
       else break;
     }
     bestStart = prevEnd;
-    return value.slice(bestStart, bestEnd).trim();
+    var ctx = value.slice(bestStart, bestEnd).trim();
+    if (ctx.length > maxLen) {
+      var half = Math.floor(maxLen / 2);
+      var start = Math.max(0, pos - bestStart - half);
+      ctx = ctx.slice(start, start + maxLen);
+    }
+    return ctx;
   }
 
   async function _thesaurusAtCursor() {
