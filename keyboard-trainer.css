@@ -361,3 +361,8 @@
 .kb-trainer-panel.kb-active.kb-onscreen.kb-mouse-through {
   pointer-events: auto;
 }
+
+/* On-screen overrides background pointer-events */
+.kb-trainer-panel.kb-onscreen.kb-background {
+  pointer-events: auto;
+}
