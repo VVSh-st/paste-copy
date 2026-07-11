@@ -298,6 +298,12 @@
 .kb-trainer-panel.kb-onscreen .kb-key:active { transform: scale(0.95); }
 .kb-trainer-panel.kb-onscreen .kb-lang-handle { cursor: pointer; opacity: 0.7; }
 .kb-trainer-panel.kb-onscreen .kb-lang-handle:hover { opacity: 1; }
+.kb-trainer-panel.kb-onscreen .kb-key-extra {
+  background: rgba(255,255,255, 0.08);
+  font-size: calc(var(--kb-font-size, 13px) * 1.2);
+  opacity: 0.7;
+}
+.kb-trainer-panel.kb-onscreen .kb-key-extra:hover { opacity: 1; }
 
 /* ── Slim mode ──────────────────────────────────────────────────── */
 

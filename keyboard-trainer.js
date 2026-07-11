@@ -363,6 +363,32 @@ const KeyboardTrainer = (() => {
         _keyEls[k.code] = el;
       });
 
+      // On-screen extra keys: Backspace (row 0), Enter (row 2), Shift (row 3)
+      if (_onScreenMode) {
+        var extraKeys = null;
+        if (row === ROWS[0]) {
+          extraKeys = [{ code: 'Backspace', label: '\u232b', w: 1 }];
+        } else if (row === ROWS[2]) {
+          extraKeys = [{ code: 'Enter', label: '\u21b5', w: 2 }];
+        } else if (row === ROWS[3]) {
+          extraKeys = [{ code: 'ShiftLeft', label: '\u21e7', w: 2 }];
+        }
+        if (extraKeys) {
+          extraKeys.forEach(function(ek) {
+            var el = document.createElement('div');
+            el.className = 'kb-key kb-key-extra';
+            el.dataset.code = ek.code;
+            el.style.gridColumn = 'span ' + (ek.w * 2);
+            var glyph = document.createElement('span');
+            glyph.className = 'kb-key-label';
+            glyph.textContent = ek.label;
+            el.appendChild(glyph);
+            rowEl.appendChild(el);
+            _keyEls[ek.code] = el;
+          });
+        }
+      }
+
       body.appendChild(rowEl);
     });
   }
@@ -558,6 +584,31 @@ const KeyboardTrainer = (() => {
     }
   }
 
+  function _insertKey(code) {
+    var el = _lastFocusedEl || document.activeElement;
+    if (!el) return;
+    if (code === 'Backspace') {
+      if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+        var start = el.selectionStart, end = el.selectionEnd;
+        if (start !== end) {
+          el.setRangeText('', start, end, 'end');
+        } else if (start > 0) {
+          el.setRangeText('', start - 1, start, 'end');
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      } else if (el.isContentEditable) {
+        document.execCommand('delete');
+      }
+    } else if (code === 'Enter') {
+      _insertChar('\n');
+    } else if (code === 'ShiftLeft') {
+      _currentLayout = _currentLayout === 'ru' ? 'en' : 'ru';
+      _updateLangLabel();
+      _updateLayoutLabels();
+      _save();
+    }
+  }
+
   function _getLayout() {
     return _currentLayout === 'en' ? LAYOUT_EN : LAYOUT_RU;
   }
@@ -579,11 +630,18 @@ const KeyboardTrainer = (() => {
         if (!_isForeground) _show();
         else _scheduleAutoHide();
         _keyLongPressFired[code] = true;
-        var spec = _getLayout()[code];
-        if (spec && spec.shift) {
-          _insertChar(spec.shift);
+        if (code === 'Backspace' || code === 'Enter' || code === 'ShiftLeft') {
+          // Long press on extra keys: repeat action
+          _insertKey(code);
           _flashKey(code);
           if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
+        } else {
+          var spec = _getLayout()[code];
+          if (spec && spec.shift) {
+            _insertChar(spec.shift);
+            _flashKey(code);
+            if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
+          }
         }
       }, LONG_PRESS_MS);
     };
@@ -593,8 +651,12 @@ const KeyboardTrainer = (() => {
       if (!_onScreenMode) return;
       if (!_isForeground) _show();
       else _scheduleAutoHide();
-      var spec = _getLayout()[code];
-      if (spec) _insertChar(spec.base);
+      if (code === 'Backspace' || code === 'Enter' || code === 'ShiftLeft') {
+        _insertKey(code);
+      } else {
+        var spec = _getLayout()[code];
+        if (spec) _insertChar(spec.base);
+      }
       _flashKey(code);
       if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
     };
