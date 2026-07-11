@@ -293,7 +293,10 @@ const KeyboardTrainer = (() => {
 
   // DOM
   function _buildPanel() {
-    if (_panel) return _panel;
+    if (_panel) {
+      _setupResizeObserver();
+      return _panel;
+    }
 
     _panel = document.createElement('div');
     _panel.className = 'kb-trainer-panel';
@@ -530,20 +533,24 @@ const KeyboardTrainer = (() => {
     if (!_panel) return;
     var cs = window.getComputedStyle(_panel);
     if (cs.display === 'none') return;
+    var changed = false;
     var rect = _panel.getBoundingClientRect();
     var w = Math.min(rect.width, window.innerWidth);
     var h = Math.min(rect.height, window.innerHeight);
-    if (w !== rect.width) _panel.style.width = Math.max(300, w) + 'px';
-    if (h !== rect.height) _panel.style.height = Math.max(120, h) + 'px';
+    if (w !== rect.width) { _panel.style.width = Math.max(300, w) + 'px'; changed = true; }
+    if (h !== rect.height) { _panel.style.height = Math.max(120, h) + 'px'; changed = true; }
     rect = _panel.getBoundingClientRect();
     var maxLeft = Math.max(0, window.innerWidth - rect.width);
     var maxTop = Math.max(0, window.innerHeight - rect.height);
     var left = Math.min(maxLeft, Math.max(0, rect.left));
     var top = Math.min(maxTop, Math.max(0, rect.top));
+    if (left !== rect.left) changed = true;
+    if (top !== rect.top) changed = true;
     _panel.style.left = left + 'px';
     _panel.style.top = top + 'px';
     _panel.style.right = 'auto';
     _panel.style.bottom = 'auto';
+    if (changed) _save();
   }
 
   // Flash on keydown
