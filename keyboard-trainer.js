@@ -539,7 +539,6 @@ const KeyboardTrainer = (() => {
 
   function _scheduleAutoHide() {
     clearTimeout(_autoHideTimer);
-    if (_onScreenMode) return;
     if (_autoHideDelay <= 0) return;
     _autoHideTimer = setTimeout(_goBackground, _autoHideDelay);
   }
