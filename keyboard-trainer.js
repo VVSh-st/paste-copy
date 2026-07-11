@@ -389,7 +389,7 @@ const KeyboardTrainer = (() => {
     _panel.style.setProperty('--kb-home-border-width', _homeBorderWidth + 'px');
     _panel.style.setProperty('--kb-flash-alpha', _flashAlpha);
     _panel.style.setProperty('--kb-label-color', _labelColor);
-    _panel.style.setProperty('--kb-key-bg-alpha', _keyBgAlpha);
+    _panel.style.setProperty('--kb-label-alpha', _keyBgAlpha);
     _panel.style.setProperty('--kb-bg-hide-opacity', _stayVisible ? 0.1 : 0);
     _panel.classList.toggle('kb-fingers-on', _showFingerZones);
     _panel.classList.toggle('kb-ghost', _ghostMode);
@@ -405,7 +405,7 @@ const KeyboardTrainer = (() => {
     var panelWidth = _panel.offsetWidth || 420;
     var bodyPadding = 16;
     var contentWidth = Math.max(100, panelWidth - bodyPadding);
-    var keySize = Math.round(contentWidth / 14);
+    var keySize = Math.round(contentWidth / 13.5);
     var size = Math.round(keySize * 0.4 * _fontScale);
     _panel.style.setProperty('--kb-font-size', Math.max(9, size) + 'px');
     _panel.style.setProperty('--kb-key-size', Math.max(28, keySize) + 'px');
@@ -655,7 +655,7 @@ const KeyboardTrainer = (() => {
       '  <span id="kb-set-labelcolor-val">' + _labelColor + '</span>',
       '</div>',
       '<div class="kb-settings-row">',
-      '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d. \u043a\u043b\u0430\u0432\u0438\u0448</label>',
+      '  <label>\u041f\u0440\u043e\u0437\u0440\u0430\u0447\u043d. \u0431\u0443\u043a\u0432</label>',
       '  <input type="range" id="kb-set-keybg" min="0" max="100" value="' + Math.round(_keyBgAlpha * 100) + '">',
       '  <span id="kb-set-keybg-val">' + Math.round(_keyBgAlpha * 100) + '%</span>',
       '</div>',

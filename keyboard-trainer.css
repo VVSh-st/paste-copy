@@ -71,7 +71,7 @@
 
 .kb-row {
   display: grid;
-  grid-template-columns: repeat(28, minmax(18px, 1fr));
+  grid-template-columns: repeat(27, minmax(var(--kb-key-size, 40px), 1fr));
   gap: 1px;
   margin-bottom: 1px;
   grid-auto-rows: var(--kb-key-size, 40px);
@@ -110,6 +110,7 @@
   display: block;
   line-height: 1;
   pointer-events: none;
+  opacity: var(--kb-label-alpha, 1);
 }
 
 .kb-key-shifted {
