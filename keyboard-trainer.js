@@ -304,7 +304,9 @@ const KeyboardTrainer = (() => {
     _langHandleEl = _panel.querySelector('.kb-lang-handle');
     _setupLangHandleClick();
     _panel.addEventListener('pointerdown', function(e) {
-      if (_onScreenMode) e.preventDefault();
+      if (_onScreenMode && !e.target.closest('.kb-trainer-resize') && !e.target.closest('.kb-lang-handle')) {
+        e.preventDefault();
+      }
     }, { capture: true });
     _renderKeys();
     _updateClickHandlers();
