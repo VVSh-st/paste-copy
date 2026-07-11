@@ -7,35 +7,55 @@ const KeyboardTrainer = (() => {
   // Standard ANSI 104, all rows including digits and modifiers.
 
   const LAYOUT_RU = {
-    'Backquote':'\u0451',
-    'Digit1':'1','Digit2':'2','Digit3':'3','Digit4':'4','Digit5':'5',
-    'Digit6':'6','Digit7':'7','Digit8':'8','Digit9':'9','Digit0':'0',
-    'Minus':'-','Equal':'=',
-    'KeyQ':'\u0439','KeyW':'\u0446','KeyE':'\u0443','KeyR':'\u043a','KeyT':'\u0435',
-    'KeyY':'\u043d','KeyU':'\u0433','KeyI':'\u0448','KeyO':'\u0449','KeyP':'\u0437',
-    'BracketLeft':'\u0445','BracketRight':'\u044a','Backslash':'\\',
-    'KeyA':'\u0444','KeyS':'\u044b','KeyD':'\u0432','KeyF':'\u0430','KeyG':'\u043f',
-    'KeyH':'\u0440','KeyJ':'\u043e','KeyK':'\u043b','KeyL':'\u0434','Semicolon':'\u0436',
-    'Quote':'\u044d',
-    'KeyZ':'\u044f','KeyX':'\u0447','KeyC':'\u0441','KeyV':'\u043c','KeyB':'\u0438',
-    'KeyN':'\u0442','KeyM':'\u044c','Comma':'\u0431','Period':'\u044e','Slash':'.',
-    'Space':' '
+    'Backquote':{base:'\u0451',shift:'\u0401'},
+    'Digit1':{base:'1',shift:'!'},'Digit2':{base:'2',shift:'"'},
+    'Digit3':{base:'3',shift:'\u2116'},'Digit4':{base:'4',shift:';'},
+    'Digit5':{base:'5',shift:'%'},'Digit6':{base:'6',shift:':'},
+    'Digit7':{base:'7',shift:'?'},'Digit8':{base:'8',shift:'*'},
+    'Digit9':{base:'9',shift:'('},'Digit0':{base:'0',shift:')'},
+    'Minus':{base:'-',shift:'_'},'Equal':{base:'=',shift:'+'},
+    'KeyQ':{base:'\u0439'},'KeyW':{base:'\u0446'},'KeyE':{base:'\u0443'},
+    'KeyR':{base:'\u043a'},'KeyT':{base:'\u0435'},'KeyY':{base:'\u043d'},
+    'KeyU':{base:'\u0433'},'KeyI':{base:'\u0448'},'KeyO':{base:'\u0449'},
+    'KeyP':{base:'\u0437'},'BracketLeft':{base:'\u0445'},'BracketRight':{base:'\u044a'},
+    'Backslash':{base:'\\'},
+    'KeyA':{base:'\u0444'},'KeyS':{base:'\u044b'},'KeyD':{base:'\u0432'},
+    'KeyF':{base:'\u0430'},'KeyG':{base:'\u043f'},'KeyH':{base:'\u0440'},
+    'KeyJ':{base:'\u043e'},'KeyK':{base:'\u043b'},'KeyL':{base:'\u0434'},
+    'Semicolon':{base:'\u0436'},'Quote':{base:'\u044d'},
+    'KeyZ':{base:'\u044f'},'KeyX':{base:'\u0447'},'KeyC':{base:'\u0441'},
+    'KeyV':{base:'\u043c'},'KeyB':{base:'\u0438'},'KeyN':{base:'\u0442'},
+    'KeyM':{base:'\u044c'},'Comma':{base:'\u0431'},'Period':{base:'\u044e'},
+    'Slash':{base:'.'},'Space':{base:' '}
   };
 
   const LAYOUT_EN = {
-    'Backquote':'`',
-    'Digit1':'1','Digit2':'2','Digit3':'3','Digit4':'4','Digit5':'5',
-    'Digit6':'6','Digit7':'7','Digit8':'8','Digit9':'9','Digit0':'0',
-    'Minus':'-','Equal':'=',
-    'KeyQ':'q','KeyW':'w','KeyE':'e','KeyR':'r','KeyT':'t',
-    'KeyY':'y','KeyU':'u','KeyI':'i','KeyO':'o','KeyP':'p',
-    'BracketLeft':'[','BracketRight':']','Backslash':'\\',
-    'KeyA':'a','KeyS':'s','KeyD':'d','KeyF':'f','KeyG':'g',
-    'KeyH':'h','KeyJ':'j','KeyK':'k','KeyL':'l','Semicolon':';',
-    'Quote':"'",
-    'KeyZ':'z','KeyX':'x','KeyC':'c','KeyV':'v','KeyB':'b',
-    'KeyN':'n','KeyM':'m','Comma':',','Period':'.','Slash':'/',
-    'Space':' '
+    'Backquote':{base:'`',shift:'~'},
+    'Digit1':{base:'1',shift:'!'},'Digit2':{base:'2',shift:'@'},
+    'Digit3':{base:'3',shift:'#'},'Digit4':{base:'4',shift:'$'},
+    'Digit5':{base:'5',shift:'%'},'Digit6':{base:'6',shift:'^'},
+    'Digit7':{base:'7',shift:'&'},'Digit8':{base:'8',shift:'*'},
+    'Digit9':{base:'9',shift:'('},'Digit0':{base:'0',shift:')'},
+    'Minus':{base:'-',shift:'_'},'Equal':{base:'=',shift:'+'},
+    'KeyQ':{base:'q',shift:'Q'},'KeyW':{base:'w',shift:'W'},
+    'KeyE':{base:'e',shift:'E'},'KeyR':{base:'r',shift:'R'},
+    'KeyT':{base:'t',shift:'T'},'KeyY':{base:'y',shift:'Y'},
+    'KeyU':{base:'u',shift:'U'},'KeyI':{base:'i',shift:'I'},
+    'KeyO':{base:'o',shift:'O'},'KeyP':{base:'p',shift:'P'},
+    'BracketLeft':{base:'[',shift:'{'},'BracketRight':{base:']',shift:'}'},
+    'Backslash':{base:'\\',shift:'|'},
+    'KeyA':{base:'a',shift:'A'},'KeyS':{base:'s',shift:'S'},
+    'KeyD':{base:'d',shift:'D'},'KeyF':{base:'f',shift:'F'},
+    'KeyG':{base:'g',shift:'G'},'KeyH':{base:'h',shift:'H'},
+    'KeyJ':{base:'j',shift:'J'},'KeyK':{base:'k',shift:'K'},
+    'KeyL':{base:'l',shift:'L'},'Semicolon':{base:';',shift:':'},
+    'Quote':{base:"'",shift:'"'},
+    'KeyZ':{base:'z',shift:'Z'},'KeyX':{base:'x',shift:'X'},
+    'KeyC':{base:'c',shift:'C'},'KeyV':{base:'v',shift:'V'},
+    'KeyB':{base:'b',shift:'B'},'KeyN':{base:'n',shift:'N'},
+    'KeyM':{base:'m',shift:'M'},'Comma':{base:',',shift:'<'},
+    'Period':{base:'.',shift:'>'},'Slash':{base:'/',shift:'?'},
+    'Space':{base:' '}
   };
 
   // Physical codes for home row (left hand, right hand)
@@ -103,6 +123,7 @@ const KeyboardTrainer = (() => {
   let _flashAlpha = 0.35;
   let _stayVisible = false;
   let _showFingerZones = true;
+  let _showShiftedSymbols = false;
   let _resizeObserver = null;
   let _savedBounds = null;
 
@@ -140,6 +161,7 @@ const KeyboardTrainer = (() => {
         flashAlpha: _flashAlpha,
         stayVisible: _stayVisible,
         showFingerZones: _showFingerZones,
+        showShiftedSymbols: _showShiftedSymbols,
         panelLeft: _panel ? _panel.style.left : '',
         panelTop: _panel ? _panel.style.top : '',
         panelWidth: _panel ? _panel.style.width : '',
@@ -164,6 +186,7 @@ const KeyboardTrainer = (() => {
       _flashAlpha = typeof s.flashAlpha === 'number' ? s.flashAlpha : 0.35;
       _stayVisible = !!s.stayVisible;
       _showFingerZones = s.showFingerZones !== false;
+      _showShiftedSymbols = !!s.showShiftedSymbols;
       _savedBounds = {
         left: s.panelLeft || '',
         top: s.panelTop || '',
@@ -256,17 +279,26 @@ const KeyboardTrainer = (() => {
         el.dataset.code = k.code;
 
         if (k.w === 'space') {
-          el.style.gridColumn = startCol + ' / span 10';
+          el.style.gridColumn = startCol + ' / span 14';
         } else if (idx === 0 && startCol > 1) {
           el.style.gridColumn = startCol + ' / span 2';
         } else {
           el.style.gridColumn = 'span 2';
         }
 
+        const layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
+        const spec = layout[k.code] || {};
+
+        if (_showShiftedSymbols && spec.shift) {
+          var shiftedEl = document.createElement('span');
+          shiftedEl.className = 'kb-key-shifted';
+          shiftedEl.textContent = spec.shift;
+          el.appendChild(shiftedEl);
+        }
+
         const glyph = document.createElement('span');
         glyph.className = 'kb-key-label';
-        const layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
-        glyph.textContent = layout[k.code] || '';
+        glyph.textContent = spec.base || '';
         el.appendChild(glyph);
 
         rowEl.appendChild(el);
@@ -295,8 +327,18 @@ const KeyboardTrainer = (() => {
     if (!_panel) return;
     var layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
     Object.keys(_keyEls).forEach(function(code) {
+      var spec = layout[code] || {};
       var label = _keyEls[code].querySelector('.kb-key-label');
-      if (label) label.textContent = layout[code] || '';
+      if (label) label.textContent = spec.base || '';
+      var shifted = _keyEls[code].querySelector('.kb-key-shifted');
+      if (shifted) {
+        if (_showShiftedSymbols && spec.shift) {
+          shifted.textContent = spec.shift;
+          shifted.style.display = '';
+        } else {
+          shifted.style.display = 'none';
+        }
+      }
     });
   }
 
@@ -553,6 +595,12 @@ const KeyboardTrainer = (() => {
       '    <input type="checkbox" id="kb-set-fingers" ' + (_showFingerZones ? 'checked' : '') + '>',
       '    \u0417\u043e\u043d\u044b \u043f\u0430\u043b\u044c\u0446\u0435\u0432',
       '  </label>',
+      '</div>',
+      '<div class="kb-settings-row">',
+      '  <label>',
+      '    <input type="checkbox" id="kb-set-shifted" ' + (_showShiftedSymbols ? 'checked' : '') + '>',
+      '    \u0421\u0438\u043c\u0432\u043e\u043b\u044b \u0441\u043e Shift',
+      '  </label>',
       '</div>'
     ].join('\n');
 
@@ -633,6 +681,12 @@ const KeyboardTrainer = (() => {
     _settingsPopup.querySelector('#kb-set-fingers').addEventListener('change', function(e) {
       _showFingerZones = e.target.checked;
       _applyVisualSettings();
+      _save();
+    });
+
+    _settingsPopup.querySelector('#kb-set-shifted').addEventListener('change', function(e) {
+      _showShiftedSymbols = e.target.checked;
+      _renderKeys();
       _save();
     });
 
