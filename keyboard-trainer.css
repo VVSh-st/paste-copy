@@ -282,6 +282,16 @@
   opacity: 0.08;
 }
 
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.18); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.18); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-middle { background: rgba(215, 200, 120, 0.16); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.18); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.18); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.18); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.18); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.18); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.16); }
+
 /* ── Problem keys mode ──────────────────────────────────────────── */
 
 .kb-trainer-panel.kb-problem-mode .kb-key {
