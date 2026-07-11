@@ -1569,14 +1569,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     });
 
     const searchBtn   = makeToolBtn(svgIcon('search'), 'Поиск (Ctrl+F)', () => {
-      ta.focus();
       const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
       if (sel) {
         Search.open(sel);
       } else {
         Search.open();
       }
+      ta.focus();
     });
+    searchBtn.classList.add('block-search-btn');
     const insertBtn   = makeToolBtn(svgIcon('lightning'), 'Вставить сниппет', e => { e.stopPropagation(); showSnippetDropdown(insertBtn, ta); });
     const loomBtn     = makeToolBtn(svgIcon('loom'),      'Prompt Loom: последние фрагменты (\\)', e => {
       e.stopPropagation();

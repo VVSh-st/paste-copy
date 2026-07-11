@@ -1474,7 +1474,7 @@ const Search = (() => {
   document.addEventListener('click', e => {
     if (isOpen() && panel && !panel.contains(e.target)) {
       const btnSearch = document.getElementById('btn-search');
-      if (!btnSearch?.contains(e.target)) close();
+      if (!btnSearch?.contains(e.target) && !e.target.closest('.block-search-btn')) close();
     }
   });
 
