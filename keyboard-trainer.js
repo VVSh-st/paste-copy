@@ -363,6 +363,26 @@ const KeyboardTrainer = (() => {
         _keyEls[k.code] = el;
       });
 
+      // On-screen extra keys — explicit grid positions to avoid auto-placement conflicts
+      if (_onScreenMode) {
+        var ek = null;
+        if (row === ROWS[0])       ek = { code: 'Backspace', label: '\u232b', col: 27, span: 1 };
+        else if (row === ROWS[2])  ek = { code: 'Enter',    label: '\u21b5', col: 25, span: 3 };
+        else if (row === ROWS[3])  ek = { code: 'ShiftLeft',label: '\u21e7', col: 24, span: 4 };
+        if (ek) {
+          var el = document.createElement('div');
+          el.className = 'kb-key kb-key-extra';
+          el.dataset.code = ek.code;
+          el.style.gridColumn = ek.col + ' / span ' + ek.span;
+          var glyph = document.createElement('span');
+          glyph.className = 'kb-key-label';
+          glyph.textContent = ek.label;
+          el.appendChild(glyph);
+          rowEl.appendChild(el);
+          _keyEls[ek.code] = el;
+        }
+      }
+
       body.appendChild(rowEl);
     });
   }
