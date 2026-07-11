@@ -79,15 +79,15 @@
 
 /* ── Finger zones ─────────────────────────────────────────────── */
 
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.07); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.07); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-middle { background: rgba(215, 200, 120, 0.06); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.07); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.07); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.07); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.07); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.07); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.06); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.07), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.07), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-middle { background: rgba(215, 200, 120, 0.06), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.07), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.07), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.07), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.07), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.07), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.06), rgba(255,255,255, var(--kb-key-bg-alpha, 0.04)); }
 
 .kb-key {
   display: grid;
@@ -274,7 +274,7 @@
 }
 
 .kb-trainer-panel.kb-slim .kb-key {
-  background: rgba(30, 32, 40, var(--kb-bg-alpha, 0.85));
+  background: rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85));
 }
 
 .kb-trainer-panel.kb-slim .kb-lang-handle,
@@ -282,15 +282,15 @@
   opacity: 0.08;
 }
 
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.18); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.18); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-middle { background: rgba(215, 200, 120, 0.16); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.18); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.18); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.18); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.18); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.18); }
-.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.16); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.18), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.18), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-middle { background: rgba(215, 200, 120, 0.16), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.18), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.18), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.18), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.18), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.18), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
+.kb-trainer-panel.kb-slim.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.16), rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85)); }
 
 /* ── Problem keys mode ──────────────────────────────────────────── */
 
