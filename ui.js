@@ -1443,12 +1443,19 @@ const Search = (() => {
   if (wordCheck)     wordCheck.addEventListener('change',    doSearch);
   if (allTabsCheck)  allTabsCheck.addEventListener('change', doSearch);
 
-  /* ---- clear button ---- */
+  /* ---- clear buttons ---- */
   const clearBtn = document.getElementById('search-clear');
   function _syncClearBtn() { if (clearBtn) clearBtn.style.display = searchInput?.value ? 'flex' : 'none'; }
   if (searchInput) searchInput.addEventListener('input', _syncClearBtn);
   clearBtn?.addEventListener('click', () => {
     if (searchInput) { searchInput.value = ''; searchInput.focus(); doSearch(); _syncClearBtn(); }
+  });
+
+  const clearReplaceBtn = document.getElementById('replace-clear');
+  function _syncClearReplaceBtn() { if (clearReplaceBtn) clearReplaceBtn.style.display = replaceInput?.value ? 'flex' : 'none'; }
+  if (replaceInput) replaceInput.addEventListener('input', _syncClearReplaceBtn);
+  clearReplaceBtn?.addEventListener('click', () => {
+    if (replaceInput) { replaceInput.value = ''; replaceInput.focus(); _syncClearReplaceBtn(); }
   });
 
   document.getElementById('search-close')?.addEventListener('click', close);
