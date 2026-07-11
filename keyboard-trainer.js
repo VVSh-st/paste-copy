@@ -156,6 +156,7 @@ const KeyboardTrainer = (() => {
   let _metricsRaf1 = 0;
   let _metricsRaf2 = 0;
   let _savedBounds = null;
+  let _onWindowResize = null;
 
   // Long press
   let _longPressTimer = null;
@@ -270,19 +271,23 @@ const KeyboardTrainer = (() => {
   // Chromium getLayoutMap fallback
   async function _tryDetectInitialLayout() {
     if (_layoutDetected) return;
+    var changed = false;
     try {
       if ('keyboard' in navigator && navigator.keyboard && navigator.keyboard.getLayoutMap) {
         const map = await navigator.keyboard.getLayoutMap();
         const keyF = map.get('KeyF');
         if (keyF) {
           const ch = keyF.toLowerCase();
-          _currentLayout = ch === '\u0444' ? 'ru' : 'en';
+          const next = ch === '\u0444' ? 'ru' : 'en';
+          changed = next !== _currentLayout;
+          _currentLayout = next;
           _layoutDetected = true;
         }
       }
     } catch(e) { /* ignore */ }
     _updateLangLabel();
     _updateLayoutLabels();
+    if (changed) _save();
   }
 
   // DOM
@@ -484,9 +489,10 @@ const KeyboardTrainer = (() => {
       _scheduleMetricsUpdate();
     });
     _resizeObserver.observe(_panel);
-    window.addEventListener('resize', function() {
+    _onWindowResize = function() {
       if (_enabled && _panel) _scheduleMetricsUpdate();
-    });
+    };
+    window.addEventListener('resize', _onWindowResize);
   }
 
   function _scheduleMetricsUpdate() {
@@ -500,6 +506,13 @@ const KeyboardTrainer = (() => {
     });
   }
 
+  function _cancelMetricsUpdate() {
+    if (_metricsRaf1) cancelAnimationFrame(_metricsRaf1);
+    if (_metricsRaf2) cancelAnimationFrame(_metricsRaf2);
+    _metricsRaf1 = 0;
+    _metricsRaf2 = 0;
+  }
+
   function _applySavedBounds() {
     if (!_panel || !_savedBounds) return;
     if (_savedBounds.left) _panel.style.left = _savedBounds.left;
@@ -510,6 +523,23 @@ const KeyboardTrainer = (() => {
       _panel.style.right = 'auto';
       _panel.style.bottom = 'auto';
     }
+    _clampPanelToViewport();
+  }
+
+  function _clampPanelToViewport() {
+    if (!_panel) return;
+    var rect = _panel.getBoundingClientRect();
+    var w = Math.min(rect.width, window.innerWidth);
+    var h = Math.min(rect.height, window.innerHeight);
+    if (w !== rect.width) _panel.style.width = Math.max(300, w) + 'px';
+    if (h !== rect.height) _panel.style.height = Math.max(120, h) + 'px';
+    rect = _panel.getBoundingClientRect();
+    var left = Math.max(0, Math.min(window.innerWidth - rect.width, rect.left));
+    var top = Math.max(0, Math.min(window.innerHeight - rect.height, rect.top));
+    _panel.style.left = left + 'px';
+    _panel.style.top = top + 'px';
+    _panel.style.right = 'auto';
+    _panel.style.bottom = 'auto';
   }
 
   // Flash on keydown
@@ -622,6 +652,14 @@ const KeyboardTrainer = (() => {
     }
   }
 
+  function _clearKeyLongPressTimers() {
+    Object.keys(_keyLongPressTimers).forEach(function(code) {
+      clearTimeout(_keyLongPressTimers[code]);
+    });
+    _keyLongPressTimers = {};
+    _keyLongPressFired = {};
+  }
+
   function _getLayout() {
     return _currentLayout === 'en' ? LAYOUT_EN : LAYOUT_RU;
   }
@@ -631,15 +669,30 @@ const KeyboardTrainer = (() => {
   var _lastFocusedEl = null;
   var _lastEditableRange = null;
 
+  function _rememberFocusedEditable() {
+    var el = document.activeElement;
+    if (!el) return;
+    if (_isTextInput(el) || el.isContentEditable) {
+      _lastFocusedEl = el;
+      if (el.isContentEditable) {
+        var sel = window.getSelection && window.getSelection();
+        if (sel && sel.rangeCount) _lastEditableRange = sel.getRangeAt(0).cloneRange();
+      }
+    }
+  }
+
   function _setupKeyClick(el, code) {
     var _startX = 0, _startY = 0;
     var onDown = function(e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      _lastFocusedEl = document.activeElement;
-      _lastEditableRange = null;
-      if (_lastFocusedEl && _lastFocusedEl.isContentEditable) {
-        var sel = window.getSelection && window.getSelection();
-        if (sel && sel.rangeCount) _lastEditableRange = sel.getRangeAt(0).cloneRange();
+      var active = document.activeElement;
+      if (_isTextInput(active) || (active && active.isContentEditable)) {
+        _lastFocusedEl = active;
+        _lastEditableRange = null;
+        if (active.isContentEditable) {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && sel.rangeCount) _lastEditableRange = sel.getRangeAt(0).cloneRange();
+        }
       }
       _keyLongPressFired[code] = false;
       _startX = e.clientX;
@@ -1093,6 +1146,7 @@ const KeyboardTrainer = (() => {
 
     _settingsPopup.querySelector('#kb-set-shifted').addEventListener('change', function(e) {
       _showShiftedSymbols = e.target.checked;
+      _clearKeyLongPressTimers();
       _renderKeys();
       _updateClickHandlers();
       _applyVisualSettings();
@@ -1114,6 +1168,7 @@ const KeyboardTrainer = (() => {
     _settingsPopup.querySelector('#kb-set-onscreen').addEventListener('change', function(e) {
       _onScreenMode = e.target.checked;
       clearTimeout(_autoHideTimer);
+      _clearKeyLongPressTimers();
       _renderKeys();
       _updateClickHandlers();
       _applyVisualSettings();
@@ -1140,7 +1195,7 @@ const KeyboardTrainer = (() => {
     });
 
     setTimeout(function() {
-      document.addEventListener('mousedown', _onSettingsOutsideClick, true);
+      document.addEventListener('pointerdown', _onSettingsOutsideClick, true);
     }, 0);
   }
 
@@ -1149,7 +1204,7 @@ const KeyboardTrainer = (() => {
       _settingsPopup.remove();
       _settingsPopup = null;
     }
-    document.removeEventListener('mousedown', _onSettingsOutsideClick, true);
+    document.removeEventListener('pointerdown', _onSettingsOutsideClick, true);
   }
 
   function _onSettingsOutsideClick(e) {
@@ -1175,6 +1230,12 @@ const KeyboardTrainer = (() => {
     } else {
       document.removeEventListener('keydown', _onKeyDown, true);
       document.removeEventListener('mousemove', _onMouseMove);
+      _cancelMetricsUpdate();
+      if (_onWindowResize) {
+        window.removeEventListener('resize', _onWindowResize);
+        _onWindowResize = null;
+      }
+      _closeSettings();
       _hide();
     }
   }
@@ -1212,6 +1273,8 @@ const KeyboardTrainer = (() => {
   // Init
   function init() {
     _load();
+    document.addEventListener('focusin', _rememberFocusedEditable, true);
+    document.addEventListener('selectionchange', _rememberFocusedEditable);
     if (_enabled) {
       _buildPanel();
       _show();
