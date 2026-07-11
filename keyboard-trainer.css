@@ -61,23 +61,16 @@
 
 .kb-row {
   display: grid;
+  grid-template-columns: repeat(13, 1fr);
   gap: 2px;
   margin-bottom: 2px;
 }
 
-.kb-row[data-count="13"] { grid-template-columns: repeat(13, 1fr); }
-.kb-row[data-count="11"] { grid-template-columns: repeat(11, 1fr); }
-.kb-row[data-count="10"] { grid-template-columns: repeat(10, 1fr); }
-.kb-row[data-count="1"]  { grid-template-columns: 1fr; }
-
 .kb-key {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   min-width: 0;
-  height: 0;
-  padding-top: 8%;
-  padding-bottom: 67%;
+  aspect-ratio: 1 / 1;
   font-size: var(--kb-font-size, 13px);
   font-family: 'Segoe UI', system-ui, sans-serif;
   color: var(--text1, #e0e0e0);
@@ -88,6 +81,13 @@
   line-height: 1;
   transition: background 0.1s, border-color 0.1s;
   position: relative;
+}
+
+.kb-key-label {
+  display: block;
+  transform: translateY(10%);
+  line-height: 1;
+  pointer-events: none;
 }
 
 .kb-key.kb-home {
@@ -104,8 +104,7 @@
   border-color: rgba(100, 160, 255, 0.6) !important;
 }
 
-/* Wide keys */
-.kb-key.kb-space { grid-column: span 5; }
+/* Wide keys - handled via inline grid-column */
 
 /* ── Resize handle ────────────────────────────────────────────────── */
 

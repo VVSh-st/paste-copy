@@ -225,17 +225,25 @@ const KeyboardTrainer = (() => {
     ROWS.forEach(function(row) {
       const rowEl = document.createElement('div');
       rowEl.className = 'kb-row';
-      rowEl.dataset.count = row.length;
 
       row.forEach(function(k) {
         const el = document.createElement('div');
         const isHome = HOME_CODES.includes(k.code);
-        el.className = 'kb-key' + (isHome ? ' kb-home' : '') + (k.w === 'space' ? ' kb-space' : '');
+        el.className = 'kb-key' + (isHome ? ' kb-home' : '');
         if (isHome && _showHomeRow) el.classList.add('kb-home-highlight');
         el.dataset.code = k.code;
 
+        if (k.w === 'space') {
+          el.style.gridColumn = 'span 5';
+        } else if (k.w && k.w !== 1) {
+          el.style.gridColumn = 'span ' + k.w;
+        }
+
+        const glyph = document.createElement('span');
+        glyph.className = 'kb-key-label';
         const layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
-        el.textContent = layout[k.code] || '';
+        glyph.textContent = layout[k.code] || '';
+        el.appendChild(glyph);
 
         rowEl.appendChild(el);
         _keyEls[k.code] = el;
@@ -263,7 +271,8 @@ const KeyboardTrainer = (() => {
     if (!_panel) return;
     var layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
     Object.keys(_keyEls).forEach(function(code) {
-      _keyEls[code].textContent = layout[code] || '';
+      var label = _keyEls[code].querySelector('.kb-key-label');
+      if (label) label.textContent = layout[code] || '';
     });
   }
 
