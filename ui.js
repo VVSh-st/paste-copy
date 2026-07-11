@@ -1147,6 +1147,7 @@ const Search = (() => {
     searchInput?.focus();
     searchInput?.select();
     doSearch();
+    _syncClearBtn();
   }
 
   function close() {
@@ -1441,6 +1442,14 @@ const Search = (() => {
   if (regexCheck)    regexCheck.addEventListener('change',   doSearch);
   if (wordCheck)     wordCheck.addEventListener('change',    doSearch);
   if (allTabsCheck)  allTabsCheck.addEventListener('change', doSearch);
+
+  /* ---- clear button ---- */
+  const clearBtn = document.getElementById('search-clear');
+  function _syncClearBtn() { if (clearBtn) clearBtn.style.display = searchInput?.value ? 'flex' : 'none'; }
+  if (searchInput) searchInput.addEventListener('input', _syncClearBtn);
+  clearBtn?.addEventListener('click', () => {
+    if (searchInput) { searchInput.value = ''; searchInput.focus(); doSearch(); _syncClearBtn(); }
+  });
 
   document.getElementById('search-close')?.addEventListener('click', close);
   document.getElementById('btn-replace-one')?.addEventListener('click', replaceOne);

@@ -1418,6 +1418,14 @@ textarea.block-textarea:focus {
   transition: border-color var(--trans), box-shadow var(--trans);
 }
 .search-input-wrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow2); }
+.search-clear-btn {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; color: var(--text3); cursor: pointer;
+  padding: 4px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center;
+  transition: color var(--trans), background var(--trans);
+}
+.search-clear-btn svg { width: 12px; height: 12px; }
+.search-clear-btn:hover { color: var(--text0); background: rgba(255,255,255,0.08); }
 .search-toggle { display: flex; align-items: center; cursor: pointer; }
 .search-toggle input { width: 0; height: 0; opacity: 0; position: absolute; }
 .search-toggle span {
