@@ -199,11 +199,7 @@ const KeyboardTrainer = (() => {
     _panel = document.createElement('div');
     _panel.className = 'kb-trainer-panel';
     _panel.innerHTML = [
-      '<div class="kb-trainer-bar">',
-      '  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="4" width="12" height="8" rx="1.5"/><line x1="5" y1="7" x2="5" y2="7.01"/><line x1="8" y1="7" x2="8" y2="7.01"/><line x1="11" y1="7" x2="11" y2="7.01"/><line x1="5" y1="10" x2="11" y2="10"/></svg>',
-      '  <span>\u041a\u043b\u0430\u0432\u0438\u0430\u0442\u0443\u0440\u0430</span>',
-      '  <span class="kb-lang-label">' + (_currentLayout === 'ru' ? 'RU' : 'EN') + '</span>',
-      '</div>',
+      '<div class="kb-lang-handle">' + (_currentLayout === 'ru' ? 'RU' : 'EN') + '</div>',
       '<div class="kb-trainer-body"></div>',
       '<div class="kb-trainer-resize">',
       '  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2L2 14"/><path d="M14 8V2H8"/><path d="M14 14H8V8"/></svg>',
@@ -251,7 +247,7 @@ const KeyboardTrainer = (() => {
 
   function _updateLangLabel() {
     if (!_panel) return;
-    var lbl = _panel.querySelector('.kb-lang-label');
+    var lbl = _panel.querySelector('.kb-lang-handle');
     if (lbl) lbl.textContent = _currentLayout === 'ru' ? 'RU' : 'EN';
   }
 
@@ -401,7 +397,7 @@ const KeyboardTrainer = (() => {
     if (_dragBound) return;
     _dragBound = true;
 
-    var bar = _panel.querySelector('.kb-trainer-bar');
+    var bar = _panel.querySelector('.kb-lang-handle');
     var handle = _panel.querySelector('.kb-trainer-resize');
 
     function getClientPos(e) {

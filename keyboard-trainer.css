@@ -30,33 +30,26 @@
   z-index: 1;
 }
 
-/* ── Title bar (drag handle) ──────────────────────────────────────── */
+/* ── Language handle (drag) ─────────────────────────────────────── */
 
-.kb-trainer-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  background: var(--bg3, rgba(40,42,52,0.9));
-  border-bottom: 1px solid var(--border2, rgba(255,255,255,0.08));
-  cursor: move;
-  font-size: 11px;
-  color: var(--text2, #aaa);
-  flex-shrink: 0;
-}
-
-.kb-trainer-bar svg {
-  width: 12px;
-  height: 12px;
-  opacity: 0.5;
-}
-
-.kb-trainer-bar .kb-lang-label {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--text3, #777);
+.kb-lang-handle {
+  position: absolute;
+  top: 2px;
+  right: 22px;
+  font-size: 9px;
+  color: var(--text3, #666);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: move;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0.5;
+  user-select: none;
+  z-index: 1;
+}
+
+.kb-lang-handle:hover {
+  opacity: 0.8;
 }
 
 /* ── Keyboard body ────────────────────────────────────────────────── */
