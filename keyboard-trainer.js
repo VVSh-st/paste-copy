@@ -244,9 +244,10 @@ const KeyboardTrainer = (() => {
     ROWS.forEach(function(row) {
       const rowEl = document.createElement('div');
       rowEl.className = 'kb-row';
-      if (row.offset) rowEl.dataset.offset = row.offset;
 
-      row.keys.forEach(function(k) {
+      var startCol = Math.round((row.offset || 0) * 2) + 1;
+
+      row.keys.forEach(function(k, idx) {
         const el = document.createElement('div');
         const isHome = HOME_CODES.includes(k.code);
         const finger = FINGER_MAP[k.code];
@@ -255,9 +256,11 @@ const KeyboardTrainer = (() => {
         el.dataset.code = k.code;
 
         if (k.w === 'space') {
-          el.style.gridColumn = 'span 5';
-        } else if (k.w && k.w !== 1) {
-          el.style.gridColumn = 'span ' + k.w;
+          el.style.gridColumn = startCol + ' / span 10';
+        } else if (idx === 0 && startCol > 1) {
+          el.style.gridColumn = startCol + ' / span 2';
+        } else {
+          el.style.gridColumn = 'span 2';
         }
 
         const glyph = document.createElement('span');

@@ -61,26 +61,22 @@
 
 .kb-row {
   display: grid;
-  grid-template-columns: repeat(13, 1fr);
-  gap: 2px;
-  margin-bottom: 2px;
+  grid-template-columns: repeat(26, 1fr);
+  gap: 1px;
+  margin-bottom: 1px;
 }
-
-.kb-row[data-offset="0.5"] { margin-left: 0.5fr; }
-.kb-row[data-offset="0.75"] { margin-left: 0.75fr; }
-.kb-row[data-offset="1.25"] { margin-left: 1.25fr; }
 
 /* ── Finger zones ─────────────────────────────────────────────── */
 
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-middle { background: rgba(255, 220, 120, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.10); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.10); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.07); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.07); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-middle { background: rgba(215, 200, 120, 0.06); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.07); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.07); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.07); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.07); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.07); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.06); }
 
 .kb-key {
   display: grid;
