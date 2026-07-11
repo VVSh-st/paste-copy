@@ -202,10 +202,10 @@ const KeyboardTrainer = (() => {
         onScreenMode: _onScreenMode,
         problemKeysOnly: _problemKeysOnly,
         focusLayerEnabled: _focusLayerEnabled,
-        panelLeft: _panel ? _panel.style.left : '',
-        panelTop: _panel ? _panel.style.top : '',
-        panelWidth: _panel ? _panel.style.width : '',
-        panelHeight: _panel ? _panel.style.height : ''
+        panelLeft: _panel ? (_panel.style.left || Math.round(_panel.getBoundingClientRect().left) + 'px') : '',
+        panelTop: _panel ? (_panel.style.top || Math.round(_panel.getBoundingClientRect().top) + 'px') : '',
+        panelWidth: _panel ? (_panel.style.width || _panel.offsetWidth + 'px') : '',
+        panelHeight: _panel ? (_panel.style.height || _panel.offsetHeight + 'px') : ''
       }));
     } catch(e) { console.warn('[KBTrainer]', e); }
   }
