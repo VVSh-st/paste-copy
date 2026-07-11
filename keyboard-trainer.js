@@ -489,7 +489,7 @@ const KeyboardTrainer = (() => {
 
   function _scheduleAutoHide() {
     clearTimeout(_autoHideTimer);
-    if (_autoHideDelay <= 0) return;
+    if (_stayVisible || _autoHideDelay <= 0) return;
     _autoHideTimer = setTimeout(_goBackground, _autoHideDelay);
   }
 
@@ -595,6 +595,7 @@ const KeyboardTrainer = (() => {
     }
 
     function onMove(e) {
+      if (_dragging || _resizing) e.preventDefault();
       var pos = getClientPos(e);
       if (_dragging) {
         _panel.style.left = (pos.x - _dragOffset.x) + 'px';
@@ -605,7 +606,7 @@ const KeyboardTrainer = (() => {
       if (_resizing) {
         var dx = pos.x - _resizeStartPos.x;
         var dy = pos.y - _resizeStartPos.y;
-        _panel.style.width = Math.max(420, _resizeStartRect.w + dx) + 'px';
+        _panel.style.width = Math.max(300, _resizeStartRect.w + dx) + 'px';
         _panel.style.height = Math.max(120, _resizeStartRect.h + dy) + 'px';
       }
     }
@@ -620,7 +621,7 @@ const KeyboardTrainer = (() => {
 
     document.addEventListener('mousemove', onMove, { passive: true });
     document.addEventListener('mouseup', onEnd);
-    document.addEventListener('touchmove', onMove, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend', onEnd);
   }
 
@@ -840,6 +841,7 @@ const KeyboardTrainer = (() => {
     _settingsPopup.querySelector('#kb-set-shifted').addEventListener('change', function(e) {
       _showShiftedSymbols = e.target.checked;
       _renderKeys();
+      _applyVisualSettings();
       _save();
     });
 
@@ -918,7 +920,12 @@ const KeyboardTrainer = (() => {
   // Button setup (called from blocks.js)
   function setupButton(btn) {
     btn.addEventListener('click', function(e) {
-      if (_longPressFired) { _longPressFired = false; return; }
+      if (_longPressFired) {
+        _longPressFired = false;
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
       e.stopPropagation();
       toggle();
     });
