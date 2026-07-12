@@ -4343,8 +4343,7 @@ const AutoPoet = (() => {
           _newLongTimer = setTimeout(() => {
             _newLongPress = true;
             if (_sessions.length <= 1) { _clearCurrentSession(); return; }
-            const title = _sessions[_sessionIdx]?.title || 'Чат';
-            if (confirm(`Удалить «${title}»?`)) _deleteSession();
+            _deleteSession();
           }, 600);
         });
         newBtn.addEventListener('mouseup', () => { clearTimeout(_newLongTimer); });
