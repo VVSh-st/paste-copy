@@ -85,7 +85,7 @@
     { name: 'облако',       emoji: '☁️',  tags: ['небо'] },
     { name: 'дождь',        emoji: '🌧️', tags: ['вода'] },
     { name: 'океан',        emoji: '🌊',  tags: ['вода', 'море'] },
-    { name: 'молния',       emoji: '🌩️', tags: ['гроза'] },
+    { name: 'гроза',        emoji: '🌩️', tags: ['молния', 'дождь'] },
     { name: 'туман',        emoji: '🌫️', tags: ['облако'] },
 
     // Еда
@@ -174,8 +174,9 @@
     { name: 'вопрос',       emoji: '❓',  tags: ['вопрос'] },
     { name: 'вопросительный', emoji: '❔', tags: ['вопрос'] },
     { name: 'восклицательный', emoji: '❕', tags: ['важно'] },
-    { name: 'спасибо',      emoji: 'Thank', tags: [] },
-    { name: 'пожалуйста',   emoji: '🙏',  tags: ['прошу'] },
+    { name: 'спасибо',      emoji: '🙏',  tags: ['благодарность'] },
+    { name: 'мольба',       emoji: '🤲',  tags: ['просьба', 'ладони'] },
+    { name: 'пожалуйста',   emoji: '🥹',  tags: ['прошу'] },
     { name: 'извините',     emoji: '😔',  tags: ['прости'] },
     { name: 'новый',        emoji: '🆕',  tags: ['new'] },
     { name: 'top',          emoji: '🆙',  tags: ['вверх'] },
@@ -226,8 +227,6 @@
     { name: 'гольф',        emoji: '⛳',  tags: ['мяч'] },
     { name: 'хоккей',       emoji: '🏒',  tags: ['шайба'] },
     { name: 'бильярд',      emoji: '🎱',  tags: ['шар'] },
-    { name: 'гирлянда',     emoji: '🎄',  tags: ['ёлка'] },
-    { name: 'подарок',      emoji: '🎁',  tags: ['подарок'] },
     { name: 'набросок',     emoji: '🎨',  tags: ['рисунок', 'краски'] },
     { name: 'маска',        emoji: '🎭',  tags: ['театр'] },
     { name: 'сцена',        emoji: '🎬',  tags: ['кино'] },
@@ -311,11 +310,6 @@
   flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.emoji-palette:empty::after {
-  content: 'Ничего не найдено';
-  display: block; padding: 10px; text-align: center;
-  color: var(--text3); font-size: 11px;
-}
 .emoji-footer {
   border-top: 1px solid rgba(148,163,184,0.14);
   padding: 4px 8px; text-align: center;
@@ -334,9 +328,12 @@
   let _wrapHold = '';
 
   /* ── INIT ──────────────────────────────────────────────────────── */
-  const _style = document.createElement('style');
-  _style.textContent = CSS;
-  document.head.appendChild(_style);
+  if (!document.getElementById('emoji-picker-style')) {
+    const _style = document.createElement('style');
+    _style.id = 'emoji-picker-style';
+    _style.textContent = CSS;
+    document.head.appendChild(_style);
+  }
 
   /* ── FILTER ────────────────────────────────────────────────────── */
   function _filter(query) {
@@ -350,6 +347,7 @@
       if (name === q) rank = 0;
       else if (name.startsWith(q)) rank = 1;
       else if (name.includes(q)) rank = 2;
+      else if (e.tags && e.tags.some(t => t.toLowerCase() === q)) rank = 1.5;
       else if (e.tags && e.tags.some(t => t.toLowerCase().includes(q))) rank = 3;
       if (rank >= 0) scored.push({ e, rank, idx: i });
     }
@@ -366,7 +364,6 @@
   /* ── RENDER ────────────────────────────────────────────────────── */
   function _render(ta, query) {
     _filtered = _filter(query);
-    if (!_filtered.length) { _close(); return; }
 
     if (!_palette) {
       _palette = document.createElement('div');
@@ -374,28 +371,46 @@
       _palette.setAttribute('role', 'listbox');
       _palette.setAttribute('aria-label', 'Эмодзи');
       document.body.appendChild(_palette);
+    } else {
+      _palette.querySelectorAll('.emoji-item').forEach(n => n.remove());
     }
-    _palette.innerHTML = '';
     _ta = ta;
     _focusedIdx = 0;
+
+    if (!_filtered.length) {
+      _palette.innerHTML = '<div class="emoji-footer">Ничего не найдено</div>';
+      _position(ta);
+      return;
+    }
 
     for (let i = 0; i < _filtered.length; i++) {
       const item = _filtered[i];
       const btn = document.createElement('button');
       btn.type = 'button';
+      btn.id = 'emoji-opt-' + i;
       btn.className = 'emoji-item' + (i === 0 ? ' focused' : '');
       btn.setAttribute('role', 'option');
       btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
-      btn.innerHTML = '<span class="emoji-char" aria-hidden="true">' + item.e.emoji + '</span>'
-        + '<span class="emoji-name">' + _escHtml(item.e.name) + '</span>';
+      const charSpan = document.createElement('span');
+      charSpan.className = 'emoji-char';
+      charSpan.setAttribute('aria-hidden', 'true');
+      charSpan.textContent = item.e.emoji;
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'emoji-name';
+      nameSpan.textContent = item.e.name;
+      btn.appendChild(charSpan);
+      btn.appendChild(nameSpan);
       btn.addEventListener('mousedown', ev => { ev.preventDefault(); _insert(i); });
       _palette.appendChild(btn);
     }
 
-    const footer = document.createElement('div');
-    footer.className = 'emoji-footer';
+    let footer = _palette.querySelector('.emoji-footer');
+    if (!footer) {
+      footer = document.createElement('div');
+      footer.className = 'emoji-footer';
+      _palette.appendChild(footer);
+    }
     footer.textContent = '↑↓ · Enter · Esc';
-    _palette.appendChild(footer);
 
     /* динамическая ширина по самому длинному слову */
     let maxW = 0;
@@ -486,6 +501,7 @@
       if (active) r.scrollIntoView({ block: 'nearest' });
     });
     _focusedIdx = idx;
+    _palette.setAttribute('aria-activedescendant', 'emoji-opt-' + idx);
   }
 
   /* ── TRIGGER DETECTION ─────────────────────────────────────────── */
@@ -515,6 +531,7 @@
 
   /* ── GLOBAL EVENTS ─────────────────────────────────────────────── */
   document.addEventListener('input', e => {
+    if (e.isComposing) return;
     if (e.target && e.target.tagName === 'TEXTAREA') _handleInput(e.target);
   }, true);
 
@@ -523,6 +540,7 @@
   });
 
   document.addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;
     if (!_palette || !_ta) return;
     const rows = _palette.querySelectorAll('.emoji-item');
     const count = rows.length;
