@@ -15,7 +15,7 @@
     { name: 'подмигивание', emoji: '😉',  tags: ['глаз'] },
     { name: 'благодарность', emoji: '🙏', tags: ['спасибо', 'молитва', 'ладони'] },
     { name: 'объятие',      emoji: '🤗',  tags: ['обнять', 'тёплый'] },
-    { name: ' задумчивость', emoji: '🤔', tags: ['думаю', 'вопрос'] },
+    { name: 'задумчивость', emoji: '🤔', tags: ['думаю', 'вопрос'] },
     { name: 'нейтрально',   emoji: '😐',  tags: ['без эмоций', 'пусто'] },
     { name: 'без выражения', emoji: '😑', tags: ['невыразительно'] },
     { name: 'молчание',     emoji: '😶',  tags: ['тишина', 'рот'] },
@@ -136,7 +136,7 @@
     { name: 'кристалл',     emoji: '🔮',  tags: ['магия', 'шар'] },
     { name: 'алмаз',        emoji: '💎',  tags: ['драгоценность'] },
     { name: 'монета',       emoji: '💰',  tags: ['деньги'] },
-    { name: 'сумка',        emoji: '💰',  tags: ['деньги'] },
+    { name: 'сумка',        emoji: '👛',  tags: ['кошелёк'] },
     { name: 'часы',         emoji: '⏰',  tags: ['время'] },
     { name: 'замок',        emoji: '🔒',  tags: ['закрытый', 'безопасность'] },
     { name: 'ключ',         emoji: '🔑',  tags: ['открыть'] },
@@ -175,7 +175,7 @@
     { name: 'вопросительный', emoji: '❔', tags: ['вопрос'] },
     { name: 'восклицательный', emoji: '❕', tags: ['важно'] },
     { name: 'спасибо',      emoji: '🙏',  tags: ['благодарность'] },
-    { name: 'мольба',       emoji: '🤲',  tags: ['просьба', 'ладони'] },
+    { name: 'мольба-ладони', emoji: '🤲',  tags: ['ладони', 'молитва'] },
     { name: 'пожалуйста',   emoji: '🥹',  tags: ['прошу'] },
     { name: 'извините',     emoji: '😔',  tags: ['прости'] },
     { name: 'новый',        emoji: '🆕',  tags: ['new'] },
@@ -317,7 +317,14 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .emoji-palette { animation: none !important; }
-}`;
+}
+.emoji-empty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 6px;
+  padding: 18px 12px; color: var(--text3); font-size: 11px;
+}
+.emoji-empty-icon { font-size: 22px; opacity: 0.5; }
+`;
 
   /* ── STATE ─────────────────────────────────────────────────────── */
   let _palette = null;
@@ -326,6 +333,13 @@
   let _focusedIdx = 0;
   let _filtered = [];
   let _wrapHold = '';
+  const _idRoot = 'emoji-p-' + Math.random().toString(36).slice(2, 8);
+
+  /* ── CANVAS MEASURE (без reflow в DOM) ─────────────────────────── */
+  const _measureWidth = (() => {
+    const ctx = document.createElement('canvas').getContext('2d');
+    return (text, font) => { ctx.font = font; return ctx.measureText(text).width; };
+  })();
 
   /* ── INIT ──────────────────────────────────────────────────────── */
   if (!document.getElementById('emoji-picker-style')) {
@@ -336,6 +350,7 @@
   }
 
   /* ── FILTER ────────────────────────────────────────────────────── */
+  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, NAME_PREFIX: 2, NAME_INCLUDES: 3, TAG_INCLUDES: 4 };
   function _filter(query) {
     const q = (query || '').toLowerCase();
     if (!q) return [];
@@ -343,15 +358,15 @@
     for (let i = 0; i < EMOJI_DATA.length; i++) {
       const e = EMOJI_DATA[i];
       const name = e.name.toLowerCase();
-      let rank = -1;
-      if (name === q) rank = 0;
-      else if (name.startsWith(q)) rank = 1;
-      else if (name.includes(q)) rank = 2;
-      else if (e.tags && e.tags.some(t => t.toLowerCase() === q)) rank = 1.5;
-      else if (e.tags && e.tags.some(t => t.toLowerCase().includes(q))) rank = 3;
-      if (rank >= 0) scored.push({ e, rank, idx: i });
+      let prio = -1;
+      if (name === q) prio = PRIORITY.NAME_EXACT;
+      else if (e.tags?.some(t => t.toLowerCase() === q)) prio = PRIORITY.TAG_EXACT;
+      else if (name.startsWith(q)) prio = PRIORITY.NAME_PREFIX;
+      else if (name.includes(q)) prio = PRIORITY.NAME_INCLUDES;
+      else if (e.tags?.some(t => t.toLowerCase().includes(q))) prio = PRIORITY.TAG_INCLUDES;
+      if (prio >= 0) scored.push({ e, prio, idx: i });
     }
-    scored.sort((a, b) => a.rank - b.rank || a.idx - b.idx);
+    scored.sort((a, b) => a.prio - b.prio || a.idx - b.idx);
     return scored.slice(0, 10);
   }
 
@@ -378,7 +393,7 @@
     _focusedIdx = 0;
 
     if (!_filtered.length) {
-      _palette.innerHTML = '<div class="emoji-footer">Ничего не найдено</div>';
+      _palette.innerHTML = '<div class="emoji-empty"><span class="emoji-empty-icon" aria-hidden="true">🔍</span><span>Ничего не найдено</span></div>';
       _position(ta);
       return;
     }
@@ -395,7 +410,7 @@
       const item = _filtered[i];
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.id = 'emoji-opt-' + i;
+      btn.id = _idRoot + '-opt-' + i;
       btn.className = 'emoji-item' + (i === 0 ? ' focused' : '');
       btn.setAttribute('role', 'option');
       btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
@@ -412,17 +427,16 @@
       _palette.insertBefore(btn, footer);
     }
 
-    /* динамическая ширина по самому длинному слову */
+    /* динамическая ширина: canvas + полный размер строки */
+    const PAD_X = 10 + 10;          /* padding-left/right .emoji-item */
+    const CHAR_FIXED = 26 + 8;      /* .emoji-char + gap */
+    const PALETTE_INSET = 5 * 2;    /* padding самой палитры */
+    const fontStr = '12px/1.4 inherit';
     let maxW = 0;
-    const measure = document.createElement('div');
-    measure.style.cssText = 'position:absolute;visibility:hidden;font:12px/1.4 inherit;padding:0';
-    document.body.appendChild(measure);
     for (let i = 0; i < _filtered.length; i++) {
-      measure.textContent = _filtered[i].e.name;
-      maxW = Math.max(maxW, measure.offsetWidth);
+      maxW = Math.max(maxW, _measureWidth(_filtered[i].e.name, fontStr));
     }
-    measure.remove();
-    _palette.style.width = Math.min(maxW + 60, 300) + 'px';
+    _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 300) + 'px';
 
     _position(ta);
   }
@@ -501,7 +515,7 @@
       if (active) r.scrollIntoView({ block: 'nearest' });
     });
     _focusedIdx = idx;
-    _palette.setAttribute('aria-activedescendant', 'emoji-opt-' + idx);
+    _palette.setAttribute('aria-activedescendant', _idRoot + '-opt-' + idx);
   }
 
   /* ── TRIGGER DETECTION ─────────────────────────────────────────── */
