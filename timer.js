@@ -310,6 +310,7 @@ const SquareTimer = (() => {
   function _playCompletionSound() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      ctx.resume();
       const t0 = ctx.currentTime;
       [523.25, 659.25, 783.99].forEach((f, i) => {
         const o = ctx.createOscillator(), g = ctx.createGain();
