@@ -587,6 +587,9 @@
     const shift   = e.shiftKey;
     const inField = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
+    // Не перехватываем нативные хоткеи редактирования в полях ввода
+    if (inField && ctrl && ['KeyZ', 'KeyY', 'KeyT', 'KeyW'].includes(k)) return;
+
     if      (ctrl && !shift && k === 'KeyZ') { e.preventDefault(); State.undo(); }
     else if (ctrl && (k === 'KeyY' || (shift && k === 'KeyZ'))) { e.preventDefault(); State.redo(); }
     else if (ctrl && k === 'KeyS') {
