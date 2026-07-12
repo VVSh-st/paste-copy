@@ -383,6 +383,14 @@
       return;
     }
 
+    let footer = _palette.querySelector('.emoji-footer');
+    if (!footer) {
+      footer = document.createElement('div');
+      footer.className = 'emoji-footer';
+      _palette.appendChild(footer);
+    }
+    footer.textContent = '↑↓ · Enter · Esc';
+
     for (let i = 0; i < _filtered.length; i++) {
       const item = _filtered[i];
       const btn = document.createElement('button');
@@ -403,14 +411,6 @@
       btn.addEventListener('mousedown', ev => { ev.preventDefault(); _insert(i); });
       _palette.insertBefore(btn, footer);
     }
-
-    let footer = _palette.querySelector('.emoji-footer');
-    if (!footer) {
-      footer = document.createElement('div');
-      footer.className = 'emoji-footer';
-      _palette.appendChild(footer);
-    }
-    footer.textContent = '↑↓ · Enter · Esc';
 
     /* динамическая ширина по самому длинному слову */
     let maxW = 0;
