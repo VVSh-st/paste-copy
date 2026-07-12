@@ -272,7 +272,7 @@
   const CSS = `
 .emoji-palette {
   position: fixed; z-index: 10000;
-  width: min(220px, calc(100vw - 16px));
+  max-width: min(300px, calc(100vw - 16px));
   max-height: min(280px, calc(100vh - 18px));
   padding: 5px; border: 1px solid rgba(0,185,107,0.24);
   border-radius: 12px;
@@ -280,8 +280,10 @@
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 8px 32px rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.04) inset;
   overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: none; -ms-overflow-style: none;
   animation: emojiDropIn 0.15s cubic-bezier(.16,1,.3,1);
 }
+.emoji-palette::-webkit-scrollbar { display: none; }
 @keyframes emojiDropIn {
   from { opacity: 0; transform: translateY(-8px) scale(0.97); }
   to   { opacity: 1; transform: none; }
@@ -395,6 +397,18 @@
     footer.textContent = '↑↓ · Enter · Esc';
     _palette.appendChild(footer);
 
+    /* динамическая ширина по самому длинному слову */
+    let maxW = 0;
+    const measure = document.createElement('div');
+    measure.style.cssText = 'position:absolute;visibility:hidden;font:12px/1.4 inherit;padding:0';
+    document.body.appendChild(measure);
+    for (let i = 0; i < _filtered.length; i++) {
+      measure.textContent = _filtered[i].e.name;
+      maxW = Math.max(maxW, measure.offsetWidth);
+    }
+    measure.remove();
+    _palette.style.width = Math.min(maxW + 60, 300) + 'px';
+
     _position(ta);
   }
 
@@ -475,7 +489,13 @@
   }
 
   /* ── TRIGGER DETECTION ─────────────────────────────────────────── */
+  function _isEnabled() {
+    const lay = window.State?.getLayout?.();
+    return !lay || lay.emojiPicker !== false;
+  }
+
   function _handleInput(ta) {
+    if (!_isEnabled()) { if (_palette) _close(); return; }
     const pos = ta.selectionStart;
     const before = ta.value.slice(0, pos);
     const m = before.match(/(^|[\n\s]):([^\s\n:]{1,})$/);

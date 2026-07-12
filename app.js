@@ -174,6 +174,9 @@
     const optColScrollbar = $id('opt-col-scrollbar');
     if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
+
+    const optEmojiPicker = $id('opt-emoji-picker');
+    if (optEmojiPicker) optEmojiPicker.checked = lay.emojiPicker !== false;
   }
 
   State.onChange(queueFullRender);
@@ -445,6 +448,12 @@
     const enabled = e.target.checked;
     State.setLayout({ colScrollbar: enabled });
     document.getElementById('workspace')?.classList.toggle('col-scrollbar', enabled);
+    scheduleSave();
+  };
+
+  const optEmojiPicker = $id('opt-emoji-picker');
+  if (optEmojiPicker) optEmojiPicker.onchange = e => {
+    State.setLayout({ emojiPicker: e.target.checked });
     scheduleSave();
   };
 
