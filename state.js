@@ -355,7 +355,7 @@ const State = (() => {
           b.activeSubtab < 0 ||
           b.activeSubtab >= b.subtabs.length
         ) b.activeSubtab = 0;
-        if (!b.fontSize)            b.fontSize = 12;
+        if (!b.fontSize)            b.fontSize = 13.5;
         if (b.height === undefined) b.height   = null;
       }
 
