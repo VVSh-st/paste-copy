@@ -308,7 +308,7 @@
   const CSS = `
 .emoji-palette {
   position: fixed; z-index: 10000;
-  max-width: min(420px, calc(100vw - 16px));
+  max-width: min(520px, calc(100vw - 16px));
   max-height: min(360px, calc(100vh - 18px));
   padding: 5px; border: 1px solid rgba(0,185,107,0.24);
   border-radius: 12px;
@@ -349,7 +349,7 @@
 }
 .emoji-name {
   flex: 1; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .emoji-footer {
@@ -610,7 +610,7 @@
     for (let i = 0; i < _filtered.length; i++) {
       maxW = Math.max(maxW, _measureWidth(_filtered[i].e.name, fontStr));
     }
-    _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 420) + 'px';
+    _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 520) + 'px';
 
     _position(ta);
   }
