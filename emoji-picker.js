@@ -317,9 +317,14 @@
   function _focusBlock(id) {
     if (!id) return;
     requestAnimationFrame(() => {
-      const el = document.querySelector(`.block[data-id="${id}"] textarea.block-textarea`)
-              || document.querySelector(`.block[data-id="${id}"] input`);
-      if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      requestAnimationFrame(() => {
+        const block = document.querySelector(`.block[data-id="${id}"]`);
+        if (!block) return;
+        const el = block.querySelector('textarea.block-textarea')
+                || block.querySelector('textarea')
+                || block.querySelector('input:not([type="checkbox"]):not([type="hidden"]):not(.btn-icon)');
+        if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      });
     });
   }
 
