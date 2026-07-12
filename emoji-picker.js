@@ -316,7 +316,13 @@
 
   /* ── ДЕДУПЛИКАЦИЯ ──────────────────────────────────────────────── */
   const _seen = new Set();
+  const _cmdSeen = new Set();
   const EMOJI_UNIQUE = EMOJI_DATA.filter(e => {
+    if (e.type === 'command') {
+      if (_cmdSeen.has(e.name)) return false;
+      _cmdSeen.add(e.name);
+      return true;
+    }
     if (_seen.has(e.emoji)) return false;
     _seen.add(e.emoji);
     return true;
@@ -647,6 +653,7 @@
       btn.className = 'emoji-item' + (i === 0 ? ' focused' : '');
       btn.setAttribute('role', 'option');
       btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+      btn.style.animationDelay = (i * 0.012) + 's';
       if (item.e.type) btn.setAttribute('data-type', item.e.type);
       else btn.removeAttribute('data-type');
       btn.children[0].textContent = item.e.emoji;
@@ -674,13 +681,22 @@
     if (!_palette || !_ta) return;
 
     const cs = getComputedStyle(ta);
-    const pl = parseFloat(cs.paddingLeft) || 0;
-    const pr = parseFloat(cs.paddingRight) || 0;
-    const pt = parseFloat(cs.paddingTop) || 0;
     const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4);
     const pos = ta.selectionStart;
-    const bs = cs.boxSizing === 'border-box';
-    const innerW = bs ? ta.clientWidth : (ta.clientWidth - pl - pr);
+
+    /* кеш metrics — clone создаём только при смене стиля/текста */
+    const cacheKey = cs.font + '|' + cs.lineHeight + '|' + cs.padding + '|' + cs.letterSpacing + '|' + cs.boxSizing;
+    if (!ta._emojiPosCache || ta._emojiPosCache.key !== cacheKey) {
+      const pl = parseFloat(cs.paddingLeft) || 0;
+      const pr = parseFloat(cs.paddingRight) || 0;
+      const bs = cs.boxSizing === 'border-box';
+      ta._emojiPosCache = {
+        key: cacheKey,
+        innerW: bs ? ta.clientWidth : (ta.clientWidth - pl - pr),
+        font: cs.font, padding: cs.padding, lh, letterSpacing: cs.letterSpacing,
+      };
+    }
+    const { innerW } = ta._emojiPosCache;
 
     /* clone */
     const clone = document.createElement('div');
@@ -783,18 +799,15 @@
   }
 
   /* ── GLOBAL EVENTS ─────────────────────────────────────────────── */
-  document.addEventListener('input', e => {
+  function _onInput(e) {
     if (e.isComposing) return;
     if (e.target && e.target.tagName === 'TEXTAREA') _handleInput(e.target);
-  }, true);
-
-  document.addEventListener('click', e => {
+  }
+  function _onClick(e) {
     if (_palette && !_palette.contains(e.target)) _close();
-  });
-
-  window.addEventListener('resize', () => { if (_palette) _close(); });
-
-  document.addEventListener('keydown', e => {
+  }
+  function _onResize() { if (_palette) _close(); }
+  function _onKey(e) {
     if (e.isComposing || e.keyCode === 229) return;
     if (!_palette || !_ta || e.target !== _ta) return;
     const rows = _palette.querySelectorAll('.emoji-item');
@@ -828,6 +841,21 @@
       }
       _close();
     }
-  }, true);
+  }
+
+  document.addEventListener('input', _onInput, true);
+  document.addEventListener('click', _onClick);
+  window.addEventListener('resize', _onResize);
+  document.addEventListener('keydown', _onKey, true);
+
+  function destroy() {
+    document.removeEventListener('input', _onInput, true);
+    document.removeEventListener('click', _onClick);
+    window.removeEventListener('resize', _onResize);
+    document.removeEventListener('keydown', _onKey, true);
+    _close();
+  }
+
+  window.EmojiPicker = { destroy };
 
 })();
