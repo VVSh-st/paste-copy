@@ -1190,6 +1190,19 @@ window.LLMCore = (() => {
         if (field) field.disabled = !hasSelection;
       });
     }
+    function _renderInsertStorageMenu() {
+      const box = document.getElementById('llm-prompt-insert-storage-list');
+      if (!box) return;
+      const entries = _getStorageEntries();
+      if (!entries.length) {
+        box.innerHTML = '<span class="llm-prompt-menu-empty">Хранилище пусто</span>';
+        return;
+      }
+      box.innerHTML = entries.map(e => {
+        const { title, prompt } = _storageEntryMeta(e);
+        return `<button type="button" class="llm-prompt-menu-sub-item" role="menuitem" data-insert-storage-id="${_esc(e.id)}" title="${_esc(prompt.slice(0, 80))}">${_esc(title)}</button>`;
+      }).join('');
+    }
     function _renderStorageEditor() {
       const panel = document.getElementById('llm-prompt-storage-panel');
       const list = document.getElementById('llm-storage-list');
@@ -1438,8 +1451,6 @@ window.LLMCore = (() => {
       if (card) card.classList.remove('llm-prompt-card-storage');
       if (meta) meta.hidden = false;
       if (status) status.hidden = false;
-      const addBtn = document.getElementById('llm-storage-add');
-      if (addBtn) addBtn.hidden = true;
 
       // Подсветка выбранного элемента
       document.querySelectorAll('.llm-prompt-fn-item').forEach(btn => {
@@ -1470,7 +1481,6 @@ window.LLMCore = (() => {
           status.setAttribute('aria-label', 'Хранилище');
           status.title = 'Хранилище';
         }
-        if (addBtn) addBtn.hidden = false;
         _clearDangerButton(document.getElementById('llm-storage-delete'), '✕', 'Удалить запись');
         _renderStorageEditor();
         if (!keepFocus) document.getElementById('llm-storage-title')?.focus();
@@ -1756,6 +1766,7 @@ tags.push({
         menuTrigger.addEventListener('click', e => {
           e.stopPropagation();
           const opening = !menuEl.classList.contains('open');
+          if (opening) _renderInsertStorageMenu();
           menuEl.classList.toggle('open');
           menuTrigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
         });
@@ -1775,8 +1786,25 @@ tags.push({
         });
       }
       document.getElementById('llm-prompt-reset-all')?.addEventListener('click', _resetAllPrompts);
+      document.getElementById('llm-prompt-insert-storage-list')?.addEventListener('click', e => {
+        const btn = e.target.closest('[data-insert-storage-id]');
+        if (!btn) return;
+        _storageSelectedId = btn.dataset.insertStorageId;
+        _applyStorageToCurrentPrompt();
+        menuEl.classList.remove('open');
+        menuTrigger.setAttribute('aria-expanded', 'false');
+      });
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
       ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
+      document.querySelectorAll('.llm-color-swatch').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const input = btn.closest('.llm-color-field')?.querySelector('input[type="text"]');
+          if (!input) return;
+          input.value = btn.dataset.color;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      });
       document.getElementById('llm-text-lint-settings')?.addEventListener('change', e => {
         const input = e.target.closest('[data-llm-lint-setting]');
         if (!input) return;

@@ -2558,7 +2558,6 @@ details.llm-prompts-help[open] summary::before { transform: rotate(90deg); }
   display: flex; flex-direction: column; gap: 12px; min-width: 0;
 }
 #llm-prompt-storage-panel[hidden] { display: none !important; }
-#llm-storage-add[hidden] { display: none !important; }
 .llm-storage-layout {
   display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 12px; min-width: 0; align-items: stretch;
 }
@@ -2738,6 +2737,11 @@ details.llm-prompts-help[open] summary::before { transform: rotate(90deg); }
 .llm-prompt-menu button:hover { background: var(--surface2); color: var(--text0); }
 .llm-prompt-menu button.danger { color: var(--red); }
 .llm-prompt-menu button.danger:hover { background: rgba(224,92,106,0.1); }
+.llm-prompt-menu-label { display: block; padding: 6px 10px 2px; font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--text3); }
+.llm-prompt-menu-sublist { max-height: 160px; overflow-y: auto; }
+.llm-prompt-menu-sub-item { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.llm-prompt-menu-empty { display: block; padding: 4px 10px 8px; font-size: 11px; color: var(--text3); }
+.llm-prompt-menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* Warnings: inline, only when present */
 .llm-prompt-warnings { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
@@ -2762,7 +2766,7 @@ details.llm-prompts-help[open] summary::before { transform: rotate(90deg); }
 .llm-prompt-test[open] summary::before { transform: rotate(90deg); }
 
 /* Storage: integrated into main layout */
-.llm-prompt-card-storage .llm-prompt-editor,
+.llm-prompt-card-storage #llm-prompt-editor,
 .llm-prompt-card-storage .llm-prompt-actions,
 .llm-prompt-card-storage .llm-prompt-warnings,
 .llm-prompt-card-storage .llm-prompt-test { display: none !important; }
@@ -2793,6 +2797,15 @@ details.llm-prompts-help[open] summary::before { transform: rotate(90deg); }
 .llm-storage-inline-actions {
   display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end;
 }
+.llm-storage-actions-divider { width: 1px; align-self: stretch; background: var(--border2); margin: 0 2px; }
+.llm-color-field { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.llm-color-swatches { display: flex; gap: 4px; }
+.llm-color-swatch {
+  width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--border2);
+  background: var(--swatch); cursor: pointer; padding: 0;
+  transition: transform var(--trans-fast), border-color var(--trans);
+}
+.llm-color-swatch:hover { transform: scale(1.15); border-color: var(--settings-accent); }
 
 @media (max-width: 780px) {
   .llm-profiles-layout,

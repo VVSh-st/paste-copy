@@ -1283,7 +1283,6 @@
                 <div class="llm-prompt-card-head">
                   <h3 id="llm-prompt-title" class="llm-prompt-title">Выберите функцию</h3>
                   <span id="llm-prompt-status" class="llm-prompt-status-badge default" aria-label="по умолчанию" title="По умолчанию"><span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">по умолч.</span></span>
-                  <button type="button" id="llm-storage-add" class="btn-icon" title="Добавить запись" aria-label="Добавить запись" hidden>＋</button>
                 </div>
 
                 <div id="llm-prompt-meta" class="llm-prompt-meta" aria-live="polite"></div>
@@ -1300,6 +1299,8 @@
                         <div class="llm-storage-editor-topbar">
                           <input id="llm-storage-title" type="text" class="modal-input llm-storage-title-input" placeholder="Название записи" aria-label="Название записи">
                           <div class="llm-storage-inline-actions" aria-label="Действия записи">
+                            <button type="button" id="llm-storage-add" class="btn-icon" title="Добавить запись" aria-label="Добавить запись">＋</button>
+                            <span class="llm-storage-actions-divider" aria-hidden="true"></span>
                             <button type="button" id="llm-storage-apply" class="btn-icon btn-icon-accent" title="Применить промпт к выбранной функции" aria-label="Применить промпт к функции">✓</button>
                             <button type="button" id="llm-storage-copy" class="btn-icon" title="Копировать промпт" aria-label="Копировать промпт">⎘</button>
                             <button type="button" id="llm-storage-duplicate" class="btn-icon" title="Дублировать запись" aria-label="Дублировать запись">⧉</button>
@@ -1337,6 +1338,9 @@
                   <div class="llm-prompt-menu-wrap">
                     <button type="button" id="llm-prompt-menu-trigger" class="btn-icon" title="Ещё" aria-label="Ещё действия" aria-haspopup="true" aria-expanded="false">⋮</button>
                     <div class="llm-prompt-menu" role="menu">
+                      <span class="llm-prompt-menu-label">Вставить из хранилища</span>
+                      <div id="llm-prompt-insert-storage-list" class="llm-prompt-menu-sublist" role="none"></div>
+                      <div class="llm-prompt-menu-divider" role="none"></div>
                       <button type="button" id="llm-prompt-reset-all" role="menuitem">↺ Сбросить все</button>
                     </div>
                   </div>
@@ -1407,36 +1411,46 @@
                 <summary>Общее</summary>
                 <div class="llm-compact-settings">
                   <label class="settings-item"><input id="llm-enabled" type="checkbox"> LLM включён</label>
-                  <label class="settings-item"><input id="llm-auto-snapshot" type="checkbox" checked> Авто-снапшот до операций</label>
-                  <label class="settings-item"><input id="llm-save-results" type="checkbox" checked> Сохранять результаты в [LLM]-снапшоты</label>
-                  <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
-                  <label class="settings-item"><input id="pl-hover-open" type="checkbox" checked> Hover открывает панель Loom</label>
                   <label class="settings-item"><input id="opt-current-line-highlight-misc" type="checkbox"> Подсветка текущей строки</label>
-                  <label class="settings-item"><input id="opt-col-scrollbar" type="checkbox"> Полоса прокрутки колонок</label>
-                  <label class="settings-item"><input id="opt-emoji-picker" type="checkbox" checked> Эмодзи по ":"</label>
                   <label class="settings-item settings-item-row" title="CSS-цвет подсветки строки с курсором: #223355 или rgba(79,142,247,0.18)">
                     Цвет строки
-                    <input type="text" id="opt-current-line-color-misc" value="rgba(79,142,247,0.18)" spellcheck="false" aria-label="Цвет подсветки текущей строки">
+                    <div class="llm-color-field">
+                      <div class="llm-color-swatches" role="group" aria-label="Быстрый выбор цвета">
+                        <button type="button" class="llm-color-swatch" data-color="rgba(79,142,247,0.18)" style="--swatch:#4f8ef7" title="Синий"></button>
+                        <button type="button" class="llm-color-swatch" data-color="rgba(0,185,107,0.18)" style="--swatch:#00b96b" title="Зелёный"></button>
+                        <button type="button" class="llm-color-swatch" data-color="rgba(160,90,220,0.18)" style="--swatch:#a05adc" title="Фиолетовый"></button>
+                        <button type="button" class="llm-color-swatch" data-color="rgba(240,160,80,0.18)" style="--swatch:#f0a050" title="Оранжевый"></button>
+                        <button type="button" class="llm-color-swatch" data-color="rgba(224,92,106,0.18)" style="--swatch:#e05c6a" title="Красный"></button>
+                        <button type="button" class="llm-color-swatch" data-color="rgba(160,160,170,0.18)" style="--swatch:#a0a0aa" title="Серый"></button>
+                      </div>
+                      <input type="text" id="opt-current-line-color-misc" value="rgba(79,142,247,0.18)" spellcheck="false" aria-label="Цвет подсветки текущей строки">
+                    </div>
+                  </label>
+                  <label class="settings-item"><input id="pl-hover-open" type="checkbox" checked> Hover открывает панель Loom</label>
+                  <label class="settings-item"><input id="opt-emoji-picker" type="checkbox" checked> Эмодзи по ":"</label>
+                  <label class="settings-item"><input id="llm-auto-snapshot" type="checkbox" checked> Авто-снапшот до операций</label>
+                  <label class="settings-item"><input id="llm-save-results" type="checkbox" checked> Сохранять результаты в [LLM]-снапшоты</label>
+                  <label class="settings-item"><input id="opt-col-scrollbar" type="checkbox"> Полоса прокрутки колонок</label>
+                  <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
+                </div>
+              </details>
+
+              <details class="llm-settings-fold llm-misc-fold" open>
+                <summary>Якоря</summary>
+                <div class="llm-compact-settings">
+                  <label class="settings-item">
+                    <input type="checkbox" id="opt-anchor-line-markers" checked> Линии-маркеры
+                  </label>
+                  <label class="settings-item">
+                    <input type="checkbox" id="opt-anchor-bg-highlight" checked> Подсветка фона
+                  </label>
+                  <label class="settings-item settings-item-row" title="Цвет маркеров якорей">
+                    Цвет маркеров
+                    <input type="color" id="opt-anchor-color" value="#4f8ef7" aria-label="Цвет маркеров якорей">
                   </label>
                 </div>
               </details>
             </div>
-
-            <details class="llm-settings-fold llm-misc-fold" open>
-              <summary>Якоря</summary>
-              <div class="llm-compact-settings">
-                <label class="settings-item">
-                  <input type="checkbox" id="opt-anchor-line-markers" checked> Линии-маркеры
-                </label>
-                <label class="settings-item">
-                  <input type="checkbox" id="opt-anchor-bg-highlight" checked> Подсветка фона
-                </label>
-                <label class="settings-item settings-item-row" title="Цвет маркеров якорей">
-                  Цвет маркеров
-                  <input type="color" id="opt-anchor-color" value="#4f8ef7" aria-label="Цвет маркеров якорей">
-                </label>
-              </div>
-            </details>
 
             <details class="llm-settings-fold llm-misc-fold" open>
               <summary>Сжатие текста (LLM)</summary>
