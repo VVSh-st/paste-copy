@@ -263,13 +263,36 @@
     { name: 'связь',        emoji: '🔗',  tags: ['ссылка'] },
     { name: 'крючок',       emoji: '🪝',  tags: ['ловить'] },
     { name: 'ловушка',      emoji: '🪤',  tags: ['ловушка'] },
+
+    // AI / разработка
+    { name: ' ai',          emoji: '🤖',  tags: ['искусственный интеллект', 'нейросеть', 'ai'] },
+    { name: 'мозг',         emoji: '🧠',  tags: ['мышление', 'brain', 'ai'] },
+    { name: 'данные',       emoji: '🧬',  tags: ['данные', 'генетика', 'data'] },
+    { name: 'инструмент',   emoji: '🛠',  tags: ['текущий инструмент', 'tool'] },
+    { name: 'баг',          emoji: '🐛',  tags: ['ошибка', 'жук', 'bug'] },
+    { name: 'разработка',   emoji: '🚧',  tags: ['в работе', 'build', 'dev'] },
+    { name: 'настройка',     emoji: '🔧',  tags: ['гаечный ключ', 'setting', 'config'] },
+    { name: 'код',          emoji: '💻',  tags: ['программирование', 'code'] },
+    { name: 'деплой',       emoji: '🚀',  tags: ['развёртывание', 'deploy', 'release'] },
+
+    // Prompt / текст
+    { name: 'промпт',       emoji: '📝',  tags: ['запрос', 'prompt', 'текст'] },
+    { name: 'анализ',       emoji: '🔍',  tags: ['поиск', 'исследование', 'analysis'] },
+    { name: 'предупреждение', emoji: '⚠️', tags: ['внимание', 'warning', 'caution'] },
+
+    // Статусы
+    { name: 'активно',      emoji: '🟢',  tags: ['включено', 'активен', 'active', 'on'] },
+    { name: 'ожидание',     emoji: '🟡',  tags: ['пауза', 'ожидание', 'pending', 'wait'] },
+    { name: 'ошибка',       emoji: '🔴',  tags: ['стоп', 'ошибка', 'error', 'stop'] },
+    { name: 'процесс',      emoji: '⏳',  tags: ['загрузка', 'выполняется', 'loading', 'process'] },
+    { name: 'успех',        emoji: '✅',  tags: ['готово', 'выполнено', 'success', 'done'] },
   ];
 
   /* ── CSS ───────────────────────────────────────────────────────── */
   const CSS = `
 .emoji-palette {
   position: fixed; z-index: 10000;
-  max-width: min(300px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
   max-height: min(280px, calc(100vh - 18px));
   padding: 5px; border: 1px solid rgba(0,185,107,0.24);
   border-radius: 12px;
@@ -368,6 +391,15 @@
   for (const e of EMOJI_DATA) {
     e._nameN = _normalize(e.name);
     e._tagsN = (e.tags || []).map(t => _normalize(t));
+    /* маппинг позиций: _posMap[normalizedIdx] = originalIdx */
+    const map = [];
+    let j = 0;
+    for (let i = 0; i < e.name.length && j < e._nameN.length; i++) {
+      map.push(j);
+      const ch = _normalize(e.name[i]);
+      j += ch.length || 1;
+    }
+    e._posMap = map;
   }
   function _filter(query) {
     const q = _normalize(query);
@@ -479,11 +511,14 @@
       const nameSpan = document.createElement('span');
       nameSpan.className = 'emoji-name';
       const nameText = item.e.name;
-      const matchIdx = item.e._nameN.indexOf(_normalize(query));
-      if (matchIdx >= 0) {
-        nameSpan.innerHTML = _escHtml(nameText.slice(0, matchIdx))
-          + '<mark>' + _escHtml(nameText.slice(matchIdx, matchIdx + _normalize(query).length)) + '</mark>'
-          + _escHtml(nameText.slice(matchIdx + _normalize(query).length));
+      const nq = _normalize(query);
+      const nIdx = item.e._nameN.indexOf(nq);
+      if (nIdx >= 0 && item.e._posMap) {
+        const origStart = item.e._posMap[nIdx] || 0;
+        const origEnd = (item.e._posMap[nIdx + nq.length] != null) ? item.e._posMap[nIdx + nq.length] : nameText.length;
+        nameSpan.innerHTML = _escHtml(nameText.slice(0, origStart))
+          + '<mark>' + _escHtml(nameText.slice(origStart, origEnd)) + '</mark>'
+          + _escHtml(nameText.slice(origEnd));
       } else {
         nameSpan.textContent = nameText;
       }
@@ -503,7 +538,7 @@
     for (let i = 0; i < _filtered.length; i++) {
       maxW = Math.max(maxW, _measureWidth(_filtered[i].e.name, fontStr));
     }
-    _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 300) + 'px';
+    _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 360) + 'px';
 
     _position(ta);
   }
