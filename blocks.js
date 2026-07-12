@@ -3362,9 +3362,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       copyBtn.onclick = () => {
         const cur = b.subtabs[b.activeSubtab];
         if (!cur || !cur.rows?.some(r => r.some(c => (c || '').trim()))) return;
-        let target = (b.activeSubtab + 1) % 5;
-        for (let i = 1; i < 5; i++) {
-          const idx = (b.activeSubtab + i) % 5;
+        const N = State.SUBTABS_COUNT;
+        let target = (b.activeSubtab + 1) % N;
+        for (let i = 1; i < N; i++) {
+          const idx = (b.activeSubtab + i) % N;
           const t = b.subtabs[idx];
           if (!t.rows?.some(r => r.some(c => (c || '').trim()))) { target = idx; break; }
         }
