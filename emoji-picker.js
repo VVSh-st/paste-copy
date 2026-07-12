@@ -322,7 +322,8 @@
         if (!block) return;
         const el = block.querySelector('textarea.block-textarea')
                 || block.querySelector('textarea')
-                || block.querySelector('input:not([type="checkbox"]):not([type="hidden"]):not(.btn-icon)');
+                || block.querySelector('.table-cell')
+                || block.querySelector('input:not([type="checkbox"]):not([type="hidden"]):not(.btn-icon):not(.block-title)');
         if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
       });
     });
