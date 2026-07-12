@@ -220,59 +220,62 @@ const WordDict = (() => {
 
   /* ---- загрузка wordlist.json (статический, высший приоритет) ---- */
   async function loadWordlist(url = 'wordlist.json') {
+    let loaded = false;
     if (location.protocol === 'file:') {
       console.debug('[WordDict] file:// origin — wordlist.json fetch skipped (CORS)');
       _loadTempWordlist();
       await _pullFromGist();
       build();
-      return;
-    }
-
-    try {
-      const r = await fetch(url);
-      if (!r.ok) {
-        console.debug(`[WordDict] wordlist.json not found (HTTP ${r.status})`);
-        return;
-      }
-
-      const data = await r.json();
-
-      if (Array.isArray(data.words)) {
-        for (const item of data.words) {
-          if (!Array.isArray(item) || item.length < 2) continue;
-          const w = String(item[0] || '').trim().toLowerCase();
-          const freq = Number(item[1]);
-          if (!w || !Number.isFinite(freq) || freq <= 0) continue;
-          _staticWords.set(w, (_staticWords.get(w) || 0) + freq);
+      loaded = true;
+    } else {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) {
+          console.debug(`[WordDict] wordlist.json not found (HTTP ${r.status})`);
+          return;
         }
-      }
 
-      if (data.bigrams && typeof data.bigrams === 'object') {
-        for (const [rawPrev, followers] of Object.entries(data.bigrams)) {
-          if (!followers || typeof followers !== 'object') continue;
-          const prev = String(rawPrev || '').trim().toLowerCase();
-          if (!prev) continue;
-          if (!_staticBigrams.has(prev)) _staticBigrams.set(prev, new Map());
-          const bm = _staticBigrams.get(prev);
-          for (const [rawW, rawC] of Object.entries(followers)) {
-            const w = String(rawW || '').trim().toLowerCase();
-            const c = Number(rawC);
-            if (!w || !Number.isFinite(c) || c <= 0) continue;
-            bm.set(w, (bm.get(w) || 0) + c);
+        const data = await r.json();
+
+        if (Array.isArray(data.words)) {
+          for (const item of data.words) {
+            if (!Array.isArray(item) || item.length < 2) continue;
+            const w = String(item[0] || '').trim().toLowerCase();
+            const freq = Number(item[1]);
+            if (!w || !Number.isFinite(freq) || freq <= 0) continue;
+            _staticWords.set(w, (_staticWords.get(w) || 0) + freq);
           }
         }
-      }
 
-    } catch (e) {
-      if (e instanceof TypeError) {
-        console.debug('[WordDict] wordlist.json not available:', e.message);
-      } else {
-        console.warn('[WordDict] failed to load wordlist:', e);
+        if (data.bigrams && typeof data.bigrams === 'object') {
+          for (const [rawPrev, followers] of Object.entries(data.bigrams)) {
+            if (!followers || typeof followers !== 'object') continue;
+            const prev = String(rawPrev || '').trim().toLowerCase();
+            if (!prev) continue;
+            if (!_staticBigrams.has(prev)) _staticBigrams.set(prev, new Map());
+            const bm = _staticBigrams.get(prev);
+            for (const [rawW, rawC] of Object.entries(followers)) {
+              const w = String(rawW || '').trim().toLowerCase();
+              const c = Number(rawC);
+              if (!w || !Number.isFinite(c) || c <= 0) continue;
+              bm.set(w, (bm.get(w) || 0) + c);
+            }
+          }
+        }
+
+      } catch (e) {
+        if (e instanceof TypeError) {
+          console.debug('[WordDict] wordlist.json not available:', e.message);
+        } else {
+          console.warn('[WordDict] failed to load wordlist:', e);
+        }
+      } finally {
+        if (!loaded) {
+          _loadTempWordlist();
+          await _pullFromGist();
+          build();
+        }
       }
-    } finally {
-      _loadTempWordlist();
-      await _pullFromGist();
-      build();
     }
   }
 
@@ -349,10 +352,18 @@ const WordDict = (() => {
       )
       .sort((a, b) => b[1] - a[1]);
 
-    _gistDirtyWords.clear();
     _gistLastPushAt = Date.now();
 
-    if (words.length) gs.pushWordlist(words);
+    if (words.length) {
+      const p = gs.pushWordlist(words);
+      if (p && typeof p.then === 'function') {
+        p.then(() => { _gistDirtyWords.clear(); }).catch(() => { _gistLastPushAt = 0; });
+      } else {
+        _gistDirtyWords.clear();
+      }
+    } else {
+      _gistDirtyWords.clear();
+    }
   }
 
   function _buildTempPayload() {
@@ -706,9 +717,7 @@ const InlineHint = (() => {
     if (!suf || !ta) { hide(); return; }
     suffix = suf;
 
-    if (activeTa && activeTa !== ta) {
-      activeTa.removeEventListener('scroll', _onTaScroll);
-    }
+    if (activeTa) activeTa.removeEventListener('scroll', _onTaScroll);
     activeTa = ta;
     ta.addEventListener('scroll', _onTaScroll, { passive: true });
 

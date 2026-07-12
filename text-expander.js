@@ -718,7 +718,7 @@ const TextExpander = (() => {
     triggerInput.placeholder = 'ё';
     triggerInput.maxLength = MAX_TRIGGER_LEN;
     triggerInput.value = _settings.trigger || DEFAULT_TRIGGER;
-    triggerInput.title = 'Глобальный триггер для всех сокращений';
+    triggerInput.title = 'Глобальный триггер для всех сокращений, не зависит от раскладки RU/EN';
 
     // Shortcut input
     const shortcutInput = document.createElement('input');

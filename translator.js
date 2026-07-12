@@ -162,7 +162,7 @@ const Translator = (() => {
           const re = new RegExp(t.token.split('').map(ch =>
             ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
           ).join('\\s*'), 'g');
-          out = out.replace(re, t.original);
+          out = out.replace(re, () => t.original);
         } catch {}
       }
     }
@@ -402,7 +402,6 @@ const Translator = (() => {
     const key = await fetchGoogleKey();
     if (!key) throw new Error(`Google auth failed${googleKeyError ? ': ' + googleKeyError : ''}`);
     _stats.googleRequests++;
-    _stats.totalChars += countChars(texts);
     const results = [];
     for (let i = 0; i < texts.length; i += 50) {
       const chunk = texts.slice(i, i + 50);
@@ -484,7 +483,6 @@ const Translator = (() => {
     const token = await fetchMsToken();
     if (!token) throw new Error(`MS auth failed${msTokenError ? ': ' + msTokenError : ''}`);
     _stats.msRequests++;
-    _stats.totalChars += countChars(texts);
     const tg = MS_LANG_MAP[to] || to;
     const results = [];
     for (let i = 0; i < texts.length; i += 100) {
@@ -539,7 +537,6 @@ const Translator = (() => {
 
   async function translateTencent(texts, to, signal) {
     _stats.tencentRequests++;
-    _stats.totalChars += countChars(texts);
     const tg = TENCENT_LANG_MAP[to] || to;
     const results = [];
     for (let i = 0; i < texts.length; i += 50) {
@@ -606,7 +603,6 @@ const Translator = (() => {
 
   async function translateLegacy(texts, to, signal) {
     _stats.legacyRequests++;
-    _stats.totalChars += countChars(texts);
     const CONCURRENCY = 5;
     const out = new Array(texts.length).fill(null);
     let next = 0;
@@ -631,6 +627,7 @@ const Translator = (() => {
   async function translate(texts, toLang) {
     if (!Array.isArray(texts)) texts = texts == null ? [] : [String(texts)];
     if (!texts.length) return [];
+    _stats.totalChars += countChars(texts);
     if (_activeController) _activeController.abort();
     _activeController = new AbortController();
     const signal = _activeController.signal;

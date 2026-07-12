@@ -1270,8 +1270,6 @@
 
             <div class="llm-prompts-sidebar">
 
-              <div class="settings-section">Группы функций</div>
-
               <div id="llm-prompt-fn-list" class="modal-list llm-prompt-fn-list"
 
                    role="group" aria-label="Список системных промптов"></div>
@@ -1283,19 +1281,15 @@
 
               <div class="llm-prompt-card">
                 <div class="llm-prompt-card-head">
-                  <div>
-                    <div class="settings-section" id="llm-prompt-section-title">Системный промпт</div>
-                    <h3 id="llm-prompt-title" class="llm-prompt-title">Выберите функцию</h3>
-                  </div>
-                  <span id="llm-prompt-status" class="llm-prompt-status llm-prompt-status-default" aria-label="по умолчанию" title="По умолчанию"><span aria-hidden="true">◌</span></span>
+                  <h3 id="llm-prompt-title" class="llm-prompt-title">Выберите функцию</h3>
+                  <span id="llm-prompt-status" class="llm-prompt-status-badge default" aria-label="по умолчанию" title="По умолчанию"><span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">по умолч.</span></span>
                 </div>
 
                 <div id="llm-prompt-meta" class="llm-prompt-meta" aria-live="polite"></div>
 
                 <div id="llm-prompt-storage-panel" class="llm-storage-panel" hidden>
                   <div class="llm-storage-header">
-                    <p class="llm-storage-help">Храните здесь удачные системные промпты для разных задач и моделей. Их можно быстро копировать или превращать в пользовательские БРО-теги.</p>
-                    <button type="button" id="llm-storage-add" class="btn-sm btn-sm-accent llm-storage-add-btn" aria-label="Добавить запись">＋ Добавить промпт</button>
+                    <button type="button" id="llm-storage-add" class="btn-icon" title="Добавить запись" aria-label="Добавить запись">＋</button>
                   </div>
 
                   <div class="llm-storage-layout">
@@ -1336,18 +1330,23 @@
 
                 <div class="llm-prompt-actions">
 
-                  <button type="button" id="llm-prompt-copy-default" class="btn-sm">⧉ Скопировать дефолт</button>
+                  <button type="button" id="llm-prompt-save" class="btn-sm btn-sm-accent">💾 Сохранить</button>
 
-                  <button type="button" id="llm-prompt-reset" class="btn-sm">↺ Сбросить этот</button>
+                  <button type="button" id="llm-prompt-reset" class="btn-icon" title="Сбросить к дефолту" aria-label="Сбросить к дефолту">↺</button>
 
-                  <button type="button" id="llm-prompt-reset-all" class="btn-sm">↺ Сбросить все</button>
+                  <button type="button" id="llm-prompt-copy-default" class="btn-icon" title="Скопировать дефолт" aria-label="Скопировать дефолт">📋</button>
 
-                  <button type="button" id="llm-prompt-save" class="btn-sm btn-sm-accent">✎ Сохранить</button>
+                  <div class="llm-prompt-menu-wrap">
+                    <button type="button" id="llm-prompt-menu-trigger" class="btn-icon" title="Ещё" aria-label="Ещё действия" aria-haspopup="true" aria-expanded="false">⋮</button>
+                    <div class="llm-prompt-menu" role="menu">
+                      <button type="button" id="llm-prompt-reset-all" role="menuitem">↺ Сбросить все</button>
+                    </div>
+                  </div>
 
                 </div>
               </div>
 
-              <details class="llm-prompt-test" open>
+              <details class="llm-prompt-test">
                 <summary>Проверить на тексте</summary>
                 <textarea id="llm-prompt-test-input" rows="4" class="llm-prompt-test-input" placeholder="Вставьте короткий тестовый фрагмент. Он будет отправлен в активный LLM-профиль с выбранным системным промптом." aria-label="Тестовый текст"></textarea>
                 <div class="llm-prompt-test-actions">

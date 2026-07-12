@@ -176,7 +176,7 @@ window.AiTransform = (() => {
         restore = false;
       }
     }
-    if (restore && _ta && _origText != null) {
+    if (restore && _ta && _origText != null && _origText.length > 0) {
       if (_useWholeText) {
         try {
           _ta._skipWordComplete = true;
@@ -286,15 +286,21 @@ window.AiTransform = (() => {
       }, 0);
 
     } catch (e) {
-      if (requestId !== _requestSeq || !_ta) return;
       const errName = e && typeof e === 'object' ? e.name : '';
       const errMessage = e instanceof Error ? e.message : String(e || 'Ошибка LLM-запроса');
-      if (errName !== 'AbortError') window.Toast?.show(errMessage, 'error');
-      if (input) {
-        input.disabled = false;
-        input.placeholder = _useWholeText ? 'Новый запрос...  ↑↓' : 'Новый запрос...';
+      if (requestId === _requestSeq && _ta && errName !== 'AbortError') {
+        window.Toast?.show(errMessage, 'error');
       }
-      if (sendBtn) sendBtn.style.display = '';
+      // Всегда разблокировать UI (кроме stale request — тогда UI уже перехвачен новым popup)
+      if (requestId === _requestSeq) {
+        if (input) {
+          input.disabled = false;
+          input.placeholder = _useWholeText ? 'Новый запрос...  ↑↓' : 'Новый запрос...';
+        }
+        if (sendBtn) sendBtn.style.display = '';
+        if (_onClickOutside) { document.removeEventListener('click', _onClickOutside, true); _onClickOutside = null; }
+        if (_onContextMenu) { document.removeEventListener('contextmenu', _onContextMenu, true); _onContextMenu = null; }
+      }
     } finally {
       if (requestId === _requestSeq) _isRunning = false;
     }

@@ -172,9 +172,9 @@
       },
 
       behavior: {
-        actionTransitions: {},
-        contextScores: {},
-        featureScores: {},
+        actionTransitions: Object.create(null),
+        contextScores: Object.create(null),
+        featureScores: Object.create(null),
         recentEvents: []
       },
 
@@ -186,8 +186,8 @@
 
       promptPatterns: {
         successfulStructures: [],
-        frequentBlockTitles: {},
-        frequentSnippetHashes: {}
+        frequentBlockTitles: Object.create(null),
+        frequentSnippetHashes: Object.create(null)
       },
 
       personalScores: {
@@ -199,9 +199,9 @@
       },
 
       suggestions: {
-        byType: {},
-        dismissedUntil: {},
-        disabledTypes: {}
+        byType: Object.create(null),
+        dismissedUntil: Object.create(null),
+        disabledTypes: Object.create(null)
       }
     };
   }
@@ -211,9 +211,10 @@
     const p = profile && typeof profile === 'object' ? profile : {};
 
     return {
-      ...base,
-      ...p,
       schemaVersion: SCHEMA_VERSION,
+      userId: sanitizeKey(p.userId, 80) || base.userId,
+      createdAt: safeNumber(p.createdAt, base.createdAt, 0, now() + 365 * 24 * 60 * 60 * 1000),
+      updatedAt: safeNumber(p.updatedAt, base.updatedAt, 0, now() + 365 * 24 * 60 * 60 * 1000),
       counters: {
         events: safeCounter(p.counters?.events),
         sessions: safeCounter(p.counters?.sessions),
@@ -538,11 +539,11 @@
   }
 
   function resetSuggestionLearning() {
-    profile.suggestions.byType = {};
-    profile.suggestions.dismissedUntil = {};
-    profile.suggestions.disabledTypes = {};
-    profile.behavior.contextScores = {};
-    profile.behavior.featureScores = {};
+    profile.suggestions.byType = Object.create(null);
+    profile.suggestions.dismissedUntil = Object.create(null);
+    profile.suggestions.disabledTypes = Object.create(null);
+    profile.behavior.contextScores = Object.create(null);
+    profile.behavior.featureScores = Object.create(null);
     profile.counters.acceptedSuggestions = 0;
     profile.counters.dismissedSuggestions = 0;
     profile.counters.ignoredSuggestions = 0;
@@ -559,6 +560,8 @@
     if (stats) {
       stats.dismissed = 0;
       stats.ignored = 0;
+      stats.shown = 0;
+      stats.score = calculateSuggestionScore(stats);
     }
     saveSoon();
     return getProfile();

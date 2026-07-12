@@ -43,10 +43,8 @@ window.SpellCheck = (() => {
   // Заменить {{var}} на нейтральные токены той же длины, запомнить диапазоны
   function _maskPlaceholders(text) {
     const ranges = [];
-    const masked = text.replace(/\{\{[^}]+\}\}/g, match => {
-      const start = ranges.length ? ranges[ranges.length - 1].end : 0;
-      const absStart = text.indexOf(match, start);
-      ranges.push({ start: absStart, end: absStart + match.length });
+    const masked = text.replace(/\{\{[^}]+\}\}/g, (match, offset) => {
+      ranges.push({ start: offset, end: offset + match.length });
       return '_'.repeat(match.length);
     });
     return { masked, ranges };
@@ -168,11 +166,13 @@ window.SpellCheck = (() => {
       .filter(w => w.word && w.len > 0);
   }
 
-  async function checkText(text, opts = {}) {
+  async function checkText(text) {
     if (!isEnabled()) return { ok: false, words: [], source: 'unavailable' };
     if (_unreachable) return { ok: false, words: [], source: 'unavailable' };
 
-    const trimmed = String(text || '').trim();
+    // Нормализация CRLF → LF (позиции API совпадают с позициями в JS)
+    const normalized = String(text || '').replace(/\r\n?/g, '\n');
+    const trimmed = normalized.trim();
     if (!trimmed) return { ok: true, words: [], source: 'cache' };
 
     // Кэш по полному тексту
@@ -181,26 +181,34 @@ window.SpellCheck = (() => {
     if (cached) return { ...cached, source: 'cache' };
 
     // Компенсация сдвига: API считает позиции от trimmed, а overlay рисует от полного ta.value
-    const leadingTrim = String(text || '').length - String(text || '').trimStart().length;
+    const leadingTrim = normalized.length - normalized.trimStart().length;
     const trimOffset = leadingTrim;
 
     // Разбиваем на чанки
     const chunks = _splitIntoChunks(trimmed);
-    const allWords = [];
-    let offset = 0;
-
-    // Маскируем code fences в полном тексте (до разбиения на чанки)
-    const { ranges: fenceRanges } = _maskCodeFences(trimmed);
 
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      const allWords = [];
+      let offset = 0;
+
+      // Маскируем code fences в полном тексте (до разбиения на чанки)
+      const { ranges: fenceRanges } = _maskCodeFences(trimmed);
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const { masked, ranges: phRanges } = _maskPlaceholders(chunk);
 
-        const words = await _fetchChunk(masked, controller.signal);
+        // Таймаут на каждый чанк отдельно
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        let words;
+        try {
+          words = await _fetchChunk(masked, controller.signal);
+        } finally {
+          clearTimeout(timer);
+        }
+
         const filtered = _filterExcludedErrors(words, phRanges);
 
         // Смещаем позиции: API считает от trimmed, а нужен offset от полного текста
@@ -221,17 +229,17 @@ window.SpellCheck = (() => {
         }
       }
 
-      clearTimeout(timer);
+      // Успешно — сбрасываем флаг недоступности
+      _unreachable = false;
       const result = { ok: true, words: allWords, source: 'network' };
       _cacheSet(cacheKey, result);
       return result;
 
     } catch (err) {
-      if (!_unreachable) {
+      // AbortError (таймаут) — не отключаем спеллер навсегда
+      if (err.name !== 'AbortError' && !_unreachable) {
         _unreachable = true;
-        if (typeof Toast !== 'undefined') {
-          Toast.show('Спеллер недоступен, проверка орфографии отключена до перезагрузки', 'info');
-        }
+        try { Toast?.show?.('Спеллер недоступен, проверка орфографии отключена до перезагрузки', 'info'); } catch {}
       }
       return { ok: false, words: [], source: 'unavailable' };
     }

@@ -63,6 +63,11 @@
     return new Set(normalize(text).split(' ').filter(w => w.length > 2));
   }
 
+  // 0.82 — эмпирический коэффициент: containment на коротких блоках
+  // завышает оценку, 0.82 снижает ложные срабатывания при пороге 0.72
+  const SIMILARITY_CONTAINMENT_FACTOR = 0.82;
+  const DUPLICATE_THRESHOLD = 0.72;
+
   function similarityFromTokenSets(a, b) {
     if (window.PromptLoom?.similarityScore) {
       const score = Number(window.PromptLoom.similarityScore(a, b));
@@ -77,7 +82,7 @@
     const denom = at.size + bt.size - hits;
     const jaccard = denom ? hits / denom : 0;
     const containment = hits / Math.min(at.size, bt.size);
-    return Math.max(jaccard, containment * 0.82);
+    return Math.max(jaccard, containment * SIMILARITY_CONTAINMENT_FACTOR);
   }
 
   function findDuplicatesFromBlocks(blocks) {
@@ -90,23 +95,9 @@
       for (let j = i + 1; j < filtered.length; j += 1) {
         const a = filtered[i];
         const b = filtered[j];
+        const score = similarityFromTokenSets(a.value, b.value);
 
-        let score;
-        if (window.PromptLoom?.similarityScore) {
-          const raw = Number(window.PromptLoom.similarityScore(a.value, b.value));
-          score = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
-        } else {
-          const at = a.tokenSet;
-          const bt = b.tokenSet;
-          let hits = 0;
-          at.forEach(t => { if (bt.has(t)) hits += 1; });
-          const denom = at.size + bt.size - hits;
-          const jaccard = denom ? hits / denom : 0;
-          const containment = hits / Math.min(at.size, bt.size);
-          score = Math.max(jaccard, containment * 0.82);
-        }
-
-        if (score >= 0.72) {
+        if (score >= DUPLICATE_THRESHOLD) {
           duplicates.push({
             a: { id: a.id, title: a.title, chars: a.chars },
             b: { id: b.id, title: b.title, chars: b.chars },
@@ -123,9 +114,7 @@
     const seen = new Set();
     const out = [];
     const raw = String(text || '');
-    let m;
-    PLACEHOLDER_RE.lastIndex = 0;
-    while ((m = PLACEHOLDER_RE.exec(raw)) !== null) {
+    for (const m of raw.matchAll(PLACEHOLDER_RE)) {
       const item = m[0].trim();
       if (!seen.has(item)) {
         seen.add(item);
@@ -170,7 +159,7 @@
     const structure = {
       hasRole: /(роль|role|ты\s+[—-]|you are|выступи)/i.test(joined),
       hasContext: /(контекст|context|background|исходные данные)/i.test(joined),
-      hasTask: /(задача|task|цель|нужно|сделай|проанализируй)/i.test(joined),
+      hasTask: /(задача|task|цель|сделай|проанализируй)/i.test(joined),
       hasConstraints: /(ограничения|constraints|правила|rules|не\s+делай|нельзя|обязательно)/i.test(joined),
       hasOutputFormat: /(формат|output|вывод|ответ в формате|структура ответа|json|markdown)/i.test(joined),
       disciplineScore: 0

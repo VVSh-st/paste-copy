@@ -1198,7 +1198,7 @@ window.LLMCore = (() => {
       const selectedId = _ensureStorageSelection();
       list.innerHTML = '';
       if (!entries.length) {
-        list.innerHTML = '<div class="llm-storage-empty">Пока здесь пусто. Нажмите «Добавить промпт», чтобы собрать свою библиотеку готовых шаблонов.</div>';
+        list.innerHTML = '<div class="llm-storage-empty">Пока здесь пусто. Нажмите ＋, чтобы добавить запись.</div>';
         _set('llm-storage-title', '');
         _set('llm-storage-model-hint', '');
         _set('llm-storage-notes', '');
@@ -1237,59 +1237,6 @@ window.LLMCore = (() => {
       const updated = document.getElementById('llm-storage-updated');
       if (updated) updated.textContent = 'обновлено ' + _formatStorageTime(meta.updatedAt);
       _updateStorageActionState();
-    }
-    function _showStoragePanel() {
-      const panel = document.getElementById('llm-prompt-storage-panel');
-      const editor = document.getElementById('llm-prompt-editor');
-      const warnings = document.getElementById('llm-prompt-warnings');
-      const actions = document.querySelector('.llm-prompt-actions');
-      const test = document.querySelector('.llm-prompt-test');
-      const meta = document.getElementById('llm-prompt-meta');
-      const section = document.getElementById('llm-prompt-section-title');
-      const title = document.getElementById('llm-prompt-title');
-      const status = document.getElementById('llm-prompt-status');
-      const card = document.querySelector('.llm-prompt-card');
-      if (panel) panel.hidden = false;
-      if (editor) editor.hidden = true;
-      if (warnings) warnings.hidden = true;
-      if (actions) actions.hidden = true;
-      if (test) test.hidden = true;
-      if (card) card.classList.add('llm-prompt-card-storage');
-      if (meta) {
-        meta.hidden = true;
-        meta.innerHTML = '';
-      }
-      if (section) section.textContent = 'Хранилище';
-      if (title) title.textContent = 'Библиотека готовых промптов';
-      if (status) {
-        status.hidden = true;
-        status.className = 'llm-prompt-status llm-prompt-status-default';
-        status.innerHTML = '<span aria-hidden="true">◌</span>';
-        status.setAttribute('aria-label', 'Хранилище');
-        status.title = 'Хранилище';
-      }
-      _clearDangerButton(document.getElementById('llm-storage-delete'), '✕', 'Удалить запись');
-      _renderStorageEditor();
-    }
-    function _hideStoragePanel() {
-      const panel = document.getElementById('llm-prompt-storage-panel');
-      const editor = document.getElementById('llm-prompt-editor');
-      const warnings = document.getElementById('llm-prompt-warnings');
-      const actions = document.querySelector('.llm-prompt-actions');
-      const test = document.querySelector('.llm-prompt-test');
-      const meta = document.getElementById('llm-prompt-meta');
-      const section = document.getElementById('llm-prompt-section-title');
-      const status = document.getElementById('llm-prompt-status');
-      const card = document.querySelector('.llm-prompt-card');
-      if (panel) panel.hidden = true;
-      if (editor) editor.hidden = false;
-      if (warnings) warnings.hidden = false;
-      if (actions) actions.hidden = false;
-      if (test) test.hidden = false;
-      if (card) card.classList.remove('llm-prompt-card-storage');
-      if (meta) meta.hidden = false;
-      if (status) status.hidden = false;
-      if (section) section.textContent = 'Системный промпт';
     }
     function _addStorageEntry(seed = null) {
       const entries = _getStorageEntries();
@@ -1398,19 +1345,6 @@ window.LLMCore = (() => {
       const custom = _State.getLayout()?.llm?.customPrompts ?? {};
       list.innerHTML = '';
 
-      const controls = document.createElement('div');
-      controls.className = 'llm-prompt-group-controls';
-      controls.innerHTML = '<button type="button" data-action="expand">Развернуть</button><button type="button" data-action="collapse">Свернуть</button>';
-      controls.addEventListener('click', e => {
-        const btn = e.target.closest('button[data-action]');
-        if (!btn) return;
-        const groups = _getPromptGroupList();
-        if (btn.dataset.action === 'collapse') groups.forEach(group => _promptCollapsedGroups.add(group.label));
-        else _promptCollapsedGroups.clear();
-        _renderPromptFnList();
-      });
-      list.appendChild(controls);
-
       _getPromptGroupList().forEach(group => {
         const keys = group.keys.filter(key => key === STORAGE_GROUP_KEY || BUILTIN_PROMPTS[key] != null);
         if (!keys.length) return;
@@ -1438,7 +1372,7 @@ window.LLMCore = (() => {
         title.className = 'llm-prompt-group-title';
         title.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
         title.setAttribute('aria-controls', bodyId);
-        title.innerHTML = `<span class="llm-prompt-group-chevron" aria-hidden="true">▾</span><span>${_esc(group.label)}</span><span class="llm-prompt-group-count">${keys.length}</span>${changedCount ? `<span class="llm-prompt-group-mark changed">${changedCount} изм</span>` : ''}${issueCount ? `<span class="llm-prompt-group-mark risk">${issueCount} риск</span>` : ''}`;
+        title.innerHTML = `<span class="llm-prompt-group-chevron" aria-hidden="true">▾</span><span>${_esc(group.label)}</span><span class="llm-prompt-group-count">${keys.length}</span>${changedCount ? `<span class="llm-prompt-group-mark changed" title="${changedCount} изменений">${changedCount}</span>` : ''}${issueCount ? `<span class="llm-prompt-group-mark risk" title="${issueCount} с риском">${issueCount}</span>` : ''}`;
         title.addEventListener('click', () => {
           if (_promptCollapsedGroups.has(group.label)) _promptCollapsedGroups.delete(group.label);
           else _promptCollapsedGroups.add(group.label);
@@ -1469,7 +1403,8 @@ window.LLMCore = (() => {
           btn.dataset.key = key;
           btn.setAttribute('aria-current', key === selectedKey ? 'true' : 'false');
           const statusClass = state.level === 'error' || state.level === 'risk' ? state.level : (isCustom ? 'changed' : 'default');
-          const statusText = state.level === 'error' || state.level === 'risk' ? state.label : (isCustom ? 'изм' : state.label);
+          const statusText = state.level === 'error' || state.level === 'risk' ? state.label : (isCustom ? 'изм' : 'по умолч.');
+          btn.title = meta.short || meta.title;
           btn.innerHTML = `<span class="llm-prompt-fn-main"><span class="llm-prompt-fn-title">${_esc(meta.title)}</span><span class="llm-prompt-fn-desc">${_esc(meta.short)}</span></span><span class="llm-prompt-mini-status ${statusClass}" title="${_esc(statusText)}" aria-label="${_esc(statusText)}">${_statusIcon(statusClass)}</span>`;
           btn.addEventListener('click', () => _selectPromptKey(key));
           body.appendChild(btn);
@@ -1485,44 +1420,75 @@ window.LLMCore = (() => {
     function _selectPromptKey(key, keepFocus = false) {
       const ed = document.getElementById('llm-prompt-editor');
       if (!ed) return;
+      const panel = document.getElementById('llm-prompt-storage-panel');
+      const warnings = document.getElementById('llm-prompt-warnings');
+      const actions = document.querySelector('.llm-prompt-actions');
+      const test = document.querySelector('.llm-prompt-test');
+      const meta = document.getElementById('llm-prompt-meta');
+      const title = document.getElementById('llm-prompt-title');
+      const status = document.getElementById('llm-prompt-status');
+      const card = document.querySelector('.llm-prompt-card');
+
+      // Единая точка: скрыть всё, потом показать ровно один layout
+      if (panel) panel.hidden = true;
+      ed.hidden = false;
+      if (warnings) warnings.hidden = false;
+      if (actions) actions.hidden = false;
+      if (test) test.hidden = false;
+      if (card) card.classList.remove('llm-prompt-card-storage');
+      if (meta) meta.hidden = false;
+      if (status) status.hidden = false;
+
+      // Подсветка выбранного элемента
+      document.querySelectorAll('.llm-prompt-fn-item').forEach(btn => {
+        const active = btn.dataset.key === key;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-current', active ? 'true' : 'false');
+      });
+
       if (key === STORAGE_GROUP_KEY) {
         const fallbackKey = _lastNonStoragePromptKey && BUILTIN_PROMPTS[_lastNonStoragePromptKey]
           ? _lastNonStoragePromptKey
           : Object.keys(BUILTIN_PROMPTS)[0];
         ed.dataset.key = STORAGE_GROUP_KEY;
         ed.dataset.applyKey = fallbackKey;
-        document.querySelectorAll('.llm-prompt-fn-item').forEach(btn => {
-          const active = btn.dataset.key === key;
-          btn.classList.toggle('active', active);
-          btn.setAttribute('aria-current', active ? 'true' : 'false');
-        });
-        _showStoragePanel();
+        // Показать storage, скрыть editor
+        if (panel) panel.hidden = false;
+        ed.hidden = true;
+        if (warnings) warnings.hidden = true;
+        if (actions) actions.hidden = true;
+        if (test) test.hidden = true;
+        if (card) card.classList.add('llm-prompt-card-storage');
+        if (meta) { meta.hidden = true; meta.innerHTML = ''; }
+        if (title) title.textContent = 'Хранилище';
+        if (status) {
+          status.hidden = true;
+          status.className = 'llm-prompt-status-badge default';
+          status.innerHTML = '<span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">хранилище</span>';
+          status.setAttribute('aria-label', 'Хранилище');
+          status.title = 'Хранилище';
+        }
+        _clearDangerButton(document.getElementById('llm-storage-delete'), '✕', 'Удалить запись');
+        _renderStorageEditor();
         if (!keepFocus) document.getElementById('llm-storage-title')?.focus();
         return;
       }
       if (!BUILTIN_PROMPTS[key]) return;
       _lastNonStoragePromptKey = key;
-      _hideStoragePanel();
       const custom = _State.getLayout()?.llm?.customPrompts ?? {};
-      const meta = PROMPT_META[key] ?? _promptFallbackMeta(key);
+      const metaObj = PROMPT_META[key] ?? _promptFallbackMeta(key);
       ed.value = custom[key] ?? BUILTIN_PROMPTS[key] ?? '';
       ed.dataset.key = key;
       ed.dataset.applyKey = key;
-      document.querySelectorAll('.llm-prompt-fn-item').forEach(btn => {
-        const active = btn.dataset.key === key;
-        btn.classList.toggle('active', active);
-        btn.setAttribute('aria-current', active ? 'true' : 'false');
-      });
-      const title = document.getElementById('llm-prompt-title');
-      const metaBox = document.getElementById('llm-prompt-meta');
-      if (title) title.textContent = meta.title;
-      if (metaBox) {
-        const vars = meta.vars?.length ? meta.vars.map(v => `<code>{${_esc(v)}}</code>`).join(' ') : 'нет';
-        metaBox.innerHTML =
-          `<div><b>Группа:</b> ${_esc(meta.group)}</div>` +
-          `<div><b>Где используется:</b> ${_esc(meta.usedIn)}</div>` +
-          `<div><b>Ожидаемый ответ:</b> ${_esc(meta.output)}</div>` +
-          `<div><b>Нельзя удалять:</b> ${vars}</div>`;
+      if (title) title.textContent = metaObj.title;
+      if (meta) {
+        const vars = metaObj.vars?.length ? metaObj.vars.map(v => `<code>{${_esc(v)}}</code>`).join(' ') : 'нет';
+        meta.innerHTML =
+          `<span>${_esc(metaObj.group)}</span>` +
+          `<span class="llm-prompt-meta-sep">·</span>` +
+          `<span title="${_esc(metaObj.usedIn)}">${_esc(metaObj.usedIn)}</span>` +
+          `<span class="llm-prompt-meta-sep">·</span>` +
+          `<span>Переменные: ${vars}</span>`;
       }
       _updatePromptStatus();
       if (!keepFocus) ed.focus();
@@ -1548,8 +1514,8 @@ window.LLMCore = (() => {
       if (!ed || !st) return;
       const key = ed.dataset.key;
       if (key === STORAGE_GROUP_KEY) {
-        st.className = 'llm-prompt-status llm-prompt-status-default';
-        st.innerHTML = `<span aria-hidden="true">${_statusIcon('default')}</span>`;
+        st.className = 'llm-prompt-status-badge default';
+        st.innerHTML = '<span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">хранилище</span>';
         st.setAttribute('aria-label', 'Хранилище');
         st.title = 'Хранилище';
         if (warn) warn.innerHTML = '';
@@ -1559,10 +1525,10 @@ window.LLMCore = (() => {
       const isCustom = Object.prototype.hasOwnProperty.call(custom, key);
       const changedInEditor = ed.value !== (BUILTIN_PROMPTS[key] ?? '');
       const state = _validatePrompt(key, ed.value);
-      const label = state.level === 'error' ? state.label : (isCustom || changedInEditor ? 'изменён' : 'по умолчанию');
+      const label = state.level === 'error' ? state.label : (isCustom || changedInEditor ? 'изменён' : 'по умолч.');
       const statusKind = state.level === 'error' ? 'error' : state.level === 'risk' ? 'risk' : (isCustom || changedInEditor ? 'changed' : 'default');
-      st.className = 'llm-prompt-status llm-prompt-status-' + statusKind;
-      st.innerHTML = `<span aria-hidden="true">${_statusIcon(statusKind)}</span>`;
+      st.className = 'llm-prompt-status-badge ' + statusKind;
+      st.innerHTML = `<span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">${_esc(label)}</span>`;
       st.setAttribute('aria-label', label);
       st.title = label;
       if (warn) warn.innerHTML = state.warnings.map(w => `<div>${_esc(w)}</div>`).join('');
@@ -1595,9 +1561,11 @@ window.LLMCore = (() => {
       window.Toast?.show('Промпт сброшен к дефолту ✓', 'success');
     }
     function _resetAllPrompts() {
+      const menuEl = document.querySelector('.llm-prompt-menu');
       const btn = document.getElementById('llm-prompt-reset-all');
-      if (!_armDangerButton(btn, '✕ Сбросить?')) return;
+      if (!_armDangerButton(btn, 'Точно сбросить?')) return;
       _clearDangerButton(btn, '↺ Сбросить все', 'Сбросить все пользовательские системные промпты');
+      if (menuEl) { menuEl.classList.remove('open'); }
       const lay = _State.getLayout();
       _State.setLayout({ llm: { ...(lay?.llm ?? {}), customPrompts: {} } });
       _renderPromptFnList();
@@ -1776,9 +1744,34 @@ tags.push({
       document.getElementById('llm-storage-apply')?.addEventListener('click', _applyStorageToCurrentPrompt);
       document.getElementById('llm-prompt-copy-default')?.addEventListener('click', _copyDefaultPrompt);
       document.getElementById('llm-prompt-reset')?.addEventListener('click', _resetPrompt);
-      document.getElementById('llm-prompt-reset-all')?.addEventListener('click', _resetAllPrompts);
       document.getElementById('llm-prompt-save')?.addEventListener('click', _savePrompt);
       document.getElementById('llm-prompt-test-run')?.addEventListener('click', _testPrompt);
+      // Dropdown menu toggle
+      const menuTrigger = document.getElementById('llm-prompt-menu-trigger');
+      const menuEl = document.querySelector('.llm-prompt-menu');
+      if (menuTrigger && menuEl) {
+        menuTrigger.addEventListener('click', e => {
+          e.stopPropagation();
+          const opening = !menuEl.classList.contains('open');
+          menuEl.classList.toggle('open');
+          menuTrigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        });
+        function closePromptMenu(e) {
+          if (!menuEl.classList.contains('open')) return;
+          if (menuTrigger.contains(e.target) || menuEl.contains(e.target)) return;
+          menuEl.classList.remove('open');
+          menuTrigger.setAttribute('aria-expanded', 'false');
+          document.removeEventListener('click', closePromptMenu);
+        }
+        document.addEventListener('click', closePromptMenu);
+        document.addEventListener('keydown', e => {
+          if (e.key === 'Escape' && menuEl.classList.contains('open')) {
+            menuEl.classList.remove('open');
+            menuTrigger.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
+      document.getElementById('llm-prompt-reset-all')?.addEventListener('click', _resetAllPrompts);
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
       ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
       document.getElementById('llm-text-lint-settings')?.addEventListener('change', e => {

@@ -190,7 +190,8 @@ const NinjaCursor = (() => {
       this._lastPos    = null;
       this._styleCount = 0;
       this._busy       = false;
-      this._needResync = false; // [FIX] deferred resync flag
+      this._needResync = false;
+      this._disposed   = false;
       this._handlers   = [];
       this._datumEl    = null;
       this._scrollBusy = false;
@@ -247,17 +248,11 @@ const NinjaCursor = (() => {
       return false;
     }
 
-    async _onInput(e, options = {}) {
-      if (this._busy) {
-        // =scroll resync=
-        if (e === null) this._needResync = true;
-        return;
-      }
+    async _runTick(after, opts = {}) {
+      if (this._busy) { this._needResync = true; return; }
       this._busy = true;
       try {
-        await this._tick(e, options);
-
-        // =deferred resync=
+        await this._tick(after, opts);
         if (this._needResync) {
           this._needResync = false;
           await this._tick(null, { animate: false });
@@ -269,26 +264,19 @@ const NinjaCursor = (() => {
       }
     }
 
-    async _resync({ animate = false } = {}) {
-      if (this._busy) {
+    _onInput(e, options = {}) {
+      if (this._busy && e !== null && this._isEditTarget(e?.target)) {
         this._needResync = true;
-        return;
       }
-      this._busy = true;
-      try {
-        await this._tick(null, { animate });
-        if (this._needResync) {
-          this._needResync = false;
-          await this._tick(null, { animate });
-        }
-      } catch (err) {
-        if (typeof console !== 'undefined') console.debug('[NinjaCursor]', err);
-      } finally {
-        this._busy = false;
-      }
+      return this._runTick(e, options);
+    }
+
+    _resync({ animate = false } = {}) {
+      return this._runTick(null, { animate });
     }
 
     async _tick(e, options = {}) {
+      if (this._disposed) return;
       const target = e?.target;
 
       // Hide cursor if focus left editable areas
@@ -315,6 +303,8 @@ const NinjaCursor = (() => {
 
       // Let the browser update selection after the event
       await new Promise(res => requestAnimationFrame(res));
+
+      if (this._disposed) return;
 
       if (!this._datumEl || !this._datumEl.isConnected) {
         this._datumEl = null;
@@ -356,6 +346,7 @@ const NinjaCursor = (() => {
 
     _hide() {
       this._wrapper.style.setProperty('--nc-vis', 'hidden');
+      this._lastPos = null;
       if (this._cursor) this._cursor.className = 'nc-caret';
     }
 
@@ -401,7 +392,7 @@ const NinjaCursor = (() => {
       this._lastPos = rect;
 
       requestAnimationFrame(() => {
-        // Only re-assign className to restart the CSS animation
+        if (this._disposed) return;
         if (this._cursor) {
           this._cursor.className = `nc-caret nc-caret-${this._styleCount}`;
         }
@@ -412,20 +403,18 @@ const NinjaCursor = (() => {
       if (!this._datumEl) return;
 
       // =scroll guard=
-      // Во время скролла декоративный курсор не должен компенсировать позицию:
-      // иначе fixed-слой визуально «ездит» по экрану отдельно от поля ввода.
       this._hide();
 
       if (this._scrollBusy) return;
       this._scrollBusy = true;
 
-      const MAX_SCROLL_FRAMES = 90; // ~1.5s @ 60fps
+      const MAX_SCROLL_FRAMES = 90;
       const tick = (prev, frame = 0) => {
         requestAnimationFrame(() => {
-          if (!this._datumEl || !this._datumEl.isConnected || frame > MAX_SCROLL_FRAMES) {
+          if (this._disposed || !this._datumEl || !this._datumEl.isConnected || frame > MAX_SCROLL_FRAMES) {
             this._datumEl    = null;
             this._scrollBusy = false;
-            this._resync({ animate: false });
+            if (!this._disposed) this._resync({ animate: false });
             return;
           }
           try {
@@ -450,6 +439,7 @@ const NinjaCursor = (() => {
     }
 
     destroy() {
+      this._disposed = true;
       for (const { target, type, fn, opts } of this._handlers) {
         target.removeEventListener(type, fn, opts);
       }
