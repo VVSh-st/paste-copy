@@ -784,7 +784,14 @@ const Preview = (() => {
 
     const entries = [];
 
-    (tab.blocks || []).forEach(b => {
+    // Sort by column (left→right) then position — same as getText() preview order
+    const ordered = (tab.blocks || []).slice().sort((a, b) => {
+      const ca = a.column || 0, cb = b.column || 0;
+      if (ca !== cb) return ca - cb;
+      return (tab.blocks || []).indexOf(a) - (tab.blocks || []).indexOf(b);
+    });
+
+    ordered.forEach(b => {
       if (b.type === 'commands' || b.type === 'variable') return;
       if (b.type === 'todo' || b.type === 'table') {
         if (b.previewDisabled === true) return;
