@@ -92,8 +92,10 @@ const SquareTimer = (() => {
 
   function _ensurePaths() {
     if (_radius == null) _readRadius();
+    if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
     if (_pathCW == null)  _pathCW  = _buildPath('cw');
     if (_pathCCW == null) _pathCCW = _buildPath('ccw');
+    return true;
   }
 
   function _invalidateCaches() {
@@ -516,7 +518,7 @@ const SquareTimer = (() => {
     if (!arcTail) return;
     arcSvg.style.display = 'block';
 
-    _ensurePaths();
+    if (!_ensurePaths()) return;
     const d = dir === 'cw' ? _pathCW : _pathCCW;
     if (!d) return;
 
