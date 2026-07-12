@@ -19,77 +19,97 @@
 
 | # | Категория | Что исправлено |
 |---|-----------|---------------|
-| **#1/#2** | важно | Устаревшая подсказка (вкладка/текст изменился) удаляется из `lastSuggestions`/`lastMenuSuggestions` после `refresh()` — пользователь не видит её повторно |
-| **#4** | важно | `hasMeaningfulDiff` — diff выбирается по типу suggestion (`pinned-baseline-compare` → `pinnedBaselineDrift`, `named-version-compare` → `namedVersionDrift`), а не первый попавшийся |
-| **#5** | минорно | Ключи дедупа в `prepareSuggestions` теперь включают `prev.id` как fallback |
-| **#7** | минорно | `computeFinality` — добавлен `Number.isFinite(score)` guard |
+| **#1/#2** | важно | Устаревшая подсказка удаляется из `lastSuggestions`/`lastMenuSuggestions` после `refresh()` |
+| **#4** | важно | `hasMeaningfulDiff` — diff выбирается по типу suggestion |
+| **#5** | минорно | Ключи дедупа в `prepareSuggestions` включают `prev.id` как fallback |
+| **#7** | минорно | `computeFinality` — `Number.isFinite(score)` guard |
 | **#8** | важно | `refresh()` — `lastRefreshSnapshotKey` обновляется только при успешном `captureSnapshot` |
 
-**Пропущено:** #3 (blockCount>=2 — продуктовое решение), #6 (parsePlacementChoice — не требуется), #9 (Map-итерация — ES2015+ безопасно), #10 (version-timeline строка — уже защищена `skipped > 0`), #11 (escapeHtml — внутренний код), #12 (prompt() — низкий приоритет).
+### Emoji Picker — полная реализация (задания 4-17)
 
-### Пасхалка таймера (easter egg)
+**Файл:** `emoji-picker.js` (~900 строк)
 
-`_playCompletionSound()` → добавлен `ctx.resume()` для AudioContext.
+**Архитектура:** IIFE, zero dependencies, CSS-in-JS. `_EMOJI_UNIQUE` — дедуплицированный массив. 11-уровневый PRIORITY sorting.
 
-### Save-to-txt задержка (2-4 сек)
+**Фичи:** поиск по name/tags/aliases, acronym/fuzzy/cycle match, shortcode, `::` sticky, DOM-diffing, recents (частотно-взвешенные), canvas-мера с кешем, debounce 35ms.
 
-`ta.onblur` временно снимается перед скачиванием и восстанавливается через 1 сек.
+**Команды:** навигация (`:настройки`, `:промпты`, `:бро`, `:автопоэт`, `:разное`) + блоки (`:текстовый`, `:сниппеты`, `:группа`, `:переменная`, `:заметка`, `:чеклист`, `:таблица`). Блоки фокусируют созданный элемент через `_focusBlock()`.
 
-### Системные промпты — редизайн вкладки (#ltab-prompts)
+**Фиксы (аудиты 3-17):** `_insert` TypeError, команды убирают триггер, Escape, дедупликация, clone box-sizing, `_triggerStart`, width reset, resize close, `destroy()`, `_position` cache.
 
-**Спека:** `Задание_промпты.md`
+### Таймер — CPU-оптимизация (задания 3)
 
-**Изменения:**
-- **CSS**: единый accent цвет, статус-бейджи, дропдаун меню, компактные строки, anti-jump
-- **HTML**: новая шапка, дропдаун `⋮`, иконки
-- **JS**: `_selectPromptKey` единая точка видимости, удалён `_showStoragePanel`/`_hideStoragePanel`
+**6 оптимизаций:**
+1. `maskImage` conic-gradient → `opacity: 0.55`
+2. `getPointAtLength()` 60/сек → кэш 400 точек через временный SVG path (приаттачен в arcSvg)
+3. `_applyWarmGlow` inline `drop-shadow` → CSS-класс `.timer-warm`
+4. `btn.offsetWidth/Height` кэшированы (убран Forced Reflow)
+5. 60fps → throttle ~30fps
+6. `setAttribute('d')` только при смене CW/CCW
 
-### Аудиторские фиксы модулей
+**Доп. фиксы:** `_perim` удалён (периметр из `_pts.len`), `_lastTs = 0` в `startTick()`, opacity в блок смены направления, удалены неиспользуемые `_btnW`/`_btnH`.
 
-| Модуль | Что починено |
-|--------|-------------|
-| **user-memory.js** | Белый список в `normalizeProfile`, сброс `shown`/`score`, `Object.create(null)` |
-| **spell-check.js** | CRLF нормализация, `maskPlaceholders` offset, `AbortError` guard, per-chunk timeout |
-| **quality-detectors.js** | `matchAll`, DRY similarity, именованные константы |
-| **word-complete.js** | Gist dirty flush, double-build fix, scroll listener leak |
-| **ai-transform.js** | AbortError UI unlock, empty `_origText` guard |
-| **translator.js** | `restoreTemplates` backreference fix, `stats.totalChars` once |
-| **keyboard-trainer.js** | Clamp viewport, pointer guard, settings fix, drag fix, focus management |
-| **ninja-cursor.js** | Аудиторские фиксы |
+### Структура превью (фикс порядка)
 
-### Изменённые файлы (сессия)
+`_buildMenu()` в `ui.js` — блоки сортируются по колонке (left→right), как и в `getText()`.
+
+### Блоки — автоименование
+
+При добавлении текстового блока вместо `prompt()` генерируется `NEW 1`, `NEW 2`, ...
+
+### Хранилище — множественные банки (тикет 20)
+
+- `_getBanks/_saveBanks/_getBankEntries/_saveBankEntries/_ensureActiveBank/_addBank`
+- `_isStorageKey(key)` для guard'ов (ключ `__storage__:<bankId>`)
+- Миграция legacy `entries[]` → `banks[]`
+- Переключатель банков в шапке карточки (бейдж + dropdown + создание)
+
+### Мини-чат — улучшения
+
+- **Ширина сообщений:** `width: 100%` на `.llm-chat-msg.assistant` — текст растягивается при ресайзе
+- **Долгий клик "Новый чат":** 600ms → удаление текущей сессии (без confirm). Tooltip с подсказкой
+- **Геометрия:** позиция/размер сохраняются в localStorage, восстанавливаются при открытии
+
+### Настройки LLM — пакет правок (тикеты 18-19)
+
+- `[hidden]` override для `#llm-prompt-storage-panel`
+- `flex: 0 0 auto` для `.llm-prompt-test`
+- `#llm-prompt-editor` ID-селектор (фикс видимости промпта записи)
+- Кнопка "+" в `.llm-storage-inline-actions` с разделителем
+- Подменю "Вставить из хранилища" в ⋮
+- Перестановка "Общее" по значимости
+- "Якоря" внутри `.llm-misc-col-middle`
+- Палитра быстрого выбора цвета (6 свотчей)
+- `getSettingMeta` reorder — безопасные первые, рисковые внизу
+
+## Изменённые файлы (сессия)
 
 | Файл | Изменения |
 |------|-----------|
-| `intelligence-core.js` | Стale suggestion removal, hasMeaningfulDiff cross-type, snapshot key poisoning, NaN guard, dedup key |
-| `styles.css` | Редизайн промптов: anti-jump, статус-бейджи, дропдаун; **Фаза 0**: фикс размера модалки, toggle-switch CSS; **Фаза 0.3 rev**: горизонтальные табы с зелёным underline; **Фаза 1**: зелёный акцент #00b96b, кнопка + в шапке карточки, storage 190px, flex topbar |
-| `index.html` | Структура `#ltab-prompts`: шапка, дропдаун, иконки; **Фаза 1**: кнопка + в шапке карточки, удалена обёртка `.llm-storage-header` |
-| `llm-core.js` | `_selectPromptKey` единая точка видимости, дропдаун `⋮`; **Фаза 1**: показ/скрытие кнопки + в storage |
-| `emoji-picker.js` | **Новый**: эмодзи-пикер по ":" с русскими названиями, зелёный accent, прокрутка. **Аудит MiniMax-M3**: исправлены критические данные (спасибо→🙏, мольба→🤲, пожалуйста→🥹), дубликаты (молния→гроза, гирлянда→🎍, подарок удалён), XSS (innerHTML→textContent), isComposing guard, aria-activedescendant, пустое состояние, tag scoring |
-| `user-memory.js` | Белый список, сброс shown/score, Object.create(null) |
-| `spell-check.js` | CRLF, maskPlaceholders, AbortError, per-chunk timeout |
-| `quality-detectors.js` | matchAll, DRY, константы |
-| `word-complete.js` | Gist dirty, double-build, scroll leak |
-| `ai-transform.js` | AbortError unlock, _origText guard |
-| `translator.js` | backreference fix, totalChars once |
-| `keyboard-trainer.js` | Clamp, pointer guard, settings, drag, focus |
-| `ninja-cursor.js` | Аудиторские фиксы |
-| `app.js` | Hotkey `!inField` guard for Z/Y/T/W |
-| `ui.js` | `_dragTabId` IIFE scope, `hadFocus` rename exclusion |
-| `state.js` | fontSize 12→13.5 in migrate |
-| `timer.js` | `_ensurePaths` zero-size, AudioContext resume |
-| `blocks.js` | Table copy SUBTABS_COUNT, save-to-txt blur skip |
-| `text-expander.js` | Мелкие аудиторские фиксы |
+| `styles.css` | Редизайн промптов; toggle-switch, горизонтальные табы, зелёный accent; `[hidden]` для storage panel; flex:0 0 auto для test; divider CSS, подменю-стили, color swatches; банки CSS; `.timer-warm` класс; chat `width:100%` |
+| `index.html` | Кнопка + в inline-actions, подменю хранилища в ⋮, color swatches, reorder Общее, Якоря в middle-col, bank switcher UI, tooltip "Новый чат" |
+| `llm-core.js` | Банки: `_getBanks/_saveBanks/_addBank/_isStorageKey/_bankIdFromKey`, `_activeBankId`, миграция, bank switcher handlers, `_renderInsertStorageMenu`, color swatches handler |
+| `llm-features.js` | `_deleteSession/_clearCurrentSession`, long-press delete, chat geometry persistence (save/restore win position+size) |
+| `ui.js` | Structure menu column sort order |
+| `state.js` | `addBlock` возвращает ID; автоименование `NEW N` |
+| `emoji-picker.js` | `_focusBlock()` — double rAF, broad selector chain (textarea → .table-cell → input), команды блоков фокусируют созданный элемент |
+| `timer.js` | CPU-opt: opacity вместо maskImage, кэш точек через temp SVG path, CSS-class warm glow, throttle 30fps, `d`-set only on dir change, `_perim` удалён, `_lastTs` reset |
+| `text-linter.js` | getSettingMeta reorder — safe items first, risky grouped at bottom |
 
 ## Как работает
-- **KeyboardTrainer**: singleton-панель → toggle → keydown → flash + auto RU/EN → drag/resize → настройки → ghost/slim/on-screen/problem/focus/mouse-through → зоны пальцев → shifted → цвет → прозрачность → stay visible → экстранный режим
-- **Timer easter egg**: клик → count up 0..99 → 3-мин pulse → звук → auto-countdown 99..0
-- **Intelligence**: `intelligence-core.js` = events + context snapshot + scoring + prediction → `smart-suggestions.js` = UI strip + menu
+
+- **EmojiPicker**: `:` → palette → filter (11 приоритетов) → DOM-diff → insert/close. `::` = sticky. Команды → `State.addBlock()` → `_focusBlock(id)` (double rAF + broad selector). Recents в localStorage с частотным весом.
+- **Storage Banks**: `_getBanks()` → `promptStorage.banks[]` (миграция с `entries[]`). Каждый банк `{id, name, entries[]}`. `_activeBankId` определяет текущий. Переключатель в шапке карточки. `_isStorageKey(key)` для guard'ов.
+- **Timer CPU**: 30fps throttle, кэш 400 точек, CSS-class warm glow, opacity вместо maskImage, `d`-set only on dir change.
+- **Mini-чат**:消息 `width:100%` + `max-width:88%`, долгий клик "Новый чат" → удаление, геометрия в localStorage.
 
 ## Следующий шаг
-1. Проверить эмодзи-пикер в браузере — `:улыбка`, навигация, вставка
-2. Проверить настройку "Эмодзи по ":"" в Разное — вкл/выкл
-3. Проверить модалку «Настройки LLM» — зелёный акцент, тумблеры, табы
-4. Проверить режим «Хранилище» — кнопка +, поле 190px
-5. Проверить клавиатуру в браузере
-6. Проверить «Сохранить в .txt» — задержка
+
+1. Проверить emoji picker — `:улыбка`, `::улыбка`, команды блоков фокусируют созданный элемент
+2. Проверить таймер — CPU нагрузка, warm glow, 30fps
+3. Проверить структуру превью — порядок блоков совпадает с текстом
+4. Проверить блоки — автоименование `NEW N`, фокус при создании через `:`
+5. Проверить хранилище — банки, миграция, подменю в ⋮, кнопка + с разделителем
+6. Проверить настройки — Общее reorder, Якоря в middle-col, цветовые свотчи
+7. Проверить мини-чат — ширина при ресайзе, долгий клик удаление, геометрия после F5
+8. Проверить локальную причёску — getSettingMeta порядок (safe → risky)
