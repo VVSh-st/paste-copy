@@ -49,6 +49,14 @@ const SquareTimer = (() => {
   let _cornerGlowActive = false;
   let _firedCorners = new Set();
 
+  // CPU optimization caches
+  let _btnW = 0, _btnH = 0;
+  let _cachedPtsCW = null, _cachedPtsCCW = null;
+  let _pts = null;
+  let _lastDir = null;
+  let _wasWarm = false;
+  let _lastTs = 0;
+
   // Pointerleave reference
   let _onPointerLeave = null;
 
@@ -93,9 +101,24 @@ const SquareTimer = (() => {
   function _ensurePaths() {
     if (_radius == null) _readRadius();
     if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
-    if (_pathCW == null)  _pathCW  = _buildPath('cw');
-    if (_pathCCW == null) _pathCCW = _buildPath('ccw');
+    if (_pathCW == null) {
+      _pathCW = _buildPath('cw');
+      _cachedPtsCW = _cachePoints(arcTail);
+    }
+    if (_pathCCW == null) {
+      _pathCCW = _buildPath('ccw');
+      _cachedPtsCCW = _cachePoints(arcTail);
+    }
+    _btnW = btn.offsetWidth;
+    _btnH = btn.offsetHeight;
     return true;
+  }
+  function _cachePoints(pathEl) {
+    const len = pathEl.getTotalLength();
+    const N = 400;
+    const pts = new Array(N + 1);
+    for (let i = 0; i <= N; i++) pts[i] = pathEl.getPointAtLength(len * i / N);
+    return { len, pts, N };
   }
 
   function _invalidateCaches() {
@@ -103,6 +126,11 @@ const SquareTimer = (() => {
     _pathCW = null;
     _pathCCW = null;
     _radius = null;
+    _cachedPtsCW = null;
+    _cachedPtsCCW = null;
+    _pts = null;
+    _lastDir = null;
+    if (btn) { _btnW = btn.offsetWidth; _btnH = btn.offsetHeight; }
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -200,7 +228,7 @@ const SquareTimer = (() => {
 
     if (_isBackground) {
       stopTick();
-      if (arcTail) arcTail.style.maskImage = '';
+      if (arcTail) arcTail.style.opacity = '';
       if (arcHeadSeg) arcHeadSeg.style.filter = '';
       if (arcHeadDot) arcHeadDot.style.filter = '';
       return;
@@ -381,8 +409,10 @@ const SquareTimer = (() => {
   function startTick() { stopTick(); rafId = requestAnimationFrame(_tickRAF); }
   function stopTick()  { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } }
 
-  function _tickRAF() {
+  function _tickRAF(ts) {
     if (!startTs || mode === null) return;
+    if (ts - _lastTs < 33) { rafId = requestAnimationFrame(_tickRAF); return; }
+    _lastTs = ts;
     const elapsed = (Date.now() - startTs) / 1000;
 
     if (mode === 'up') {
@@ -496,21 +526,11 @@ const SquareTimer = (() => {
 
   function _applyWarmGlow(progress) {
     if (_isBackground) return;
-    const ws = WARM_START_SEC / 60;
-    if (progress < ws) {
-      arcHeadSeg.style.filter = '';
-      arcHeadDot.style.filter = '';
-      return;
+    const warm = progress >= (WARM_START_SEC / 60);
+    if (warm !== _wasWarm) {
+      btn.classList.toggle('timer-warm', warm);
+      _wasWarm = warm;
     }
-    const t = (progress - ws) / (1 - ws);
-    const op = (t * 0.22).toFixed(3);
-    const r  = (1 + t * 4).toFixed(1);
-    const f  = [
-      'drop-shadow(0 0 2px rgba(79,142,247,0.5))',
-      `drop-shadow(0 0 ${r}px rgba(255,200,80,${op}))`
-    ].join(' ');
-    arcHeadSeg.style.filter = f;
-    arcHeadDot.style.filter = f;
   }
 
   /* ── основная отрисовка дуги ── */
@@ -523,8 +543,12 @@ const SquareTimer = (() => {
     const d = dir === 'cw' ? _pathCW : _pathCCW;
     if (!d) return;
 
-    arcTail.setAttribute('d', d);
-    arcHeadSeg.setAttribute('d', d);
+    if (_lastDir !== dir) {
+      arcTail.setAttribute('d', d);
+      arcHeadSeg.setAttribute('d', d);
+      _lastDir = dir;
+      _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
+    }
 
     if (_perim == null) _perim = arcTail.getTotalLength();
     const P = _perim;
@@ -543,44 +567,34 @@ const SquareTimer = (() => {
     arcHeadSeg.style.strokeDasharray  = hLen + ' ' + P;
     arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
-    // Точка-голова (еле заметная пульсация, цвет хвоста)
-    const pt = arcTail.getPointAtLength(headPos);
-    arcHeadDot.style.display = '';
-    arcHeadDot.setAttribute('cx', pt.x);
-    arcHeadDot.setAttribute('cy', pt.y);
-    arcHeadDot.setAttribute('r', '2');
+    // Точка-голова (из кэша вместо getPointAtLength)
+    if (_pts) {
+      const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
+      const pt = _pts.pts[idx];
+      arcHeadDot.style.display = '';
+      arcHeadDot.setAttribute('cx', pt.x);
+      arcHeadDot.setAttribute('cy', pt.y);
+      arcHeadDot.setAttribute('r', '2');
 
-    // Corner glow
-    _checkCornerGlow(headPos, P);
+      // Corner glow
+      _checkCornerGlow(headPos, P);
 
-    // Кометный след (только в foreground)
-    if (!_isBackground) {
-      const cx = btn.offsetWidth / 2;
-      const cy = btn.offsetHeight / 2;
-      const headDeg = Math.atan2(pt.x - cx, -(pt.y - cy)) * (180 / Math.PI);
-      if (dir === 'cw') {
-        const pct = ((headDeg % 360 + 360) % 360 / 360 * 100).toFixed(1);
-        arcTail.style.maskImage =
-          `conic-gradient(from 0deg at 50% 50%, rgba(0,0,0,0) 0%, rgba(0,0,0,1) ${pct}%)`;
-      } else {
-        const span = ((360 - (headDeg % 360 + 360) % 360) / 360 * 100).toFixed(1);
-        arcTail.style.maskImage =
-          `conic-gradient(from ${((headDeg % 360 + 360) % 360)}deg at 50% 50%, ` +
-          `rgba(0,0,0,1) 0%, rgba(0,0,0,0) ${span}%)`;
-      }
+      // Кометный след: opacity вместо maskImage (П.1)
+      arcTail.style.opacity = '0.55';
     }
 
     _applyWarmGlow(progress);
   }
 
   function _hideArc() {
-    if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.maskImage = ''; }
+    if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.opacity = ''; }
     if (arcHeadSeg) arcHeadSeg.style.display = 'none';
     if (arcHeadDot) arcHeadDot.style.display = 'none';
     if (_cornerGlowActive) {
       btn.classList.remove('timer-corner-glow');
       _cornerGlowActive = false;
     }
+    if (_wasWarm) { btn.classList.remove('timer-warm'); _wasWarm = false; }
   }
 
   /* ── idle ── */
@@ -599,7 +613,7 @@ const SquareTimer = (() => {
 
     arcSvg.style.display = 'none'; arcSvg.style.opacity = '';
     _hideArc();
-    arcTail.style.stroke = '';  arcTail.style.maskImage = '';
+    arcTail.style.stroke = '';  arcTail.style.opacity = '';
     arcHeadSeg.style.stroke = ''; arcHeadSeg.style.filter = '';
     arcHeadDot.style.fill = '';  arcHeadDot.style.filter = '';
 

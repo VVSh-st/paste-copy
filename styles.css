@@ -208,6 +208,13 @@ body {
   display: none !important;
 }
 
+/* ── Warm glow через класс (CPU-оптимизация) ── */
+#btn-timer.timer-warm .timer-arc-head-segment,
+#btn-timer.timer-warm .timer-arc-head-dot {
+  filter: drop-shadow(0 0 3px rgba(255,200,80,0.5));
+  transition: filter .5s;
+}
+
 /* ── Цифра: металлический градиент + deep shadow ── */
 #btn-timer .timer-value {
   position: absolute; inset: 0;
