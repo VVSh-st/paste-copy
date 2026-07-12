@@ -754,8 +754,7 @@
     const ta = _ta;
     if (item.e.type === 'command') {
       const pos = ta.selectionStart;
-      const start = (_triggerStart > 0 && ta.value[_triggerStart - 1] === ' ') ? _triggerStart - 1 : _triggerStart;
-      ta.setRangeText('', start, pos, 'end');
+      ta.setRangeText('', _triggerStart, pos, 'end');
       ta.dispatchEvent(new Event('input'));
       _close();
       if (typeof item.e.action === 'function') item.e.action();
@@ -763,8 +762,7 @@
     }
     _pushRecent(item.e.emoji);
     const pos = ta.selectionStart;
-    const start = (_triggerStart > 0 && ta.value[_triggerStart - 1] === ' ') ? _triggerStart - 1 : _triggerStart;
-    ta.setRangeText(item.e.emoji + ' ', start, pos, 'end');
+    ta.setRangeText(item.e.emoji + ' ', _triggerStart, pos, 'end');
     ta.dispatchEvent(new Event('input'));
     _close();
     ta.focus();
@@ -805,7 +803,8 @@
     const m = before.match(/(^|[\n\s]):([^\s\n:]{1,32}):?$/);
     if (m) {
       const query = m[2].toLowerCase();
-      _triggerStart = pos - m[2].length - 1;
+      const isDouble = before[before.length - m[0].length - 1] === ':';
+      _triggerStart = isDouble ? pos - m[0].length - 1 : pos - m[2].length - 1;
       _render(ta, query);
     } else {
       if (_palette) _close();
