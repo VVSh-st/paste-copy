@@ -838,7 +838,7 @@ window.LLMCore = (() => {
       _syncAutoPoet();
       if (tabName) _switchTab(tabName);
       if (!_bound) { _bindEvents(); _bound = true; }
-      requestAnimationFrame(() => modal.querySelector('button, input, select, textarea')?.focus());
+      requestAnimationFrame(() => (modal.querySelector('.llm-tab.active') || modal.querySelector('.llm-tab') || modal.querySelector('button, input, select, textarea'))?.focus());
     }
     function close() { const modal = document.getElementById('llm-settings-modal'); if (modal) modal.style.display = 'none'; document.querySelectorAll('.confirm-pending').forEach(btn => _clearDangerButton(btn)); }
     function _switchTab(name) {

@@ -1261,6 +1261,7 @@ textarea.block-textarea:focus {
   background: transparent; border: none; color: var(--text3);
   padding: 5px; border-radius: var(--radius-sm); cursor: pointer;
   transition: color var(--trans), background var(--trans);
+  outline: none;
 }
 .modal-close:hover { color: var(--red); background: rgba(224,92,106,0.12); }
 .modal-body { padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 12px; }
