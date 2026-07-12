@@ -2147,23 +2147,23 @@ textarea.block-textarea:focus {
   box-shadow: 0 0 0 2px var(--settings-accent-glow);
 }
 
-.llm-settings-body { display: flex; flex-direction: row; flex: 1; min-height: 0; overflow: hidden; }
+.llm-settings-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 
 .llm-tabs {
-  display: flex; flex-direction: column; gap: 2px;
-  border-bottom: none; border-right: 1px solid var(--border);
-  flex-shrink: 0; width: 168px; padding: 8px; overflow-x: visible;
-  background: rgba(255,255,255,0.02);
+  display: flex; flex-direction: row; gap: 2px;
+  border-right: none; border-bottom: 1px solid var(--border);
+  flex-shrink: 0; width: auto; padding: 8px 8px 0; overflow-x: auto;
+  background: transparent;
 }
 .llm-tab {
-  padding: 8px 12px; border: none; background: none; cursor: pointer;
+  padding: 9px 16px; border: none; background: none; cursor: pointer;
   color: var(--text2); font-size: 13px; font-family: inherit; font-weight: 500;
-  border-bottom: none; border-left: 2px solid transparent;
-  border-radius: var(--radius-sm); text-align: left; width: 100%;
-  transition: color var(--trans), border-color var(--trans); white-space: nowrap;
+  border-left: none; border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0; text-align: center; width: auto; white-space: nowrap;
+  transition: color var(--trans), border-color var(--trans);
 }
 .llm-tab:hover  { color: var(--text1); }
-.llm-tab.active { color: var(--text0); border-left-color: var(--settings-accent); }
+.llm-tab.active { color: var(--text0); border-bottom-color: var(--settings-accent); }
 
 .llm-tab-panel { display: none; padding: 18px 20px; overflow-y: auto; flex: 1; min-height: 0; }
 .llm-tab-panel.active { display: block; }
