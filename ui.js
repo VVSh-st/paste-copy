@@ -69,6 +69,7 @@ const Tabs = (() => {
 
   let lastTabClickId = null;
   let lastTabClickAt = 0;
+  let _dragTabId = null;
 
   // Делегированная клавиатурная навигация (WAI-ARIA Tabs Pattern)
   bar.addEventListener('keydown', e => {
@@ -116,11 +117,11 @@ const Tabs = (() => {
   function render() {
     if (!bar) return;
 
-    const hadFocus = bar.contains(document.activeElement);
+    const hadFocus = bar.contains(document.activeElement)
+                     && !document.activeElement?.classList?.contains('tab-rename-input');
 
     bar.innerHTML = '';
     const active = State.getActive();
-    let _dragTabId = null;
 
     State.getAll().forEach(tab => {
       const isActive = !!(active && tab.id === active.id);
