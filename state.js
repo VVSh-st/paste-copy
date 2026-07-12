@@ -551,8 +551,12 @@ const State = (() => {
     else if (type === 'todo')     { title = 'Чеклист';         icon = '☑️'; }
     else if (type === 'table')    { title = 'Таблица';         icon = '📊'; }
     else {
-      title = prompt('Название нового блока:', 'Новый блок');
-      if (!title) return;
+      const usedNums = (t.blocks || []).map(b => {
+        const m = (b.title || '').match(/^NEW (\d+)$/);
+        return m ? +m[1] : 0;
+      });
+      const nextNum = Math.max(0, ...usedNums) + 1;
+      title = 'NEW ' + nextNum;
       icon = randomIcon();
     }
 
