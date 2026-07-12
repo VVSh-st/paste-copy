@@ -334,6 +334,15 @@
   let _wrapHold = '';
   const _idRoot = 'emoji-p-' + Math.random().toString(36).slice(2, 8);
 
+  /* ── RECENTS (localStorage) ────────────────────────────────────── */
+  const RECENTS_KEY = 'emoji-picker:recents';
+  function _loadRecents() { try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); } catch { return []; } }
+  function _pushRecent(emoji) {
+    const list = _loadRecents().filter(x => x !== emoji);
+    list.unshift(emoji);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 12)));
+  }
+
   /* ── CANVAS MEASURE (без reflow в DOM) ─────────────────────────── */
   const _measureWidth = (() => {
     const ctx = document.createElement('canvas').getContext('2d');
@@ -356,20 +365,23 @@
 
   /* ── FILTER ────────────────────────────────────────────────────── */
   const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, NAME_PREFIX: 2, TAG_PREFIX: 3, NAME_INCLUDES: 4, TAG_INCLUDES: 5 };
+  for (const e of EMOJI_DATA) {
+    e._nameN = _normalize(e.name);
+    e._tagsN = (e.tags || []).map(t => _normalize(t));
+  }
   function _filter(query) {
     const q = _normalize(query);
     if (!q) return [];
     const scored = [];
     for (let i = 0; i < EMOJI_DATA.length; i++) {
       const e = EMOJI_DATA[i];
-      const name = _normalize(e.name);
       let prio = -1;
-      if (name === q) prio = PRIORITY.NAME_EXACT;
-      else if (e.tags?.some(t => _normalize(t) === q)) prio = PRIORITY.TAG_EXACT;
-      else if (name.startsWith(q)) prio = PRIORITY.NAME_PREFIX;
-      else if (e.tags?.some(t => _normalize(t).startsWith(q))) prio = PRIORITY.TAG_PREFIX;
-      else if (name.includes(q)) prio = PRIORITY.NAME_INCLUDES;
-      else if (e.tags?.some(t => _normalize(t).includes(q))) prio = PRIORITY.TAG_INCLUDES;
+      if (e._nameN === q) prio = PRIORITY.NAME_EXACT;
+      else if (e._tagsN.some(t => t === q)) prio = PRIORITY.TAG_EXACT;
+      else if (e._nameN.startsWith(q)) prio = PRIORITY.NAME_PREFIX;
+      else if (e._tagsN.some(t => t.startsWith(q))) prio = PRIORITY.TAG_PREFIX;
+      else if (e._nameN.includes(q)) prio = PRIORITY.NAME_INCLUDES;
+      else if (e._tagsN.some(t => t.includes(q))) prio = PRIORITY.TAG_INCLUDES;
       if (prio >= 0) scored.push({ e, prio, idx: i });
     }
     scored.sort((a, b) => a.prio - b.prio || a.idx - b.idx);
@@ -393,10 +405,50 @@
       _palette.setAttribute('aria-label', 'Эмодзи');
       document.body.appendChild(_palette);
     } else {
-      _palette.querySelectorAll('.emoji-item').forEach(n => n.remove());
+      _palette.querySelectorAll('.emoji-item, .emoji-footer, .emoji-empty').forEach(n => n.remove());
     }
     _ta = ta;
     _focusedIdx = 0;
+    _wrapHold = '';
+
+    /* recents при пустом запросе */
+    if (!query) {
+      const recents = _loadRecents()
+        .map(e => EMOJI_DATA.find(d => d.emoji === e)).filter(Boolean)
+        .slice(0, 8);
+      if (recents.length) {
+        const lbl = document.createElement('div');
+        lbl.className = 'emoji-footer';
+        lbl.textContent = 'Недавние';
+        _palette.appendChild(lbl);
+        for (let i = 0; i < recents.length; i++) {
+          const item = recents[i];
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.id = _idRoot + '-opt-' + i;
+          btn.className = 'emoji-item' + (i === 0 ? ' focused' : '');
+          btn.setAttribute('role', 'option');
+          btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+          const charSpan = document.createElement('span');
+          charSpan.className = 'emoji-char';
+          charSpan.setAttribute('aria-hidden', 'true');
+          charSpan.textContent = item.emoji;
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'emoji-name';
+          nameSpan.textContent = item.name;
+          btn.appendChild(charSpan);
+          btn.appendChild(nameSpan);
+          btn.addEventListener('mousedown', ev => { ev.preventDefault(); _filtered = recents.map(e => ({ e })); _insert(i); });
+          _palette.appendChild(btn);
+        }
+        _filtered = recents.map(e => ({ e }));
+        _position(ta);
+        return;
+      }
+      _palette.innerHTML = '<div class="emoji-empty"><span class="emoji-empty-icon" aria-hidden="true">💬</span><span>Введи имя или тег…</span></div>';
+      _position(ta);
+      return;
+    }
 
     if (!_filtered.length) {
       _palette.innerHTML = '<div class="emoji-empty"><span class="emoji-empty-icon" aria-hidden="true">🔍</span><span>Ничего не найдено</span></div>';
@@ -427,11 +479,11 @@
       const nameSpan = document.createElement('span');
       nameSpan.className = 'emoji-name';
       const nameText = item.e.name;
-      const matchIdx = nameText.toLowerCase().indexOf(query);
+      const matchIdx = item.e._nameN.indexOf(_normalize(query));
       if (matchIdx >= 0) {
         nameSpan.innerHTML = _escHtml(nameText.slice(0, matchIdx))
-          + '<mark>' + _escHtml(nameText.slice(matchIdx, matchIdx + query.length)) + '</mark>'
-          + _escHtml(nameText.slice(matchIdx + query.length));
+          + '<mark>' + _escHtml(nameText.slice(matchIdx, matchIdx + _normalize(query).length)) + '</mark>'
+          + _escHtml(nameText.slice(matchIdx + _normalize(query).length));
       } else {
         nameSpan.textContent = nameText;
       }
@@ -445,7 +497,8 @@
     const PAD_X = 10 + 10;          /* padding-left/right .emoji-item */
     const CHAR_FIXED = 26 + 8;      /* .emoji-char + gap */
     const PALETTE_INSET = 5 * 2;    /* padding самой палитры */
-    const fontStr = '12px/1.4 inherit';
+    const cs2 = getComputedStyle(ta);
+    const fontStr = '500 12px ' + cs2.fontFamily;
     let maxW = 0;
     for (let i = 0; i < _filtered.length; i++) {
       maxW = Math.max(maxW, _measureWidth(_filtered[i].e.name, fontStr));
@@ -488,7 +541,7 @@
     const cR = clone.getBoundingClientRect();
     const scrollEl = ta.closest('.llm-tab-panel') || ta.closest('.modal-body') || ta;
     const ox = taR.left - cR.left - ta.scrollLeft;
-    const oy = taR.top - cR.top - scrollEl.scrollTop;
+    const oy = taR.top - cR.top - ta.scrollTop;
 
     let cx = mkR.left + ox;
     let cy = mkR.top + oy + lh + 4;
@@ -513,6 +566,7 @@
   function _insert(idx) {
     const item = _filtered[idx];
     if (!_ta || !item) return;
+    _pushRecent(item.e.emoji);
     const pos = _ta.selectionStart;
     _ta.setRangeText(item.e.emoji + ' ', _triggerStart, pos, 'end');
     _ta.dispatchEvent(new Event('input'));
@@ -599,6 +653,11 @@
       _insert(_focusedIdx);
     } else if (key === 'Escape') {
       e.preventDefault(); e.stopPropagation();
+      if (_triggerStart >= 0 && _ta) {
+        const pos = _ta.selectionStart;
+        _ta.setRangeText('', _triggerStart, pos, 'end');
+        _ta.dispatchEvent(new Event('input'));
+      }
       _close();
     }
   }, true);
