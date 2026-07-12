@@ -286,6 +286,32 @@
     { name: 'ошибка',       emoji: '🔴',  tags: ['стоп', 'ошибка'], aliases: ['error', 'stop'] },
     { name: 'процесс',      emoji: '⏳',  tags: ['загрузка', 'выполняется'], aliases: ['loading', 'process'] },
     { name: 'успех',        emoji: '✅',  tags: ['готово', 'выполнено'], aliases: ['success', 'done'] },
+
+    // ── Команды ──────────────────────────────────────────────────────
+    { type: 'command', name: 'настройки LLM',    emoji: '⚙️',  tags: ['настройки', 'профиль'],  aliases: ['settings', 'config'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('profiles') },
+    { type: 'command', name: 'промпты',          emoji: '📝',  tags: ['системные промпты'],     aliases: ['prompts'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('prompts') },
+    { type: 'command', name: 'боро-теги',        emoji: '🏷️',  tags: ['бро', 'теги'],           aliases: ['bro', 'tags'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('bro') },
+    { type: 'command', name: 'автопоэт',         emoji: '🎵',  tags: ['автопоэт'],              aliases: ['autopoet', 'poet'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('autopoet') },
+    { type: 'command', name: 'разное',           emoji: '🔧',  tags: ['настройки разное'],      aliases: ['misc'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('misc') },
+    { type: 'command', name: 'тренажёр',         emoji: '⌨️',  tags: ['клавиатура', 'тренировка'], aliases: ['trainer', 'keyboard'],
+      action: () => window.KeyboardTrainer?.toggle() },
+    { type: 'command', name: 'аудит',            emoji: '🔍',  tags: ['проверка', 'анализ'],    aliases: ['audit'],
+      action: () => window.LLMFeatures?.handleAction('audit') },
+    { type: 'command', name: 'сжать',            emoji: '📦',  tags: ['компрессия', 'сжатие'],  aliases: ['compress'],
+      action: () => window.LLMFeatures?.handleAction('compress') },
+    { type: 'command', name: 'перефразировать',  emoji: '🔄',  tags: ['перефразировка'],        aliases: ['rephrase'],
+      action: () => window.LLMFeatures?.handleAction('rephrase') },
+    { type: 'command', name: 'расширить',        emoji: '📐',  tags: ['расширение'],            aliases: ['expand'],
+      action: () => window.LLMFeatures?.handleAction('expand') },
+    { type: 'command', name: 'тезаурус',         emoji: '📖',  tags: ['словарь', 'синонимы'],    aliases: ['thesaurus'],
+      action: () => window.LLMFeatures?.handleAction('thesaurus') },
+    { type: 'command', name: 'автозаголовок',    emoji: '🏷️',  tags: ['заголовок'],             aliases: ['autotitle'],
+      action: () => window.LLMFeatures?.handleAction('autotitle') },
   ];
 
   /* ── CSS ───────────────────────────────────────────────────────── */
@@ -350,6 +376,9 @@
   padding: 18px 12px; color: var(--text3); font-size: 11px;
 }
 .emoji-empty-icon { font-size: 22px; opacity: 0.5; }
+.emoji-item[data-type="command"] .emoji-name::after {
+  content: '→'; margin-left: 6px; color: var(--text3); font-size: 10px;
+}
 `;
 
   /* ── STATE ─────────────────────────────────────────────────────── */
@@ -574,6 +603,8 @@
       btn.className = 'emoji-item' + (i === 0 ? ' focused' : '');
       btn.setAttribute('role', 'option');
       btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+      if (item.e.type) btn.setAttribute('data-type', item.e.type);
+      else btn.removeAttribute('data-type');
       btn.children[0].textContent = item.e.emoji;
       btn.children[1].textContent = item.e.name;
     }
@@ -652,6 +683,11 @@
   function _insert(idx) {
     const item = _filtered[idx];
     if (!_ta || !item) return;
+    if (item.e.type === 'command') {
+      _close();
+      if (typeof item.e.action === 'function') item.e.action();
+      return;
+    }
     _pushRecent(item.e.emoji);
     const pos = _ta.selectionStart;
     _ta.setRangeText(item.e.emoji + ' ', _triggerStart, pos, 'end');
