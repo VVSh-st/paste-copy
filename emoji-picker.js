@@ -387,7 +387,8 @@
   }
 
   /* ── FILTER ────────────────────────────────────────────────────── */
-  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, ALIAS_EXACT: 2, NAME_PREFIX: 3, TAG_PREFIX: 4, ALIAS_PREFIX: 5, NAME_INCLUDES: 6, TAG_INCLUDES: 7, ALIAS_INCLUDES: 8 };
+  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, ALIAS_EXACT: 2, EMOJI_EXACT: 3, NAME_PREFIX: 4, TAG_PREFIX: 5, ALIAS_PREFIX: 6, NAME_INCLUDES: 7, TAG_INCLUDES: 8, ALIAS_INCLUDES: 9 };
+  const _EMOJI_INDEX = new Map(EMOJI_DATA.map(e => [e.emoji, e]));
   for (const e of EMOJI_DATA) {
     e._nameN = _normalize(e.name);
     e._tagsN = (e.tags || []).map(t => _normalize(t));
@@ -403,6 +404,7 @@
       if (e._nameN === q) prio = PRIORITY.NAME_EXACT;
       else if (e._tagsN.some(t => t === q)) prio = PRIORITY.TAG_EXACT;
       else if (e._aliasesN.some(a => a === q)) prio = PRIORITY.ALIAS_EXACT;
+      else if (_EMOJI_INDEX.has(query) && e.emoji === query) prio = PRIORITY.EMOJI_EXACT;
       else if (e._nameN.startsWith(q)) prio = PRIORITY.NAME_PREFIX;
       else if (e._tagsN.some(t => t.startsWith(q))) prio = PRIORITY.TAG_PREFIX;
       else if (e._aliasesN.some(a => a.startsWith(q))) prio = PRIORITY.ALIAS_PREFIX;
@@ -491,26 +493,32 @@
     }
     footer.textContent = '↑↓ · Enter · Esc';
 
+    /* DOM-diffing: переиспользуем существующие строки */
+    let rows = [..._palette.querySelectorAll('.emoji-item')];
     for (let i = 0; i < _filtered.length; i++) {
       const item = _filtered[i];
-      const btn = document.createElement('button');
-      btn.type = 'button';
+      let btn = rows[i];
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        const charSpan = document.createElement('span');
+        charSpan.className = 'emoji-char';
+        charSpan.setAttribute('aria-hidden', 'true');
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'emoji-name';
+        btn.appendChild(charSpan);
+        btn.appendChild(nameSpan);
+        btn.addEventListener('mousedown', ev => { ev.preventDefault(); _insert(i); });
+        _palette.insertBefore(btn, footer);
+      }
       btn.id = _idRoot + '-opt-' + i;
       btn.className = 'emoji-item' + (i === 0 ? ' focused' : '');
       btn.setAttribute('role', 'option');
       btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
-      const charSpan = document.createElement('span');
-      charSpan.className = 'emoji-char';
-      charSpan.setAttribute('aria-hidden', 'true');
-      charSpan.textContent = item.e.emoji;
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'emoji-name';
-      nameSpan.textContent = item.e.name;
-      btn.appendChild(charSpan);
-      btn.appendChild(nameSpan);
-      btn.addEventListener('mousedown', ev => { ev.preventDefault(); _insert(i); });
-      _palette.insertBefore(btn, footer);
+      btn.children[0].textContent = item.e.emoji;
+      btn.children[1].textContent = item.e.name;
     }
+    rows.slice(_filtered.length).forEach(r => r.remove());
 
     /* динамическая ширина: canvas + полный размер строки */
     const PAD_X = 10 + 10;          /* padding-left/right .emoji-item */
