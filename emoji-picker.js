@@ -331,8 +331,7 @@
   flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.emoji-name mark { color: #00b96b; background: rgba(0,185,107,0.15); border-radius: 2px; font-weight: 600; }
-.emoji-item.focused .emoji-name mark { color: #fff; background: rgba(255,255,255,0.2); }
+.emoji-name mark { color: #ff47a0; background: transparent; font-weight: 600; }
 .emoji-footer {
   border-top: 1px solid rgba(148,163,184,0.14);
   padding: 4px 8px; text-align: center;
