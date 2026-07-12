@@ -3706,6 +3706,42 @@ const AutoPoet = (() => {
       window.Toast?.show('Новый чат создан', 'info');
     }
 
+    function _deleteSession() {
+      if (_sessions.length <= 1) {
+        _clearCurrentSession();
+        return;
+      }
+      const title = _sessions[_sessionIdx]?.title || 'Чат';
+      _sessions.splice(_sessionIdx, 1);
+      if (_sessionIdx >= _sessions.length) _sessionIdx = _sessions.length - 1;
+      _history = [...(_sessions[_sessionIdx]?.history ?? [])];
+      _inputHistory = [];
+      _historyIdx = -1;
+      _draftInput = '';
+      const el = _msgsEl();
+      if (el) { el.innerHTML = ''; _noAutoScroll = true; _history.forEach(m => _appendMsg(m.role, m.content)); _noAutoScroll = false; }
+      _updateScrollDownBtn();
+      _updateNavButtons();
+      _saveSessions();
+      _inputEl()?.focus();
+      window.Toast?.show(`«${title}» удалён`, 'info');
+    }
+
+    function _clearCurrentSession() {
+      _history = [];
+      _inputHistory = [];
+      _historyIdx = -1;
+      _draftInput = '';
+      const el = _msgsEl();
+      if (el) el.innerHTML = '';
+      const inputEl = _inputEl();
+      if (inputEl) { inputEl.value = ''; _resizeInput(); }
+      if (_sessions[_sessionIdx]) _sessions[_sessionIdx].history = [];
+      _updateScrollDownBtn();
+      _saveSessions();
+      window.Toast?.show('Чат очищен', 'info');
+    }
+
     function clearAllSessions() {
       stop();
       _sessions = [{ id: Date.now().toString(36), history: [], title: 'Новый чат' }];
@@ -4298,7 +4334,23 @@ const AutoPoet = (() => {
       document.getElementById('llm-chat-font-up')?.addEventListener('click', () => _changeFontSize(0.5));
       document.getElementById('llm-chat-prev')?.addEventListener('click', () => _switchSession(_sessionIdx - 1));
       document.getElementById('llm-chat-next')?.addEventListener('click', () => _switchSession(_sessionIdx + 1));
-      document.getElementById('llm-chat-new')?.addEventListener('click', () => _newSession());
+      const newBtn = document.getElementById('llm-chat-new');
+      if (newBtn) {
+        let _newLongPress = false;
+        let _newLongTimer = null;
+        newBtn.addEventListener('mousedown', () => {
+          _newLongPress = false;
+          _newLongTimer = setTimeout(() => {
+            _newLongPress = true;
+            if (_sessions.length <= 1) { _clearCurrentSession(); return; }
+            const title = _sessions[_sessionIdx]?.title || 'Чат';
+            if (confirm(`Удалить «${title}»?`)) _deleteSession();
+          }, 600);
+        });
+        newBtn.addEventListener('mouseup', () => { clearTimeout(_newLongTimer); });
+        newBtn.addEventListener('mouseleave', () => { clearTimeout(_newLongTimer); });
+        newBtn.addEventListener('click', e => { e.stopPropagation(); if (_newLongPress) { _newLongPress = false; return; } _newSession(); });
+      }
 
       window.addEventListener('beforeunload', () => _saveCurrentSession());
 
