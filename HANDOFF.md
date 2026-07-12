@@ -62,9 +62,10 @@
 | Файл | Изменения |
 |------|-----------|
 | `intelligence-core.js` | Стale suggestion removal, hasMeaningfulDiff cross-type, snapshot key poisoning, NaN guard, dedup key |
-| `styles.css` | Редизайн промптов: anti-jump, статус-бейджи, дропдаун |
-| `index.html` | Структура `#ltab-prompts`: шапка, дропдаун, иконки |
-| `llm-core.js` | `_selectPromptKey` единая точка видимости, дропдаун `⋮` |
+| `styles.css` | Редизайн промптов: anti-jump, статус-бейджи, дропдаун; **Фаза 0**: фикс размера модалки, toggle-switch CSS; **Фаза 0.3 rev**: горизонтальные табы с зелёным underline; **Фаза 1**: зелёный акцент #00b96b, кнопка + в шапке карточки, storage 190px, flex topbar |
+| `index.html` | Структура `#ltab-prompts`: шапка, дропдаун, иконки; **Фаза 1**: кнопка + в шапке карточки, удалена обёртка `.llm-storage-header` |
+| `llm-core.js` | `_selectPromptKey` единая точка видимости, дропдаун `⋮`; **Фаза 1**: показ/скрытие кнопки + в storage |
+| `emoji-picker.js` | **Новый**: эмодзи-пикер по ":" с русскими названиями, зелёный accent, прокрутка. **Аудит MiniMax-M3**: исправлены критические данные (спасибо→🙏, мольба→🤲, пожалуйста→🥹), дубликаты (молния→гроза, гирлянда→🎍, подарок удалён), XSS (innerHTML→textContent), isComposing guard, aria-activedescendant, пустое состояние, tag scoring |
 | `user-memory.js` | Белый список, сброс shown/score, Object.create(null) |
 | `spell-check.js` | CRLF, maskPlaceholders, AbortError, per-chunk timeout |
 | `quality-detectors.js` | matchAll, DRY, константы |
@@ -86,8 +87,9 @@
 - **Intelligence**: `intelligence-core.js` = events + context snapshot + scoring + prediction → `smart-suggestions.js` = UI strip + menu
 
 ## Следующий шаг
-1. Проверить вкладку «Системные промпты» в браузере
-2. Проверить клавиатуру в браузере
-3. Проверить «Сохранить в .txt» — задержка должна исчезнуть
-4. Проверить таймер easter egg — звук должен играть
-5. Next-key hint, статистика ошибок
+1. Проверить эмодзи-пикер в браузере — `:улыбка`, навигация, вставка
+2. Проверить настройку "Эмодзи по ":"" в Разное — вкл/выкл
+3. Проверить модалку «Настройки LLM» — зелёный акцент, тумблеры, табы
+4. Проверить режим «Хранилище» — кнопка +, поле 190px
+5. Проверить клавиатуру в браузере
+6. Проверить «Сохранить в .txt» — задержка
