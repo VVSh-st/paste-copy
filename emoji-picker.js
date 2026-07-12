@@ -293,7 +293,7 @@
 .emoji-palette {
   position: fixed; z-index: 10000;
   max-width: min(420px, calc(100vw - 16px));
-  max-height: min(280px, calc(100vh - 18px));
+  max-height: min(360px, calc(100vh - 18px));
   padding: 5px; border: 1px solid rgba(0,185,107,0.24);
   border-radius: 12px;
   background: color-mix(in srgb, var(--bg3) 92%, transparent);
