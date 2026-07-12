@@ -802,10 +802,10 @@
     const pos = ta.selectionStart;
     const before = ta.value.slice(0, pos);
     /* ::query — прилипает (пробел перед :: убирается) */
-    const m2 = before.match(/(^|\s)::([^\s\n:]{1,32}):?$/);
+    const m2 = before.match(/(^|\s?)::([^\s\n:]{1,32}):?$/);
     if (m2) {
       const query = m2[2].toLowerCase();
-      _triggerStart = pos - m2[0].length + (m2[1] ? 1 : 0);
+      _triggerStart = pos - m2[0].length;
       _stickyTrigger = true;
       _render(ta, query);
       return;
