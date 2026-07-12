@@ -49,7 +49,6 @@ const SquareTimer = (() => {
   let _firedCorners = new Set();
 
   // CPU optimization caches
-  let _btnW = 0, _btnH = 0;
   let _cachedPtsCW = null, _cachedPtsCCW = null;
   let _pts = null;
   let _lastDir = null;
@@ -108,17 +107,17 @@ const SquareTimer = (() => {
       _pathCCW = _buildPath('ccw');
       _cachedPtsCCW = _cachePoints(_pathCCW);
     }
-    _btnW = btn.offsetWidth;
-    _btnH = btn.offsetHeight;
     return true;
   }
   function _cachePoints(dStr) {
     const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     tmp.setAttribute('d', dStr);
+    arcSvg.appendChild(tmp);
     const len = tmp.getTotalLength();
     const N = 400;
     const pts = new Array(N + 1);
     for (let i = 0; i <= N; i++) pts[i] = tmp.getPointAtLength(len * i / N);
+    arcSvg.removeChild(tmp);
     return { len, pts, N };
   }
 
@@ -130,7 +129,6 @@ const SquareTimer = (() => {
     _cachedPtsCCW = null;
     _pts = null;
     _lastDir = null;
-    if (btn) { _btnW = btn.offsetWidth; _btnH = btn.offsetHeight; }
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -546,6 +544,7 @@ const SquareTimer = (() => {
     if (_lastDir !== dir) {
       arcTail.setAttribute('d', d);
       arcHeadSeg.setAttribute('d', d);
+      arcTail.style.opacity = '0.55';
       _lastDir = dir;
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
     }
@@ -577,9 +576,6 @@ const SquareTimer = (() => {
 
       // Corner glow
       _checkCornerGlow(headPos, P);
-
-      // Кометный след: opacity вместо maskImage (П.1)
-      arcTail.style.opacity = '0.55';
     }
 
     _applyWarmGlow(progress);
