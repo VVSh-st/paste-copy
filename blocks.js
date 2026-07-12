@@ -1594,9 +1594,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     });
     const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt', () => {
+      const prevBlur = ta.onblur;
+      ta.onblur = null;
       const url = URL.createObjectURL(new Blob([ta.value], { type: 'text/plain;charset=utf-8' }));
       Object.assign(document.createElement('a'), { href: url, download: (b.title || 'block') + '.txt' }).click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setTimeout(() => { URL.revokeObjectURL(url); ta.onblur = prevBlur; }, 1000);
       Toast.show('Файл скачан ✓', 'success');
     });
 
