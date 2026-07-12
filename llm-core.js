@@ -685,6 +685,7 @@ window.LLMCore = (() => {
     const _promptCollapsedGroups = new Set();
     const STORAGE_GROUP_KEY = '__storage__';
     let _storageSelectedId = null;
+    let _activeBankId = 'default';
     let _lastNonStoragePromptKey = '';
     const _deleteConfirmTimers = new WeakMap();
     const _set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
@@ -1102,15 +1103,56 @@ window.LLMCore = (() => {
       _promptGroupsReady = true;
     }
     function _getPromptGroupList() {
-      return [...PROMPT_GROUPS, { label: 'Хранилище', keys: [STORAGE_GROUP_KEY] }];
+      return [...PROMPT_GROUPS, { label: 'Хранилища', keys: _getBanks().map(b => STORAGE_GROUP_KEY + ':' + b.id) }];
+    }
+    function _getBanks() {
+      const banks = _State.getLayout()?.llm?.promptStorage?.banks;
+      if (Array.isArray(banks) && banks.length) return banks;
+      const legacyEntries = _State.getLayout()?.llm?.promptStorage?.entries;
+      const migrated = [{ id: 'default', name: 'Хранилище', entries: Array.isArray(legacyEntries) ? legacyEntries : [] }];
+      _saveBanks(migrated);
+      return migrated;
+    }
+    function _saveBanks(banks) {
+      const lay = _State.getLayout();
+      _State.setLayout({ llm: { ...(lay?.llm ?? {}), promptStorage: { banks } } });
+    }
+    function _getBankEntries(bankId) {
+      const bank = _getBanks().find(b => b.id === bankId);
+      return Array.isArray(bank?.entries) ? bank.entries : [];
+    }
+    function _saveBankEntries(bankId, entries) {
+      const banks = _getBanks();
+      const idx = banks.findIndex(b => b.id === bankId);
+      if (idx < 0) return;
+      const next = [...banks];
+      next[idx] = { ...next[idx], entries };
+      _saveBanks(next);
+    }
+    function _ensureActiveBank() {
+      const banks = _getBanks();
+      if (!banks.some(b => b.id === _activeBankId)) _activeBankId = banks[0]?.id ?? 'default';
+      return _activeBankId;
+    }
+    function _addBank(name) {
+      const banks = _getBanks();
+      const bank = { id: _uid(), name: String(name || '').trim() || `Хранилище ${banks.length + 1}`, entries: [] };
+      _saveBanks([...banks, bank]);
+      _activeBankId = bank.id;
+      return bank;
+    }
+    function _isStorageKey(key) {
+      return typeof key === 'string' && key.startsWith(STORAGE_GROUP_KEY);
+    }
+    function _bankIdFromKey(key) {
+      if (!_isStorageKey(key)) return null;
+      return key.slice(STORAGE_GROUP_KEY.length + 1) || _getBanks()[0]?.id || null;
     }
     function _getStorageEntries() {
-      const entries = _State.getLayout()?.llm?.promptStorage?.entries;
-      return Array.isArray(entries) ? entries : [];
+      return _getBankEntries(_activeBankId);
     }
     function _saveStorageEntries(entries) {
-      const lay = _State.getLayout();
-      _State.setLayout({ llm: { ...(lay?.llm ?? {}), promptStorage: { entries } } });
+      _saveBankEntries(_activeBankId, entries);
     }
     function _storageEntryMeta(entry) {
       const title = String(entry?.title || '').trim() || 'Без названия';
@@ -1201,6 +1243,15 @@ window.LLMCore = (() => {
       box.innerHTML = entries.map(e => {
         const { title, prompt } = _storageEntryMeta(e);
         return `<button type="button" class="llm-prompt-menu-sub-item" role="menuitem" data-insert-storage-id="${_esc(e.id)}" title="${_esc(prompt.slice(0, 80))}">${_esc(title)}</button>`;
+      }).join('');
+    }
+    function _renderStorageBankMenu() {
+      const box = document.getElementById('llm-storage-bank-list');
+      if (!box) return;
+      const banks = _getBanks();
+      box.innerHTML = banks.map(b => {
+        const active = b.id === _activeBankId;
+        return `<button type="button" class="llm-prompt-menu-sub-item${active ? ' active' : ''}" role="menuitemradio" aria-checked="${active}" data-bank-id="${_esc(b.id)}">${_esc(b.name)}<span class="llm-prompt-menu-sub-count">${(b.entries || []).length}</span></button>`;
       }).join('');
     }
     function _renderStorageEditor() {
@@ -1294,7 +1345,7 @@ window.LLMCore = (() => {
         window.Toast?.show('Сначала заполните промпт в хранилище', 'error');
         return;
       }
-      if (!key || key === STORAGE_GROUP_KEY || !BUILTIN_PROMPTS[key]) {
+      if (!key || _isStorageKey(key) || !BUILTIN_PROMPTS[key]) {
         window.Toast?.show('Сначала выберите целевую функцию слева', 'error');
         return;
       }
@@ -1352,25 +1403,25 @@ window.LLMCore = (() => {
       const fallbackKey = _lastNonStoragePromptKey && BUILTIN_PROMPTS[_lastNonStoragePromptKey]
         ? _lastNonStoragePromptKey
         : Object.keys(BUILTIN_PROMPTS)[0];
-      const selectedKey = currentKey === STORAGE_GROUP_KEY || BUILTIN_PROMPTS[currentKey]
+      const selectedKey = _isStorageKey(currentKey) || BUILTIN_PROMPTS[currentKey]
         ? currentKey
         : fallbackKey;
       const custom = _State.getLayout()?.llm?.customPrompts ?? {};
       list.innerHTML = '';
 
       _getPromptGroupList().forEach(group => {
-        const keys = group.keys.filter(key => key === STORAGE_GROUP_KEY || BUILTIN_PROMPTS[key] != null);
+        const keys = group.keys.filter(key => _isStorageKey(key) || BUILTIN_PROMPTS[key] != null);
         if (!keys.length) return;
         const isCollapsed = _promptCollapsedGroups.has(group.label);
         const groupBox = document.createElement('section');
         groupBox.className = 'llm-prompt-group' + (isCollapsed ? ' collapsed' : '');
         const bodyId = 'llm-prompt-group-' + group.label.toLowerCase().replace(/[^a-zа-яё0-9]+/gi, '-');
         const states = keys.map(key => {
-          if (key === STORAGE_GROUP_KEY) {
-            const entries = _getStorageEntries();
+          if (_isStorageKey(key)) {
+            const bank = _getBanks().find(b => b.id === _bankIdFromKey(key));
+            const entries = bank?.entries ?? [];
             return {
-              key,
-              isStorage: true,
+              key, isStorage: true, bankName: bank?.name || 'Хранилище',
               state: { level: entries.length ? 'changed' : 'default', label: entries.length ? `${entries.length} записей` : 'пусто', warnings: [] },
               count: entries.length,
             };
@@ -1397,14 +1448,14 @@ window.LLMCore = (() => {
         body.id = bodyId;
         body.className = 'llm-prompt-group-body';
         body.hidden = isCollapsed;
-        states.forEach(({ key, isCustom, isStorage, state, count }) => {
+        states.forEach(({ key, isCustom, isStorage, state, count, bankName }) => {
           if (isStorage) {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'llm-prompt-fn-item llm-prompt-fn-item-storage' + (key === selectedKey ? ' active' : '');
             btn.dataset.key = key;
             btn.setAttribute('aria-current', key === selectedKey ? 'true' : 'false');
-            btn.innerHTML = `<span class="llm-prompt-fn-main"><span class="llm-prompt-fn-title">Хранилище</span></span><span class="llm-prompt-mini-status changed" title="${_esc(state.label)}" aria-label="${_esc(state.label)}">${count ?? 0}</span>`;
+            btn.innerHTML = `<span class="llm-prompt-fn-main"><span class="llm-prompt-fn-title">${_esc(bankName)}</span></span><span class="llm-prompt-mini-status changed" title="${_esc(state.label)}" aria-label="${_esc(state.label)}">${count ?? 0}</span>`;
             btn.addEventListener('click', () => _selectPromptKey(key));
             body.appendChild(btn);
             return;
@@ -1451,6 +1502,8 @@ window.LLMCore = (() => {
       if (card) card.classList.remove('llm-prompt-card-storage');
       if (meta) meta.hidden = false;
       if (status) status.hidden = false;
+      const bankWrap = document.getElementById('llm-storage-bank-wrap');
+      if (bankWrap) bankWrap.hidden = true;
 
       // Подсветка выбранного элемента
       document.querySelectorAll('.llm-prompt-fn-item').forEach(btn => {
@@ -1459,11 +1512,13 @@ window.LLMCore = (() => {
         btn.setAttribute('aria-current', active ? 'true' : 'false');
       });
 
-      if (key === STORAGE_GROUP_KEY) {
+      if (_isStorageKey(key)) {
+        _activeBankId = _bankIdFromKey(key) || _ensureActiveBank();
+        const bank = _getBanks().find(b => b.id === _activeBankId);
         const fallbackKey = _lastNonStoragePromptKey && BUILTIN_PROMPTS[_lastNonStoragePromptKey]
           ? _lastNonStoragePromptKey
           : Object.keys(BUILTIN_PROMPTS)[0];
-        ed.dataset.key = STORAGE_GROUP_KEY;
+        ed.dataset.key = key;
         ed.dataset.applyKey = fallbackKey;
         // Показать storage, скрыть editor
         if (panel) panel.hidden = false;
@@ -1473,14 +1528,11 @@ window.LLMCore = (() => {
         if (test) test.hidden = true;
         if (card) card.classList.add('llm-prompt-card-storage');
         if (meta) { meta.hidden = true; meta.innerHTML = ''; }
-        if (title) title.textContent = 'Хранилище';
-        if (status) {
-          status.hidden = true;
-          status.className = 'llm-prompt-status-badge default';
-          status.innerHTML = '<span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">хранилище</span>';
-          status.setAttribute('aria-label', 'Хранилище');
-          status.title = 'Хранилище';
-        }
+        if (title) title.textContent = bank?.name || 'Хранилище';
+        if (status) status.hidden = true;
+        if (bankWrap) bankWrap.hidden = false;
+        const bankLabel = document.getElementById('llm-storage-bank-label');
+        if (bankLabel) bankLabel.textContent = bank?.name || 'Хранилище';
         _clearDangerButton(document.getElementById('llm-storage-delete'), '✕', 'Удалить запись');
         _renderStorageEditor();
         if (!keepFocus) document.getElementById('llm-storage-title')?.focus();
@@ -1526,11 +1578,12 @@ window.LLMCore = (() => {
       const warn = document.getElementById('llm-prompt-warnings');
       if (!ed || !st) return;
       const key = ed.dataset.key;
-      if (key === STORAGE_GROUP_KEY) {
+      if (_isStorageKey(key)) {
+        const bankName = _getBanks().find(b => b.id === _activeBankId)?.name || 'Хранилище';
         st.className = 'llm-prompt-status-badge default';
-        st.innerHTML = '<span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">хранилище</span>';
-        st.setAttribute('aria-label', 'Хранилище');
-        st.title = 'Хранилище';
+        st.innerHTML = `<span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">${_esc(bankName)}</span>`;
+        st.setAttribute('aria-label', bankName);
+        st.title = bankName;
         if (warn) warn.innerHTML = '';
         return;
       }
@@ -1549,7 +1602,7 @@ window.LLMCore = (() => {
     function _savePrompt() {
       const ed = document.getElementById('llm-prompt-editor');
       const key = ed?.dataset?.key;
-      if (!key || key === STORAGE_GROUP_KEY) return;
+      if (!key || _isStorageKey(key)) return;
       const state = _validatePrompt(key, ed.value);
       if (state.level === 'error') { window.Toast?.show(state.warnings[0] || 'Промпт нельзя сохранить', 'error'); _updatePromptStatus(); return; }
       const lay = _State.getLayout();
@@ -1600,7 +1653,7 @@ window.LLMCore = (() => {
       const status = document.getElementById('llm-prompt-test-status');
       const btn = document.getElementById('llm-prompt-test-run');
       const key = ed?.dataset?.key;
-      if (!key || key === STORAGE_GROUP_KEY || !ed || !input || !output) return;
+      if (!key || _isStorageKey(key) || !ed || !input || !output) return;
       if (!input.value.trim()) { window.Toast?.show('Добавьте короткий тестовый текст', 'error'); return; }
       if (btn) btn.disabled = true;
       output.textContent = '';
@@ -1793,6 +1846,53 @@ tags.push({
         _applyStorageToCurrentPrompt();
         menuEl.classList.remove('open');
         menuTrigger.setAttribute('aria-expanded', 'false');
+      });
+      const bankTrigger = document.getElementById('llm-storage-bank-trigger');
+      const bankMenuEl = bankTrigger?.closest('.llm-prompt-menu-wrap')?.querySelector('.llm-prompt-menu');
+      if (bankTrigger && bankMenuEl) {
+        bankTrigger.addEventListener('click', e => {
+          e.stopPropagation();
+          const opening = !bankMenuEl.classList.contains('open');
+          if (opening) _renderStorageBankMenu();
+          bankMenuEl.classList.toggle('open');
+          bankTrigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        });
+        function closeBankMenu(e) {
+          if (!bankMenuEl.classList.contains('open')) return;
+          if (bankTrigger.contains(e.target) || bankMenuEl.contains(e.target)) return;
+          bankMenuEl.classList.remove('open');
+          bankTrigger.setAttribute('aria-expanded', 'false');
+        }
+        document.addEventListener('click', closeBankMenu);
+        document.addEventListener('keydown', e => {
+          if (e.key === 'Escape' && bankMenuEl.classList.contains('open')) {
+            bankMenuEl.classList.remove('open');
+            bankTrigger.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
+      document.getElementById('llm-storage-bank-list')?.addEventListener('click', e => {
+        const btn = e.target.closest('[data-bank-id]');
+        if (!btn || btn.dataset.bankId === _activeBankId) { bankMenuEl?.classList.remove('open'); return; }
+        _saveStorageEditor();
+        _activeBankId = btn.dataset.bankId;
+        _storageSelectedId = null;
+        _renderPromptFnList();
+        _selectPromptKey(STORAGE_GROUP_KEY + ':' + _activeBankId, true);
+        bankMenuEl?.classList.remove('open');
+        bankTrigger?.setAttribute('aria-expanded', 'false');
+      });
+      document.getElementById('llm-storage-bank-add-btn')?.addEventListener('click', () => {
+        const input = document.getElementById('llm-storage-bank-name-input');
+        const name = input?.value.trim();
+        if (!name) { input?.focus(); return; }
+        const bank = _addBank(name);
+        input.value = '';
+        _renderPromptFnList();
+        _selectPromptKey(STORAGE_GROUP_KEY + ':' + bank.id, true);
+        bankMenuEl?.classList.remove('open');
+        bankTrigger?.setAttribute('aria-expanded', 'false');
+        window.Toast?.show(`Банк «${name}» создан ✓`, 'success');
       });
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
       ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
