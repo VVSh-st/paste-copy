@@ -41,7 +41,6 @@ const SquareTimer = (() => {
 
   let _pathCW = null;
   let _pathCCW = null;
-  let _perim = null;
   let _radius = null;
   let _resizeObserver = null;
 
@@ -103,26 +102,27 @@ const SquareTimer = (() => {
     if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
     if (_pathCW == null) {
       _pathCW = _buildPath('cw');
-      _cachedPtsCW = _cachePoints(arcTail);
+      _cachedPtsCW = _cachePoints(_pathCW);
     }
     if (_pathCCW == null) {
       _pathCCW = _buildPath('ccw');
-      _cachedPtsCCW = _cachePoints(arcTail);
+      _cachedPtsCCW = _cachePoints(_pathCCW);
     }
     _btnW = btn.offsetWidth;
     _btnH = btn.offsetHeight;
     return true;
   }
-  function _cachePoints(pathEl) {
-    const len = pathEl.getTotalLength();
+  function _cachePoints(dStr) {
+    const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    tmp.setAttribute('d', dStr);
+    const len = tmp.getTotalLength();
     const N = 400;
     const pts = new Array(N + 1);
-    for (let i = 0; i <= N; i++) pts[i] = pathEl.getPointAtLength(len * i / N);
+    for (let i = 0; i <= N; i++) pts[i] = tmp.getPointAtLength(len * i / N);
     return { len, pts, N };
   }
 
   function _invalidateCaches() {
-    _perim = null;
     _pathCW = null;
     _pathCCW = null;
     _radius = null;
@@ -406,7 +406,7 @@ const SquareTimer = (() => {
      rAF LOOP
      ════════════════════════════════════════════════════════════════ */
 
-  function startTick() { stopTick(); rafId = requestAnimationFrame(_tickRAF); }
+  function startTick() { stopTick(); _lastTs = 0; rafId = requestAnimationFrame(_tickRAF); }
   function stopTick()  { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } }
 
   function _tickRAF(ts) {
@@ -550,8 +550,7 @@ const SquareTimer = (() => {
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
     }
 
-    if (_perim == null) _perim = arcTail.getTotalLength();
-    const P = _perim;
+    const P = _pts.len;
 
     const visualProgress = Math.max(progress, MIN_VISIBLE_PROGRESS);
     const headPos = visualProgress * P;
