@@ -8,7 +8,7 @@
   /* ── DATA ──────────────────────────────────────────────────────── */
   const EMOJI_DATA = [
     // Улыбки / эмоции
-    { name: 'улыбка',       emoji: '😊',  tags: ['смех', 'радость', 'счастлив'] },
+    { name: 'улыбка',       emoji: '😊',  tags: ['смех', 'радость', 'счастлив', 'smile', 'happy'] },
     { name: 'широкая улыбка', emoji: '😃', tags: ['улыбка', 'зубы'] },
     { name: 'смех',         emoji: '😆',  tags: ['хохот', 'смешно', 'улыбка'] },
     { name: 'веселье',      emoji: '😁',  tags: ['зубы', 'улыбка'] },
@@ -40,7 +40,7 @@
     { name: 'робот',        emoji: '🤖',  tags: ['механизм'] },
 
     // Руки / жесты
-    { name: 'класс',        emoji: '👍',  tags: ['лайк', 'ок', 'отлично'] },
+    { name: 'класс',        emoji: '👍',  tags: ['лайк', 'ок', 'отлично', 'like', 'thumbsup'] },
     { name: 'плохо',        emoji: '👎',  tags: ['не нравится'] },
     { name: 'пятёрка',      emoji: '🖐️', tags: ['рука', 'пять'] },
     { name: 'ок',           emoji: '👌',  tags: ['класс', 'точно'] },
@@ -55,7 +55,7 @@
     { name: 'сердце руками', emoji: '🫶', tags: ['любовь', 'сердце'] },
 
     // Сердца / любовь
-    { name: 'сердце',       emoji: '❤️',  tags: ['любовь', 'красное'] },
+    { name: 'сердце',       emoji: '❤️',  tags: ['любовь', 'красное', 'love', 'heart'] },
     { name: 'оранжевое сердце', emoji: '🧡', tags: ['оранжевый'] },
     { name: 'жёлтое сердце', emoji: '💛', tags: ['жёлтый'] },
     { name: 'зелёное сердце', emoji: '💚', tags: ['зелёный'] },
@@ -71,8 +71,8 @@
     // Природа
     { name: 'солнце',       emoji: '☀️',  tags: ['погода', 'тёплый'] },
     { name: 'луна',         emoji: '🌙',  tags: ['ночь'] },
-    { name: 'звезда',       emoji: '⭐',  tags: ['сияние'] },
-    { name: 'огонь',        emoji: '🔥',  tags: ['жар', 'горячо'] },
+    { name: 'звезда',       emoji: '⭐',  tags: ['сияние', 'star'] },
+    { name: 'огонь',        emoji: '🔥',  tags: ['жар', 'горячо', 'fire', 'hot', 'flame'] },
     { name: 'молния',       emoji: '⚡',  tags: ['электричество'] },
     { name: 'радуга',       emoji: '🌈',  tags: ['цвет'] },
     { name: 'цветок',       emoji: '🌸',  tags: ['цветение', 'красиво'] },
@@ -105,8 +105,8 @@
     { name: 'тарелка',      emoji: '🍽️', tags: ['еда'] },
 
     // Животные
-    { name: 'собака',       emoji: '🐶',  tags: ['пёс', 'животное'] },
-    { name: 'кошка',        emoji: '🐱',  tags: ['кот', 'животное'] },
+    { name: 'собака',       emoji: '🐶',  tags: ['пёс', 'животное', 'dog'] },
+    { name: 'кошка',        emoji: '🐱',  tags: ['кот', 'животное', 'cat'] },
     { name: 'медведь',      emoji: '🐻',  tags: ['животное'] },
     { name: 'панда',        emoji: '🐼',  tags: ['животное'] },
     { name: 'львёнок',      emoji: '🦁',  tags: ['лев', 'животное'] },
@@ -142,7 +142,7 @@
     { name: 'ключ',         emoji: '🔑',  tags: ['открыть'] },
     { name: 'ножницы',      emoji: '✂️',  tags: ['резать'] },
     { name: 'молоток',      emoji: '🔨',  tags: ['инструмент'] },
-    { name: 'гвоздь',       emoji: '📌',  tags: ['крепление'] },
+    { name: 'гвоздь',       emoji: '📌',  tags: ['крепление', 'заметка'] },
     { name: 'мишень',       emoji: '🎯',  tags: ['цель'] },
     { name: 'магнит',       emoji: '🧲',  tags: ['притяжение'] },
     { name: 'шестерёнка',   emoji: '⚙️',  tags: ['настройка'] },
@@ -163,18 +163,17 @@
     { name: 'поезд',        emoji: '🚂',  tags: ['железная дорога'] },
     { name: 'велосипед',    emoji: '🚲',  tags: ['велосипед'] },
     { name: 'корабль',      emoji: '🚢',  tags: ['море'] },
-    { name: 'ракета',       emoji: '🚀',  tags: ['космос', 'быстро'] },
+    { name: 'ракета',       emoji: '🚀',  tags: ['космос', 'быстро', 'rocket', 'space'] },
     { name: 'вертолёт',     emoji: '🚁',  tags: ['полёт'] },
     { name: 'мотор',        emoji: '🏍️', tags: ['мотоцикл'] },
 
     // Знаки / символы
-    { name: 'галочка',      emoji: '✅',  tags: ['готово', 'выполнено', 'да'] },
-    { name: 'крестик',      emoji: '❌',  tags: ['нет', 'ошибка', 'удалить'] },
+    { name: 'галочка',      emoji: '✅',  tags: ['готово', 'выполнено', 'да', 'done', 'check'] },
+    { name: 'крестик',      emoji: '❌',  tags: ['нет', 'ошибка', 'удалить', 'cross', 'delete'] },
     { name: 'восклицание',  emoji: '❗',  tags: ['важно', 'внимание'] },
     { name: 'вопрос',       emoji: '❓',  tags: ['вопрос'] },
     { name: 'вопросительный', emoji: '❔', tags: ['вопрос'] },
     { name: 'восклицательный', emoji: '❕', tags: ['важно'] },
-    { name: 'спасибо',      emoji: '🙏',  tags: ['благодарность'] },
     { name: 'мольба-ладони', emoji: '🤲',  tags: ['ладони', 'молитва'] },
     { name: 'пожалуйста',   emoji: '🥹',  tags: ['прошу'] },
     { name: 'извините',     emoji: '😔',  tags: ['прости'] },
@@ -183,11 +182,11 @@
     { name: 'soon',         emoji: '🔜',  tags: ['скоро'] },
     { name: 'конец',        emoji: '🔚',  tags: ['end'] },
     { name: 'назад',        emoji: '🔙',  tags: ['вернуться'] },
-    { name: 'вперёд',       emoji: '🔜',  tags: ['далее'] },
+    { name: 'вперёд',       emoji: '⏩',  tags: ['далее'] },
 
     // Технологии
-    { name: 'компьютер',    emoji: '💻',  tags: ['пк', 'ноутбук'] },
-    { name: 'телефон',      emoji: '📱',  tags: ['смартфон'] },
+    { name: 'компьютер',    emoji: '💻',  tags: ['пк', 'ноутбук', 'computer', 'laptop'] },
+    { name: 'телефон',      emoji: '📱',  tags: ['смартфон', 'phone', 'mobile'] },
     { name: 'клавиатура',   emoji: '⌨️',  tags: ['набор'] },
     { name: 'монитор',      emoji: '🖥️', tags: ['экран'] },
     { name: 'принтер',      emoji: '🖨️', tags: ['печать'] },
@@ -207,10 +206,9 @@
     { name: 'папка',        emoji: '📁',  tags: ['документ'] },
     { name: 'документ',     emoji: '📄',  tags: ['файл'] },
     { name: 'блокнот',      emoji: '📝',  tags: ['запись'] },
-    { name: 'ручка',        emoji: '🖊️', tags: ['писать'] },
+    { name: 'ручка',        emoji: '🖊️', tags: ['писать', 'маркер', 'цвет'] },
     { name: 'карандаш',     emoji: '✏️',  tags: ['писать'] },
-    { name: 'маркеры',      emoji: '🖊️', tags: ['цвет'] },
-    { name: 'стикер',       emoji: '📌',  tags: ['заметка'] },
+    { name: 'стикер',       emoji: '🗒️',  tags: ['заметка'] },
     { name: 'скрепка',      emoji: '📎',  tags: ['бумага'] },
     { name: 'порядок',      emoji: '📋',  tags: ['список'] },
     { name: 'калькулятор',  emoji: '🧮',  tags: ['счёт'] },
@@ -246,7 +244,7 @@
     { name: 'атом',         emoji: '⚛️',  tags: ['наука'] },
     { name: 'безопасность', emoji: '🔰',  tags: ['япония'] },
     { name: 'квадрат',      emoji: '✴️',  tags: ['цветок'] },
-    { name: 'спаркл',       emoji: '✨',  tags: ['блеск', 'красиво'] },
+    { name: 'спаркл',       emoji: '✨',  tags: ['блеск', 'красиво', 'sparkle', 'shine'] },
     { name: 'глоток',       emoji: '💧',  tags: ['вода', 'капля'] },
     { name: 'бензин',       emoji: '⛽',  tags: ['топливо'] },
     { name: 'колесо',       emoji: '🎡',  tags: ['парк'] },
@@ -257,7 +255,7 @@
     { name: 'синагога',     emoji: '🕍',  tags: ['религия'] },
     { name: 'город',        emoji: '🏙️', tags: ['здание'] },
     { name: 'мост',         emoji: '🌉',  tags: ['город'] },
-    { name: 'подсветка',    emoji: '💡',  tags: ['идея', 'лампа'] },
+    { name: 'подсветка',    emoji: '💡',  tags: ['идея', 'лампа', 'idea', 'light'] },
     { name: 'фонарь',       emoji: '🏮',  tags: ['свет'] },
     { name: 'свеча',        emoji: '🕯️', tags: ['свет'] },
     { name: 'колокольчик',  emoji: '🔔',  tags: ['звук'] },
@@ -310,6 +308,7 @@
   flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.emoji-name mark { color: #00b96b; background: transparent; font-weight: 600; }
 .emoji-footer {
   border-top: 1px solid rgba(148,163,184,0.14);
   padding: 4px 8px; text-align: center;
@@ -342,6 +341,12 @@
   })();
 
   /* ── INIT ──────────────────────────────────────────────────────── */
+  function _normalize(s) {
+    return (s || '').toLowerCase()
+      .replace(/ё/g, 'е').replace(/й/g, 'и')
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  }
+
   if (!document.getElementById('emoji-picker-style')) {
     const _style = document.createElement('style');
     _style.id = 'emoji-picker-style';
@@ -350,20 +355,21 @@
   }
 
   /* ── FILTER ────────────────────────────────────────────────────── */
-  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, NAME_PREFIX: 2, NAME_INCLUDES: 3, TAG_INCLUDES: 4 };
+  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, NAME_PREFIX: 2, TAG_PREFIX: 3, NAME_INCLUDES: 4, TAG_INCLUDES: 5 };
   function _filter(query) {
-    const q = (query || '').toLowerCase();
+    const q = _normalize(query);
     if (!q) return [];
     const scored = [];
     for (let i = 0; i < EMOJI_DATA.length; i++) {
       const e = EMOJI_DATA[i];
-      const name = e.name.toLowerCase();
+      const name = _normalize(e.name);
       let prio = -1;
       if (name === q) prio = PRIORITY.NAME_EXACT;
-      else if (e.tags?.some(t => t.toLowerCase() === q)) prio = PRIORITY.TAG_EXACT;
+      else if (e.tags?.some(t => _normalize(t) === q)) prio = PRIORITY.TAG_EXACT;
       else if (name.startsWith(q)) prio = PRIORITY.NAME_PREFIX;
+      else if (e.tags?.some(t => _normalize(t).startsWith(q))) prio = PRIORITY.TAG_PREFIX;
       else if (name.includes(q)) prio = PRIORITY.NAME_INCLUDES;
-      else if (e.tags?.some(t => t.toLowerCase().includes(q))) prio = PRIORITY.TAG_INCLUDES;
+      else if (e.tags?.some(t => _normalize(t).includes(q))) prio = PRIORITY.TAG_INCLUDES;
       if (prio >= 0) scored.push({ e, prio, idx: i });
     }
     scored.sort((a, b) => a.prio - b.prio || a.idx - b.idx);
@@ -420,7 +426,15 @@
       charSpan.textContent = item.e.emoji;
       const nameSpan = document.createElement('span');
       nameSpan.className = 'emoji-name';
-      nameSpan.textContent = item.e.name;
+      const nameText = item.e.name;
+      const matchIdx = nameText.toLowerCase().indexOf(query);
+      if (matchIdx >= 0) {
+        nameSpan.innerHTML = _escHtml(nameText.slice(0, matchIdx))
+          + '<mark>' + _escHtml(nameText.slice(matchIdx, matchIdx + query.length)) + '</mark>'
+          + _escHtml(nameText.slice(matchIdx + query.length));
+      } else {
+        nameSpan.textContent = nameText;
+      }
       btn.appendChild(charSpan);
       btn.appendChild(nameSpan);
       btn.addEventListener('mousedown', ev => { ev.preventDefault(); _insert(i); });
@@ -451,12 +465,14 @@
     const pt = parseFloat(cs.paddingTop) || 0;
     const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4);
     const pos = ta.selectionStart;
+    const bs = cs.boxSizing === 'border-box';
+    const innerW = bs ? ta.clientWidth : (ta.clientWidth - pl - pr);
 
     /* clone */
     const clone = document.createElement('div');
     clone.style.cssText = 'position:absolute;visibility:hidden;top:-9999px;left:-9999px;'
       + 'font:' + cs.font + ';white-space:pre-wrap;word-wrap:break-word;'
-      + 'width:' + (ta.clientWidth - pl - pr) + 'px;'
+      + 'width:' + innerW + 'px;'
       + 'padding:' + cs.padding + ';line-height:' + cs.lineHeight + ';'
       + 'letter-spacing:' + cs.letterSpacing + ';';
 
@@ -469,9 +485,10 @@
 
     const mkR = marker.getBoundingClientRect();
     const taR = ta.getBoundingClientRect();
+    const cR = clone.getBoundingClientRect();
     const scrollEl = ta.closest('.llm-tab-panel') || ta.closest('.modal-body') || ta;
-    const ox = taR.left - clone.getBoundingClientRect().left - ta.scrollLeft;
-    const oy = taR.top - clone.getBoundingClientRect().top - scrollEl.scrollTop;
+    const ox = taR.left - cR.left - ta.scrollLeft;
+    const oy = taR.top - cR.top - scrollEl.scrollTop;
 
     let cx = mkR.left + ox;
     let cy = mkR.top + oy + lh + 4;
@@ -528,7 +545,7 @@
     if (!_isEnabled()) { if (_palette) _close(); return; }
     const pos = ta.selectionStart;
     const before = ta.value.slice(0, pos);
-    const m = before.match(/(^|[\n\s]):([^\s\n:]{1,})$/);
+    const m = before.match(/(^|[\n\s]):([^\s\n:]{1,32})$/);
     if (m) {
       const query = m[2].toLowerCase();
       _triggerStart = pos - m[2].length - 1;
@@ -553,9 +570,11 @@
     if (_palette && !_palette.contains(e.target)) _close();
   });
 
+  window.addEventListener('resize', () => { if (_palette) _close(); });
+
   document.addEventListener('keydown', e => {
     if (e.isComposing || e.keyCode === 229) return;
-    if (!_palette || !_ta) return;
+    if (!_palette || !_ta || e.target !== _ta) return;
     const rows = _palette.querySelectorAll('.emoji-item');
     const count = rows.length;
     if (!count) return;
