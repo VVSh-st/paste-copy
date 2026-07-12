@@ -415,6 +415,7 @@
   let _focusedIdx = 0;
   let _filtered = [];
   let _wrapHold = '';
+  let _stickyTrigger = false;
   const _idRoot = 'emoji-p-' + Math.random().toString(36).slice(2, 8);
 
   /* ── CATEGORIES ────────────────────────────────────────────────── */
@@ -529,7 +530,7 @@
   /* ── CLOSE ─────────────────────────────────────────────────────── */
   function _close() {
     if (_palette) { _palette.remove(); _palette = null; }
-    _ta = null; _triggerStart = -1; _focusedIdx = 0; _filtered = []; _wrapHold = '';
+    _ta = null; _triggerStart = -1; _focusedIdx = 0; _filtered = []; _wrapHold = ''; _stickyTrigger = false;
   }
 
   /* ── RENDER ────────────────────────────────────────────────────── */
@@ -762,7 +763,7 @@
     }
     _pushRecent(item.e.emoji);
     const pos = ta.selectionStart;
-    ta.setRangeText(item.e.emoji + ' ', _triggerStart, pos, 'end');
+    ta.setRangeText(item.e.emoji + (_stickyTrigger ? '' : ' '), _triggerStart, pos, 'end');
     ta.dispatchEvent(new Event('input'));
     _close();
     ta.focus();
@@ -805,6 +806,7 @@
     if (m2) {
       const query = m2[2].toLowerCase();
       _triggerStart = pos - m2[0].length + (m2[1] ? 1 : 0);
+      _stickyTrigger = true;
       _render(ta, query);
       return;
     }
@@ -813,6 +815,7 @@
     if (m) {
       const query = m[2].toLowerCase();
       _triggerStart = pos - m[2].length - 1;
+      _stickyTrigger = false;
       _render(ta, query);
     } else {
       if (_palette) _close();
