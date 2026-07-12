@@ -800,11 +800,19 @@
   function _doHandleInput(ta) {
     const pos = ta.selectionStart;
     const before = ta.value.slice(0, pos);
+    /* ::query — прилипает (пробел перед :: убирается) */
+    const m2 = before.match(/(^|\s)::([^\s\n:]{1,32}):?$/);
+    if (m2) {
+      const query = m2[2].toLowerCase();
+      _triggerStart = pos - m2[0].length + (m2[1] ? 1 : 0);
+      _render(ta, query);
+      return;
+    }
+    /* :query — с пробелом (пробел перед : сохраняется) */
     const m = before.match(/(^|[\n\s]):([^\s\n:]{1,32}):?$/);
     if (m) {
       const query = m[2].toLowerCase();
-      const isDouble = before[before.length - m[0].length - 1] === ':';
-      _triggerStart = isDouble ? pos - m[0].length - 1 : pos - m[2].length - 1;
+      _triggerStart = pos - m[2].length - 1;
       _render(ta, query);
     } else {
       if (_palette) _close();
