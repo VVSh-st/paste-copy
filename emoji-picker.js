@@ -314,19 +314,26 @@
       action: () => window.State?.addBlock('table') },
   ];
 
-  /* ── ДЕДУПЛИКАЦИЯ ──────────────────────────────────────────────── */
-  const _seen = new Set();
+  /* ── ДЕДУПЛИКАЦИЯ (слияние tags/aliases при коллизии emoji) ─────── */
   const _cmdSeen = new Set();
-  const EMOJI_UNIQUE = EMOJI_DATA.filter(e => {
+  const EMOJI_UNIQUE = [];
+  const _byEmoji = new Map();
+  for (const e of EMOJI_DATA) {
     if (e.type === 'command') {
-      if (_cmdSeen.has(e.name)) return false;
+      if (_cmdSeen.has(e.name)) continue;
       _cmdSeen.add(e.name);
-      return true;
+      EMOJI_UNIQUE.push(e);
+      continue;
     }
-    if (_seen.has(e.emoji)) return false;
-    _seen.add(e.emoji);
-    return true;
-  });
+    const dup = _byEmoji.get(e.emoji);
+    if (dup) {
+      dup.tags = [...new Set([...(dup.tags || []), ...(e.tags || [])])];
+      dup.aliases = [...new Set([...(dup.aliases || []), ...(e.aliases || [])])];
+    } else {
+      _byEmoji.set(e.emoji, e);
+      EMOJI_UNIQUE.push(e);
+    }
+  }
 
   /* ── CSS ───────────────────────────────────────────────────────── */
   const CSS = `
@@ -443,7 +450,7 @@
     if (item) { item.count++; item.last = Date.now(); }
     else { list.push({ emoji, count: 1, last: Date.now() }); }
     list.sort((a, b) => (b.count * 10 + b.last / 1e6) - (a.count * 10 + a.last / 1e6));
-    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 20)));
+    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 20))); } catch (_) {}
     _recentsCache = null;
   }
 
@@ -613,6 +620,7 @@
       }
 
       _filtered = allItems;
+      _palette.style.width = '';
       _position(ta);
       return;
     }
@@ -701,10 +709,11 @@
     /* clone */
     const clone = document.createElement('div');
     clone.style.cssText = 'position:absolute;visibility:hidden;top:-9999px;left:-9999px;'
+      + 'box-sizing:' + cs.boxSizing + ';'
       + 'font:' + cs.font + ';white-space:pre-wrap;word-wrap:break-word;'
       + 'width:' + innerW + 'px;'
       + 'padding:' + cs.padding + ';line-height:' + cs.lineHeight + ';'
-      + 'letter-spacing:' + cs.letterSpacing + ';';
+      + 'letter-spacing:' + cs.letterSpacing + ';border:' + cs.border + ';';
 
     const textBefore = ta.value.slice(0, pos);
     const marker = document.createElement('span');
@@ -716,7 +725,6 @@
     const mkR = marker.getBoundingClientRect();
     const taR = ta.getBoundingClientRect();
     const cR = clone.getBoundingClientRect();
-    const scrollEl = ta.closest('.llm-tab-panel') || ta.closest('.modal-body') || ta;
     const ox = taR.left - cR.left - ta.scrollLeft;
     const oy = taR.top - cR.top - ta.scrollTop;
 
@@ -743,17 +751,21 @@
   function _insert(idx) {
     const item = _filtered[idx];
     if (!_ta || !item) return;
+    const ta = _ta;
     if (item.e.type === 'command') {
+      const pos = ta.selectionStart;
+      ta.setRangeText('', _triggerStart, pos, 'end');
+      ta.dispatchEvent(new Event('input'));
       _close();
       if (typeof item.e.action === 'function') item.e.action();
       return;
     }
     _pushRecent(item.e.emoji);
-    const pos = _ta.selectionStart;
-    _ta.setRangeText(item.e.emoji + ' ', _triggerStart, pos, 'end');
-    _ta.dispatchEvent(new Event('input'));
+    const pos = ta.selectionStart;
+    ta.setRangeText(item.e.emoji + ' ', _triggerStart, pos, 'end');
+    ta.dispatchEvent(new Event('input'));
     _close();
-    _ta.focus();
+    ta.focus();
   }
 
   /* ── NAV ────────────────────────────────────────────────────────── */
@@ -791,7 +803,7 @@
     const m = before.match(/(^|[\n\s]):([^\s\n:]{1,32}):?$/);
     if (m) {
       const query = m[2].toLowerCase();
-      _triggerStart = pos - m[0].length;
+      _triggerStart = pos - m[2].length - 1;
       _render(ta, query);
     } else {
       if (_palette) _close();
