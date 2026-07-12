@@ -1438,6 +1438,8 @@ window.LLMCore = (() => {
       if (card) card.classList.remove('llm-prompt-card-storage');
       if (meta) meta.hidden = false;
       if (status) status.hidden = false;
+      const addBtn = document.getElementById('llm-storage-add');
+      if (addBtn) addBtn.hidden = true;
 
       // Подсветка выбранного элемента
       document.querySelectorAll('.llm-prompt-fn-item').forEach(btn => {
@@ -1468,6 +1470,7 @@ window.LLMCore = (() => {
           status.setAttribute('aria-label', 'Хранилище');
           status.title = 'Хранилище';
         }
+        if (addBtn) addBtn.hidden = false;
         _clearDangerButton(document.getElementById('llm-storage-delete'), '✕', 'Удалить запись');
         _renderStorageEditor();
         if (!keepFocus) document.getElementById('llm-storage-title')?.focus();
