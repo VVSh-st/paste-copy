@@ -2,30 +2,42 @@
 
 ## Текущий статус
 
-### Аудиты MiniMax-M3 (задания 6-11)
+### Аудиты MiniMax-M3 (задания 6-12)
 
-Обработаны аудиты 6 файлов. Применены безопасные фиксы, опасные/ложные пропущены.
+Обработаны аудиты 7 файлов. Применены безопасные фиксы, опасные/ложные пропущены.
 
 | Файл | Аудит | Что починено |
 |------|-------|-------------|
-| **app.js** | #6 | Хоткеи в полях ввода: `Ctrl+Z/Y/T/W` теперь пропускаются при фокусе в `<input>`/`<textarea>` (нативный text-undo работает, вкладки не закрываются случайно) |
-| **blocks.js** | #7 | Копирование таблицы: `% 5` → `State.SUBTABS_COUNT` (20 вместо 5) |
-| **ui.js** | #8 | `_dragTabId` перенесена из `render()` в IIFE-scope (drag не теряется при re-render); `hadFocus` исключает `tab-rename-input` (фокус сохраняется при rename) |
-| **state.js** | #9 | `fontSize` в `migrate()`: `12` → `13.5` (синхронизация с `makeBlock`) |
-| **index.html** | #10 | Без изменений (все находки minor/questions) |
-| **timer.js** | #11 | `_ensurePaths()` → `false` при zero-size кнопке; `_playCompletionSound()` → добавлен `ctx.resume()` для AudioContext |
+| **app.js** | #6 | Хоткеи в полях ввода: `Ctrl+Z/Y/T/W` пропускаются при `inField` (нативный undo работает, вкладки не закрываются случайно) |
+| **blocks.js** | #7 | Копирование таблицы: `% 5` → `State.SUBTABS_COUNT` |
+| **ui.js** | #8 | `_dragTabId` перенесена в IIFE-scope; `hadFocus` исключает `tab-rename-input` |
+| **state.js** | #9 | `fontSize` в `migrate()`: `12` → `13.5` |
+| **timer.js** | #11 | `_ensurePaths()` zero-size guard; `_playCompletionSound()` → `ctx.resume()` |
+| **intelligence-core.js** | #12 | 5 фиксов (см. ниже) |
+
+### Аудит intelligence-core.js (задание 12) — 5 фиксов
+
+| # | Категория | Что исправлено |
+|---|-----------|---------------|
+| **#1/#2** | важно | Устаревшая подсказка (вкладка/текст изменился) удаляется из `lastSuggestions`/`lastMenuSuggestions` после `refresh()` — пользователь не видит её повторно |
+| **#4** | важно | `hasMeaningfulDiff` — diff выбирается по типу suggestion (`pinned-baseline-compare` → `pinnedBaselineDrift`, `named-version-compare` → `namedVersionDrift`), а не первый попавшийся |
+| **#5** | минорно | Ключи дедупа в `prepareSuggestions` теперь включают `prev.id` как fallback |
+| **#7** | минорно | `computeFinality` — добавлен `Number.isFinite(score)` guard |
+| **#8** | важно | `refresh()` — `lastRefreshSnapshotKey` обновляется только при успешном `captureSnapshot` |
+
+**Пропущено:** #3 (blockCount>=2 — продуктовое решение), #6 (parsePlacementChoice — не требуется), #9 (Map-итерация — ES2015+ безопасно), #10 (version-timeline строка — уже защищена `skipped > 0`), #11 (escapeHtml — внутренний код), #12 (prompt() — низкий приоритет).
 
 ### Пасхалка таймера (easter egg)
 
-**Исправлено:** `_playCompletionSound()` не играл звук — `AudioContext` запускался в `suspended`-состоянии без `ctx.resume()`. Теперь после 3-минутного pulse звук играет корректно.
+`_playCompletionSound()` → добавлен `ctx.resume()` для AudioContext.
 
 ### Save-to-txt задержка (2-4 сек)
 
-**Исправлено:** Клик «Сохранить в .txt» блокировался `ta.onblur` → `State.snapshot()` (синхронный `JSON.stringify` всего состояния). Теперь `ta.onblur` временно снимается перед скачиванием и восстанавливается через 1 сек.
+`ta.onblur` временно снимается перед скачиванием и восстанавливается через 1 сек.
 
 ### Системные промпты — редизайн вкладки (#ltab-prompts)
 
-**Спека:** `Системные промпты.txt` + `Задание_промпты.md`
+**Спека:** `Задание_промпты.md`
 
 **Изменения:**
 - **CSS**: единый accent цвет, статус-бейджи, дропдаун меню, компактные строки, anti-jump
@@ -43,16 +55,13 @@
 | **ai-transform.js** | AbortError UI unlock, empty `_origText` guard |
 | **translator.js** | `restoreTemplates` backreference fix, `stats.totalChars` once |
 | **keyboard-trainer.js** | Clamp viewport, pointer guard, settings fix, drag fix, focus management |
-| **blocks.js** | Table copy `SUBTABS_COUNT`, save-to-txt blur fix |
-| **app.js** | Hotkey guard for input fields |
-| **ui.js** | `_dragTabId` scope, rename focus preservation |
-| **state.js** | fontSize migrate default |
-| **timer.js** | `_ensurePaths` zero-size guard, AudioContext resume |
+| **ninja-cursor.js** | Аудиторские фиксы |
 
 ### Изменённые файлы (сессия)
 
 | Файл | Изменения |
 |------|-----------|
+| `intelligence-core.js` | Стale suggestion removal, hasMeaningfulDiff cross-type, snapshot key poisoning, NaN guard, dedup key |
 | `styles.css` | Редизайн промптов: anti-jump, статус-бейджи, дропдаун |
 | `index.html` | Структура `#ltab-prompts`: шапка, дропдаун, иконки |
 | `llm-core.js` | `_selectPromptKey` единая точка видимости, дропдаун `⋮` |
@@ -63,15 +72,18 @@
 | `ai-transform.js` | AbortError unlock, _origText guard |
 | `translator.js` | backreference fix, totalChars once |
 | `keyboard-trainer.js` | Clamp, pointer guard, settings, drag, focus |
+| `ninja-cursor.js` | Аудиторские фиксы |
 | `app.js` | Hotkey `!inField` guard for Z/Y/T/W |
 | `ui.js` | `_dragTabId` IIFE scope, `hadFocus` rename exclusion |
 | `state.js` | fontSize 12→13.5 in migrate |
 | `timer.js` | `_ensurePaths` zero-size, AudioContext resume |
 | `blocks.js` | Table copy SUBTABS_COUNT, save-to-txt blur skip |
+| `text-expander.js` | Мелкие аудиторские фиксы |
 
 ## Как работает
 - **KeyboardTrainer**: singleton-панель → toggle → keydown → flash + auto RU/EN → drag/resize → настройки → ghost/slim/on-screen/problem/focus/mouse-through → зоны пальцев → shifted → цвет → прозрачность → stay visible → экстранный режим
 - **Timer easter egg**: клик → count up 0..99 → 3-мин pulse → звук → auto-countdown 99..0
+- **Intelligence**: `intelligence-core.js` = events + context snapshot + scoring + prediction → `smart-suggestions.js` = UI strip + menu
 
 ## Следующий шаг
 1. Проверить вкладку «Системные промпты» в браузере
