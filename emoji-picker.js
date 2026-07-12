@@ -8,7 +8,7 @@
   /* ── DATA ──────────────────────────────────────────────────────── */
   const EMOJI_DATA = [
     // Улыбки / эмоции
-    { name: 'улыбка',       emoji: '😊',  tags: ['смех', 'радость', 'счастлив', 'smile', 'happy'] },
+    { name: 'улыбка',       emoji: '😊',  tags: ['смех', 'радость', 'счастлив'], aliases: ['smile', 'happy'] },
     { name: 'широкая улыбка', emoji: '😃', tags: ['улыбка', 'зубы'] },
     { name: 'смех',         emoji: '😆',  tags: ['хохот', 'смешно', 'улыбка'] },
     { name: 'веселье',      emoji: '😁',  tags: ['зубы', 'улыбка'] },
@@ -37,10 +37,10 @@
     { name: 'клоун',        emoji: '🤡',  tags: ['шут'] },
     { name: 'привидение',   emoji: '👻',  tags: ['призрак', 'хеллоуин'] },
     { name: 'alien',        emoji: '👽',  tags: ['инопланетянин'] },
-    { name: 'робот',        emoji: '🤖',  tags: ['механизм'] },
+    { name: 'робот',        emoji: '🤖',  tags: ['механизм'], aliases: ['robot'] },
 
     // Руки / жесты
-    { name: 'класс',        emoji: '👍',  tags: ['лайк', 'ок', 'отлично', 'like', 'thumbsup'] },
+    { name: 'класс',        emoji: '👍',  tags: ['лайк', 'ок', 'отлично'], aliases: ['like', 'thumbsup', 'thumbs'] },
     { name: 'плохо',        emoji: '👎',  tags: ['не нравится'] },
     { name: 'пятёрка',      emoji: '🖐️', tags: ['рука', 'пять'] },
     { name: 'ок',           emoji: '👌',  tags: ['класс', 'точно'] },
@@ -55,7 +55,7 @@
     { name: 'сердце руками', emoji: '🫶', tags: ['любовь', 'сердце'] },
 
     // Сердца / любовь
-    { name: 'сердце',       emoji: '❤️',  tags: ['любовь', 'красное', 'love', 'heart'] },
+    { name: 'сердце',       emoji: '❤️',  tags: ['любовь', 'красное'], aliases: ['love', 'heart'] },
     { name: 'оранжевое сердце', emoji: '🧡', tags: ['оранжевый'] },
     { name: 'жёлтое сердце', emoji: '💛', tags: ['жёлтый'] },
     { name: 'зелёное сердце', emoji: '💚', tags: ['зелёный'] },
@@ -65,17 +65,17 @@
     { name: 'белое сердце', emoji: '🤍',  tags: ['белый'] },
     { name: 'разбитое сердце', emoji: '💔', tags: ['печаль', 'разрыв'] },
     { name: 'горящее сердце', emoji: '🔥', tags: ['огонь', 'жар'] },
-    { name: 'подарок',      emoji: '🎁',  tags: ['подарок', 'сюрприз'] },
+    { name: 'подарок',      emoji: '🎁',  tags: ['подарок', 'сюрприз'], aliases: ['gift', 'present'] },
     { name: 'ленточка',     emoji: '🎀',  tags: ['бантик'] },
 
     // Природа
-    { name: 'солнце',       emoji: '☀️',  tags: ['погода', 'тёплый'] },
-    { name: 'луна',         emoji: '🌙',  tags: ['ночь'] },
-    { name: 'звезда',       emoji: '⭐',  tags: ['сияние', 'star'] },
-    { name: 'огонь',        emoji: '🔥',  tags: ['жар', 'горячо', 'fire', 'hot', 'flame'] },
+    { name: 'солнце',       emoji: '☀️',  tags: ['погода', 'тёплый'], aliases: ['sun', 'sunny'] },
+    { name: 'луна',         emoji: '🌙',  tags: ['ночь'], aliases: ['moon'] },
+    { name: 'звезда',       emoji: '⭐',  tags: ['сияние'], aliases: ['star'] },
+    { name: 'огонь',        emoji: '🔥',  tags: ['жар', 'горячо'], aliases: ['fire', 'hot', 'flame'] },
     { name: 'молния',       emoji: '⚡',  tags: ['электричество'] },
     { name: 'радуга',       emoji: '🌈',  tags: ['цвет'] },
-    { name: 'цветок',       emoji: '🌸',  tags: ['цветение', 'красиво'] },
+    { name: 'цветок',       emoji: '🌸',  tags: ['цветение', 'красиво'], aliases: ['flower', 'sakura'] },
     { name: 'роза',         emoji: '🌹',  tags: ['красная'] },
     { name: 'подсолнух',    emoji: '🌻',  tags: ['жёлтый'] },
     { name: 'дерево',       emoji: '🌳',  tags: ['природа'] },
@@ -90,10 +90,10 @@
 
     // Еда
     { name: 'кофе',         emoji: '☕',  tags: ['напиток', 'чай'] },
-    { name: 'пицца',        emoji: '🍕',  tags: ['еда'] },
-    { name: 'бургер',       emoji: '🍔',  tags: ['еда'] },
+    { name: 'пицца',        emoji: '🍕',  tags: ['еда'], aliases: ['pizza'] },
+    { name: 'бургер',       emoji: '🍔',  tags: ['еда'], aliases: ['burger'] },
     { name: 'пончик',       emoji: '🍩',  tags: ['сладкое'] },
-    { name: 'торт',         emoji: '🎂',  tags: ['день рождения', 'праздник'] },
+    { name: 'торт',         emoji: '🎂',  tags: ['день рождения', 'праздник'], aliases: ['cake', 'birthday'] },
     { name: 'печенье',      emoji: '🍪',  tags: ['сладкое'] },
     { name: 'шоколад',      emoji: '🍫',  tags: ['сладкое'] },
     { name: 'мороженое',    emoji: '🍦',  tags: ['десерт'] },
@@ -105,8 +105,8 @@
     { name: 'тарелка',      emoji: '🍽️', tags: ['еда'] },
 
     // Животные
-    { name: 'собака',       emoji: '🐶',  tags: ['пёс', 'животное', 'dog'] },
-    { name: 'кошка',        emoji: '🐱',  tags: ['кот', 'животное', 'cat'] },
+    { name: 'собака',       emoji: '🐶',  tags: ['пёс', 'животное'], aliases: ['dog'] },
+    { name: 'кошка',        emoji: '🐱',  tags: ['кот', 'животное'], aliases: ['cat'] },
     { name: 'медведь',      emoji: '🐻',  tags: ['животное'] },
     { name: 'панда',        emoji: '🐼',  tags: ['животное'] },
     { name: 'львёнок',      emoji: '🦁',  tags: ['лев', 'животное'] },
@@ -133,20 +133,20 @@
 
     // Объекты
     { name: 'бомба',        emoji: '💣',  tags: ['взрыв'] },
-    { name: 'кристалл',     emoji: '🔮',  tags: ['магия', 'шар'] },
+    { name: 'кристалл',     emoji: '🔮',  tags: ['магия', 'шар'], aliases: ['crystal', 'magic'] },
     { name: 'алмаз',        emoji: '💎',  tags: ['драгоценность'] },
     { name: 'монета',       emoji: '💰',  tags: ['деньги'] },
     { name: 'сумка',        emoji: '👛',  tags: ['кошелёк'] },
     { name: 'часы',         emoji: '⏰',  tags: ['время'] },
-    { name: 'замок',        emoji: '🔒',  tags: ['закрытый', 'безопасность'] },
-    { name: 'ключ',         emoji: '🔑',  tags: ['открыть'] },
+    { name: 'замок',        emoji: '🔒',  tags: ['закрытый', 'безопасность'], aliases: ['lock', 'secure'] },
+    { name: 'ключ',         emoji: '🔑',  tags: ['открыть'], aliases: ['key'] },
     { name: 'ножницы',      emoji: '✂️',  tags: ['резать'] },
     { name: 'молоток',      emoji: '🔨',  tags: ['инструмент'] },
     { name: 'гвоздь',       emoji: '📌',  tags: ['крепление', 'заметка'] },
-    { name: 'мишень',       emoji: '🎯',  tags: ['цель'] },
+    { name: 'мишень',       emoji: '🎯',  tags: ['цель'], aliases: ['target', 'goal'] },
     { name: 'магнит',       emoji: '🧲',  tags: ['притяжение'] },
-    { name: 'шестерёнка',   emoji: '⚙️',  tags: ['настройка'] },
-    { name: 'лупа',         emoji: '🔍',  tags: ['поиск'] },
+    { name: 'шестерёнка',   emoji: '⚙️',  tags: ['настройка'], aliases: ['gear', 'settings'] },
+    { name: 'лупа',         emoji: '🔍',  tags: ['поиск'], aliases: ['search'] },
     { name: 'binoculars',   emoji: '🔭',  tags: ['зрительная'] },
     { name: 'микроскоп',    emoji: '🔬',  tags: ['наука'] },
     { name: 'тестирование', emoji: '🧪',  tags: ['наука', 'химия'] },
@@ -157,26 +157,26 @@
     { name: 'стетоскоп',    emoji: '🩺',  tags: ['врач'] },
 
     // Транспорт
-    { name: 'автомобиль',   emoji: '🚗',  tags: ['машина'] },
+    { name: 'автомобиль',   emoji: '🚗',  tags: ['машина'], aliases: ['car'] },
     { name: 'автобус',      emoji: '🚌',  tags: ['транспорт'] },
-    { name: 'самолёт',      emoji: '✈️',  tags: ['полёт'] },
+    { name: 'самолёт',      emoji: '✈️',  tags: ['полёт'], aliases: ['plane', 'flight'] },
     { name: 'поезд',        emoji: '🚂',  tags: ['железная дорога'] },
     { name: 'велосипед',    emoji: '🚲',  tags: ['велосипед'] },
     { name: 'корабль',      emoji: '🚢',  tags: ['море'] },
-    { name: 'ракета',       emoji: '🚀',  tags: ['космос', 'быстро', 'rocket', 'space'] },
+    { name: 'ракета',       emoji: '🚀',  tags: ['космос', 'быстро'], aliases: ['rocket', 'space'] },
     { name: 'вертолёт',     emoji: '🚁',  tags: ['полёт'] },
     { name: 'мотор',        emoji: '🏍️', tags: ['мотоцикл'] },
 
     // Знаки / символы
-    { name: 'галочка',      emoji: '✅',  tags: ['готово', 'выполнено', 'да', 'done', 'check'] },
-    { name: 'крестик',      emoji: '❌',  tags: ['нет', 'ошибка', 'удалить', 'cross', 'delete'] },
+    { name: 'галочка',      emoji: '✅',  tags: ['готово', 'выполнено', 'да'], aliases: ['done', 'check'] },
+    { name: 'крестик',      emoji: '❌',  tags: ['нет', 'ошибка', 'удалить'], aliases: ['cross', 'delete'] },
     { name: 'восклицание',  emoji: '❗',  tags: ['важно', 'внимание'] },
     { name: 'вопрос',       emoji: '❓',  tags: ['вопрос'] },
     { name: 'вопросительный', emoji: '❔', tags: ['вопрос'] },
     { name: 'восклицательный', emoji: '❕', tags: ['важно'] },
     { name: 'мольба-ладони', emoji: '🤲',  tags: ['ладони', 'молитва'] },
-    { name: 'пожалуйста',   emoji: '🥹',  tags: ['прошу'] },
-    { name: 'извините',     emoji: '😔',  tags: ['прости'] },
+    { name: 'пожалуйста',   emoji: '🥹',  tags: ['прошу'], aliases: ['please'] },
+    { name: 'извините',     emoji: '😔',  tags: ['прости'], aliases: ['sorry'] },
     { name: 'новый',        emoji: '🆕',  tags: ['new'] },
     { name: 'top',          emoji: '🆙',  tags: ['вверх'] },
     { name: 'soon',         emoji: '🔜',  tags: ['скоро'] },
@@ -185,12 +185,12 @@
     { name: 'вперёд',       emoji: '⏩',  tags: ['далее'] },
 
     // Технологии
-    { name: 'компьютер',    emoji: '💻',  tags: ['пк', 'ноутбук', 'computer', 'laptop'] },
-    { name: 'телефон',      emoji: '📱',  tags: ['смартфон', 'phone', 'mobile'] },
+    { name: 'компьютер',    emoji: '💻',  tags: ['пк', 'ноутбук'], aliases: ['computer', 'laptop'] },
+    { name: 'телефон',      emoji: '📱',  tags: ['смартфон'], aliases: ['phone', 'mobile'] },
     { name: 'клавиатура',   emoji: '⌨️',  tags: ['набор'] },
     { name: 'монитор',      emoji: '🖥️', tags: ['экран'] },
     { name: 'принтер',      emoji: '🖨️', tags: ['печать'] },
-    { name: 'камера',       emoji: '📷',  tags: ['фото'] },
+    { name: 'камера',       emoji: '📷',  tags: ['фото'], aliases: ['camera', 'photo'] },
     { name: 'видеокамера',  emoji: '📹',  tags: ['видео'] },
     { name: 'флешка',       emoji: '💾',  tags: ['диск'] },
     { name: 'диск',         emoji: '💿',  tags: ['cd'] },
@@ -203,38 +203,38 @@
     { name: 'радио',        emoji: '📻',  tags: ['вещание'] },
 
     // Работа / офис
-    { name: 'папка',        emoji: '📁',  tags: ['документ'] },
-    { name: 'документ',     emoji: '📄',  tags: ['файл'] },
-    { name: 'блокнот',      emoji: '📝',  tags: ['запись'] },
+    { name: 'папка',        emoji: '📁',  tags: ['документ'], aliases: ['folder'] },
+    { name: 'документ',     emoji: '📄',  tags: ['файл'], aliases: ['file', 'document'] },
+    { name: 'блокнот',      emoji: '📝',  tags: ['запись'], aliases: ['note', 'notepad'] },
     { name: 'ручка',        emoji: '🖊️', tags: ['писать', 'маркер', 'цвет'] },
     { name: 'карандаш',     emoji: '✏️',  tags: ['писать'] },
     { name: 'стикер',       emoji: '🗒️',  tags: ['заметка'] },
     { name: 'скрепка',      emoji: '📎',  tags: ['бумага'] },
-    { name: 'порядок',      emoji: '📋',  tags: ['список'] },
+    { name: 'порядок',      emoji: '📋',  tags: ['список'], aliases: ['clipboard', 'list'] },
     { name: 'калькулятор',  emoji: '🧮',  tags: ['счёт'] },
     { name: 'доска',        emoji: '📊',  tags: ['график'] },
-    { name: 'график',       emoji: '📈',  tags: ['рост'] },
+    { name: 'график',       emoji: '📈',  tags: ['рост'], aliases: ['chart', 'growth'] },
     { name: 'презентация',  emoji: '📑',  tags: ['слайд'] },
-    { name: 'задача',       emoji: '☑️',  tags: ['чекбокс'] },
+    { name: 'задача',       emoji: '☑️',  tags: ['чекбокс'], aliases: ['task', 'todo'] },
 
     // Спорт / хобби
-    { name: 'футбол',      emoji: '⚽',  tags: ['мяч'] },
+    { name: 'футбол',      emoji: '⚽',  tags: ['мяч'], aliases: ['soccer'] },
     { name: 'баскетбол',    emoji: '🏀',  tags: ['мяч'] },
     { name: 'теннис',       emoji: '🎾',  tags: ['мяч'] },
     { name: 'бейсбол',      emoji: '⚾',  tags: ['мяч'] },
     { name: 'гольф',        emoji: '⛳',  tags: ['мяч'] },
     { name: 'хоккей',       emoji: '🏒',  tags: ['шайба'] },
     { name: 'бильярд',      emoji: '🎱',  tags: ['шар'] },
-    { name: 'набросок',     emoji: '🎨',  tags: ['рисунок', 'краски'] },
+    { name: 'набросок',     emoji: '🎨',  tags: ['рисунок', 'краски'], aliases: ['art', 'palette'] },
     { name: 'маска',        emoji: '🎭',  tags: ['театр'] },
-    { name: 'сцена',        emoji: '🎬',  tags: ['кино'] },
+    { name: 'сцена',        emoji: '🎬',  tags: ['кино'], aliases: ['movie', 'cinema'] },
     { name: 'фотоальбом',   emoji: '📸',  tags: ['фото'] },
-    { name: 'чемодан',      emoji: '🧳',  tags: ['путешествие'] },
-    { name: 'палатка',      emoji: '⛺',  tags: ['поход'] },
-    { name: 'рыбалка',      emoji: '🎣',  tags: ['рыба'] },
-    { name: 'горы',         emoji: '🏔️', tags: ['природа'] },
-    { name: 'пляж',         emoji: '🏖️', tags: ['море'] },
-    { name: 'пустыня',      emoji: '🏜️', tags: ['песок'] },
+    { name: 'чемодан',      emoji: '🧳',  tags: ['путешествие'], aliases: ['luggage', 'travel'] },
+    { name: 'палатка',      emoji: '⛺',  tags: ['поход'], aliases: ['tent', 'camp'] },
+    { name: 'рыбалка',      emoji: '🎣',  tags: ['рыба'], aliases: ['fish', 'fishing'] },
+    { name: 'горы',         emoji: '🏔️', tags: ['природа'], aliases: ['mountain'] },
+    { name: 'пляж',         emoji: '🏖️', tags: ['море'], aliases: ['beach'] },
+    { name: 'пустыня',      emoji: '🏜️', tags: ['песок'], aliases: ['desert'] },
 
     // Флаги / спецсимволы
     { name: 'белый флаг',   emoji: '🏳️',  tags: ['капитуляция'] },
@@ -244,48 +244,48 @@
     { name: 'атом',         emoji: '⚛️',  tags: ['наука'] },
     { name: 'безопасность', emoji: '🔰',  tags: ['япония'] },
     { name: 'квадрат',      emoji: '✴️',  tags: ['цветок'] },
-    { name: 'спаркл',       emoji: '✨',  tags: ['блеск', 'красиво', 'sparkle', 'shine'] },
+    { name: 'спаркл',       emoji: '✨',  tags: ['блеск', 'красиво'], aliases: ['sparkle', 'shine'] },
     { name: 'глоток',       emoji: '💧',  tags: ['вода', 'капля'] },
     { name: 'бензин',       emoji: '⛽',  tags: ['топливо'] },
-    { name: 'колесо',       emoji: '🎡',  tags: ['парк'] },
-    { name: 'фонтан',       emoji: '⛲',  tags: ['вода'] },
+    { name: 'колесо',       emoji: '🎡',  tags: ['парк'], aliases: ['ferris', 'wheel'] },
+    { name: 'фонтан',       emoji: '⛲',  tags: ['вода'], aliases: ['fountain'] },
     { name: 'крест',        emoji: '⛪',  tags: ['церковь'] },
-    { name: 'храм',         emoji: '🛕',  tags: ['религия'] },
+    { name: 'храм',         emoji: '🛕',  tags: ['религия'], aliases: ['temple'] },
     { name: 'мечеть',       emoji: '🕌',  tags: ['религия'] },
     { name: 'синагога',     emoji: '🕍',  tags: ['религия'] },
-    { name: 'город',        emoji: '🏙️', tags: ['здание'] },
-    { name: 'мост',         emoji: '🌉',  tags: ['город'] },
-    { name: 'подсветка',    emoji: '💡',  tags: ['идея', 'лампа', 'idea', 'light'] },
-    { name: 'фонарь',       emoji: '🏮',  tags: ['свет'] },
-    { name: 'свеча',        emoji: '🕯️', tags: ['свет'] },
-    { name: 'колокольчик',  emoji: '🔔',  tags: ['звук'] },
+    { name: 'город',        emoji: '🏙️', tags: ['здание'], aliases: ['city'] },
+    { name: 'мост',         emoji: '🌉',  tags: ['город'], aliases: ['bridge'] },
+    { name: 'подсветка',    emoji: '💡',  tags: ['идея', 'лампа'], aliases: ['idea', 'light'] },
+    { name: 'фонарь',       emoji: '🏮',  tags: ['свет'], aliases: ['lantern'] },
+    { name: 'свеча',        emoji: '🕯️', tags: ['свет'], aliases: ['candle'] },
+    { name: 'колокольчик',  emoji: '🔔',  tags: ['звук'], aliases: ['bell', 'ring'] },
     { name: 'колокол',      emoji: '🔕',  tags: ['тишина'] },
-    { name: 'связь',        emoji: '🔗',  tags: ['ссылка'] },
-    { name: 'крючок',       emoji: '🪝',  tags: ['ловить'] },
+    { name: 'связь',        emoji: '🔗',  tags: ['ссылка'], aliases: ['link', 'chain'] },
+    { name: 'крючок',       emoji: '🪝',  tags: ['ловить'], aliases: ['hook'] },
     { name: 'ловушка',      emoji: '🪤',  tags: ['ловушка'] },
 
     // AI / разработка
-    { name: ' ai',          emoji: '🤖',  tags: ['искусственный интеллект', 'нейросеть', 'ai'] },
-    { name: 'мозг',         emoji: '🧠',  tags: ['мышление', 'brain', 'ai'] },
-    { name: 'данные',       emoji: '🧬',  tags: ['данные', 'генетика', 'data'] },
-    { name: 'инструмент',   emoji: '🛠',  tags: ['текущий инструмент', 'tool'] },
-    { name: 'баг',          emoji: '🐛',  tags: ['ошибка', 'жук', 'bug'] },
-    { name: 'разработка',   emoji: '🚧',  tags: ['в работе', 'build', 'dev'] },
-    { name: 'настройка',     emoji: '🔧',  tags: ['гаечный ключ', 'setting', 'config'] },
-    { name: 'код',          emoji: '💻',  tags: ['программирование', 'code'] },
-    { name: 'деплой',       emoji: '🚀',  tags: ['развёртывание', 'deploy', 'release'] },
+    { name: ' ai',          emoji: '🤖',  tags: ['искусственный интеллект', 'нейросеть'], aliases: ['ai'] },
+    { name: 'мозг',         emoji: '🧠',  tags: ['мышление'], aliases: ['brain'] },
+    { name: 'данные',       emoji: '🧬',  tags: ['данные', 'генетика'], aliases: ['data'] },
+    { name: 'инструмент',   emoji: '🛠',  tags: ['текущий инструмент'], aliases: ['tool'] },
+    { name: 'баг',          emoji: '🐛',  tags: ['ошибка', 'жук'], aliases: ['bug'] },
+    { name: 'разработка',   emoji: '🚧',  tags: ['в работе'], aliases: ['build', 'dev'] },
+    { name: 'настройка',     emoji: '🔧',  tags: ['гаечный ключ'], aliases: ['setting', 'config'] },
+    { name: 'код',          emoji: '💻',  tags: ['программирование'], aliases: ['code'] },
+    { name: 'деплой',       emoji: '🚀',  tags: ['развёртывание'], aliases: ['deploy', 'release'] },
 
     // Prompt / текст
-    { name: 'промпт',       emoji: '📝',  tags: ['запрос', 'prompt', 'текст'] },
-    { name: 'анализ',       emoji: '🔍',  tags: ['поиск', 'исследование', 'analysis'] },
-    { name: 'предупреждение', emoji: '⚠️', tags: ['внимание', 'warning', 'caution'] },
+    { name: 'промпт',       emoji: '📝',  tags: ['запрос', 'текст'], aliases: ['prompt'] },
+    { name: 'анализ',       emoji: '🔍',  tags: ['поиск', 'исследование'], aliases: ['analysis'] },
+    { name: 'предупреждение', emoji: '⚠️', tags: ['внимание'], aliases: ['warning', 'caution'] },
 
     // Статусы
-    { name: 'активно',      emoji: '🟢',  tags: ['включено', 'активен', 'active', 'on'] },
-    { name: 'ожидание',     emoji: '🟡',  tags: ['пауза', 'ожидание', 'pending', 'wait'] },
-    { name: 'ошибка',       emoji: '🔴',  tags: ['стоп', 'ошибка', 'error', 'stop'] },
-    { name: 'процесс',      emoji: '⏳',  tags: ['загрузка', 'выполняется', 'loading', 'process'] },
-    { name: 'успех',        emoji: '✅',  tags: ['готово', 'выполнено', 'success', 'done'] },
+    { name: 'активно',      emoji: '🟢',  tags: ['включено', 'активен'], aliases: ['active', 'on'] },
+    { name: 'ожидание',     emoji: '🟡',  tags: ['пауза', 'ожидание'], aliases: ['pending', 'wait'] },
+    { name: 'ошибка',       emoji: '🔴',  tags: ['стоп', 'ошибка'], aliases: ['error', 'stop'] },
+    { name: 'процесс',      emoji: '⏳',  tags: ['загрузка', 'выполняется'], aliases: ['loading', 'process'] },
+    { name: 'успех',        emoji: '✅',  tags: ['готово', 'выполнено'], aliases: ['success', 'done'] },
   ];
 
   /* ── CSS ───────────────────────────────────────────────────────── */
@@ -387,10 +387,11 @@
   }
 
   /* ── FILTER ────────────────────────────────────────────────────── */
-  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, NAME_PREFIX: 2, TAG_PREFIX: 3, NAME_INCLUDES: 4, TAG_INCLUDES: 5 };
+  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, ALIAS_EXACT: 2, NAME_PREFIX: 3, TAG_PREFIX: 4, ALIAS_PREFIX: 5, NAME_INCLUDES: 6, TAG_INCLUDES: 7, ALIAS_INCLUDES: 8 };
   for (const e of EMOJI_DATA) {
     e._nameN = _normalize(e.name);
     e._tagsN = (e.tags || []).map(t => _normalize(t));
+    e._aliasesN = (e.aliases || []).map(a => _normalize(a));
     /* маппинг позиций: _posMap[normalizedIdx] = originalIdx */
     const map = [];
     let j = 0;
@@ -410,10 +411,13 @@
       let prio = -1;
       if (e._nameN === q) prio = PRIORITY.NAME_EXACT;
       else if (e._tagsN.some(t => t === q)) prio = PRIORITY.TAG_EXACT;
+      else if (e._aliasesN.some(a => a === q)) prio = PRIORITY.ALIAS_EXACT;
       else if (e._nameN.startsWith(q)) prio = PRIORITY.NAME_PREFIX;
       else if (e._tagsN.some(t => t.startsWith(q))) prio = PRIORITY.TAG_PREFIX;
+      else if (e._aliasesN.some(a => a.startsWith(q))) prio = PRIORITY.ALIAS_PREFIX;
       else if (e._nameN.includes(q)) prio = PRIORITY.NAME_INCLUDES;
       else if (e._tagsN.some(t => t.includes(q))) prio = PRIORITY.TAG_INCLUDES;
+      else if (e._aliasesN.some(a => a.includes(q))) prio = PRIORITY.ALIAS_INCLUDES;
       if (prio >= 0) scored.push({ e, prio, idx: i });
     }
     scored.sort((a, b) => a.prio - b.prio || a.idx - b.idx);
