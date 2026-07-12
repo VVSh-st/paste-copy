@@ -299,20 +299,29 @@
 
     // ── Команды: блоки ──────────────────────────────────────────────
     { type: 'command', name: 'текстовый блок',  emoji: '📝',  tags: ['текст', 'блок'],          aliases: ['text', 'block'],
-      action: () => window.State?.addBlock('text') },
+      action: () => { const id = window.State?.addBlock('text'); _focusBlock(id); } },
     { type: 'command', name: 'сниппеты',        emoji: '💬',  tags: ['шаблоны', 'фрагменты'],   aliases: ['snippets'],
-      action: () => window.State?.addBlock('snippets') },
+      action: () => { const id = window.State?.addBlock('snippets'); _focusBlock(id); } },
     { type: 'command', name: 'группа',          emoji: '📁',  tags: ['папка', 'коллекция'],     aliases: ['group', 'folder'],
       action: () => window.State?.addBlock('group') },
     { type: 'command', name: 'переменная',      emoji: '🔤',  tags: ['var', 'переменная'],      aliases: ['variable', 'var'],
-      action: () => window.State?.addBlock('variable') },
+      action: () => { const id = window.State?.addBlock('variable'); _focusBlock(id); } },
     { type: 'command', name: 'заметка',         emoji: '📌',  tags: ['sticky', 'заметка'],      aliases: ['sticky', 'note'],
-      action: () => window.State?.addBlock('sticky') },
+      action: () => { const id = window.State?.addBlock('sticky'); _focusBlock(id); } },
     { type: 'command', name: 'чеклист',         emoji: '☑️',  tags: ['todo', 'список'],         aliases: ['todo', 'checklist'],
-      action: () => window.State?.addBlock('todo') },
+      action: () => { const id = window.State?.addBlock('todo'); _focusBlock(id); } },
     { type: 'command', name: 'таблица',         emoji: '📊',  tags: ['table', 'таблица'],       aliases: ['table'],
-      action: () => window.State?.addBlock('table') },
+      action: () => { const id = window.State?.addBlock('table'); _focusBlock(id); } },
   ];
+
+  function _focusBlock(id) {
+    if (!id) return;
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.block[data-id="${id}"] textarea.block-textarea`)
+              || document.querySelector(`.block[data-id="${id}"] input`);
+      if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    });
+  }
 
   /* ── ДЕДУПЛИКАЦИЯ (слияние tags/aliases при коллизии emoji) ─────── */
   const _cmdSeen = new Set();

@@ -574,6 +574,7 @@ const State = (() => {
       }
       tab.blocks.push(b);
     });
+    return b.id;
   }
 
   /* ── block helpers ── */
