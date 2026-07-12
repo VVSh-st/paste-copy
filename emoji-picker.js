@@ -754,7 +754,8 @@
     const ta = _ta;
     if (item.e.type === 'command') {
       const pos = ta.selectionStart;
-      ta.setRangeText('', _triggerStart, pos, 'end');
+      const start = (_triggerStart > 0 && ta.value[_triggerStart - 1] === ' ') ? _triggerStart - 1 : _triggerStart;
+      ta.setRangeText('', start, pos, 'end');
       ta.dispatchEvent(new Event('input'));
       _close();
       if (typeof item.e.action === 'function') item.e.action();
@@ -762,7 +763,8 @@
     }
     _pushRecent(item.e.emoji);
     const pos = ta.selectionStart;
-    ta.setRangeText(item.e.emoji + ' ', _triggerStart, pos, 'end');
+    const start = (_triggerStart > 0 && ta.value[_triggerStart - 1] === ' ') ? _triggerStart - 1 : _triggerStart;
+    ta.setRangeText(item.e.emoji + ' ', start, pos, 'end');
     ta.dispatchEvent(new Event('input'));
     _close();
     ta.focus();
