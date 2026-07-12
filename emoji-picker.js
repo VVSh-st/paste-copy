@@ -317,7 +317,7 @@
   box-shadow: 0 8px 32px rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.04) inset;
   overflow-y: auto; overscroll-behavior: contain;
   scrollbar-width: none; -ms-overflow-style: none;
-  animation: emojiDropIn 0.15s cubic-bezier(.16,1,.3,1);
+  animation: emojiDropIn 0.18s cubic-bezier(.34,1.56,.64,1);
   transition: left 0.08s ease, top 0.08s ease;
 }
 .emoji-palette::-webkit-scrollbar { display: none; }
@@ -410,10 +410,19 @@
     localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 20)));
   }
 
-  /* ── CANVAS MEASURE (без reflow в DOM) ─────────────────────────── */
+  /* ── CANVAS MEASURE (с кешем) ──────────────────────────────────── */
+  const _widthCache = new Map();
   const _measureWidth = (() => {
     const ctx = document.createElement('canvas').getContext('2d');
-    return (text, font) => { ctx.font = font; return ctx.measureText(text).width; };
+    return (text, font) => {
+      let m = _widthCache.get(font);
+      if (!m) { m = new Map(); _widthCache.set(font, m); }
+      if (m.has(text)) return m.get(text);
+      ctx.font = font;
+      const w = ctx.measureText(text).width;
+      m.set(text, w);
+      return w;
+    };
   })();
 
   /* ── INIT ──────────────────────────────────────────────────────── */
@@ -431,7 +440,7 @@
   }
 
   /* ── FILTER ────────────────────────────────────────────────────── */
-  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, ALIAS_EXACT: 2, EMOJI_EXACT: 3, NAME_PREFIX: 4, TAG_PREFIX: 5, ALIAS_PREFIX: 6, NAME_INCLUDES: 7, TAG_INCLUDES: 8, ALIAS_INCLUDES: 9 };
+  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, ALIAS_EXACT: 2, EMOJI_EXACT: 3, NAME_PREFIX: 4, TAG_PREFIX: 5, ALIAS_PREFIX: 6, ACRONYM: 7, NAME_INCLUDES: 8, TAG_INCLUDES: 9, ALIAS_INCLUDES: 10 };
   const _EMOJI_INDEX = new Map(EMOJI_DATA.map(e => [e.emoji, e]));
   for (const e of EMOJI_DATA) {
     e._nameN = _normalize(e.name);
@@ -456,6 +465,7 @@
       else if (e._nameN.startsWith(q)) prio = PRIORITY.NAME_PREFIX;
       else if (e._tagsN.some(t => t.startsWith(q))) prio = PRIORITY.TAG_PREFIX;
       else if (e._aliasesN.some(a => a.startsWith(q))) prio = PRIORITY.ALIAS_PREFIX;
+      else if (e._nameN.split(/[\s_-]+/).some(w => w.startsWith(q))) prio = PRIORITY.ACRONYM;
       else if (e._nameN.includes(q)) prio = PRIORITY.NAME_INCLUDES;
       else if (e._tagsN.some(t => t.includes(q))) prio = PRIORITY.TAG_INCLUDES;
       else if (e._aliasesN.some(a => a.includes(q))) prio = PRIORITY.ALIAS_INCLUDES;
@@ -705,6 +715,9 @@
     _palette.setAttribute('aria-activedescendant', _idRoot + '-opt-' + idx);
   }
 
+  /* ── DEBOUNCE ──────────────────────────────────────────────────── */
+  let _debounceTimer = 0;
+
   /* ── TRIGGER DETECTION ─────────────────────────────────────────── */
   function _isEnabled() {
     const lay = window.State?.getLayout?.();
@@ -713,6 +726,10 @@
 
   function _handleInput(ta) {
     if (!_isEnabled()) { if (_palette) _close(); return; }
+    clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(() => _doHandleInput(ta), 35);
+  }
+  function _doHandleInput(ta) {
     const pos = ta.selectionStart;
     const before = ta.value.slice(0, pos);
     const m = before.match(/(^|[\n\s]):([^\s\n:]{1,32}):?$/);
