@@ -331,7 +331,7 @@
   flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.emoji-name mark { color: #ff47a0; background: transparent; font-weight: 600; }
+
 .emoji-footer {
   border-top: 1px solid rgba(148,163,184,0.14);
   padding: 4px 8px; text-align: center;
@@ -392,15 +392,6 @@
     e._nameN = _normalize(e.name);
     e._tagsN = (e.tags || []).map(t => _normalize(t));
     e._aliasesN = (e.aliases || []).map(a => _normalize(a));
-    /* маппинг позиций: _posMap[normalizedIdx] = originalIdx */
-    const map = [];
-    let j = 0;
-    for (let i = 0; i < e.name.length && j < e._nameN.length; i++) {
-      map.push(j);
-      const ch = _normalize(e.name[i]);
-      j += ch.length || 1;
-    }
-    e._posMap = map;
   }
   function _filter(query) {
     const q = _normalize(query);
@@ -514,18 +505,7 @@
       charSpan.textContent = item.e.emoji;
       const nameSpan = document.createElement('span');
       nameSpan.className = 'emoji-name';
-      const nameText = item.e.name;
-      const nq = _normalize(query);
-      const nIdx = item.e._nameN.indexOf(nq);
-      if (nIdx >= 0 && item.e._posMap) {
-        const origStart = item.e._posMap[nIdx] || 0;
-        const origEnd = (item.e._posMap[nIdx + nq.length] != null) ? item.e._posMap[nIdx + nq.length] : nameText.length;
-        nameSpan.innerHTML = _escHtml(nameText.slice(0, origStart))
-          + '<mark>' + _escHtml(nameText.slice(origStart, origEnd)) + '</mark>'
-          + _escHtml(nameText.slice(origEnd));
-      } else {
-        nameSpan.textContent = nameText;
-      }
+      nameSpan.textContent = item.e.name;
       btn.appendChild(charSpan);
       btn.appendChild(nameSpan);
       btn.addEventListener('mousedown', ev => { ev.preventDefault(); _insert(i); });
@@ -537,13 +517,10 @@
     const CHAR_FIXED = 26 + 8;      /* .emoji-char + gap */
     const PALETTE_INSET = 5 * 2;    /* padding самой палитры */
     const cs2 = getComputedStyle(ta);
-    const fontNormal = '500 12px ' + cs2.fontFamily;
-    const fontBold = '600 12px ' + cs2.fontFamily;
+    const fontStr = '500 12px ' + cs2.fontFamily;
     let maxW = 0;
     for (let i = 0; i < _filtered.length; i++) {
-      const nameW = _measureWidth(_filtered[i].e.name, fontNormal);
-      const markW = _measureWidth(_filtered[i].e.name, fontBold);
-      maxW = Math.max(maxW, nameW, markW);
+      maxW = Math.max(maxW, _measureWidth(_filtered[i].e.name, fontStr));
     }
     _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 420) + 'px';
 
@@ -649,11 +626,6 @@
     } else {
       if (_palette) _close();
     }
-  }
-
-  /* ── ESCAPE ────────────────────────────────────────────────────── */
-  function _escHtml(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   /* ── GLOBAL EVENTS ─────────────────────────────────────────────── */
