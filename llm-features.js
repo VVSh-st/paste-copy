@@ -3568,6 +3568,7 @@ const AutoPoet = (() => {
     let _draftInput   = '';
 
     let _fontSize     = 12;
+    let _savedWin     = null;
     let _sessions     = [];
     let _sessionIdx   = 0;
     let _noAutoScroll = false;
@@ -3585,6 +3586,15 @@ const AutoPoet = (() => {
       _applyFontSize();
       p.style.display = 'flex';
       p.classList.remove('llm-chat-collapsed');
+      if (_savedWin) {
+        p.style.left = _savedWin.left + 'px';
+        p.style.top = _savedWin.top + 'px';
+        p.style.width = _savedWin.width + 'px';
+        p.style.height = _savedWin.height + 'px';
+        p.style.right = 'auto';
+        p.style.bottom = 'auto';
+        _savedWin = null;
+      }
       _updateCtxLabel();
       const el = _msgsEl();
       if (el) {
@@ -3598,7 +3608,13 @@ const AutoPoet = (() => {
 
     function _saveSessions() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions: _sessions, sessionIdx: _sessionIdx, fontSize: _fontSize }));
+        const data = { sessions: _sessions, sessionIdx: _sessionIdx, fontSize: _fontSize };
+        const p = _panel();
+        if (p && p.style.display !== 'none') {
+          const r = p.getBoundingClientRect();
+          data.win = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } catch {}
     }
 
@@ -3610,6 +3626,7 @@ const AutoPoet = (() => {
           _sessions = Array.isArray(data.sessions) ? data.sessions : [];
           _sessionIdx = typeof data.sessionIdx === 'number' ? data.sessionIdx : 0;
           _fontSize = typeof data.fontSize === 'number' ? data.fontSize : 12;
+          if (data.win) _savedWin = data.win;
         }
       } catch {}
       if (_sessions.length === 0) {
@@ -4186,7 +4203,7 @@ const AutoPoet = (() => {
         }
       };
 
-      const onEnd = () => { _dragging = _resizing = false; };
+      const onEnd = () => { _dragging = _resizing = false; _saveSessions(); };
 
       document.addEventListener('mousemove', onMove, { passive: true });
       document.addEventListener('mouseup', onEnd);
