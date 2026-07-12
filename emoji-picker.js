@@ -401,7 +401,7 @@
       btn.appendChild(charSpan);
       btn.appendChild(nameSpan);
       btn.addEventListener('mousedown', ev => { ev.preventDefault(); _insert(i); });
-      _palette.appendChild(btn);
+      _palette.insertBefore(btn, footer);
     }
 
     let footer = _palette.querySelector('.emoji-footer');
