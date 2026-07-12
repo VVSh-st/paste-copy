@@ -287,6 +287,18 @@
     { name: 'процесс',      emoji: '⏳',  tags: ['загрузка', 'выполняется'], aliases: ['loading', 'process'] },
     { name: 'успех',        emoji: '✅',  tags: ['готово', 'выполнено'], aliases: ['success', 'done'] },
 
+    // ── Команды: навигация ──────────────────────────────────────────
+    { type: 'command', name: 'настройки',       emoji: '⚙️',  tags: ['настройки', 'профиль'],  aliases: ['settings', 'config'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('profiles') },
+    { type: 'command', name: 'промпты',         emoji: '📝',  tags: ['системные промпты'],     aliases: ['prompts'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('prompts') },
+    { type: 'command', name: 'бро-теги',        emoji: '🏷️',  tags: ['бро', 'теги'],           aliases: ['bro', 'tags'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('bro') },
+    { type: 'command', name: 'автопоэт',        emoji: '🎵',  tags: ['автопоэт'],              aliases: ['autopoet', 'poet'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('autopoet') },
+    { type: 'command', name: 'разное',          emoji: '🔧',  tags: ['настройки разное'],      aliases: ['misc'],
+      action: () => window.LLMCore?.LLMSettingsModal?.open('misc') },
+
     // ── Команды: блоки ──────────────────────────────────────────────
     { type: 'command', name: 'текстовый блок',  emoji: '📝',  tags: ['текст', 'блок'],          aliases: ['text', 'block'],
       action: () => window.State?.addBlock('text') },
