@@ -322,7 +322,7 @@
 }
 .emoji-palette::-webkit-scrollbar { display: none; }
 @keyframes emojiDropIn {
-  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  from { opacity: 0; transform: translateY(4px) scale(0.96); }
   to   { opacity: 1; transform: none; }
 }
 .emoji-item {
@@ -336,7 +336,7 @@
 }
 .emoji-item:hover { background: var(--surface2); color: var(--text0); border-color: var(--border); }
 .emoji-item:active { transform: scale(0.94); }
-.emoji-item:hover .emoji-char { transform: scale(1.18); }
+.emoji-item:hover .emoji-char { transform: scale(1.35) rotate(-5deg); }
 .emoji-item.focused {
   background: linear-gradient(90deg, rgba(0,185,107,0.34), rgba(0,185,107,0.16));
   color: #fff; border-color: rgba(0,185,107,0.58);
@@ -345,7 +345,7 @@
 .emoji-char {
   font-size: 18px; width: 26px; text-align: center;
   flex-shrink: 0; line-height: 1;
-  transition: transform 0.12s;
+  transition: transform 0.15s, filter 0.15s;
 }
 .emoji-name {
   flex: 1; min-width: 0;
@@ -438,6 +438,10 @@
     e._tagsN = (e.tags || []).map(t => _normalize(t));
     e._aliasesN = (e.aliases || []).map(a => _normalize(a));
   }
+  function _usageScore(emoji) {
+    const item = _loadRecents().find(x => x.emoji === emoji);
+    return item ? item.count : 0;
+  }
   function _filter(query) {
     const q = _normalize(query);
     if (!q) return [];
@@ -457,7 +461,7 @@
       else if (e._aliasesN.some(a => a.includes(q))) prio = PRIORITY.ALIAS_INCLUDES;
       if (prio >= 0) scored.push({ e, prio, idx: i });
     }
-    scored.sort((a, b) => a.prio - b.prio || a.idx - b.idx);
+    scored.sort((a, b) => a.prio - b.prio || _usageScore(b.e.emoji) - _usageScore(a.e.emoji) || a.idx - b.idx);
     return scored.slice(0, 10);
   }
 
