@@ -297,6 +297,7 @@
       + reuseSignal * 0.10;
 
     if (!String(text || '').trim() || !tab) return 0;
+    if (!Number.isFinite(score)) return 0;
     return Number(Math.max(0, Math.min(1, score)).toFixed(2));
   }
 
@@ -424,12 +425,16 @@
   }
 
   function hasMeaningfulDiff(prepared = {}, type = '') {
-    const drift = prepared.pinnedBaselineDrift || prepared.namedVersionDrift || null;
-    const derived = prepared.derivedFrom || null;
-    const timeline = prepared.versionTimeline || null;
-    const diff = drift?.comparison?.diff || derived?.diff || timeline?.totalDiff || null;
+    let diff = null;
+    if (type === 'version-timeline') {
+      const timeline = prepared.versionTimeline || null;
+      return (timeline?.versionCount || 0) >= 3 && (timeline?.changedCount || 0) >= 1;
+    }
+    if (type === 'pinned-baseline-compare') diff = prepared.pinnedBaselineDrift?.comparison?.diff || null;
+    else if (type === 'named-version-compare') diff = prepared.namedVersionDrift?.comparison?.diff || null;
+    else if (type === 'derived-from-version') diff = prepared.derivedFrom?.diff || null;
+    else diff = prepared.pinnedBaselineDrift?.comparison?.diff || prepared.namedVersionDrift?.comparison?.diff || prepared.derivedFrom?.diff || null;
 
-    if (type === 'version-timeline') return (timeline?.versionCount || 0) >= 3 && (timeline?.changedCount || 0) >= 1;
     if (!diff) return type === 'similar-prompt-found' || type === 'often-with-found' || type === 'title-role-gap';
 
     const titleChanges = (diff.titleDiff?.added?.length || 0) + (diff.titleDiff?.removed?.length || 0);
@@ -487,11 +492,11 @@
     const ts = now();
     const previousSuggestions = [...lastSuggestions, ...lastMenuSuggestions];
     const previousKeys = new Set(previousSuggestions.map(prev =>
-      `${prev.type}\x00${prev.contextKey || ''}\x00${prev.preparedHash || ''}`
+      `${prev.type}\x00${prev.contextKey || ''}\x00${prev.preparedHash || prev.id || ''}`
     ));
     const previousVisibleKeys = new Set(previousSuggestions
       .filter(prev => !prev.menuOnly)
-      .map(prev => `${prev.type}\x00${prev.contextKey || ''}\x00${prev.preparedHash || ''}`)
+      .map(prev => `${prev.type}\x00${prev.contextKey || ''}\x00${prev.preparedHash || prev.id || ''}`)
     );
     const personalized = applyProjectGraphPriorityPolicy(items)
       .filter(s => s && s.type && !s.hidden && window.UserMemory?.isSuggestionAllowed?.(s.type) !== false)
@@ -731,9 +736,11 @@
         ctx.previewChars > 0
         && (snapshotKey !== lastRefreshSnapshotKey || now() - lastRefreshSnapshotAt > 60 * 1000)
       ) {
-        safeCall(() => window.ProjectGraph?.captureSnapshot?.('intelligence.refresh'), null, 'ProjectGraph.captureSnapshot');
-        lastRefreshSnapshotKey = snapshotKey;
-        lastRefreshSnapshotAt = now();
+        const snapOk = safeCall(() => window.ProjectGraph?.captureSnapshot?.('intelligence.refresh'), null, 'ProjectGraph.captureSnapshot');
+        if (snapOk !== false) {
+          lastRefreshSnapshotKey = snapshotKey;
+          lastRefreshSnapshotAt = now();
+        }
       }
       const prepared = predict(ctx, profile);
       lastSuggestions = prepared.visible || [];
@@ -778,6 +785,18 @@
       || null;
   }
 
+  function _removeStaleSuggestion(stale) {
+    const sameKey = s => {
+      if (stale.id && s.id === stale.id) return true;
+      if (stale.preparedHash) return s.type === stale.type && s.preparedHash === stale.preparedHash;
+      return s.type === stale.type;
+    };
+    lastSuggestions = lastSuggestions.filter(s => !sameKey(s));
+    lastMenuSuggestions = lastMenuSuggestions.filter(s => !sameKey(s));
+    window.SmartSuggestions?.render?.(lastSuggestions, lastContext);
+    window.SmartSuggestions?.updateMenu?.(lastMenuSuggestions, lastContext);
+  }
+
   function acceptSuggestion(idOrType) {
     const suggestion = findSuggestion(idOrType);
     if (!suggestion) return false;
@@ -785,12 +804,14 @@
     if (suggestion.contextTabId && activeTab?.id && suggestion.contextTabId !== activeTab.id) {
       window.Toast?.show?.('Подсказка устарела для текущей вкладки', 'info');
       refresh();
+      _removeStaleSuggestion(suggestion);
       return false;
     }
     const currentHash = hashText(safePreviewText());
     if (suggestion.contextTextHash && suggestion.contextTextHash !== currentHash) {
       window.Toast?.show?.('Подсказка устарела после изменения текста', 'info');
       refresh();
+      _removeStaleSuggestion(suggestion);
       return false;
     }
     const actionKey = suggestion.preparedHash || suggestion.id || suggestion.type;
