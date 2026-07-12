@@ -302,6 +302,7 @@
   overflow-y: auto; overscroll-behavior: contain;
   scrollbar-width: none; -ms-overflow-style: none;
   animation: emojiDropIn 0.15s cubic-bezier(.16,1,.3,1);
+  transition: left 0.08s ease, top 0.08s ease;
 }
 .emoji-palette::-webkit-scrollbar { display: none; }
 @keyframes emojiDropIn {
@@ -318,6 +319,8 @@
   transition: background var(--trans), color var(--trans), border-color var(--trans);
 }
 .emoji-item:hover { background: var(--surface2); color: var(--text0); border-color: var(--border); }
+.emoji-item:active { transform: scale(0.94); }
+.emoji-item:hover .emoji-char { transform: scale(1.18); }
 .emoji-item.focused {
   background: linear-gradient(90deg, rgba(0,185,107,0.34), rgba(0,185,107,0.16));
   color: #fff; border-color: rgba(0,185,107,0.58);
@@ -326,6 +329,7 @@
 .emoji-char {
   font-size: 18px; width: 26px; text-align: center;
   flex-shrink: 0; line-height: 1;
+  transition: transform 0.12s;
 }
 .emoji-name {
   flex: 1; min-width: 0;
@@ -357,13 +361,34 @@
   let _wrapHold = '';
   const _idRoot = 'emoji-p-' + Math.random().toString(36).slice(2, 8);
 
-  /* ── RECENTS (localStorage) ────────────────────────────────────── */
+  /* ── CATEGORIES ────────────────────────────────────────────────── */
+  const CATEGORIES = [
+    { label: 'Эмоции',     emojis: ['😊','😃','😆','😁','😉','🤗','🤔','😐','😴','😱','🤩','😢','😭','😎','💀'] },
+    { label: 'Руки',       emojis: ['👍','👎','👌','✌️','🤘','👆','👇','🤝','🙏','🙌','🫂','🫶'] },
+    { label: 'Сердца',     emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔'] },
+    { label: 'Животные',   emojis: ['🐶','🐱','🐻','🐼','🦁','🐰','🦊','🐺','🐧','🐦','🦋','🐸'] },
+    { label: 'Еда',        emojis: ['☕','🍕','🍔','🍩','🎂','🍪','🍫','🍦','🍎','🍌','🍇','🍓'] },
+    { label: 'Технологии', emojis: ['💻','📱','⌨️','🖥️','📷','💾','🎧','🎤','🔊'] },
+    { label: 'Транспорт',  emojis: ['🚗','🚌','✈️','🚂','🚲','🚢','🚀','🚁'] },
+    { label: 'AI/Код',     emojis: ['🤖','🧠','🧬','🐛','🔧','📝','🔍','⚠️','✅','❌','⏳'] },
+  ];
+
+  /* ── RECENTS (localStorage, frequency-weighted) ────────────────── */
   const RECENTS_KEY = 'emoji-picker:recents';
-  function _loadRecents() { try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); } catch { return []; } }
+  function _loadRecents() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]');
+      /* поддержка старого формата (массив строк) */
+      return raw.map(x => typeof x === 'string' ? { emoji: x, count: 1, last: 0 } : x);
+    } catch { return []; }
+  }
   function _pushRecent(emoji) {
-    const list = _loadRecents().filter(x => x !== emoji);
-    list.unshift(emoji);
-    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 12)));
+    const list = _loadRecents();
+    const item = list.find(x => x.emoji === emoji);
+    if (item) { item.count++; item.last = Date.now(); }
+    else { list.push({ emoji, count: 1, last: Date.now() }); }
+    list.sort((a, b) => (b.count * 10 + b.last / 1e6) - (a.count * 10 + a.last / 1e6));
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 20)));
   }
 
   /* ── CANVAS MEASURE (без reflow в DOM) ─────────────────────────── */
@@ -440,24 +465,27 @@
     _focusedIdx = 0;
     _wrapHold = '';
 
-    /* recents при пустом запросе */
+    /* recents + категории при пустом запросе */
     if (!query) {
       const recents = _loadRecents()
-        .map(e => EMOJI_DATA.find(d => d.emoji === e)).filter(Boolean)
+        .map(r => EMOJI_DATA.find(d => d.emoji === r.emoji)).filter(Boolean)
         .slice(0, 8);
+      let idx = 0;
+      const allItems = [];
+
       if (recents.length) {
         const lbl = document.createElement('div');
         lbl.className = 'emoji-footer';
         lbl.textContent = 'Недавние';
         _palette.appendChild(lbl);
-        for (let i = 0; i < recents.length; i++) {
-          const item = recents[i];
+        for (const item of recents) {
+          allItems.push({ e: item });
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.id = _idRoot + '-opt-' + i;
-          btn.className = 'emoji-item' + (i === 0 ? ' focused' : '');
+          btn.id = _idRoot + '-opt-' + idx;
+          btn.className = 'emoji-item' + (idx === 0 ? ' focused' : '');
           btn.setAttribute('role', 'option');
-          btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+          btn.setAttribute('aria-selected', idx === 0 ? 'true' : 'false');
           const charSpan = document.createElement('span');
           charSpan.className = 'emoji-char';
           charSpan.setAttribute('aria-hidden', 'true');
@@ -467,14 +495,45 @@
           nameSpan.textContent = item.name;
           btn.appendChild(charSpan);
           btn.appendChild(nameSpan);
-          btn.addEventListener('mousedown', ev => { ev.preventDefault(); _filtered = recents.map(e => ({ e })); _insert(i); });
+          const captureIdx = idx;
+          btn.addEventListener('mousedown', ev => { ev.preventDefault(); _filtered = allItems; _insert(captureIdx); });
           _palette.appendChild(btn);
+          idx++;
         }
-        _filtered = recents.map(e => ({ e }));
-        _position(ta);
-        return;
       }
-      _palette.innerHTML = '<div class="emoji-empty"><span class="emoji-empty-icon" aria-hidden="true">💬</span><span>Введи имя или тег…</span></div>';
+
+      for (const cat of CATEGORIES) {
+        const lbl = document.createElement('div');
+        lbl.className = 'emoji-footer';
+        lbl.textContent = cat.label;
+        _palette.appendChild(lbl);
+        for (const emojiChar of cat.emojis) {
+          const entry = EMOJI_DATA.find(d => d.emoji === emojiChar);
+          if (!entry) continue;
+          allItems.push({ e: entry });
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.id = _idRoot + '-opt-' + idx;
+          btn.className = 'emoji-item' + (idx === 0 ? ' focused' : '');
+          btn.setAttribute('role', 'option');
+          btn.setAttribute('aria-selected', idx === 0 ? 'true' : 'false');
+          const charSpan = document.createElement('span');
+          charSpan.className = 'emoji-char';
+          charSpan.setAttribute('aria-hidden', 'true');
+          charSpan.textContent = entry.emoji;
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'emoji-name';
+          nameSpan.textContent = entry.name;
+          btn.appendChild(charSpan);
+          btn.appendChild(nameSpan);
+          const captureIdx = idx;
+          btn.addEventListener('mousedown', ev => { ev.preventDefault(); _filtered = allItems; _insert(captureIdx); });
+          _palette.appendChild(btn);
+          idx++;
+        }
+      }
+
+      _filtered = allItems;
       _position(ta);
       return;
     }
@@ -626,10 +685,10 @@
     if (!_isEnabled()) { if (_palette) _close(); return; }
     const pos = ta.selectionStart;
     const before = ta.value.slice(0, pos);
-    const m = before.match(/(^|[\n\s]):([^\s\n:]{1,32})$/);
+    const m = before.match(/(^|[\n\s]):([^\s\n:]{1,32}):?$/);
     if (m) {
       const query = m[2].toLowerCase();
-      _triggerStart = pos - m[2].length - 1;
+      _triggerStart = pos - m[0].length;
       _render(ta, query);
     } else {
       if (_palette) _close();
