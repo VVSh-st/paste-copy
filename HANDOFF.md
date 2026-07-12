@@ -2,87 +2,80 @@
 
 ## Текущий статус
 
-### Поиск и замена — кнопка поиска на текстовых блоках
+### Аудиты MiniMax-M3 (задания 6-11)
 
-- Кнопка «Поиск» (лупа) в тулбаре текстового блока между «Вставить из буфера» и «Вставить сниппет`
-- SVG-иконка `search` (лупа) в стиле UI
-- Клик: если выделен текст → вставляет в строку поиска (Ctrl+F) и открывает; если нет → просто открывает поиск
-- `Search.open(presetQuery)` — принимает необязательный параметр для предзаполнения
-- Крестик очистки в поле поиска (`#search-clear`) и в поле «Заменить на...» (`#replace-clear`)
-- Обработчик клика на `document` проверяет `.block-search-btn` чтобы не закрывать панель
+Обработаны аудиты 6 файлов. Применены безопасные фиксы, опасные/ложные пропущены.
 
-### Keyboard Trainer — новые фичи (сессия)
+| Файл | Аудит | Что починено |
+|------|-------|-------------|
+| **app.js** | #6 | Хоткеи в полях ввода: `Ctrl+Z/Y/T/W` теперь пропускаются при фокусе в `<input>`/`<textarea>` (нативный text-undo работает, вкладки не закрываются случайно) |
+| **blocks.js** | #7 | Копирование таблицы: `% 5` → `State.SUBTABS_COUNT` (20 вместо 5) |
+| **ui.js** | #8 | `_dragTabId` перенесена из `render()` в IIFE-scope (drag не теряется при re-render); `hadFocus` исключает `tab-rename-input` (фокус сохраняется при rename) |
+| **state.js** | #9 | `fontSize` в `migrate()`: `12` → `13.5` (синхронизация с `makeBlock`) |
+| **index.html** | #10 | Без изменений (все находки minor/questions) |
+| **timer.js** | #11 | `_ensurePaths()` → `false` при zero-size кнопке; `_playCompletionSound()` → добавлен `ctx.resume()` для AudioContext |
 
-**Slim-режим**
-- Прозрачная панель (фон/бордер/тень = transparent), клавиши сохраняют собственный фон
-- Клавиши: `rgba(30, 32, 40, var(--kb-key-bg-alpha, 0.85))`
-- Зоны пальцев: усиленная opacity (0.18-0.25) для видимости на тёмном фоне
-- Чекбокс «Slim» в меню настроек
+### Пасхалка таймера (easter egg)
 
-**Прозрачность клавиш — слайдер**
-- `--kb-key-bg-alpha` управляет фоном клавиш во всех режимах
-- Finger zones: зоны пальцев через `box-shadow` (inset), не перезаписывают `background`
-- Focus layer: комбинируется с зонами через `var(--kb-finger-shadow, none)`
-- Слайдер «Прозрачн. клавиш» в меню (0-100%)
+**Исправлено:** `_playCompletionSound()` не играл звук — `AudioContext` запускался в `suspended`-состоянии без `ctx.resume()`. Теперь после 3-минутного pulse звук играет корректно.
 
-**Экранный режим (on-screen keyboard)**
-- Чекбокс «Экранный режим» в настройках
-- Клик по клавише → вставка символа в активный элемент (`_insertChar`)
-- Долгий клик (450ms) → вставка `spec.shift || spec.base.toUpperCase()` (заглавные/символы)
-- `_lastFocusedEl` — запоминает фокус до клика, восстанавливает после вставки
-- `e.preventDefault()` на `pointerdown` панели (исключая resize/drag) — фокус не уходит
-- Клик между клавишами не теряет фокус
-- Автоскрытие: клик будит панель из фона
-- Extra-клавиши (только в on-screen):
-  - Backspace — col 27, span 1 (пустая кнопка)
-  - Enter — col 25, span 3, подпись «Enter»
-  - Зоны пальцев: Backspace = `l-pinky`, Enter = `r-pinky`
-- RU/EN handle кликабельный — переключает раскладку
-- Mouse-through отключается в on-screen режиме
-- Ghost mode работает в on-screen (explicit CSS override)
-- Resize handle кликабельный в on-screen + mouse-through
+### Save-to-txt задержка (2-4 сек)
 
-**Меню настроек — спойлер**
-- Спойлер «Визуал» (свернут по умолчанию): подсветка дом.ряда, все слайдеры, раскладка
-- Авто-скрытие: слайдер + «Оставаться видимой в фоне»
-- Чекбоксы: зоны пальцев, символы со Shift, ghost, slim, on-screen, проблемные, фокусный слой, пропуск кликов
+**Исправлено:** Клик «Сохранить в .txt» блокировался `ta.onblur` → `State.snapshot()` (синхронный `JSON.stringify` всего состояния). Теперь `ta.onblur` временно снимается перед скачиванием и восстанавливается через 1 сек.
 
-### Изменённые файлы
-| Файл | Что изменено |
-|------|-------------|
-| `blocks.js` | Кнопка поиска (лупа) в тулбаре текстового блока |
-| `ui.js` | `Search.open(presetQuery)`, крестик поиска/замены, обработчик `.block-search-btn` |
-| `index.html` | Кнопки `#search-clear`, `#replace-clear` |
-| `styles.css` | Стили `.search-clear-btn` |
-| `keyboard-trainer.js` | Slim mode, on-screen mode, extra keys (Backspace/Enter), спойлер меню, key opacity slider, long press → uppercase |
-| `keyboard-trainer.css` | Slim, on-screen, finger zones через box-shadow, focus layer combo, ghost override, extra keys, spoiler |
+### Системные промпты — редизайн вкладки (#ltab-prompts)
+
+**Спека:** `Системные промпты.txt` + `Задание_промпты.md`
+
+**Изменения:**
+- **CSS**: единый accent цвет, статус-бейджи, дропдаун меню, компактные строки, anti-jump
+- **HTML**: новая шапка, дропдаун `⋮`, иконки
+- **JS**: `_selectPromptKey` единая точка видимости, удалён `_showStoragePanel`/`_hideStoragePanel`
+
+### Аудиторские фиксы модулей
+
+| Модуль | Что починено |
+|--------|-------------|
+| **user-memory.js** | Белый список в `normalizeProfile`, сброс `shown`/`score`, `Object.create(null)` |
+| **spell-check.js** | CRLF нормализация, `maskPlaceholders` offset, `AbortError` guard, per-chunk timeout |
+| **quality-detectors.js** | `matchAll`, DRY similarity, именованные константы |
+| **word-complete.js** | Gist dirty flush, double-build fix, scroll listener leak |
+| **ai-transform.js** | AbortError UI unlock, empty `_origText` guard |
+| **translator.js** | `restoreTemplates` backreference fix, `stats.totalChars` once |
+| **keyboard-trainer.js** | Clamp viewport, pointer guard, settings fix, drag fix, focus management |
+| **blocks.js** | Table copy `SUBTABS_COUNT`, save-to-txt blur fix |
+| **app.js** | Hotkey guard for input fields |
+| **ui.js** | `_dragTabId` scope, rename focus preservation |
+| **state.js** | fontSize migrate default |
+| **timer.js** | `_ensurePaths` zero-size guard, AudioContext resume |
+
+### Изменённые файлы (сессия)
+
+| Файл | Изменения |
+|------|-----------|
+| `styles.css` | Редизайн промптов: anti-jump, статус-бейджи, дропдаун |
+| `index.html` | Структура `#ltab-prompts`: шапка, дропдаун, иконки |
+| `llm-core.js` | `_selectPromptKey` единая точка видимости, дропдаун `⋮` |
+| `user-memory.js` | Белый список, сброс shown/score, Object.create(null) |
+| `spell-check.js` | CRLF, maskPlaceholders, AbortError, per-chunk timeout |
+| `quality-detectors.js` | matchAll, DRY, константы |
+| `word-complete.js` | Gist dirty, double-build, scroll leak |
+| `ai-transform.js` | AbortError unlock, _origText guard |
+| `translator.js` | backreference fix, totalChars once |
+| `keyboard-trainer.js` | Clamp, pointer guard, settings, drag, focus |
+| `app.js` | Hotkey `!inField` guard for Z/Y/T/W |
+| `ui.js` | `_dragTabId` IIFE scope, `hadFocus` rename exclusion |
+| `state.js` | fontSize 12→13.5 in migrate |
+| `timer.js` | `_ensurePaths` zero-size, AudioContext resume |
+| `blocks.js` | Table copy SUBTABS_COUNT, save-to-txt blur skip |
 
 ## Как работает
-- **KeyboardTrainer**: singleton-панель → toggle кнопкой → keydown → flash + auto RU/EN → drag/resize с viewport clamp + сохранением → настройки через long-press → ghost/slim/on-screen/problem/focus/mouse-through режимы → зоны пальцев → shifted-символы → цвет символов → прозрачность букв/фона клавиш → stay visible → экстранный режим (клик = ввод, long press = uppercase)
-
-### Аудиторские фиксы (Доработка 3)
-- `_clampPanelToViewport()`: `getComputedStyle()` вместо inline `display` проверки — clamp не работает на скрытой панели
-- `_save()`: bounds всегда через `getBoundingClientRect()`, `boundsVisible` через `getComputedStyle()`
-- `_applySavedBounds()`: убран clamp — bounds применяются как есть, clamp только в `_show()`
-- `_insertChar/_insertKey`: `_isTextInput()` helper для проверки input type, fallback `selectionStart` на `value.length`
-- contentEditable: сохранение/восстановление `Range` через `_lastEditableRange`
-- `_updateLayoutLabels()`: пропуск `.kb-key-extra` (Enter label не очищается)
-- `PointerEvent.button`: `e.pointerType === 'mouse'` guard для touch/pen совместимости
-- `e.target.closest` guard в drag-start
-- Auto-hide: `_scheduleAutoHide()` отменяет предыдущий таймер, on-screen toggle чистит таймер
-- Settings: `pointerdown` вместо `mousedown` для outside click
-- `toggle()`: `_buildPanel()` до `_save()`, `_closeSettings()` при disable, `_cancelMetricsUpdate()`, disconnect ResizeObserver
-- `setupButton()`: guard `_kbTrainerBound` от повторных обработчиков
-- `_tryDetectInitialLayout()`: `_save()` при изменении раскладки
-- `focusin`/`selectionchange` слушатели для отслеживания `_lastFocusedEl`
-- `_clearKeyLongPressTimers()` перед `_renderKeys()`
-- **WordCount + Блокнот**: `_onFocusIn` в `word-count.js` подхватывает `textarea` из `.notepad-body` — popup подсчёта слов автоматически переключается на текст Блокнота при фокусе
-- **Тезаурус/антонимы**: контекст = полное предложение вокруг курсора (до-после `.!?…`), обрезка до 500 символов с центрированием на курсоре
-- **Блокнот**: убрано переименование по dblclick, перетаскивание за шапку (cursor: grab)
-- **block-counter-badge**: шрифт 8→9px
-- **Поиск**: кнопка лупы на текстовом блоке → `Search.open(sel)` → крестик очистки в полях ввода
+- **KeyboardTrainer**: singleton-панель → toggle → keydown → flash + auto RU/EN → drag/resize → настройки → ghost/slim/on-screen/problem/focus/mouse-through → зоны пальцев → shifted → цвет → прозрачность → stay visible → экстранный режим
+- **Timer easter egg**: клик → count up 0..99 → 3-мин pulse → звук → auto-countdown 99..0
 
 ## Следующий шаг
-1. Проверить клавиатуру в браузере (все режимы, настройки, resize, on-screen)
-2. Next-key hint (подсказка следующей клавиши)
-3. Статистика ошибок по пальцам/клавишам
+1. Проверить вкладку «Системные промпты» в браузере
+2. Проверить клавиатуру в браузере
+3. Проверить «Сохранить в .txt» — задержка должна исчезнуть
+4. Проверить таймер easter egg — звук должен играть
+5. Next-key hint, статистика ошибок
