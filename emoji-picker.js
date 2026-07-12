@@ -64,7 +64,6 @@
     { name: 'чёрное сердце', emoji: '🖤', tags: ['чёрный'] },
     { name: 'белое сердце', emoji: '🤍',  tags: ['белый'] },
     { name: 'разбитое сердце', emoji: '💔', tags: ['печаль', 'разрыв'] },
-    { name: 'горящее сердце', emoji: '🔥', tags: ['огонь', 'жар'] },
     { name: 'подарок',      emoji: '🎁',  tags: ['подарок', 'сюрприз'], aliases: ['gift', 'present'] },
     { name: 'ленточка',     emoji: '🎀',  tags: ['бантик'] },
 
@@ -146,7 +145,7 @@
     { name: 'мишень',       emoji: '🎯',  tags: ['цель'], aliases: ['target', 'goal'] },
     { name: 'магнит',       emoji: '🧲',  tags: ['притяжение'] },
     { name: 'шестерёнка',   emoji: '⚙️',  tags: ['настройка'], aliases: ['gear', 'settings'] },
-    { name: 'лупа',         emoji: '🔍',  tags: ['поиск'], aliases: ['search'] },
+    { name: 'лупа',         emoji: '🔍',  tags: ['поиск', 'исследование'], aliases: ['search', 'analysis'] },
     { name: 'binoculars',   emoji: '🔭',  tags: ['зрительная'] },
     { name: 'микроскоп',    emoji: '🔬',  tags: ['наука'] },
     { name: 'тестирование', emoji: '🧪',  tags: ['наука', 'химия'] },
@@ -168,7 +167,7 @@
     { name: 'мотор',        emoji: '🏍️', tags: ['мотоцикл'] },
 
     // Знаки / символы
-    { name: 'галочка',      emoji: '✅',  tags: ['готово', 'выполнено', 'да'], aliases: ['done', 'check'] },
+    { name: 'галочка',      emoji: '✅',  tags: ['готово', 'выполнено', 'да'], aliases: ['done', 'check', 'success'] },
     { name: 'крестик',      emoji: '❌',  tags: ['нет', 'ошибка', 'удалить'], aliases: ['cross', 'delete'] },
     { name: 'восклицание',  emoji: '❗',  tags: ['важно', 'внимание'] },
     { name: 'вопрос',       emoji: '❓',  tags: ['вопрос'] },
@@ -185,7 +184,7 @@
     { name: 'вперёд',       emoji: '⏩',  tags: ['далее'] },
 
     // Технологии
-    { name: 'компьютер',    emoji: '💻',  tags: ['пк', 'ноутбук'], aliases: ['computer', 'laptop'] },
+    { name: 'компьютер',    emoji: '💻',  tags: ['пк', 'ноутбук', 'программирование'], aliases: ['computer', 'laptop', 'code'] },
     { name: 'телефон',      emoji: '📱',  tags: ['смартфон'], aliases: ['phone', 'mobile'] },
     { name: 'клавиатура',   emoji: '⌨️',  tags: ['набор'] },
     { name: 'монитор',      emoji: '🖥️', tags: ['экран'] },
@@ -265,19 +264,19 @@
     { name: 'ловушка',      emoji: '🪤',  tags: ['ловушка'] },
 
     // AI / разработка
-    { name: ' ai',          emoji: '🤖',  tags: ['искусственный интеллект', 'нейросеть'], aliases: ['ai'] },
+    { name: 'ai',           emoji: '🤖',  tags: ['искусственный интеллект', 'нейросеть'], aliases: ['ai'] },
     { name: 'мозг',         emoji: '🧠',  tags: ['мышление'], aliases: ['brain'] },
     { name: 'данные',       emoji: '🧬',  tags: ['данные', 'генетика'], aliases: ['data'] },
     { name: 'инструмент',   emoji: '🛠',  tags: ['текущий инструмент'], aliases: ['tool'] },
     { name: 'баг',          emoji: '🐛',  tags: ['ошибка', 'жук'], aliases: ['bug'] },
     { name: 'разработка',   emoji: '🚧',  tags: ['в работе'], aliases: ['build', 'dev'] },
     { name: 'настройка',     emoji: '🔧',  tags: ['гаечный ключ'], aliases: ['setting', 'config'] },
-    { name: 'код',          emoji: '💻',  tags: ['программирование'], aliases: ['code'] },
+    { name: 'код',          emoji: '⌨️',  tags: ['программирование', 'код'], aliases: ['coding'] },
     { name: 'деплой',       emoji: '🚀',  tags: ['развёртывание'], aliases: ['deploy', 'release'] },
 
     // Prompt / текст
     { name: 'промпт',       emoji: '📝',  tags: ['запрос', 'текст'], aliases: ['prompt'] },
-    { name: 'анализ',       emoji: '🔍',  tags: ['поиск', 'исследование'], aliases: ['analysis'] },
+    { name: 'анализ',       emoji: '📊',  tags: ['данные', 'статистика'], aliases: ['analysis'] },
     { name: 'предупреждение', emoji: '⚠️', tags: ['внимание'], aliases: ['warning', 'caution'] },
 
     // Статусы
@@ -285,7 +284,6 @@
     { name: 'ожидание',     emoji: '🟡',  tags: ['пауза', 'ожидание'], aliases: ['pending', 'wait'] },
     { name: 'ошибка',       emoji: '🔴',  tags: ['стоп', 'ошибка'], aliases: ['error', 'stop'] },
     { name: 'процесс',      emoji: '⏳',  tags: ['загрузка', 'выполняется'], aliases: ['loading', 'process'] },
-    { name: 'успех',        emoji: '✅',  tags: ['готово', 'выполнено'], aliases: ['success', 'done'] },
 
     // ── Команды: навигация ──────────────────────────────────────────
     { type: 'command', name: 'настройки',       emoji: '⚙️',  tags: ['настройки', 'профиль'],  aliases: ['settings', 'config'],
@@ -316,6 +314,14 @@
       action: () => window.State?.addBlock('table') },
   ];
 
+  /* ── ДЕДУПЛИКАЦИЯ ──────────────────────────────────────────────── */
+  const _seen = new Set();
+  const EMOJI_UNIQUE = EMOJI_DATA.filter(e => {
+    if (_seen.has(e.emoji)) return false;
+    _seen.add(e.emoji);
+    return true;
+  });
+
   /* ── CSS ───────────────────────────────────────────────────────── */
   const CSS = `
 .emoji-palette {
@@ -330,6 +336,7 @@
   overflow-y: auto; overscroll-behavior: contain;
   scrollbar-width: none; -ms-overflow-style: none;
   animation: emojiDropIn 0.18s cubic-bezier(.34,1.56,.64,1);
+  will-change: transform;
   transition: left 0.08s ease, top 0.08s ease;
 }
 .emoji-palette::-webkit-scrollbar { display: none; }
@@ -345,7 +352,9 @@
   font-family: inherit; font-size: 12px; font-weight: 500;
   color: var(--text1); text-align: left; width: 100%;
   transition: background var(--trans), color var(--trans), border-color var(--trans);
+  animation: rowIn 0.14s ease both;
 }
+@keyframes rowIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .emoji-item:hover { background: var(--surface2); color: var(--text0); border-color: var(--border); }
 .emoji-item:active { transform: scale(0.94); }
 .emoji-item:hover .emoji-char { transform: scale(1.35) rotate(-5deg); }
@@ -379,7 +388,10 @@
 }
 .emoji-empty-icon { font-size: 22px; opacity: 0.5; }
 .emoji-item[data-type="command"] .emoji-name::after {
-  content: '→'; margin-left: 6px; color: var(--text3); font-size: 10px;
+  content: ''; display: inline-block; width: 12px; height: 12px; margin-left: 6px;
+  background: currentColor; opacity: 0.35;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Cpath d='M5 12h14M12 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Cpath d='M5 12h14M12 5l7 7-7 7'/%3E%3C/svg%3E") center/contain no-repeat;
 }
 `;
 
@@ -404,14 +416,20 @@
     { label: 'AI/Код',     emojis: ['🤖','🧠','🧬','🐛','🔧','📝','🔍','⚠️','✅','❌','⏳'] },
   ];
 
-  /* ── RECENTS (localStorage, frequency-weighted) ────────────────── */
+  /* ── RECENTS (localStorage, frequency-weighted, cached) ─────────── */
   const RECENTS_KEY = 'emoji-picker:recents';
+  const RECENTS_TTL = 1500;
+  let _recentsCache = null;
+  let _recentsCacheTime = 0;
   function _loadRecents() {
+    const now = Date.now();
+    if (_recentsCache && now - _recentsCacheTime < RECENTS_TTL) return _recentsCache;
     try {
       const raw = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]');
-      /* поддержка старого формата (массив строк) */
-      return raw.map(x => typeof x === 'string' ? { emoji: x, count: 1, last: 0 } : x);
-    } catch { return []; }
+      _recentsCache = raw.map(x => typeof x === 'string' ? { emoji: x, count: 1, last: 0 } : x);
+    } catch { _recentsCache = []; }
+    _recentsCacheTime = now;
+    return _recentsCache;
   }
   function _pushRecent(emoji) {
     const list = _loadRecents();
@@ -420,6 +438,7 @@
     else { list.push({ emoji, count: 1, last: Date.now() }); }
     list.sort((a, b) => (b.count * 10 + b.last / 1e6) - (a.count * 10 + a.last / 1e6));
     localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 20)));
+    _recentsCache = null;
   }
 
   /* ── CANVAS MEASURE (с кешем) ──────────────────────────────────── */
@@ -452,9 +471,15 @@
   }
 
   /* ── FILTER ────────────────────────────────────────────────────── */
-  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, ALIAS_EXACT: 2, EMOJI_EXACT: 3, NAME_PREFIX: 4, TAG_PREFIX: 5, ALIAS_PREFIX: 6, ACRONYM: 7, NAME_INCLUDES: 8, TAG_INCLUDES: 9, ALIAS_INCLUDES: 10 };
-  const _EMOJI_INDEX = new Map(EMOJI_DATA.map(e => [e.emoji, e]));
-  for (const e of EMOJI_DATA) {
+  const PRIORITY = { NAME_EXACT: 0, TAG_EXACT: 1, ALIAS_EXACT: 2, EMOJI_EXACT: 3, NAME_PREFIX: 4, TAG_PREFIX: 5, ALIAS_PREFIX: 6, ACRONYM: 7, NAME_INCLUDES: 8, TAG_INCLUDES: 9, ALIAS_INCLUDES: 10, FUZZY: 11 };
+  function _fuzzy(q, text) {
+    let qi = 0;
+    for (let i = 0; i < text.length && qi < q.length; i++)
+      if (text[i] === q[qi]) qi++;
+    return qi === q.length;
+  }
+  const _EMOJI_INDEX = new Map(EMOJI_UNIQUE.map(e => [e.emoji, e]));
+  for (const e of EMOJI_UNIQUE) {
     e._nameN = _normalize(e.name);
     e._tagsN = (e.tags || []).map(t => _normalize(t));
     e._aliasesN = (e.aliases || []).map(a => _normalize(a));
@@ -467,8 +492,8 @@
     const q = _normalize(query);
     if (!q) return [];
     const scored = [];
-    for (let i = 0; i < EMOJI_DATA.length; i++) {
-      const e = EMOJI_DATA[i];
+    for (let i = 0; i < EMOJI_UNIQUE.length; i++) {
+      const e = EMOJI_UNIQUE[i];
       let prio = -1;
       if (e._nameN === q) prio = PRIORITY.NAME_EXACT;
       else if (e._tagsN.some(t => t === q)) prio = PRIORITY.TAG_EXACT;
@@ -481,6 +506,7 @@
       else if (e._nameN.includes(q)) prio = PRIORITY.NAME_INCLUDES;
       else if (e._tagsN.some(t => t.includes(q))) prio = PRIORITY.TAG_INCLUDES;
       else if (e._aliasesN.some(a => a.includes(q))) prio = PRIORITY.ALIAS_INCLUDES;
+      else if (_fuzzy(q, e._nameN)) prio = PRIORITY.FUZZY;
       if (prio >= 0) scored.push({ e, prio, idx: i });
     }
     scored.sort((a, b) => a.prio - b.prio || _usageScore(b.e.emoji) - _usageScore(a.e.emoji) || a.idx - b.idx);
@@ -513,7 +539,7 @@
     /* recents + категории при пустом запросе */
     if (!query) {
       const recents = _loadRecents()
-        .map(r => EMOJI_DATA.find(d => d.emoji === r.emoji)).filter(Boolean)
+        .map(r => EMOJI_UNIQUE.find(d => d.emoji === r.emoji)).filter(Boolean)
         .slice(0, 8);
       let idx = 0;
       const allItems = [];
@@ -540,6 +566,7 @@
           nameSpan.textContent = item.name;
           btn.appendChild(charSpan);
           btn.appendChild(nameSpan);
+          if (item.type) btn.setAttribute('data-type', item.type);
           const captureIdx = idx;
           btn.addEventListener('mousedown', ev => { ev.preventDefault(); _filtered = allItems; _insert(captureIdx); });
           _palette.appendChild(btn);
@@ -553,7 +580,7 @@
         lbl.textContent = cat.label;
         _palette.appendChild(lbl);
         for (const emojiChar of cat.emojis) {
-          const entry = EMOJI_DATA.find(d => d.emoji === emojiChar);
+          const entry = EMOJI_UNIQUE.find(d => d.emoji === emojiChar);
           if (!entry) continue;
           allItems.push({ e: entry });
           const btn = document.createElement('button');
@@ -571,6 +598,7 @@
           nameSpan.textContent = entry.name;
           btn.appendChild(charSpan);
           btn.appendChild(nameSpan);
+          if (entry.type) btn.setAttribute('data-type', entry.type);
           const captureIdx = idx;
           btn.addEventListener('mousedown', ev => { ev.preventDefault(); _filtered = allItems; _insert(captureIdx); });
           _palette.appendChild(btn);
