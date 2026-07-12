@@ -292,7 +292,7 @@
   const CSS = `
 .emoji-palette {
   position: fixed; z-index: 10000;
-  max-width: min(360px, calc(100vw - 16px));
+  max-width: min(420px, calc(100vw - 16px));
   max-height: min(280px, calc(100vh - 18px));
   padding: 5px; border: 1px solid rgba(0,185,107,0.24);
   border-radius: 12px;
@@ -331,7 +331,8 @@
   flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.emoji-name mark { color: #00b96b; background: transparent; font-weight: 600; }
+.emoji-name mark { color: #00b96b; background: rgba(0,185,107,0.15); border-radius: 2px; font-weight: 600; }
+.emoji-item.focused .emoji-name mark { color: #fff; background: rgba(255,255,255,0.2); }
 .emoji-footer {
   border-top: 1px solid rgba(148,163,184,0.14);
   padding: 4px 8px; text-align: center;
@@ -537,12 +538,15 @@
     const CHAR_FIXED = 26 + 8;      /* .emoji-char + gap */
     const PALETTE_INSET = 5 * 2;    /* padding самой палитры */
     const cs2 = getComputedStyle(ta);
-    const fontStr = '500 12px ' + cs2.fontFamily;
+    const fontNormal = '500 12px ' + cs2.fontFamily;
+    const fontBold = '600 12px ' + cs2.fontFamily;
     let maxW = 0;
     for (let i = 0; i < _filtered.length; i++) {
-      maxW = Math.max(maxW, _measureWidth(_filtered[i].e.name, fontStr));
+      const nameW = _measureWidth(_filtered[i].e.name, fontNormal);
+      const markW = _measureWidth(_filtered[i].e.name, fontBold);
+      maxW = Math.max(maxW, nameW, markW);
     }
-    _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 360) + 'px';
+    _palette.style.width = Math.min(Math.ceil(maxW) + CHAR_FIXED + PAD_X + PALETTE_INSET, 420) + 'px';
 
     _position(ta);
   }
