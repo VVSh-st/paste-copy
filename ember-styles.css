@@ -156,8 +156,8 @@
     translate(var(--eggX, 0px), var(--eggY, 0px))
     translate(calc(var(--cursorLeanX, 0) * 1px), calc(var(--cursorLeanY, 0) * 1px))
     scale(
-      calc((var(--breathScale) - var(--cursorSquish, 0) * 0.3 - var(--eggSquish, 0) * 0.3) * var(--scaleX) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1)),
-      calc((var(--breathScale) + var(--cursorSquish, 0) * 0.15 + var(--eggSquish, 0) * 0.15) * var(--scaleY) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1))
+      calc((var(--breathCore, var(--breathScale)) - var(--cursorSquish, 0) * 0.3 - var(--eggSquish, 0) * 0.3) * var(--scaleX) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1)),
+      calc((var(--breathCore, var(--breathScale)) + var(--cursorSquish, 0) * 0.15 + var(--eggSquish, 0) * 0.15) * var(--scaleY) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1))
     )
     rotateZ(calc(var(--rotation) * 0.4))
     rotateX(calc(var(--cursorTiltX, 0) * 0.9deg + var(--eggTiltX, 0deg) + var(--tiltX) * 0.55))
@@ -227,10 +227,10 @@
   mix-blend-mode: multiply;
   pointer-events: none;
   transform:
-    translateZ(1px)
+    translateZ(calc(1px + (var(--breathCrust, 1) - 1) * 2.5px))
     translate(var(--crustX, 0px), var(--crustY, 0px))
     rotate(var(--crustRot, 0deg))
-    scale(var(--crustScale, 1));
+    scale(calc(var(--crustScale, 1) * var(--breathCrust, 1)));
   opacity: 0.92;
   background:
     radial-gradient(circle at 24% 28%, rgba(15, 6, 2, 0.95) 0%, transparent 30%),
@@ -270,8 +270,11 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  opacity: var(--ashCoverage, 0);
-  transform: translate(var(--ashShiftX, 0px), var(--ashShiftY, 0px)) rotate(var(--ashRot, 0deg));
+  opacity: calc(var(--ashCoverage, 0) * var(--breathAsh, 1));
+  transform:
+    translate(calc(var(--ashShiftX, 0px) * var(--breathAsh, 1)), calc(var(--ashShiftY, 0px) * var(--breathAsh, 1)))
+    rotate(var(--ashRot, 0deg))
+    translateZ(calc(2px - (var(--breathAsh, 1) - 1) * 3px));
   background:
     radial-gradient(circle at 30% 35%, rgba(150, 150, 160, 0.7) 0%, transparent 40%),
     radial-gradient(circle at 65% 55%, rgba(135, 135, 145, 0.6) 0%, transparent 35%),
@@ -338,9 +341,9 @@
   filter: blur(calc(var(--glowBlur) + 2px)) saturate(1.08);
   opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
   transform:
-    translate(var(--glowX, 0px), var(--glowY, 0px))
-    translateZ(var(--glowDepth, 0px))
-    scale(calc(var(--glowScale) + 0.05))
+    translate(calc(var(--glowX, 0px) * 0.5), calc(var(--glowY, 0px) * 0.5))
+    translateZ(calc(var(--glowDepth, 0px) + (var(--breathGlow, 1) - 1) * 4px))
+    scale(calc((var(--glowScale) + 0.05) * var(--breathGlow, 1)))
     skewX(var(--glowSkewX, 0deg))
     skewY(var(--glowSkewY, 0deg))
     rotateX(calc(var(--tiltX) * 0.45))
@@ -360,16 +363,17 @@
   height: 22px;
   transform:
     translateX(calc(-50% + var(--hazeShiftX, 0px)))
-    translateZ(-8px)
+    translateZ(calc(-8px + (var(--breathAsh, 1) - 1) * 3px))
     rotateX(calc(var(--tiltX) * -0.15))
-    rotateY(calc(var(--tiltY) * -0.15));
+    rotateY(calc(var(--tiltY) * -0.15))
+    scaleX(var(--breathAsh, 1));
   background: linear-gradient(to top,
     rgba(255, 180, 90, 0.15),
     rgba(255, 150, 60, 0.08) 40%,
     transparent 100%
   );
   filter: blur(3px);
-  opacity: calc(var(--intensity, 1) * 0.55 + var(--glow, 1) * 0.08);
+  opacity: calc((var(--intensity, 1) * 0.55 + var(--glow, 1) * 0.08) * var(--breathAsh, 1));
   mask: linear-gradient(to top, white 0%, transparent 100%);
   -webkit-mask: linear-gradient(to top, white 0%, transparent 100%);
   animation: hazeOpacity 4s ease-in-out infinite;

@@ -3178,6 +3178,10 @@ const Ember = (() => {
 
       heat = clamp(intensity + heatBoost * 0.25, 0, 1);
       setVarApprox(root, '--breathScale', breathScale.toFixed(4), 0.001);
+      setVarApprox(root, '--breathCore', breathScale.toFixed(4), 0.001);
+      setVarApprox(root, '--breathGlow', (1 + (breathScale - 1) * 0.85).toFixed(4), 0.001);
+      setVarApprox(root, '--breathCrust', (1 + (breathScale - 1) * 1.1).toFixed(4), 0.001);
+      setVarApprox(root, '--breathAsh', (1 + (breathScale - 1) * 0.6).toFixed(4), 0.001);
       setVarApprox(root, '--scaleX', breathScale.toFixed(4), 0.001);
       setVarApprox(root, '--scaleY', breathScale.toFixed(4), 0.001);
       setVar(root, '--heat', heat.toFixed(3));
@@ -3450,6 +3454,10 @@ const Ember = (() => {
     const { breathAmp, flicker } = computeBreath();
     const hoverBreath = hover ? Math.sin(breathPhase * 2.5) * 0.05 * hoverVal : 0;
     breathScale = 1 + flicker * 0.012 * intensity * breathAmp + hoverBreath + windGust * 0.04;
+    const breathCore = 1 + flicker * 0.012 * intensity * breathAmp;
+    const breathGlow = 1 + flicker * 0.018 * intensity * breathAmp * 0.85;
+    const breathCrust = 1 + flicker * 0.014 * intensity * breathAmp * 1.1;
+    const breathAsh = 1 + flicker * 0.008 * intensity * breathAmp * 0.6;
 
     updateHeatZones(dt);
     if (!reduceMotion) {
@@ -3587,6 +3595,10 @@ const Ember = (() => {
 
     commitPose(pose, now, dt);
     setVar(root, '--breathScale', breathScale.toFixed(4));
+    setVarApprox(root, '--breathCore', breathCore.toFixed(4), 0.0008);
+    setVarApprox(root, '--breathGlow', breathGlow.toFixed(4), 0.0008);
+    setVarApprox(root, '--breathCrust', breathCrust.toFixed(4), 0.0008);
+    setVarApprox(root, '--breathAsh', breathAsh.toFixed(4), 0.0008);
 
     applySegments();
 
@@ -3663,6 +3675,7 @@ const Ember = (() => {
 
   let reduceMotionFrameSkip = 0;
   let reducedMotionTimer = null;
+  let _throttleTimer = null;
   let destroyed = false;
   const fpsHistory = [];
   let lowFpsMode = false;
@@ -3715,16 +3728,22 @@ const Ember = (() => {
     } else {
       const lvl = idleState(timestamp);
       if (lvl >= 2) {
-        setTimeout(() => {
+        clearTimeout(_throttleTimer);
+        _throttleTimer = setTimeout(() => {
+          _throttleTimer = null;
           if (destroyed || !root) return;
           rafId = requestAnimationFrame(animate);
         }, 130);
       } else if (lvl === 1) {
-        setTimeout(() => {
+        clearTimeout(_throttleTimer);
+        _throttleTimer = setTimeout(() => {
+          _throttleTimer = null;
           if (destroyed || !root) return;
           rafId = requestAnimationFrame(animate);
         }, 33);
       } else {
+        clearTimeout(_throttleTimer);
+        _throttleTimer = null;
         rafId = requestAnimationFrame(animate);
       }
     }
@@ -3759,6 +3778,7 @@ const Ember = (() => {
   function stopLoop() {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (reducedMotionTimer) { clearTimeout(reducedMotionTimer); reducedMotionTimer = null; }
+    if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null; }
   }
 
   // ---------- реакция на печать ----------
