@@ -1862,10 +1862,11 @@ const Ember = (() => {
     const ember = getEmberCenter();
     const dx = mouse.x - ember.x;
     const dy = mouse.y - ember.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 80 || dist > 200 || mouse.speed < 12) {
+    const dist2 = dx * dx + dy * dy;
+    if (dist2 < 6400 || dist2 > 40000 || mouse.speed < 12) {
       windGust *= Math.max(0, 1 - dt * 0.003);
     } else {
+      const dist = Math.sqrt(dist2);
       const strength = clamp((mouse.speed - 12) / 60, 0, 1) * clamp(1 - (dist - 80) / 120, 0, 1);
       windGust += (strength - windGust) * clamp(dt * 0.004, 0, 1);
     }
@@ -1892,10 +1893,10 @@ const Ember = (() => {
     const ember = getEmberCenter();
     const dx = mouse.x - ember.x;
     const dy = mouse.y - ember.y;
-    const dist = Math.hypot(dx, dy);
 
     if (attn.state === 'idle') {
-      if (dist > 40 && dist < 250 && mouse.speed > 15 && Math.random() < 0.001 * dt) {
+      const dist2 = dx * dx + dy * dy;
+      if (dist2 > 1600 && dist2 < 62500 && mouse.speed > 15 && Math.random() < 0.001 * dt) {
         attn.state = 'noticing';
         attn.timer = rand(300, 800);
         attn.dirX = Math.sign(dx) || 1;
@@ -3081,9 +3082,9 @@ const Ember = (() => {
     const ember = getEmberCenter();
     const dx = mouse.x - ember.x;
     const dy = mouse.y - ember.y;
-    const dist = Math.hypot(dx, dy);
+    const dist2 = dx * dx + dy * dy;
 
-    if (dist > 50 && dist < 220 && mouse.speed > 2 && mouse.speed < 25) {
+    if (dist2 > 2500 && dist2 < 48400 && mouse.speed > 2 && mouse.speed < 25) {
       temperament.curiosity = Math.min(1, temperament.curiosity + dt * 0.0008);
     } else {
       temperament.curiosity = Math.max(0, temperament.curiosity - dt * 0.0005);
@@ -3480,8 +3481,8 @@ const Ember = (() => {
 
     applyStatus();
     if (heatBoost > 0 && statusState !== 'error') heatBoost = Math.max(0, heatBoost - 0.00025 * dt);
-    flashHeat = Math.max(0, flashHeat - dt * 0.0012);
-    coreHeatReserve = Math.max(0, coreHeatReserve - dt * 0.00012);
+    if (flashHeat > 0) flashHeat = Math.max(0, flashHeat - dt * 0.0012);
+    if (coreHeatReserve > 0) coreHeatReserve = Math.max(0, coreHeatReserve - dt * 0.00012);
     residualHeat *= 0.992;
 
     // --- редкие экстремальные события ---
@@ -3665,6 +3666,19 @@ const Ember = (() => {
   let destroyed = false;
   const fpsHistory = [];
   let lowFpsMode = false;
+  let _idleLevel = 0;
+  let _idleConsecutive = 0;
+
+  function idleState(now) {
+    if (!isSceneIdle()) {
+      if (_idleLevel !== 0) { _idleLevel = 0; _idleConsecutive = 0; }
+      return 0;
+    }
+    _idleConsecutive++;
+    if (_idleLevel < 1 && _idleConsecutive > 120) _idleLevel = 1;
+    if (_idleLevel < 2 && _idleConsecutive > 480) _idleLevel = 2;
+    return _idleLevel;
+  }
 
   function animate(timestamp) {
     rafId = null;
@@ -3699,7 +3713,20 @@ const Ember = (() => {
         rafId = requestAnimationFrame(animate);
       }, 100);
     } else {
-      rafId = requestAnimationFrame(animate);
+      const lvl = idleState(timestamp);
+      if (lvl >= 2) {
+        setTimeout(() => {
+          if (destroyed || !root) return;
+          rafId = requestAnimationFrame(animate);
+        }, 130);
+      } else if (lvl === 1) {
+        setTimeout(() => {
+          if (destroyed || !root) return;
+          rafId = requestAnimationFrame(animate);
+        }, 33);
+      } else {
+        rafId = requestAnimationFrame(animate);
+      }
     }
   }
 
@@ -4017,6 +4044,7 @@ const Ember = (() => {
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
     attn.dirX = 0; attn.hotX = 50; attn.hotY = 50; attn.activeHsIdx = -1;
     _emberCenterCache.frame = -1;
+    _idleLevel = 0; _idleConsecutive = 0;
     focusState = 'active'; focusTimer = 0;
     temperament.curiosity = 0; temperament.nervousness = 0;
     temperament.tiredness = 0; temperament.satisfaction = 0;
