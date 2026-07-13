@@ -341,6 +341,7 @@ const State = (() => {
         // [FIX] Безопасная маппинг subtabs — защищает от повреждённых данных
         b.subtabs = b.subtabs.map((st, i) => ({
           label: String(st?.label ?? i + 1),
+          name: String(st?.name ?? ''),
           value: String(st?.value ?? ''),
           completed: !!st?.completed,
           blocked: !!st?.blocked,
