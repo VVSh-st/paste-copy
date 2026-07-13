@@ -130,6 +130,48 @@ const Ember = (() => {
   const caret = { x: 0, y: 0, active: false, typing: false, _typingTimer: null };
   const cursorLean = { x: 0, y: 0, squish: 0, scale: 1, tiltX: 0, tiltY: 0 };
 
+  // --- getEmberCenter cache (per-frame) ---
+  const _emberCenterCache = { x: 0, y: 0, frame: -1 };
+
+  // --- pose buffer (reused each frame) ---
+  const POSE_BUF = {
+    x: 0, y: 0,
+    scaleX: 1, scaleY: 1,
+    squash: 0, rotate: 0,
+    tiltX: 0, tiltY: 0,
+    glow: 0, brightness: 0,
+    hue: 0, saturation: 0,
+    glowSkewX: 0, glowSkewY: 0,
+    glowX: 0, glowY: 0,
+    crustX: 0, crustY: 0, crustRot: 0, crustScale: 1,
+    ashShiftX: 0, ashShiftY: 0, ashRot: 0,
+    ringExpand: 0,
+    ringExpandX: 0, ringExpandY: 0,
+    segScaleX: 1, segScaleY: 1,
+    glintOpacity: 0, glintX: 58, glintY: 32, glintRot: -18, glintScale: 1,
+    massShiftX: 0, massShiftY: 0,
+    upperBulge: 0, lowerSag: 0, sideBulge: 0,
+    z: 0,
+    coreLift: 0,
+    glowLift: 0,
+    ringDepth: 0,
+    lightX: 0,
+    lightY: 0,
+    shadowTighten: 0,
+  };
+  const _poseDefaults = {};
+  for (const k in POSE_BUF) _poseDefaults[k] = POSE_BUF[k];
+  function resetPose() { for (const k in _poseDefaults) POSE_BUF[k] = _poseDefaults[k]; }
+
+  // --- mouse movement tracking for idle gate ---
+  let mouseMovedSinceLastFrame = false;
+
+  // --- particle throttle ---
+  let _particleFrameToggle = 0;
+
+  // --- idle callback for deferred work ---
+  let _idleCallbackId = null;
+
   // --- temperament ---
   const temperament = { curiosity: 0, nervousness: 0, tiredness: 0, satisfaction: 0 };
 
@@ -218,6 +260,21 @@ const Ember = (() => {
     timers.forEach(id => clearTimeout(id));
     timers.clear();
   }
+  function deferBurst(fn, count, interval) {
+    let cnt = 0;
+    const id = setTimeout(function step() {
+      if (destroyed || !root) { timers.delete(id); return; }
+      fn();
+      if (++cnt < count) {
+        const nid = setTimeout(step, interval);
+        timers.delete(id);
+        timers.add(nid);
+      } else {
+        timers.delete(id);
+      }
+    }, interval);
+    timers.add(id);
+  }
 
   // ---------- утилиты ----------
 
@@ -232,6 +289,15 @@ const Ember = (() => {
     let map = styleCache.get(el);
     if (!map) { map = new Map(); styleCache.set(el, map); }
     if (map.get(name) === value) return;
+    map.set(name, value);
+    el.style.setProperty(name, value);
+  }
+  function setVarApprox(el, name, value, eps) {
+    if (!el) return;
+    let map = styleCache.get(el);
+    if (!map) { map = new Map(); styleCache.set(el, map); }
+    const old = map.get(name);
+    if (old !== undefined && Math.abs(old - value) < eps) return;
     map.set(name, value);
     el.style.setProperty(name, value);
   }
@@ -1926,9 +1992,13 @@ const Ember = (() => {
   }
 
   function getEmberCenter() {
-    if (!root) return { x: 0, y: 0 };
+    if (_emberCenterCache.frame === lastFrame) return _emberCenterCache;
+    if (!root) return _emberCenterCache;
     const rect = root.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    _emberCenterCache.x = rect.left + rect.width / 2;
+    _emberCenterCache.y = rect.top + rect.height / 2;
+    _emberCenterCache.frame = lastFrame;
+    return _emberCenterCache;
   }
 
   function normD(dx, dy, dist) { return dist > 0 ? { x: dx / dist, y: dy / dist } : { x: 0, y: 0 }; }
@@ -2747,8 +2817,8 @@ const Ember = (() => {
           cursorLean.tiltY += -rx * 0.25;
           heatBoost = Math.max(heatBoost, 0.25);
           ringImpulse = rand(5, 10) * (Math.random() < 0.5 ? 1 : -1);
-          for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
-          for (let i = 0; i < 4; i++) defer(() => spawnAshParticle(), i * 100);
+          deferBurst(spawnSpark, 8, 60);
+          deferBurst(spawnAshParticle, 4, 100);
           defer(() => spawnShootingSpark(), 100);
         }, 120);
         break;
@@ -2947,21 +3017,22 @@ const Ember = (() => {
     }
 
     if (['crackle', 'glowPulse', 'calmBurn', 'gust'].includes(type)) {
-      for (let i = 0; i < 6; i++) defer(() => spawnSpark(), i * 130);
+      deferBurst(spawnSpark, 6, 130);
     }
     if (type === 'gust') {
-      for (let i = 0; i < 3; i++) defer(() => spawnShootingSpark(), i * 200);
-      for (let i = 0; i < 4; i++) defer(() => spawnCrumb(), i * 250);
+      deferBurst(spawnShootingSpark, 3, 200);
+      deferBurst(spawnCrumb, 4, 250);
     }
     if (['ashDrift', 'smolder', 'sigh'].includes(type)) {
-      for (let i = 0; i < 10; i++) defer(() => spawnAshParticle(), i * 160);
+      deferBurst(spawnAshParticle, 10, 160);
     }
 
     if (type === 'typingApproach') {
       caret.typing = true;
       caret.active = true;
-      caret.x = getEmberCenter().x + rand(-100, 100);
-      caret.y = getEmberCenter().y + rand(-50, 50);
+      const _ec = getEmberCenter();
+      caret.x = _ec.x + rand(-100, 100);
+      caret.y = _ec.y + rand(-50, 50);
       defer(() => { caret.typing = false; }, 2200);
     }
     if (type === 'eggFly') {
@@ -3072,8 +3143,39 @@ const Ember = (() => {
       });
   }
 
+  function isSceneIdle() {
+    if (!browserFocused || !onScreen) return false;
+    if (particles.length) return false;
+    if (active.size || segmentEffects.length) return false;
+    if (mouseMovedSinceLastFrame) return false;
+    if (Math.abs(hoverVal) > 0.001) return false;
+    if (peek.state !== 'idle' || attn.state !== 'idle') return false;
+    if (egg.active || previewScare.active || anticipation.active) return false;
+    if (Math.abs(heatBoost) > 0.001) return false;
+    if (Math.abs(ringImpulse) > 0.001) return false;
+    if (Math.abs(residualHeat) > 0.001) return false;
+    if (focusState !== 'active') return false;
+    return true;
+  }
+
   function update(now, dt) {
     intensity = calcIntensity();
+    mouseMovedSinceLastFrame = false;
+
+    // --- idle gate: skip heavy work when scene is stable ---
+    if (isSceneIdle()) {
+      breathPhase += 0.00055 * dt;
+      glowTrackX *= 0.92; glowTrackY *= 0.92;
+      ashTrackX *= 0.92; ashTrackY *= 0.92;
+
+      setVarApprox(root, '--breathScale', breathScale.toFixed(4), 0.001);
+
+      if (!nextAriaUpdate || now > nextAriaUpdate) {
+        syncAccessibleLabel();
+        nextAriaUpdate = now + 60000;
+      }
+      return;
+    }
 
     if (!reduceMotion) {
       sampleMousePosition(now);
@@ -3085,7 +3187,7 @@ const Ember = (() => {
     if (curRem <= 2 && curRem < lastWarnRemaining && curRem > 0) {
       heatBoost = Math.max(heatBoost, 0.5);
       if (!reduceMotion) {
-        for (let i = 0; i < 6; i++) defer(spawnSpark, i * 50);
+        deferBurst(spawnSpark, 6, 50);
         ringImpulse = rand(4, 7) * (Math.random() < 0.5 ? 1 : -1);
       }
     }
@@ -3331,7 +3433,16 @@ const Ember = (() => {
       }
       maybeSpawnAnomalySpark(now);
     }
-    updateMood(now);
+    if ('requestIdleCallback' in window) {
+      if (!_idleCallbackId) {
+        _idleCallbackId = requestIdleCallback(() => {
+          _idleCallbackId = null;
+          updateMood(performance.now());
+        }, { timeout: 200 });
+      }
+    } else {
+      updateMood(now);
+    }
 
     // haze — динамическое обновление с cursor/wind
     if (hazeEl) {
@@ -3406,7 +3517,7 @@ const Ember = (() => {
     crackGlowMod = 0;
 
     // --- pose layer ---
-    const pose = createPose();
+    resetPose(); const pose = POSE_BUF;
 
     if (anticipation.active) applyAnticipationPose(pose, now);
     if (sigh) applySighPose(pose, sigh);
@@ -3511,7 +3622,7 @@ const Ember = (() => {
         nextSparkCheck = Date.now() + rand(lowFpsMode ? 2400 : 1400, lowFpsMode ? 5500 : 3800);
       }
 
-      updateParticles(now, dt);
+      if ((++_particleFrameToggle & 1) || particles.length < 16) updateParticles(now, dt);
       updateShimmer(now);
     }
 
@@ -3567,6 +3678,7 @@ const Ember = (() => {
   function startLoop() {
     if (rafId) return;
     lastFrame = 0;
+    _particleFrameToggle = 0;
     rafId = requestAnimationFrame(animate);
   }
   function stopLoop() {
@@ -3605,8 +3717,8 @@ const Ember = (() => {
       clearDeferred(_clickTimer);
       _clickTimer = defer(() => {
         heatBoost = 0.4;
-        for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
-        for (let i = 0; i < 3; i++) defer(() => spawnShootingSpark(), i * 120);
+        deferBurst(spawnSpark, 8, 60);
+        deferBurst(spawnShootingSpark, 3, 120);
         showTooltip();
         if (typeof onClickCallback === 'function') onClickCallback();
       }, 200);
@@ -3642,8 +3754,8 @@ const Ember = (() => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         heatBoost = 0.4;
-        for (let i = 0; i < 8; i++) defer(() => spawnSpark(), i * 60);
-        for (let i = 0; i < 3; i++) defer(() => spawnShootingSpark(), i * 120);
+        deferBurst(spawnSpark, 8, 60);
+        deferBurst(spawnShootingSpark, 3, 120);
         showTooltip();
         if (typeof onClickCallback === 'function') onClickCallback();
       }
@@ -3671,6 +3783,7 @@ const Ember = (() => {
     };
     handlers.mousemove = (e) => {
       if (!browserFocused) return;
+      mouseMovedSinceLastFrame = true;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const margin = 200;
@@ -3726,7 +3839,7 @@ const Ember = (() => {
     };
 
     document.addEventListener('input', handlers.input);
-    document.addEventListener('mousemove', handlers.mousemove);
+    document.addEventListener('mousemove', handlers.mousemove, { passive: true });
     document.addEventListener('selectionchange', handlers.selectionchange);
     window.addEventListener('focus', handlers.windowFocus);
     window.addEventListener('blur', handlers.windowBlur);
@@ -3868,6 +3981,7 @@ const Ember = (() => {
     nextBreathSwitch = 0;
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
     attn.dirX = 0; attn.hotX = 50; attn.hotY = 50; attn.activeHsIdx = -1;
+    _emberCenterCache.frame = -1;
     focusState = 'active'; focusTimer = 0;
     temperament.curiosity = 0; temperament.nervousness = 0;
     temperament.tiredness = 0; temperament.satisfaction = 0;

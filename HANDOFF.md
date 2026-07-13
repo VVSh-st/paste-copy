@@ -2,6 +2,96 @@
 
 ## Текущий статус
 
+### Highlight.js — подсветка кода в markdown
+
+**Подключена** через CDN (`github-dark-dimmed` тема). Автономно, без настроек, авто-определение языка.
+
+**Интегрирована в 4 места:**
+1. **Текстовые блоки** (`blocks.js`) — toggle через dropdown кнопки MD (долгий клик → "🎨 MD + Подсветка кода")
+2. **Основное превью** (`ui.js`) — кнопка MD циклит: Text → MD → MD* (с подсветкой) → Text
+3. **Блокнот** (`notepad.js`) — всегда MD+эффект (без toggle)
+4. **Мини-чат** (`llm-features.js`) — assistant-сообщения рендерятся через `marked.parse()` + `hljs`
+
+**Ключевой хелпер:** `_renderBlockMdPreview(text, mdEl, fontSize, highlight)` в blocks.js, `_renderChatMd(span, text)` в llm-features.js.
+
+**CSS:** `.block-md-content pre code.hljs`, `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон для темы hljs.
+
+**Баг:** `hljs.highlightElement` пропускал уже подсвеченные блоки → исправлено через `delete block.dataset.highlighted` перед повторным рендером.
+
+---
+
+### Текстовые блоки — MD-превью
+
+**Кнопка MD** в шапке текстового блока (перед "Свернуть/Развернуть"):
+- Short click = toggle MD preview
+- Long press (400ms) = dropdown: "🎨 MD + Подсветка кода", "📋 Копировать HTML", "📝 Копировать Markdown"
+- Кнопка скрыта когда блок не в фокусе (как "Причесать текст"), появляется при hover
+- Active state — синяя подсветка (`var(--accent)`) когда MD включён
+
+**Реализация:**
+- `b.mdPreview` — флаг в данных блока (переживает re-render)
+- `b.mdHighlight` — флаг подсветки кода
+- `mdContent` div в `renderTextBody` — `min-height: 110px`, `max-height: 60vh`
+- A-/A+ обновляют fontSize у textarea и mdContent
+- `patchSubtab` обновляет MD при смене вкладок
+- Undo/redo обновляют MD
+- Translate обновляет MD (результат + откат)
+
+**Коммиты:**
+- `b43b70a` — основная реализация MD-превью для текстовых блоков
+
+---
+
+### Превью — 3-режимная кнопка MD
+
+Кнопка "MD" в шапке превью циклит:
+- **Text** → клик → **MD** (кнопка "MD", active)
+- **MD** → клик → **MD*** (кнопка "MD*", active, подсветка кода)
+- **MD*** → клик → **Text** (кнопка "MD", не active)
+
+Состояние: `State.layout.previewMarkdown`: `false`/`'text'` → `'md'` → `'md-hl'`
+
+---
+
+### Блокнот — MD-превью и перевод
+
+**Задача:** добавить в блокнот кнопку "MD" для markdown-превью + перенести кнопку перевода в шапку.
+
+**Реализация:**
+1. **Кнопка MD** — SVG-иконка, переключает textarea ↔ markdown div (`marked.parse()`)
+2. **Персистентность** — флаг `mdPreview` сохраняется в localStorage
+3. **Шапка** — кнопки MD и "Перевести текст" перенесены в header перед свернуть/закрыть
+4. **Перевод** — полностью переписан по паттерну из blocks.js:
+   - `_undoStack` на кнопке (не `state._translateOriginal` который обнулялся в input handler)
+   - Dropdown для выбора языка/движка (долгое нажатие 400мс)
+   - Все toast удалены
+   - `_undoStack` очищается при смене вкладки
+5. **CSS** — кодовые блоки используют `var(--bg3)` как в основном превью
+6. **Highlight.js** — всегда включён в MD-режиме (без toggle)
+
+**Баги найдены и исправлены:**
+- `_loadSaved()` не возвращал `mdPreview` → после F5 флаг сбрасывался
+- A−/A+ не работали в MD-режиме (меняли размер только textarea)
+- MD не рендерился при открытии (не вызывался `_renderMdPreview`)
+- SVG-иконка рисовала "MN" вместо "MD"
+- Откат перевода не работал (`state._translateOriginal` обнулялся в input handler)
+- Кросс-табный откат (undoStack не очищался при смене вкладки)
+- Утечка document listener при аварийном пересоздании блокнота
+- Dropdown позиционировался вверх вместо вниз
+
+**Коммиты:**
+- `65c9219` — основная реализация MD-превью (кнопка, рендер, персистентность)
+- `ae66c9c` — `_loadSaved()` возвращает `mdPreview`
+- `aa07888` — CSS кодовых блоков как в основном превью (`var(--bg3)`)
+- `2e550df` — A−/A+ в MD, render при открытии, иконка MN→MD
+- `611dda0` — кнопки MD и перевода в шапку, MD обновляется после перевода
+- `97a3115` — rewrite translate: `_undoStack`, dropdown, без toast, очистка при смене вкладки
+- `133c532` — dropdown вниз, lazy rebuild меню, guard пустого dropdown
+
+**Файлы:** `notepad.js`, `styles.css`
+
+---
+
 ### Diff-снапшоты — оптимизация хранилища (R1-R3)
 
 **Проблема:** `history[]` хранит до 200 полных JSON-копий блоков на вкладку. `namedSnapshots` — ещё 10. При 3 вкладках = 600+ полных копий.
@@ -17,7 +107,7 @@
 
 **Коммиты:**
 - `d80d80b` — основная реализация R1-R3
-- `3de2ea3` —防御ное клонирование в `_applyDelta` (deep clone blocks), early return для `targetIdx < 0`
+- `3de2ea3` — defense cloning в `_applyDelta` (deep clone blocks), early return для `targetIdx < 0`
 - `bb55784` — `closeTab()` очищает `_blockHistory` для блоков закрытой вкладки (утечка памяти)
 - `1a4edfe` — `exportCurrentTab()` исключает `history`/`historyIdx` из экспорта (лишний балласт ~50-200KB)
 
@@ -104,15 +194,17 @@
 |------|-----------|
 | `state.js` | Diff-снапшоты: `_computeDelta`, `_deepDiff`, `_applyDelta`, `_rebuildFromHistory`, `_migrateHistory`; `snapshot()`/`undo()`/`redo()`/`canUndo()`/`canRedo()` переписаны на base+deltas; blockHistory аналогично; `_dropBlockHistory` рекурсивен; `closeTab()` чистит `_blockHistory`; лимиты: history 30, namedSnapshots 5, blockHistory 30 |
 | `app.js` | `exportCurrentTab()` — удалены `history`/`historyIdx` из экспорта; `incoming.history = { base: null, deltas: [] }` для импорта |
-| `notepad.js` | Кнопка "Блокнот" — toggle (show/hide) вместо только show |
-| `index.html` | aria-label "Свернуть/развернуть блокнот"; `ui-menu` на все dropdown контейнеры; snippet-dropdown; `<g class="timer-segments">` в SVG; `maxlength="3"` для timer input |
+| `blocks.js` | MD-превью текстовых блоков: кнопка в шапке (toggle + long-press dropdown), `_renderBlockMdPreview`, `b.mdPreview`/`b.mdHighlight`, min-height 110px; sync MD при patchSubtab/undo/redo/translate; dropdown: "🎨 MD + Подсветка", "📋 Копировать HTML", "📝 Копировать Markdown"; active state синей подсветкой; скрытие кнопки при неактивном блоке |
+| `ui.js` | Превью: 3-режимная кнопка MD (Text→MD→MD*→Text), `getMdHighlight()`, highlight.js только в режиме md-hl |
+| `notepad.js` | MD-превью: кнопка, `_renderMdPreview`, `_toggleMdPreview`, `marked.parse()`; `_loadSaved` возвращает `mdPreview`; A−/A+ работают в MD; render при открытии; SVG "MD"; кнопки MD + "Перевести текст" в header; перевод: `_undoStack`, dropdown (язык/движок), long-press 400ms, без toast, очистка при смене вкладки и закрытии; `_cleanupTranslate` listener; highlight.jsalways on |
+| `llm-features.js` | Мини-чат: `_renderChatMd` хелпер (marked.parse + hljs), assistant-сообщения рендерятся как markdown с подсветкой; `finalizeLastMessage` переключает на markdown после стриминга; translate undo сохраняет raw text в `dataset.rawText` |
+| `index.html` | highlight.js CSS + JS через CDN; `prev-md` button |
+| `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон |
 | `prompt-loom.js` | `renderPalette` — DOM-diff (не пересоздаёт search input); `close-all-palettes` listener; `closePalette` export; фикс `handleBackslashTrigger` |
-| `blocks.js` | `closeSlashPalette` export; `close-all-palettes` listener; `closeAllMenus` в `_renderSlashPalette` и `showSnippetDropdown`; groom trigger `closeAllMenus`; `ui-menu` на slash palette |
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
-| `llm-features.js` | `_saveWinGeometry()` — отдельное сохранение геометрии; drag/resize end + beforeunload → `_saveWinGeometry()` |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
-| `styles.css` | `.timer-seg/timer-seg-filled` + `@keyframes seg-fill`; `.timer-value-sm` для 3 цифр |
+| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove |
 
 ## Как работает
 
@@ -121,16 +213,47 @@
 - **Миграция:** `_migrateHistory()` конвертирует старый формат `["{json}"]` → `{ base: lastParsed, deltas: [] }`.
 - **Export:** `serialize()` не включает history. `exportCurrentTab()` теперь явно удаляет `history`/`historyIdx`.
 - **Import:** single tab — `incoming.history = { base: null, deltas: [] }` → `State.load()` создаёт base из blocks. Multi tab — `_migrateHistory()` конвертирует старый формат.
+- **Text block MD:** кнопка в шапке (opacity:0 → hover:1). Long-press 400ms → dropdown. Toggle `b.mdPreview`/`b.mdHighlight`. `mdContent` div с `min-height:110px`. Sync через patchSubtab, undo/redo, translate.
+- **Preview MD:** кнопка циклит Text→MD→MD*. `previewMarkdown` state: `false`/`'text'`→`'md'`→`'md-hl'`. Highlight.js только в `md-hl`.
+- **Notepad MD:** всегда MD+highlight. `_renderMdPreview` → `marked.parse()` + `hljs.highlightElement()`.
+- **Chat MD:** `_renderChatMd(span, text)` хелпер. Streaming через `textContent`, finalize через `_renderChatMd`. Translate: `dataset.rawText` для undo.
+- **Highlight.js:** CDN `github-dark-dimmed`. `hljs.highlightElement(block)` с `delete block.dataset.highlighted` перед повторным рендером. Auto-detect языка.
+- **Notepad translate:** паттерн `_undoStack` на кнопке (как в blocks.js). Long-press 400ms → dropdown с engine/lang. `onclick` — если есть `_undoStack` и нет выделения → откат (pop + restore). Иначе → перевод через `Translator.translateProtected()`. `_undoStack` очищается при смене вкладки. `_cleanupTranslate` снимает document listener при закрытии.
 - **Prompt Loom palette**: `renderPalette()` создаёт DOM один раз, при обновлении перестраивает только список. `close-all-palettes` событие закрывает palette извне. `handleBackslashTrigger` не закрывает palette если фокус внутри.
 - **closeAllMenus**: единая точка — закрывает `.ui-menu.open` + dispatches `close-all-palettes`. Palette-модули слушают событие и закрываются через свои close-функции с очисткой состояния.
 - **Timer segments**: 12 line-меток вдоль CW-пути, `viewBox` привязан к размерам кнопки. Сегменты только внутрь (dot product). `_syncSegments` при любом изменении `completedSegments`.
 - **Text Linter perf**: `many-commas` заменён на split by sentence + comma count — O(n) вместо экспоненциального regex.
 - **Mini-chat geometry**: `_savedWin` хранит позицию/размер, обновляется при drag/resize end и beforeunload. Восстанавливается в `_open()`.
 
+### Ember CPU-оптимизация (задание 3.4)
+
+**Файл:** `ember.js`
+
+**Изменения (9 оптимизаций):**
+1. **Кеш `getEmberCenter()`** — `_emberCenterCache` с привязкой к `lastFrame`. 5-8 `getBoundingClientRect`/кадр → 1. Сброс в `destroy()`.
+2. **Idle gate (`isSceneIdle`)** — когда мышь не двигалась, нет эффектов, нет частиц, `heatBoost`/`ringImpulse`/`residualHeat` стабильны, `focusState === 'active'` → пропускаем `updateWind`, `updateAttention`, `updateGaze`, `updateCursorLean`, `processReactions`, `tryStart`, `commitPose`, частицы. Обновляем только `breathPhase` + `glowTrack`/`ashTrack`.
+3. **Переиспользование буфера позы** — `POSE_BUF` (объект с 35+ полями) + `resetPose()` вместо `createPose()`. Убирает GC-давление (~60 аллокаций/сек).
+4. **Throttle частиц до 30fps** — `++_particleFrameToggle & 1 || particles.length < 16`. Частицы обновляются ~30 раз/сек.
+5. **`setVarApprox`** — epsilon-кеш (0.001) для `--breathScale` в idle gate. Избегает лишних `setProperty` при float-шуме.
+6. **`deferBurst`** — вместо циклов `defer(spawnX, i*K)`. Одна цепочка `setTimeout` вместо N. Заменено в: предупреждение сегментов, click handler, typingApproach, processReactions (crackle/gust/ashDrift).
+7. **`mouseMovedSinceLastFrame`** — флаг в `mousemove` handler. `isSceneIdle` пропускает.wind/attention если мышь не двигалась.
+8. **`updateMood` в `requestIdleCallback`** — уже имел 1с throttle; теперь реально не блокирует кадр.
+9. **`passive: true`** на `document.addEventListener('mousemove', ...)` — браузер не ждёт JS перед скроллом.
+
+**Пропущено (аргументы):**
+- CSS idle-анимации — idle-ветка уже обновляет CSS-переменные, переход на `@keyframes` рискует потерять плавность при `settling→idle→wakeUp`.
+- cssText batching — микро-выигрыш (1-2 мс), `setVar` уже блокирует дубли через `styleCache`.
+- `Int32Array` view — микро-оптимизация без реального эффекта на V8.
+- Epsilon-кеш для heat/brightness/ringOpacity — `setVar` уже отсекает равные значения; допуск 0.001 на float-строках с `.toFixed(3)` бесполезен (равны точь-в-точь).
+
+---
+
 ## Следующий шаг
 
-1. Проверить undo/redo — работает ли ветвление (undo → изменение → redo)
-2. Проверить импорт старого формата файла (до R1)
-3. Проверить Prompt Loom palette — поиск не теряет фокус, только одно меню открыто
-4. Проверить мини-чат — позиция/размер сохраняются при F5
-5. Проверить таймер — 12 сегментов, CW оба режима, Variant B для down
+1. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
+2. Проверить highlight.js в мини-чате — streaming → finalize → markdown + подсветка
+3. Проверить MD-превью текстовых блоков — toggle, long-press dropdown, active state
+4. Проверить undo/redo — работает ли ветвление (undo → изменение → redo)
+5. Проверить импорт старого формата файла (до R1)
+6. Проверить ember idle gate — не дёргается ли эмбер при движении мыши в idle
+7. Проверить particle throttle — визуально неотличимо от 60fps
