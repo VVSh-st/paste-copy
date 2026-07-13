@@ -205,7 +205,7 @@
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
 | `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy; `idleLevel` rAF throttle (60→30→8fps), `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing: `breathCore/Glow/Crust/Ash`, `_throttleTimer` fix |
-| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX); Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow` при ignited; `.ember-ash.landed` — осевший пепел |
+| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX); Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow` при ignited; `.ember-ash.landed` — осевший пепел; `.ember-micro-sparks` + `.micro-spark` — CSS-only мерцающие точки |
 
 ## Как работает
 
@@ -347,6 +347,26 @@
 - `DYING_STORAGE_KEY` — localStorage флаг при `destroy()`
 - Очистка при `init()`
 - `applyRemoteState`: пропуск обновлений от умирающих вкладок
+
+---
+
+### Dark theme + micro-sparks (задание 3.10)
+
+**Файлы:** `ember.js`, `ember-styles.css`
+
+**Dark theme adaptation:**
+- `matchMedia('(prefers-color-scheme: dark)')` detection в commitPose и idle gate
+- `darkBoost = 0.15`: glow += 0.15, brightness += 0.15×1.3
+- `shadowAlpha += 0.1` на тёмном фоне
+- Автоматическая адаптация при смене темы OS
+
+**Micro-sparks on core:**
+- 4–7 CSS-only мерцающих точек (1.2px) на ядре
+- `mix-blend-mode: screen`, `box-shadow` glow
+- Keyframes: opacity 0.15→0.95→0.4→0.75, scale 0.8→1.25→0.95→1.1
+- `rand(1.6–2.8s)` duration, `rand(0–2s)` delay
+- `prefers-reduced-motion`: opacity 0.6 без анимации
+- Не требует rAF, pool, или JS-обновлений
 
 ---
 
