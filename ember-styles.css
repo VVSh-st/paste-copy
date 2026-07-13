@@ -439,6 +439,14 @@
   box-shadow: 0 0 3px rgba(255, 170, 80, 0.35);
 }
 
+.ember-ash.landed {
+  background: rgba(35, 22, 14, 0.88);
+  box-shadow:
+    0 0 1px rgba(80, 50, 30, 0.4),
+    inset 0 -0.5px 1px rgba(0, 0, 0, 0.5);
+  filter: blur(0.4px);
+}
+
 .ember-spark {
   position: absolute;
   border-radius: 50%;

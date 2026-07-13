@@ -1752,6 +1752,24 @@ const Ember = (() => {
       el.style.animation = '';
       freeGlowEls.push(el);
     }, 250);
+    if (particles.length < 30 && Math.random() < 0.6) {
+      const ashEl = acquireEl('ember-ash landed');
+      if (ashEl) {
+        ashEl.style.left = x + '%';
+        ashEl.style.top = y + '%';
+        ashEl.style.width = rand(1, 2.5).toFixed(1) + 'px';
+        ashEl.style.height = rand(1, 2.5).toFixed(1) + 'px';
+        particles.push({
+          el: ashEl, born: performance.now(),
+          startX: x, startY: y,
+          dur: rand(8000, 18000),
+          rise: 0, drift: 0, sway: 0,
+          isSpark: false, type: 'landed',
+          rot: 0, rotSpeed: 0,
+          alphaBias: rand(0.4, 0.8),
+        });
+      }
+    }
   }
 
   function updateParticles(now, dt) {
@@ -1830,6 +1848,19 @@ const Ember = (() => {
           p.groundHit = true;
           p.vy *= -(p.bounce || 0.35);
           rot += (Math.random() < 0.5 ? -1 : 1) * 35;
+        }
+      } else if (p.type === 'landed') {
+        if (t < 0.15) {
+          const a = t / 0.15;
+          scale = 0.4 + easeOutQuad(a) * 0.6;
+          opacity = a * (p.alphaBias || 0.6);
+        } else if (t < 0.85) {
+          scale = 1.0;
+          opacity = (p.alphaBias || 0.6);
+        } else {
+          const a = (t - 0.85) / 0.15;
+          scale = 1.0 - easeInQuad(a) * 0.2;
+          opacity = (p.alphaBias || 0.6) * (1 - easeInQuad(a));
         }
       } else {
         const swirl = Math.sin(t * Math.PI * 2 * (p.swirlFactor || 1)) * (p.sway || 0);
@@ -3217,10 +3248,17 @@ const Ember = (() => {
       glowTrackX *= 0.92; glowTrackY *= 0.92;
       ashTrackX *= 0.92; ashTrackY *= 0.92;
 
+      let idlePulse = 0;
+      if (Math.random() < dt * 0.6) {
+        idlePulse = Math.pow(Math.random(), 3) * 0.2;
+        glowTrackX += rand(-3, 3);
+        glowTrackY += rand(-3, 3);
+      }
+
       const idleBreath = 1 + Math.sin(breathPhase * 2.5) * 0.012 * intensity;
       breathScale += (idleBreath - breathScale) * 0.06;
-      const idleGlow = clamp(intensity + heatBoost * 0.3, 0, 1.8);
-      const idleBright = clamp(0.7 + intensity * 0.3 + heatBoost * 0.4, 0.35, 2.5);
+      const idleGlow = clamp(intensity + heatBoost * 0.3 + idlePulse, 0, 1.8);
+      const idleBright = clamp(0.7 + intensity * 0.3 + heatBoost * 0.4 + idlePulse * 0.3, 0.35, 2.5);
 
       heat = clamp(intensity + heatBoost * 0.25, 0, 1);
       setVarApprox(root, '--breathScale', breathScale.toFixed(4), 0.001);
@@ -4016,6 +4054,7 @@ const Ember = (() => {
       const today = new Date().toDateString();
       if (localStorage.getItem(EGG_STORAGE_KEY) === today) egg.triggeredToday = true;
     } catch {}
+    try { localStorage.removeItem(DYING_STORAGE_KEY + '-' + currentTabId); } catch {}
 
     const container = mountEl || document.getElementById('ember-slot');
     if (container) container.appendChild(root);
@@ -4064,6 +4103,7 @@ const Ember = (() => {
 
   function destroy() {
     destroyed = true;
+    try { localStorage.setItem(DYING_STORAGE_KEY + '-' + currentTabId, Date.now().toString()); } catch {}
     stopLoop();
     if (_idleCallbackId && 'cancelIdleCallback' in window) {
       cancelIdleCallback(_idleCallbackId);
