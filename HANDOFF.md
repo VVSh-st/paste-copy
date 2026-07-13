@@ -204,8 +204,8 @@
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
-| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy; `idleLevel` rAF throttle (60→30→8fps), `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing: `breathCore/Glow/Crust/Ash`, `_throttleTimer` fix |
-| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX); Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow` при ignited; `.ember-ash.landed` — осевший пепел; `.ember-micro-sparks` + `.micro-spark` — CSS-only мерцающие точки |
+| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate (со спавном частиц внутри), `POSE_BUF`/`resetPose()`, particle throttle 30fps, `setVarApprox`, `deferBurst`, `mouseMovedSinceLastFrame`, `updateMood` в `requestIdleCallback`, `passive: true`; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry, fallback timeout, `_idleCallbackId` cleanup; `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing `breathCore/Glow/Crust/Ash`; `_throttleTimer` fix; crack color-shift `mixRgb()`; anomaly sparks 380-720px; micro-flicker idle; landed ash particles; dying tab guard; idleLevel throttle УДАЛЁН (убивал визуал) |
+| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode) |
 
 ## Как работает
 
@@ -225,6 +225,8 @@
 - **Timer segments**: 12 line-меток вдоль CW-пути, `viewBox` привязан к размерам кнопки. Сегменты только внутрь (dot product). `_syncSegments` при любом изменении `completedSegments`.
 - **Text Linter perf**: `many-commas` заменён на split by sentence + comma count — O(n) вместо экспоненциального regex.
 - **Mini-chat geometry**: `_savedWin` хранит позицию/размер, обновляется при drag/resize end и beforeunload. Восстанавливается в `_open()`.
+- **Ember idle gate**: пропускает тяжёлые вычисления (commitPose, updateWind, etc.) но **всегда спавнит частицы** (ash/spark/shootingSpark) и вызывает `updateParticles`. Спавн внутри idle gate перед `return`.
+- **Ember color-scheme: dark**: `color-scheme: dark` на `.ember-slot`/`.ember` — обход Auto Dark Mode for Web Contents.
 
 ### Ember CPU-оптимизация (задание 3.4)
 
@@ -269,19 +271,9 @@
 
 ---
 
-### idleLevel rAF throttle (задание 3.6)
+### idleLevel rAF throttle (задание 3.6) — УДАЛЁН
 
-**Файл:** `ember.js`
-
-**Изменения:**
-1. **`idleLevel`** — три состояния: 0 (60fps), 1 (30fps, после ~2с idle), 2 (8fps, после ~8с idle)
-2. **`idleState(now)`** — считает `_idleConsecutive` (подряд кадров где `isSceneIdle()=true`), эскалирует уровень. Сброс на 0 при любом не-idle кадре.
-3. **`animate()` throttle** — level 2: `setTimeout(130ms)`, level 1: `setTimeout(33ms)`, level 0: `requestAnimationFrame`
-4. **`_idleLevel`/`_idleConsecutive`** — сброс в `destroy()`
-5. **`Math.hypot` → `dist²`** — `updateWind` (6400/40000), `updateAttention` (1600/62500), `updateTemperament` (2500/48400). `sqrt` только когда dist нужен для интерполяции.
-6. **`flashHeat`/`coreHeatReserve` early skip** — `if (val > 0)` перед decay
-
-**Эффект:** на длительном idle (8с+) — rAF идёт ~8fps вместо 60fps. ~7-8× экономия CPU на простаивающей странице.
+**Причина удаления:** `idleLevel >= 2` использовал `setTimeout(130ms)` вместо `requestAnimationFrame`, что давало ~8fps. Эмбер "еле двигался", частицы не спавнились. Idle gate уже достаточно экономит CPU.
 
 ---
 
@@ -367,6 +359,19 @@
 - `rand(1.6–2.8s)` duration, `rand(0–2s)` delay
 - `prefers-reduced-motion`: opacity 0.6 без анимации
 - Не требует rAF, pool, или JS-обновлений
+
+---
+
+### Color-scheme: dark — обход Auto Dark Mode (задание 3.11)
+
+**Файл:** `ember-styles.css`
+
+**Проблема:** `Auto Dark Mode for Web Contents` в `chrome://flags` применяет принудительный тёмный фильтр ко всем страницам, искажая цвета/glow/blend-режимы Ember.
+
+**Решение:** `color-scheme: dark` на `.ember-slot` и `.ember` — говорит браузеру "этот элемент уже тёмный", Auto Dark Mode не применяет фильтр. Тот же подход что в "Блок-схеме" (`flowchart.css:10`).
+
+**Баг fixes в idle gate:**
+- Спавн частиц (ash/spark/shootingSpark) и `updateParticles` добавлены **внутрь** idle gate перед `return`. Раньше `return` был ДО спавна — частицы не появлялись когда idle gate был активен.
 
 ---
 
