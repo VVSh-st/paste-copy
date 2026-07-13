@@ -2612,6 +2612,15 @@ const Ember = (() => {
     egg._launchAngle   = Math.atan2(launchDir.y, launchDir.x);
     egg._nestAngle     = egg._launchAngle;
 
+    // viewport-aware: clamp caret к safe range
+    egg.vw = window.innerWidth;
+    egg.vh = window.innerHeight;
+    const SAFE_MARGIN = 80;
+    const MAX_CX = egg.vw / 2 - SAFE_MARGIN - EGG_OBSERVE_R;
+    const MAX_CY = egg.vh / 2 - SAFE_MARGIN - EGG_OBSERVE_R;
+    egg.caretX = clamp(egg.caretX, -MAX_CX, MAX_CX);
+    egg.caretY = clamp(egg.caretY, -MAX_CY, MAX_CY);
+
     // safe start — если cursorLean близко к caret, сдвигаем старт
     if (Math.hypot(egg.startX - egg.caretX, egg.startY - egg.caretY) < EGG_OBSERVE_R) {
       const len = Math.max(40, Math.hypot(egg.caretX, egg.caretY));
@@ -2619,11 +2628,15 @@ const Ember = (() => {
       egg.startY = (egg.caretY / len) * (len - EGG_OBSERVE_R);
     }
 
-    // landing point — на 170-200px от caret, между ember и caret
+    // landing point — на 170-200px от caret, между ember и caret, clamped к viewport
     const lenToCaret = Math.max(1, Math.hypot(egg.caretX, egg.caretY));
     const landDist = clamp(lenToCaret - EGG_OBSERVE_R, 170, 200);
     egg._landX = egg.caretX - (egg.caretX / lenToCaret) * landDist;
     egg._landY = egg.caretY - (egg.caretY / lenToCaret) * landDist;
+    const eggSafeX = egg.vw / 2 - SAFE_MARGIN - 60;
+    const eggSafeY = egg.vh / 2 - SAFE_MARGIN - 60;
+    egg._landX = clamp(egg._landX, -eggSafeX, eggSafeX);
+    egg._landY = clamp(egg._landY, -eggSafeY, eggSafeY);
   }
 
   function updateEgg(now) {
@@ -2939,6 +2952,14 @@ const Ember = (() => {
         egg.x = egg.caretX + ux * 170;
         egg.y = egg.caretY + uy * 170;
       }
+    }
+
+    // viewport clamp: egg-core не за край экрана
+    if (egg.vw && egg.vh) {
+      const SAFE_X = egg.vw / 2 - 60;
+      const SAFE_Y = egg.vh / 2 - 60;
+      egg.x = clamp(egg.x, -SAFE_X, SAFE_X);
+      egg.y = clamp(egg.y, -SAFE_Y, SAFE_Y);
     }
   }
 
