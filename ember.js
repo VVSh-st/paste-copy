@@ -3306,6 +3306,20 @@ const Ember = (() => {
         syncAccessibleLabel();
         nextAriaUpdate = now + 60000;
       }
+
+      // --- idle gate: still spawn particles even when scene is idle ---
+      if (!reduceMotion && focusState === 'active') {
+        if (Date.now() > nextAshSpawn) {
+          if (Math.random() < 0.35) spawnAshParticle();
+          nextAshSpawn = Date.now() + rand(800, 1600);
+        }
+        if (Date.now() > nextSparkCheck) {
+          if (Math.random() < 0.3 * (0.4 + intensity * 0.6)) spawnSpark();
+          nextSparkCheck = Date.now() + rand(2000, 4500);
+        }
+        if ((++_particleFrameToggle & 1) || particles.length < 16) updateParticles(now, dt);
+      }
+
       return;
     }
 
