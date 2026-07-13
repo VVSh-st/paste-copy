@@ -205,7 +205,7 @@
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
 | `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy; `idleLevel` rAF throttle (60→30→8fps), `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing: `breathCore/Glow/Crust/Ash`, `_throttleTimer` fix |
-| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX); Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow` при ignited |
+| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX); Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow` при ignited; `.ember-ash.landed` — осевший пепел |
 
 ## Как работает
 
@@ -324,6 +324,29 @@
 - `easeInOut` вместо `easeOut` — разгон→полёт→затухание
 - 3-фазное затухание: разгон (0–0.2) → пульсация ±18% (0.2–0.7) → сжатие+затухание (0.7–1.0)
 - Trail: квадратичное затухание `(1-t)² × 14 + 1.5`, красный color shift
+
+---
+
+### Micro-flicker + landed ash + dying tab guard (задание 3.9)
+
+**Файлы:** `ember.js`, `ember-styles.css`
+
+**Micro-flicker idle:**
+- `Math.random() < dt * 0.6` — редкая микро-вспышка glow
+- `idlePulse = pow(random, 3) * 0.2` — большая часть ~0, редко >0.1
+- `glowTrackX/Y += rand(-3, 3)` — блик смещается в случайную точку
+- `idleGlow += idlePulse`, `idleBright += idlePulse * 0.3`
+
+**Landed ash particles:**
+- `spawnLandingGlow`: 60% вероятность создать `type: 'landed'` частицу
+- 3-фазное затухание: проявление (0–0.15) → стабильность (0.15–0.85) → угасание (0.85–1.0)
+- `dur`: 8–18 сек, `alphaBias`: 0.4–0.8
+- CSS: `.ember-ash.landed` — тёмный фон, inset shadow, blur
+
+**Dying tab guard:**
+- `DYING_STORAGE_KEY` — localStorage флаг при `destroy()`
+- Очистка при `init()`
+- `applyRemoteState`: пропуск обновлений от умирающих вкладок
 
 ---
 
