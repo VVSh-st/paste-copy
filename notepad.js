@@ -344,6 +344,76 @@ const Notepad = (() => {
 
     titleWrap.append(titleLabel);
 
+    /* ---- MD toggle button ---- */
+    const mdBtn = _mkBtn(SVG.md, 'Markdown-превью', () => _toggleMdPreview(state, win));
+    mdBtn.classList.add('notepad-md-btn');
+    state._mdBtn = mdBtn;
+
+    /* ---- Translate button ---- */
+    const getTa = () => win.querySelector('.notepad-body textarea');
+    const translateBtn = _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст');
+    const handleTranslate = () => {
+      if (typeof Translator === 'undefined') { _toast('Модуль переводчика не загружен', 'error'); return; }
+      const ta = getTa(); if (!ta) return;
+      if (state._translateBusy) {
+        _toast('Перевод уже выполняется...', 'info');
+        return;
+      }
+
+      if (state._translateOriginal !== null && state._translateOriginalTab === state.activeTab) {
+        state._pushHistory?.(ta.value);
+        ta.value = state._translateOriginal;
+        state.tabs[state.activeTab].value = state._translateOriginal;
+        state._translateOriginal = null;
+        state._translateOriginalTab = null;
+        ta.dispatchEvent(new Event('input'));
+        if (state.mdPreview) _renderMdPreview(state);
+        _toast('↩ Оригинал восстановлен');
+        return;
+      }
+
+      const selStart = ta.selectionStart;
+      const selEnd   = ta.selectionEnd;
+      const tabAtStart = state.activeTab;
+      const sourceValue = ta.value;
+      const hasSel   = selStart !== selEnd;
+      const sel      = ta.value.substring(selStart, selEnd);
+      const text     = hasSel ? sel : ta.value;
+      if (!text.trim()) return;
+      const lang = Translator.LANG_BY_CODE[Translator.targetLang];
+      _toast('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
+      state._translateBusy = true;
+      translateBtn.disabled = true;
+      Translator.translateProtected(text, Translator.targetLang).then(result => {
+        if (state.activeTab !== tabAtStart || !state.el?.isConnected) {
+          _toast('Перевод отменён: вкладка изменена', 'info');
+          return;
+        }
+        if (ta.value !== sourceValue) {
+          _toast('Перевод отменён: текст изменён', 'info');
+          return;
+        }
+        if (!result || result === text) { _toast('Не удалось перевести'); return; }
+        state._pushHistory?.(ta.value);
+        state._translateOriginal = ta.value;
+        state._translateOriginalTab = state.activeTab;
+        if (hasSel) {
+          ta.setRangeText(result, selStart, selEnd, 'select');
+        } else {
+          ta.value = result;
+        }
+        state.tabs[state.activeTab].value = ta.value;
+        ta.dispatchEvent(new Event('input'));
+        if (state.mdPreview) _renderMdPreview(state);
+        _toast('✓ Переведено → ' + (lang?.name || Translator.targetLang) + ' (клик ↩ — вернуть)');
+      }).catch(err => _toast('Ошибка: ' + err.message))
+        .finally(() => {
+          state._translateBusy = false;
+          translateBtn.disabled = false;
+        });
+    };
+    translateBtn.addEventListener('click', handleTranslate);
+
     // minBtn and closeBtn are proper <button> elements for keyboard accessibility
     const minBtn = document.createElement('button');
     minBtn.className = 'notepad-min-btn';
@@ -359,7 +429,7 @@ const Notepad = (() => {
     closeBtn.title     = 'Закрыть (данные сохранятся)';
     closeBtn.addEventListener('click', e => { e.stopPropagation(); _closeNotepad(state); });
 
-    header.append(iconEl, titleWrap, minBtn, closeBtn);
+    header.append(iconEl, titleWrap, mdBtn, translateBtn, _mkDiv(), minBtn, closeBtn);
     header.style.cursor = 'grab';
     _makeDraggable(header, win, state);
     return header;
@@ -549,10 +619,6 @@ const Notepad = (() => {
       _persist(state);
     });
 
-    const mdBtn = _mkBtn(SVG.md, 'Markdown-превью', () => _toggleMdPreview(state, win));
-    mdBtn.classList.add('notepad-md-btn');
-    state._mdBtn = mdBtn;
-
     const prevTabBtn = _mkBtn('◀', 'Предыдущая вкладка',
       () => _switchTab(state, (state.activeTab - 1 + TAB_COUNT) % TAB_COUNT, win));
     prevTabBtn.classList.add('notepad-tab-arrow');
@@ -570,67 +636,6 @@ const Notepad = (() => {
 
     _renderTabs(state);
 
-    const translateBtn = _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст');
-    const handleTranslate = () => {
-      if (typeof Translator === 'undefined') { _toast('Модуль переводчика не загружен', 'error'); return; }
-      const ta = getTa(); if (!ta) return;
-      if (state._translateBusy) {
-        _toast('Перевод уже выполняется...', 'info');
-        return;
-      }
-
-      if (state._translateOriginal !== null && state._translateOriginalTab === state.activeTab) {
-        pushHistory(ta.value);
-        ta.value = state._translateOriginal;
-        state.tabs[state.activeTab].value = state._translateOriginal;
-        state._translateOriginal = null;
-        state._translateOriginalTab = null;
-        ta.dispatchEvent(new Event('input'));
-        _toast('↩ Оригинал восстановлен');
-        return;
-      }
-
-      const selStart = ta.selectionStart;
-      const selEnd   = ta.selectionEnd;
-      const tabAtStart = state.activeTab;
-      const sourceValue = ta.value;
-      const hasSel   = selStart !== selEnd;
-      const sel      = ta.value.substring(selStart, selEnd);
-      const text     = hasSel ? sel : ta.value;
-      if (!text.trim()) return;
-      const lang = Translator.LANG_BY_CODE[Translator.targetLang];
-      _toast('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
-      state._translateBusy = true;
-      translateBtn.disabled = true;
-      Translator.translateProtected(text, Translator.targetLang).then(result => {
-        if (state.activeTab !== tabAtStart || !state.el?.isConnected) {
-          _toast('Перевод отменён: вкладка изменена', 'info');
-          return;
-        }
-        if (ta.value !== sourceValue) {
-          _toast('Перевод отменён: текст изменён', 'info');
-          return;
-        }
-        if (!result || result === text) { _toast('Не удалось перевести'); return; }
-        pushHistory(ta.value);
-        state._translateOriginal = ta.value;
-        state._translateOriginalTab = state.activeTab;
-        if (hasSel) {
-          ta.setRangeText(result, selStart, selEnd, 'select');
-        } else {
-          ta.value = result;
-        }
-        state.tabs[state.activeTab].value = ta.value;
-        ta.dispatchEvent(new Event('input'));
-        _toast('✓ Переведено → ' + (lang?.name || Translator.targetLang) + ' (клик ↩ — вернуть)');
-      }).catch(err => _toast('Ошибка: ' + err.message))
-        .finally(() => {
-          state._translateBusy = false;
-          translateBtn.disabled = false;
-        });
-    };
-    translateBtn.addEventListener('click', handleTranslate);
-
     toolbar.append(
       _mkBtn(SVG.undo, 'Отменить (Ctrl+Z)',  doUndo),
       _mkBtn(SVG.redo, 'Повторить (Ctrl+Y)', doRedo),
@@ -638,9 +643,7 @@ const Notepad = (() => {
       _mkDiv(),
       clearBtn, saveBtn, transferBtn,
       _mkDiv(),
-      fDecBtn, fIncBtn, mdBtn,
-      _mkDiv(),
-      translateBtn,
+      fDecBtn, fIncBtn,
       _mkDiv(),
       prevTabBtn, tabsWrap, nextTabBtn,
       _mkDiv(),
