@@ -140,7 +140,7 @@ const Notepad = (() => {
     chevron: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>',
     resize:  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M10 2L2 10M10 6L6 10"/></svg>',
     notepad: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5h4M6 8h4M6 11h2"/></svg>',
-    md:      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M3 10V6l2 2.5L7 6v4"/><path d="M9 10V6l4 4V6"/></svg>',
+    md:      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M3 10V6l2 2.5L7 6v4"/><path d="M9 10V6h2.5c1.5 0 2.5 1 2.5 2.5S13 11 11.5 11H9"/></svg>',
   };
 
   function _mkBtn(html, title, onclick) {
@@ -273,7 +273,13 @@ const Notepad = (() => {
     if (chevron) chevron.style.transform = state.minimized ? 'rotate(-90deg)' : '';
 
     if (!state.minimized) {
-      requestAnimationFrame(() => win.querySelector('.notepad-body textarea')?.focus());
+      requestAnimationFrame(() => {
+        win.querySelector('.notepad-body textarea')?.focus();
+        if (state.mdPreview) {
+          _renderMdPreview(state);
+          if (state._mdBtn) state._mdBtn.classList.add('active');
+        }
+      });
     }
   }
 
@@ -533,11 +539,13 @@ const Notepad = (() => {
     const fDecBtn = _mkBtn('A−', 'Шрифт меньше', () => {
       state.fontSize = Math.max(MIN_FONT_SIZE, state.fontSize - 1);
       const ta = getTa(); if (ta) ta.style.fontSize = state.fontSize + 'px';
+      if (state._mdContent) state._mdContent.style.fontSize = state.fontSize + 'px';
       _persist(state);
     });
     const fIncBtn = _mkBtn('A+', 'Шрифт больше', () => {
       state.fontSize = Math.min(MAX_FONT_SIZE, state.fontSize + 1);
       const ta = getTa(); if (ta) ta.style.fontSize = state.fontSize + 'px';
+      if (state._mdContent) state._mdContent.style.fontSize = state.fontSize + 'px';
       _persist(state);
     });
 
@@ -790,6 +798,7 @@ const Notepad = (() => {
     const mdContent = document.createElement('div');
     mdContent.className = 'notepad-md-content';
     mdContent.style.display = state.mdPreview ? '' : 'none';
+    mdContent.style.fontSize = state.fontSize + 'px';
     ta.style.display = state.mdPreview ? 'none' : '';
     state._mdContent = mdContent;
 
