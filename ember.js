@@ -2575,6 +2575,7 @@ const Ember = (() => {
 
   function startEgg(targetOverride) {
     if (previewScare.active) return;
+    const EGG_OBSERVE_R = 175;
     const ember = getEmberCenter();
     let targetX, targetY;
     if (targetOverride) {
@@ -2610,10 +2611,29 @@ const Ember = (() => {
     eggCharCount       = 0;
     egg._launchAngle   = Math.atan2(launchDir.y, launchDir.x);
     egg._nestAngle     = egg._launchAngle;
+
+    // safe start — если cursorLean близко к caret, сдвигаем старт
+    if (Math.hypot(egg.startX - egg.caretX, egg.startY - egg.caretY) < EGG_OBSERVE_R) {
+      const len = Math.max(40, Math.hypot(egg.caretX, egg.caretY));
+      egg.startX = (egg.caretX / len) * (len - EGG_OBSERVE_R);
+      egg.startY = (egg.caretY / len) * (len - EGG_OBSERVE_R);
+    }
+
+    // landing point — на 170-200px от caret, между ember и caret
+    const lenToCaret = Math.max(1, Math.hypot(egg.caretX, egg.caretY));
+    const landDist = clamp(lenToCaret - EGG_OBSERVE_R, 170, 200);
+    egg._landX = egg.caretX - (egg.caretX / lenToCaret) * landDist;
+    egg._landY = egg.caretY - (egg.caretY / lenToCaret) * landDist;
   }
 
   function updateEgg(now) {
     if (!egg.active) return;
+    if (reduceMotion) {
+      egg.x = egg._landX || egg.caretX;
+      egg.y = egg._landY || egg.caretY;
+      egg.scale = 0.8; egg.squish = 0; egg.tiltX = 0; egg.tiltY = 0;
+      return;
+    }
     const t  = now - egg.phaseStart;
     const dur = egg._phaseDur || 0;
     const p  = dur ? clamp(t / dur, 0, 1) : 0;
@@ -2638,22 +2658,22 @@ const Ember = (() => {
         break;
       }
 
-      // 2. ПОДЛЁТ — прямой ease к каретке, лёгкая дуга вверх, 280 мс
+      // 2. ПОДЛЁТ — прямой ease к landing point, лёгкая дуга вверх, 280 мс
       case 2: {
         const dur2 = 280;
         const p2 = clamp(t / dur2, 0, 1);
         const e = easeInOutQuad(p2);
         const arc = Math.sin(p2 * Math.PI) * 14;
-        egg.x = egg.startX + (egg.caretX - egg.startX) * e;
-        egg.y = egg.startY + (egg.caretY - egg.startY) * e - arc;
+        egg.x = egg.startX + (egg._landX - egg.startX) * e;
+        egg.y = egg.startY + (egg._landY - egg.startY) * e - arc;
         egg.scale = 1 + Math.sin(p2 * Math.PI) * 0.05;
         egg.squish = -Math.sin(p2 * Math.PI) * 0.05;
         egg.tiltY = Math.cos(egg._launchAngle) * 9 * (1 - p2);
         egg.tiltX = -6 * Math.sin(p2 * Math.PI);
         if (Math.random() < 0.04) spawnSpark();
         if (p2 >= 1) {
-          egg.x = egg.caretX;
-          egg.y = egg.caretY;
+          egg.x = egg._landX;
+          egg.y = egg._landY;
           egg.orbitPrev = { x: egg.x, y: egg.y };
           eggAdvance(3, 900);
         }
@@ -2667,8 +2687,8 @@ const Ember = (() => {
         const springDur = 220;
         const sp = clamp(t / springDur, 0, 1);
         const spring = Math.sin(sp * Math.PI * 3) * (1 - sp) * 0.4;
-        egg.x = egg.caretX;
-        egg.y = egg.caretY + spring * 1.1;
+        egg.x = egg._landX;
+        egg.y = egg._landY + spring * 1.1;
         egg.scale = 1 + spring * 0.10 - 0.02 * p3;
         egg.squish = -spring * 0.30;
         egg.tiltX = -4 * Math.sin(now * 0.006);
@@ -2677,8 +2697,8 @@ const Ember = (() => {
           egg._landGlowDone = true;
           const ember = getEmberCenter();
           spawnLandingGlow(
-            clamp((ember.x + egg.caretX) / window.innerWidth * 100, 10, 90),
-            clamp((ember.y + egg.caretY) / window.innerHeight * 100, 10, 90)
+            clamp((ember.x + egg._landX) / window.innerWidth * 100, 10, 90),
+            clamp((ember.y + egg._landY) / window.innerHeight * 100, 10, 90)
           );
         }
         if (!egg._hello && p3 > 0.4) { egg._hello = true; spawnSpark(); }
@@ -2686,25 +2706,25 @@ const Ember = (() => {
           const span = (30 + rand(0, 70)) * Math.PI / 180;
           const dir = Math.random() < 0.5 ? -1 : 1;
           egg._arcSpan = span; egg._arcDir = dir;
-          egg._arcBase = egg._launchAngle + dir * 0.12;
-          eggOrbitSet(egg._arcBase, 30);
+          egg._arcBase = Math.atan2(egg._landY - egg.caretY, egg._landX - egg.caretX);
+          eggOrbitSet(egg._arcBase, 175);
           eggAdvance(4, 1300);
         }
         break;
       }
 
-      // 4. ОБЛЁТ 1 — дуга R=30px вокруг каретки, 1300 мс
+      // 4. ОБЛЁТ 1 — дуга R=175px вокруг каретки, 1300 мс
       case 4: {
         const dur4 = 1300;
         const p4 = clamp(t / dur4, 0, 1);
         const e = easeInOutQuad(p4);
         const angle = egg._arcBase + egg._arcDir * egg._arcSpan * e;
-        const radius = 30 + Math.sin(p4 * Math.PI) * 5;
+        const radius = 175 + Math.sin(p4 * Math.PI) * 18;
         eggOrbitSet(angle, radius);
         eggCommitPosToXY();
         const inward = egg._arcDir * -1;
-        egg.tiltY = inward * 10 + Math.sin(p4 * Math.PI * 2) * 2;
-        egg.tiltX = Math.sin(p4 * Math.PI) * 5;
+        egg.tiltY = inward * 17 + Math.sin(p4 * Math.PI * 2) * 3;
+        egg.tiltX = Math.sin(p4 * Math.PI) * 6;
         egg.scale = 1 + Math.sin(p4 * Math.PI * 3) * 0.04;
         egg.squish = 0;
         if (Math.random() < 0.02) spawnAshParticle();
@@ -2718,19 +2738,19 @@ const Ember = (() => {
         const p5 = clamp(t / dur5, 0, 1);
         eggOrbitSet(
           egg._arcBase + egg._arcDir * egg._arcSpan,
-          28 + Math.sin(p5 * Math.PI * 2) * 1.5
+          175 + Math.sin(p5 * Math.PI * 2) * 12
         );
         eggCommitPosToXY();
-        egg.tiltY = egg._arcDir * 8;
-        egg.tiltX = Math.sin(p5 * Math.PI * 2) * 3;
+        egg.tiltY = egg._arcDir * 12;
+        egg.tiltX = Math.sin(p5 * Math.PI * 2) * 4;
         egg.scale = 1 + Math.sin(p5 * Math.PI * 4) * 0.02;
         egg.squish = Math.sin(p5 * Math.PI * 4) * 0.02;
         if (!egg._glintWatch && p5 > 0.55) { egg._glintWatch = true; spawnSpark(); }
         if (p5 >= 1) {
           egg._crossDir = egg._arcDir;
-          egg._crossSpan = Math.PI - egg._arcSpan + rand(-0.1, 0.2);
+          egg._crossSpan = Math.PI - egg._arcSpan + rand(-0.15, 0.15);
           egg._crossBase = egg._arcBase + egg._arcDir * egg._arcSpan * 0.5;
-          eggOrbitSet(egg._crossBase, 28);
+          eggOrbitSet(egg._crossBase, 185);
           eggAdvance(6, 1500);
         }
         break;
@@ -2742,17 +2762,17 @@ const Ember = (() => {
         const p6 = clamp(t / dur6, 0, 1);
         const e = easeInOutQuad(p6);
         const angle = egg._crossBase + egg._crossDir * egg._crossSpan * e;
-        const radius = 28 + Math.sin(p6 * Math.PI) * 6;
+        const radius = 190 + Math.sin(p6 * Math.PI) * 20;
         eggOrbitSet(angle, radius);
         eggCommitPosToXY();
-        egg.tiltY = -egg._crossDir * 11;
-        egg.tiltX = Math.sin(p6 * Math.PI) * 7;
+        egg.tiltY = -egg._crossDir * 17;
+        egg.tiltX = Math.sin(p6 * Math.PI) * 8;
         egg.scale = 1 + Math.sin(p6 * Math.PI * 2) * 0.04;
         egg.squish = 0;
         if (Math.random() < 0.03) spawnSpark();
         if (p6 >= 1) {
           egg._arc2Base = egg._crossBase + egg._crossDir * egg._crossSpan;
-          eggOrbitSet(egg._arc2Base, 24);
+          eggOrbitSet(egg._arc2Base, 165);
           eggAdvance(7, 1100);
         }
         break;
@@ -2762,11 +2782,11 @@ const Ember = (() => {
       case 7: {
         const dur7 = 1100;
         const p7 = clamp(t / dur7, 0, 1);
-        const baseR = 24 + Math.sin(p7 * Math.PI * 2) * 2;
+        const baseR = 165 + Math.sin(p7 * Math.PI * 2) * 12;
         const baseA = egg._arc2Base + Math.sin(p7 * Math.PI * 2) * 0.05;
         eggOrbitSet(baseA, baseR);
         eggCommitPosToXY();
-        egg.tiltY = (egg._arcDir * 0.4) * 5 + Math.sin(p7 * Math.PI * 3) * 2;
+        egg.tiltY = (egg._arcDir * 0.4) * 6 + Math.sin(p7 * Math.PI * 3) * 2;
         egg.tiltX = Math.sin(p7 * Math.PI * 3) * 4;
         egg.scale = 1 - p7 * 0.02;
         egg.squish = 0;
@@ -2776,7 +2796,7 @@ const Ember = (() => {
           egg._shortDir = -egg._crossDir;
           egg._shortBase = baseA;
           egg.bored = 0.6;
-          eggOrbitSet(egg._shortBase, 26);
+          eggOrbitSet(egg._shortBase, 160);
           eggAdvance(8, 1100);
         }
         break;
@@ -2788,10 +2808,10 @@ const Ember = (() => {
         const p8 = clamp(t / dur8, 0, 1);
         const e = easeInOutQuad(p8);
         const angle = egg._shortBase + egg._shortDir * egg._shortSpan * e;
-        const radius = 26 + Math.sin(p8 * Math.PI) * 2;
+        const radius = 160 + Math.sin(p8 * Math.PI) * 15;
         eggOrbitSet(angle, radius);
         eggCommitPosToXY();
-        egg.tiltY = -egg._shortDir * 7;
+        egg.tiltY = -egg._shortDir * 10;
         egg.tiltX = Math.sin(p8 * Math.PI) * 4;
         egg.scale = 1 + Math.sin(p8 * Math.PI * 2) * 0.03;
         if (!egg._sighDone && p8 > 0.55) {
@@ -2802,10 +2822,10 @@ const Ember = (() => {
         }
         if (p8 >= 1) {
           egg._retractStart = { x: egg.x, y: egg.y };
-          egg._retractTargetR = 90;
-          egg._retractTargetAngle = Math.atan2(egg.caretY, egg.caretX) * -0.3 + Math.PI;
           egg._retractR = egg.orbit.radius;
-          eggOrbitSet(egg.orbit.angle, egg._retractR);
+          egg._retractTargetR = 225;
+          egg._retractTargetAngle = egg._shortBase + egg._shortDir * egg._shortSpan;
+          eggOrbitSet(egg._retractTargetAngle, egg._retractR);
           eggAdvance(9, 700);
         }
         break;
@@ -2816,9 +2836,8 @@ const Ember = (() => {
         const dur9 = 700;
         const p9 = clamp(t / dur9, 0, 1);
         const e = easeOutQuad(p9);
-        const R = egg._retractR + (90 - egg._retractR) * e;
-        const A = egg._retractTargetAngle * e + egg.orbit.angle * (1 - e);
-        eggOrbitSet(A, R);
+        const R = egg._retractR + (egg._retractTargetR - egg._retractR) * e;
+        eggOrbitSet(egg._retractTargetAngle, R);
         eggCommitPosToXY();
         egg.scale  = 1 - 0.04 * e;
         egg.squish = 0.05 * e;
@@ -2909,6 +2928,17 @@ const Ember = (() => {
       egg.x = egg.caretX;
       egg.y = egg.caretY;
       egg.orbit = null;
+    }
+
+    // guard: никогда не ближе 150px от caret
+    if (egg.phase >= 2 && egg.phase <= 9) {
+      const _mindist = Math.hypot(egg.x - egg.caretX, egg.y - egg.caretY);
+      if (_mindist < 150) {
+        const ux = (egg.x - egg.caretX) / Math.max(0.001, _mindist);
+        const uy = (egg.y - egg.caretY) / Math.max(0.001, _mindist);
+        egg.x = egg.caretX + ux * 170;
+        egg.y = egg.caretY + uy * 170;
+      }
     }
   }
 
