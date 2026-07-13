@@ -599,6 +599,9 @@ const State = (() => {
     if (idx < 0) return;
     clearTimeout(snapTimers.get(id));
     snapTimers.delete(id);
+    // Очистка per-block history для всех блоков закрытой вкладки
+    const closedTab = tabs[idx];
+    if (closedTab?.blocks) closedTab.blocks.forEach(b => _dropBlockHistory(b));
     tabs.splice(idx, 1);
     if (activeTabId === id)
       activeTabId = tabs.length ? tabs[Math.max(0, idx - 1)].id : null;
