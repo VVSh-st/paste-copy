@@ -3463,6 +3463,7 @@ const Ember = (() => {
       if (!_idleCallbackId) {
         _idleCallbackId = requestIdleCallback(() => {
           _idleCallbackId = null;
+          if (destroyed || !root || !state) return;
           updateMood(performance.now());
         }, { timeout: 200 });
       }
@@ -3702,11 +3703,30 @@ const Ember = (() => {
     }
   }
 
+  function syncLoopState(reason) {
+    if (destroyed || !root) return;
+    const wantToRun = browserFocused && onScreen && !document.hidden;
+    if (wantToRun) {
+      if (focusState === 'idle' || focusState === 'settling') {
+        focusState = 'wakeUp';
+        focusTimer = 0;
+        sparkDone = false;
+      }
+      if (!rafId) startLoop();
+    } else {
+      if (focusState === 'active') {
+        focusState = 'settling';
+        focusTimer = 0;
+        settlingDuration = rand(800, 1500);
+      }
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      if (reducedMotionTimer) { clearTimeout(reducedMotionTimer); reducedMotionTimer = null; }
+    }
+  }
   function startLoop() {
     if (rafId) return;
     lastFrame = 0;
     _particleFrameToggle = 0;
-    _fullUpdateDone = false;
     rafId = requestAnimationFrame(animate);
   }
   function stopLoop() {
@@ -3829,41 +3849,21 @@ const Ember = (() => {
     };
     handlers.windowFocus = () => {
       browserFocused = true;
-      if (focusState === 'idle' || focusState === 'settling') {
-        focusState = 'wakeUp';
-        focusTimer = 0;
-      }
-      if (onScreen && !document.hidden) startLoop();
+      syncLoopState('windowFocus');
     };
     handlers.windowBlur = () => {
       browserFocused = false;
       if (testMode) stopTestMode();
-      if (focusState === 'active') {
-        focusState = 'settling';
-        focusTimer = 0;
-        settlingDuration = rand(800, 1500);
-      }
+      syncLoopState('windowBlur');
     };
     handlers.visibilitychange = () => {
       if (document.hidden) {
         browserFocused = false;
         if (testMode) stopTestMode();
-        if (focusState === 'active') {
-          focusState = 'settling';
-          focusTimer = 0;
-          settlingDuration = rand(800, 1500);
-        }
-        stopLoop();
       } else {
         browserFocused = true;
-        if (onScreen) {
-          if (focusState === 'idle' || focusState === 'settling') {
-            focusState = 'wakeUp';
-            focusTimer = 0;
-          }
-          startLoop();
-        }
       }
+      syncLoopState('visibility');
     };
 
     document.addEventListener('input', handlers.input);
@@ -3883,8 +3883,7 @@ const Ember = (() => {
         segmentEffects = [];
         hideTooltip();
       }
-      stopLoop();
-      if (!document.hidden && onScreen) startLoop();
+      syncLoopState('reduceMotion');
     };
     if (reduceMotionMql.addEventListener) {
       reduceMotionMql.addEventListener('change', handlers.reduceMotionChange);
@@ -3934,21 +3933,24 @@ const Ember = (() => {
     browserFocused = !document.hidden;
     onScreen = true;
 
+    // optimistic geometry check — if element already visible, skip IO wait
+    const _initRect = root.getBoundingClientRect();
+    const _initVisible = _initRect.width > 0 && _initRect.height > 0 && !document.hidden;
+    if (_initVisible) onScreen = true;
+
     if ('IntersectionObserver' in window) {
-      onScreen = false;
+      if (!_initVisible) onScreen = false;
       io = new IntersectionObserver(([e]) => {
         onScreen = e.isIntersecting;
-        if (onScreen && browserFocused && !document.hidden) startLoop();
-        else stopLoop();
+        syncLoopState('io');
       }, { threshold: 0 });
       io.observe(root);
     } else {
       onScreen = true;
     }
 
-    if (!io && browserFocused && !document.hidden) {
-      startLoop();
-    }
+    syncLoopState('init');
+    setTimeout(() => syncLoopState('init-timeout'), 200);
 
     prevRemaining = remainingSegments();
     lastWarnRemaining = remainingSegments();
@@ -3970,6 +3972,10 @@ const Ember = (() => {
   function destroy() {
     destroyed = true;
     stopLoop();
+    if (_idleCallbackId && 'cancelIdleCallback' in window) {
+      cancelIdleCallback(_idleCallbackId);
+      _idleCallbackId = null;
+    }
     if (io) { io.disconnect(); io = null; }
     if (channel) { try { channel.close(); } catch {} channel = null; }
     if (handlers.storageSync) window.removeEventListener('storage', handlers.storageSync);

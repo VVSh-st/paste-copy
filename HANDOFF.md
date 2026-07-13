@@ -204,7 +204,7 @@
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
-| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove |
+| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy |
 
 ## Как работает
 
@@ -243,17 +243,38 @@
 **Пропущено (аргументы):**
 - CSS idle-анимации — idle-ветка уже обновляет CSS-переменные, переход на `@keyframes` рискует потерять плавность при `settling→idle→wakeUp`.
 - cssText batching — микро-выигрыш (1-2 мс), `setVar` уже блокирует дубли через `styleCache`.
-- `Int32Array` view — микро-оптимизация без реального эффекта на V8.
+- `Int32Array` view — микро-optimизация без реального эффекта на V8.
 - Epsilon-кеш для heat/brightness/ringOpacity — `setVar` уже отсекает равные значения; допуск 0.001 на float-строках с `.toFixed(3)` бесполезен (равны точь-в-точь).
+
+---
+
+### syncLoopState() — централизация focus/IO/visibility (задание 3.5)
+
+**Проблема:** после F5 `init()` не вызывает `startLoop()` если есть IntersectionObserver — IO callback ещё не пришёл, `onScreen = false`, цикл не стартует. Пользователь должен тыкнуть/прокрутить чтобы получить `window focus`.
+
+**Решение:**
+1. **`syncLoopState(reason)`** — единая точка: проверяет `browserFocused && onScreen && !document.hidden`, управляет `focusState` и `rafId`. Заменяет копипасту `startLoop()/stopLoop()` из 4 обработчиков.
+2. **Оптимистичная геометрия** — `root.getBoundingClientRect()` в `init()`: если элемент уже видимый, `onScreen = true` до IO callback.
+3. **Fallback timeout** — `setTimeout(() => syncLoopState('init-timeout'), 200)`保险如果 IO 延迟。
+4. **`_idleCallbackId` cleanup** — `cancelIdleCallback` в `destroy()`, guard `if (destroyed || !root || !state)` в callback.
+5. **`_fullUpdateDone`** — сбрасывается только в `init()`/`destroy()`, не в `startLoop()`.
+
+**Заменённые обработчики:**
+- `windowFocus` → `syncLoopState('windowFocus')`
+- `windowBlur` → `syncLoopState('windowBlur')`
+- `visibilitychange` → `syncLoopState('visibility')`
+- `reduceMotionChange` → `syncLoopState('reduceMotion')`
+- IO callback → `syncLoopState('io')`
 
 ---
 
 ## Следующий шаг
 
-1. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
-2. Проверить highlight.js в мини-чате — streaming → finalize → markdown + подсветка
-3. Проверить MD-превью текстовых блоков — toggle, long-press dropdown, active state
-4. Проверить undo/redo — работает ли ветвление (undo → изменение → redo)
-5. Проверить импорт старого формата файла (до R1)
-6. Проверить ember idle gate — не дёргается ли эмбер при движении мыши в idle
-7. Проверить particle throttle — визуально неотличимо от 60fps
+1. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
+2. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
+3. Проверить highlight.js в мини-чате — streaming → finalize → markdown + подсветка
+4. Проверить MD-превью текстовых блоков — toggle, long-press dropdown, active state
+5. Проверить undo/redo — работает ли ветвление (undo → изменение → redo)
+6. Проверить импорт старого формата файла (до R1)
+7. Проверить ember idle gate — не дёргается ли эмбер при движении мыши в idle
+8. Проверить particle throttle — визуально неотличимо от 60fps
