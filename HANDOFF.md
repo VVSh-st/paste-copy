@@ -503,15 +503,13 @@
 | 11 | УКУТЫВАНИЕ | 600мс | Кольцо сжимается вокруг |
 | 12 | ВОЗВРАЩЕНИЕ | 700мс | Вырастает обратно |
 
-**Ключевые фиксы (задание 4 (6)+(7)+(9)):**
-- **Радиусы 150-225px** вместо 24-30px — ТЗ "≥150px от курсора" соблюдено
-- **Landing point** `_landX/_landY` от РЕАЛЬНОЙ каретки (viewport-абсолютные), не от clamped
-- **Старт всегда от ember** (0,0) — `cursorLean` не влияет на стартовую позицию
-- **`realCaretX/Y`** — viewport-абсолютные координаты каретки для landing-glow
-- **`_baseApproachAngle`** — кеш угла аттаки для phases 1-3 (вместо `_launchAngle`)
-- **minDist guard** — <150px от caret → принудительно отодвигает
-- **reduceMotion early-return** — egg замирает на landing point
-- **Viewport-aware orbits** — caret + landing + egg позиция clamped к safe bounds
+**Ключевые фиксы (задание 4 (6)+(7)+(9)+(10)):**
+- **Orbit中心 = raw caret** — `egg.caretX/Y` не clamped, orbit крутится вокруг РЕАЛЬНОЙ каретки
+- **Tilt лица к caret** — фазы 4-8: `tiltY = cos(angle) * -15` (смотрит на caret, а не внутрь орбиты)
+- **Старт всегда от ember** (0,0) — cursorLean не влияет
+- **Landing point от raw caret** — `_landX/_landY` от реальной позиции
+- **`_baseApproachAngle`** — угол ember→caret для phase 1-3
+- **minDist guard + viewport clamp** — защита от edge-cases
 
 **ПКМ-тест включён:** `allowTestMode = true` — правый клик на эмбере запускает все эффекты.
 
