@@ -114,6 +114,7 @@ const Notepad = (() => {
         fontSize: Number.isFinite(saved.fontSize)
           ? Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, saved.fontSize))
           : 12,
+        mdPreview: typeof saved.mdPreview === 'boolean' ? saved.mdPreview : false,
         minimized: typeof saved.minimized === 'boolean' ? saved.minimized : false,
         pos: posLeft && posTop
           ? { left: posLeft, top: posTop }
