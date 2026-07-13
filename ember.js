@@ -209,7 +209,7 @@ const Ember = (() => {
   let testQueue = [];
   let testIndex = 0;
   let testLabel = null;
-  let allowTestMode = false;
+  let allowTestMode = true;
   let testModeTimer = null;
   let nextTestStepTimer = null;
   let allowTestModeTimer = null;
@@ -219,6 +219,8 @@ const Ember = (() => {
     active: false, phase: 0, phaseStart: 0,
     caretX: 0, caretY: 0, startX: 0, startY: 0, triggeredToday: false,
     x: 0, y: 0, scale: 1, squish: 0, tiltX: 0, tiltY: 0,
+    orbit: null, orbitPrev: null, lookTarget: null,
+    greetingShown: false, bored: 0, _launchAngle: 0, _nestAngle: 0,
   };
   const EGG_STORAGE_KEY = 'ember-egg-date';
   const EGG_CHARS_THRESHOLD = 1000;
@@ -2547,79 +2549,130 @@ const Ember = (() => {
     return false;
   }
 
+  // --- egg helpers ---
+  function eggAdvance(toPhase, durMs) {
+    egg.phase = toPhase;
+    egg.phaseStart = performance.now();
+    if (durMs != null) egg._phaseDur = durMs;
+  }
+  function eggOrbitSet(angle, radius) {
+    egg.orbit = { angle, radius };
+  }
+  function eggOrbitPos() {
+    if (!egg.orbit) return null;
+    return {
+      x: egg.caretX + Math.cos(egg.orbit.angle) * egg.orbit.radius,
+      y: egg.caretY + Math.sin(egg.orbit.angle) * egg.orbit.radius,
+    };
+  }
+  function eggCommitPosToXY() {
+    if (egg.orbit) {
+      const p = eggOrbitPos();
+      egg.x = p.x;
+      egg.y = p.y;
+    }
+  }
+
   function startEgg(targetOverride) {
     if (previewScare.active) return;
     const ember = getEmberCenter();
     let targetX, targetY;
     if (targetOverride) {
-      targetX = targetOverride.x;
-      targetY = targetOverride.y;
+      targetX = targetOverride.x; targetY = targetOverride.y;
     } else {
       const c = getCaretRectSafe();
       if (c) { targetX = c.x; targetY = c.y; }
-      else {
-        targetX = window.innerWidth / 2 + rand(-70, 70);
-        targetY = window.innerHeight / 2 + rand(-50, 50);
-      }
+      else   { targetX = window.innerWidth/2 + rand(-70, 70);
+               targetY = window.innerHeight/2 + rand(-50, 50); }
     }
-    egg.active = true;
-    egg.phase = 1;
-    egg.phaseStart = performance.now();
-    egg.startX = cursorLean.x;
-    egg.startY = cursorLean.y;
-    egg.caretX = targetX - ember.x;
-    egg.caretY = targetY - ember.y;
-    egg.x = cursorLean.x;
-    egg.y = cursorLean.y;
-    egg.scale = 1; egg.squish = 0; egg.tiltX = 0; egg.tiltY = 0;
-    eggCharCount = 0;
+    const startDx = targetX - ember.x;
+    const startDy = targetY - ember.y;
+    const startDist = Math.max(40, Math.hypot(startDx, startDy));
+    const launchDir = startDx === 0 && startDy === 0
+      ? { x: 1, y: 0 } : { x: startDx / startDist, y: startDy / startDist };
+
+    egg.active         = true;
+    egg.phase          = 1;
+    egg.phaseStart     = performance.now();
+    egg._phaseDur      = 0;
+    egg.startX         = cursorLean.x;
+    egg.startY         = cursorLean.y;
+    egg.caretX         = targetX - ember.x;
+    egg.caretY         = targetY - ember.y;
+    egg.x              = cursorLean.x;
+    egg.y              = cursorLean.y;
+    egg.scale          = 1; egg.squish = 0; egg.tiltX = 0; egg.tiltY = 0;
+    egg.orbit          = null;
+    egg.orbitPrev      = null;
+    egg.lookTarget     = { x: 0, y: 0 };
+    egg.greetingShown  = false;
+    egg.bored          = 0;
+    eggCharCount       = 0;
+    egg._launchAngle   = Math.atan2(launchDir.y, launchDir.x);
+    egg._nestAngle     = egg._launchAngle;
   }
 
-  // Сценарий: подлетает к каретке -> осматривается/разглядывает ->
-  // схлопывается в точку -> телепортируется в кружок -> вырастает обратно.
   function updateEgg(now) {
     if (!egg.active) return;
-    const t = now - egg.phaseStart;
+    const t  = now - egg.phaseStart;
+    const dur = egg._phaseDur || 0;
+    const p  = dur ? clamp(t / dur, 0, 1) : 0;
 
     switch (egg.phase) {
 
-      case 1: { // ЗАМАХ — приседает против хода, резко ~150мс
-        const p = clamp(t / 150, 0, 1);
-        const e = easeOutQuad(p);
-        const dir = Math.sign(egg.caretX) || 1;
-        egg.x = egg.startX - dir * 7 * e;
-        egg.y = egg.startY + 5 * e;
-        egg.scale = 1 - 0.14 * e;
-        egg.squish = 0.2 * e;
-        egg.tiltY = dir * 10 * e;
-        if (p >= 1) { egg.phase = 2; egg.phaseStart = now; }
+      // 1. ЗАМАХ — приседает ПРОТИВ хода, ~110 мс
+      case 1: {
+        const dur1 = 110;
+        const p1 = clamp(t / dur1, 0, 1);
+        const e = easeOutQuad(p1);
+        const dir = egg._launchAngle;
+        egg.x = egg.startX - Math.cos(dir) * 5.5 * e;
+        egg.y = egg.startY - Math.sin(dir) * 5.5 * e;
+        egg.scale = 1 - 0.10 * e;
+        egg.squish = 0.15 * e;
+        egg.tiltY = Math.cos(dir) * 7 * e;
+        if (p1 >= 1) {
+          egg.orbitPrev = { x: egg.x, y: egg.y };
+          eggAdvance(2, 280);
+        }
         break;
       }
 
-      case 2: { // ПОЛЁТ — очень быстро easeIn→easeOut, 350мс, огненный хвост
-        const p = clamp(t / 350, 0, 1);
-        const e = p < 0.4 ? easeInQuad(p / 0.4) * 0.5 : easeOutQuad((p - 0.4) / 0.6) * 0.5 + 0.5;
+      // 2. ПОДЛЁТ — прямой ease к каретке, лёгкая дуга вверх, 280 мс
+      case 2: {
+        const dur2 = 280;
+        const p2 = clamp(t / dur2, 0, 1);
+        const e = easeInOutQuad(p2);
+        const arc = Math.sin(p2 * Math.PI) * 14;
         egg.x = egg.startX + (egg.caretX - egg.startX) * e;
-        egg.y = egg.startY + (egg.caretY - egg.startY) * e
-                - Math.sin(p * Math.PI) * 28;
-        egg.scale = 1.12 + Math.sin(p * Math.PI) * 0.12;
-        egg.squish = -0.14 * Math.sin(p * Math.PI);
-        const dir = Math.sign(egg.caretX - egg.startX) || 1;
-        egg.tiltY = dir * 16 * (1 - p);
-        egg.tiltX = -12 * Math.sin(p * Math.PI);
-        if (Math.random() < 0.6) spawnSpark();
-        if (p >= 1) { egg.phase = 3; egg.phaseStart = now; }
+        egg.y = egg.startY + (egg.caretY - egg.startY) * e - arc;
+        egg.scale = 1 + Math.sin(p2 * Math.PI) * 0.05;
+        egg.squish = -Math.sin(p2 * Math.PI) * 0.05;
+        egg.tiltY = Math.cos(egg._launchAngle) * 9 * (1 - p2);
+        egg.tiltX = -6 * Math.sin(p2 * Math.PI);
+        if (Math.random() < 0.04) spawnSpark();
+        if (p2 >= 1) {
+          egg.x = egg.caretX;
+          egg.y = egg.caretY;
+          egg.orbitPrev = { x: egg.x, y: egg.y };
+          eggAdvance(3, 900);
+        }
         break;
       }
 
-      case 3: { // ПРИЗЕМЛЕНИЕ — пружинка ~200мс
-        const p = clamp(t / 200, 0, 1);
-        const spring = Math.sin(p * Math.PI * 3) * (1 - p);
+      // 3. ПРИЗЕМЛЕНИЕ + ВЗГЛЯД — пружинка + зависание, 900 мс
+      case 3: {
+        const dur3 = 900;
+        const p3 = clamp(t / dur3, 0, 1);
+        const springDur = 220;
+        const sp = clamp(t / springDur, 0, 1);
+        const spring = Math.sin(sp * Math.PI * 3) * (1 - sp) * 0.4;
         egg.x = egg.caretX;
-        egg.y = egg.caretY;
-        egg.scale = 1 + spring * 0.14;
-        egg.squish = spring * 0.4;
-        egg.tiltX = 0; egg.tiltY = 0;
+        egg.y = egg.caretY + spring * 1.1;
+        egg.scale = 1 + spring * 0.10 - 0.02 * p3;
+        egg.squish = -spring * 0.30;
+        egg.tiltX = -4 * Math.sin(now * 0.006);
+        egg.tiltY = Math.cos(egg._launchAngle) * 4;
         if (!egg._landGlowDone) {
           egg._landGlowDone = true;
           const ember = getEmberCenter();
@@ -2628,144 +2681,234 @@ const Ember = (() => {
             clamp((ember.y + egg.caretY) / window.innerHeight * 100, 10, 90)
           );
         }
-        if (p >= 1) { egg.phase = 4; egg.phaseStart = now; egg._landGlowDone = false; }
+        if (!egg._hello && p3 > 0.4) { egg._hello = true; spawnSpark(); }
+        if (p3 >= 1) {
+          const span = (30 + rand(0, 70)) * Math.PI / 180;
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          egg._arcSpan = span; egg._arcDir = dir;
+          egg._arcBase = egg._launchAngle + dir * 0.12;
+          eggOrbitSet(egg._arcBase, 30);
+          eggAdvance(4, 1300);
+        }
         break;
       }
 
-      case 4: { // ОСМОТР — медленно 1800мс, паузы между поворотами
-        const p = clamp(t / 1800, 0, 1);
-        let lookX = 0, lookY = 0, tiltYVal = 0, bodyLean = 0;
-        if (p < 0.18) {
-          const lp = easeOutQuad(p / 0.18);
-          lookX = -8 * lp; tiltYVal = -26 * lp; bodyLean = -4 * lp;
-        } else if (p < 0.28) {
-          lookX = -8; tiltYVal = -26; bodyLean = -4;
-        } else if (p < 0.42) {
-          const lp = easeOutQuad((p - 0.28) / 0.14);
-          lookX = -8 + 16 * lp; tiltYVal = -26 + 52 * lp; bodyLean = -4 + 8 * lp;
-        } else if (p < 0.52) {
-          lookX = 8; tiltYVal = 26; bodyLean = 4;
-        } else if (p < 0.66) {
-          const lp = easeOutQuad((p - 0.52) / 0.14);
-          lookX = 8 * (1 - lp); tiltYVal = 26 * (1 - lp); lookY = -8 * lp; bodyLean = 4 * (1 - lp);
-        } else if (p < 0.78) {
-          lookY = -8; tiltYVal = 0;
-          egg.scale = 1.08 + 0.04;
-          egg.squish = -0.08;
-        } else {
-          lookY = -8; tiltYVal = 0;
-          egg.scale = 1.08;
+      // 4. ОБЛЁТ 1 — дуга R=30px вокруг каретки, 1300 мс
+      case 4: {
+        const dur4 = 1300;
+        const p4 = clamp(t / dur4, 0, 1);
+        const e = easeInOutQuad(p4);
+        const angle = egg._arcBase + egg._arcDir * egg._arcSpan * e;
+        const radius = 30 + Math.sin(p4 * Math.PI) * 5;
+        eggOrbitSet(angle, radius);
+        eggCommitPosToXY();
+        const inward = egg._arcDir * -1;
+        egg.tiltY = inward * 10 + Math.sin(p4 * Math.PI * 2) * 2;
+        egg.tiltX = Math.sin(p4 * Math.PI) * 5;
+        egg.scale = 1 + Math.sin(p4 * Math.PI * 3) * 0.04;
+        egg.squish = 0;
+        if (Math.random() < 0.02) spawnAshParticle();
+        if (p4 >= 1) { eggAdvance(5, 950); }
+        break;
+      }
+
+      // 5. ЗАВИСАНИЕ + ВЗГЛЯД — пауза на пике любопытства, 950 мс
+      case 5: {
+        const dur5 = 950;
+        const p5 = clamp(t / dur5, 0, 1);
+        eggOrbitSet(
+          egg._arcBase + egg._arcDir * egg._arcSpan,
+          28 + Math.sin(p5 * Math.PI * 2) * 1.5
+        );
+        eggCommitPosToXY();
+        egg.tiltY = egg._arcDir * 8;
+        egg.tiltX = Math.sin(p5 * Math.PI * 2) * 3;
+        egg.scale = 1 + Math.sin(p5 * Math.PI * 4) * 0.02;
+        egg.squish = Math.sin(p5 * Math.PI * 4) * 0.02;
+        if (!egg._glintWatch && p5 > 0.55) { egg._glintWatch = true; spawnSpark(); }
+        if (p5 >= 1) {
+          egg._crossDir = egg._arcDir;
+          egg._crossSpan = Math.PI - egg._arcSpan + rand(-0.1, 0.2);
+          egg._crossBase = egg._arcBase + egg._arcDir * egg._arcSpan * 0.5;
+          eggOrbitSet(egg._crossBase, 28);
+          eggAdvance(6, 1500);
+        }
+        break;
+      }
+
+      // 6. ПЕРЕЛЁТ НА ДРУГУЮ СТОРОНУ — большая дуга, 1500 мс
+      case 6: {
+        const dur6 = 1500;
+        const p6 = clamp(t / dur6, 0, 1);
+        const e = easeInOutQuad(p6);
+        const angle = egg._crossBase + egg._crossDir * egg._crossSpan * e;
+        const radius = 28 + Math.sin(p6 * Math.PI) * 6;
+        eggOrbitSet(angle, radius);
+        eggCommitPosToXY();
+        egg.tiltY = -egg._crossDir * 11;
+        egg.tiltX = Math.sin(p6 * Math.PI) * 7;
+        egg.scale = 1 + Math.sin(p6 * Math.PI * 2) * 0.04;
+        egg.squish = 0;
+        if (Math.random() < 0.03) spawnSpark();
+        if (p6 >= 1) {
+          egg._arc2Base = egg._crossBase + egg._crossDir * egg._crossSpan;
+          eggOrbitSet(egg._arc2Base, 24);
+          eggAdvance(7, 1100);
+        }
+        break;
+      }
+
+      // 7. ЗАВИСАНИЕ НА ДРУГОЙ СТОРОНЕ — оглядываюсь, 1100 мс
+      case 7: {
+        const dur7 = 1100;
+        const p7 = clamp(t / dur7, 0, 1);
+        const baseR = 24 + Math.sin(p7 * Math.PI * 2) * 2;
+        const baseA = egg._arc2Base + Math.sin(p7 * Math.PI * 2) * 0.05;
+        eggOrbitSet(baseA, baseR);
+        eggCommitPosToXY();
+        egg.tiltY = (egg._arcDir * 0.4) * 5 + Math.sin(p7 * Math.PI * 3) * 2;
+        egg.tiltX = Math.sin(p7 * Math.PI * 3) * 4;
+        egg.scale = 1 - p7 * 0.02;
+        egg.squish = 0;
+        if (p7 >= 1) {
+          const smaller = (12 + rand(0, 16)) * Math.PI / 180;
+          egg._shortSpan = smaller;
+          egg._shortDir = -egg._crossDir;
+          egg._shortBase = baseA;
+          egg.bored = 0.6;
+          eggOrbitSet(egg._shortBase, 26);
+          eggAdvance(8, 1100);
+        }
+        break;
+      }
+
+      // 8. ОБЛЁТ 3 — короткая дуга + «пиши-пиши», 1100 мс
+      case 8: {
+        const dur8 = 1100;
+        const p8 = clamp(t / dur8, 0, 1);
+        const e = easeInOutQuad(p8);
+        const angle = egg._shortBase + egg._shortDir * egg._shortSpan * e;
+        const radius = 26 + Math.sin(p8 * Math.PI) * 2;
+        eggOrbitSet(angle, radius);
+        eggCommitPosToXY();
+        egg.tiltY = -egg._shortDir * 7;
+        egg.tiltX = Math.sin(p8 * Math.PI) * 4;
+        egg.scale = 1 + Math.sin(p8 * Math.PI * 2) * 0.03;
+        if (!egg._sighDone && p8 > 0.55) {
+          egg._sighDone = true;
+          for (let i = 0; i < 4; i++) defer(spawnSpark, i * 35);
+          defer(spawnAshParticle, 80);
+          egg.greetingShown = true;
+        }
+        if (p8 >= 1) {
+          egg._retractStart = { x: egg.x, y: egg.y };
+          egg._retractTargetR = 90;
+          egg._retractTargetAngle = Math.atan2(egg.caretY, egg.caretX) * -0.3 + Math.PI;
+          egg._retractR = egg.orbit.radius;
+          eggOrbitSet(egg.orbit.angle, egg._retractR);
+          eggAdvance(9, 700);
+        }
+        break;
+      }
+
+      // 9. ОТХОД НАРУЖУ — от кольца, 700 мс
+      case 9: {
+        const dur9 = 700;
+        const p9 = clamp(t / dur9, 0, 1);
+        const e = easeOutQuad(p9);
+        const R = egg._retractR + (90 - egg._retractR) * e;
+        const A = egg._retractTargetAngle * e + egg.orbit.angle * (1 - e);
+        eggOrbitSet(A, R);
+        eggCommitPosToXY();
+        egg.scale  = 1 - 0.04 * e;
+        egg.squish = 0.05 * e;
+        egg.tiltY  = 0;
+        egg.tiltX  = -4 * e;
+        if (p9 >= 1) { eggAdvance(10, 320); }
+        break;
+      }
+
+      // 10. СЖАТИЕ — собираюсь в точку, 320 мс
+      case 10: {
+        const dur10 = 320;
+        const p10 = clamp(t / dur10, 0, 1);
+        const e = easeInQuad(p10);
+        egg.scale = 1 - 0.78 * e;
+        egg.squish = 0.7 * e;
+        egg.tiltY  = Math.sin(now * 0.01) * (1 - p10) * 2;
+        egg.tiltX  = -3 * e;
+        if (p10 >= 1) { eggAdvance(11, 600); }
+        break;
+      }
+
+      // 11. УКУТЫВАНИЕ КОЛЬЦОМ — кольцо сжимается вокруг, 600 мс
+      case 11: {
+        const dur11 = 600;
+        const p11 = clamp(t / dur11, 0, 1);
+        const easeO = easeOutQuad(p11);
+        const easeI = easeInOutQuad(p11);
+        setVar(root, '--ringOpacity', String(clamp(0.4 + 0.6 * easeI, 0, 1)));
+        setVar(root, '--ringExpand', (-12 + easeO * 14).toFixed(2) + 'px');
+        setVar(root, '--ringExpandX', (-2 + easeO * 5).toFixed(2) + 'px');
+        setVar(root, '--ringPulse', (0.55 + easeO * 0.55).toFixed(3));
+        egg.scale = 0.18 + (1 - p11) * 0.04 + Math.sin(p11 * Math.PI * 6) * 0.015 * (1 - p11);
+        egg.squish = -Math.sin(p11 * Math.PI * 6) * 0.05 * (1 - p11);
+        egg.tiltX  = Math.sin(now * 0.02) * 3 * (1 - p11);
+        egg.tiltY  = Math.cos(now * 0.022) * 3 * (1 - p11);
+        if (!egg._ringHugDone && p11 > 0.25) {
+          egg._ringHugDone = true;
+          ringImpulse = rand(2, 4) * (Math.random() < 0.5 ? 1 : -1);
+          heatBoost   = Math.max(heatBoost, 0.5);
+          flashHeat   = Math.max(flashHeat, 0.25);
+          defer(spawnSpark,    40);
+          defer(spawnSpark,    80);
+          defer(spawnAshParticle, 120);
+        }
+        if (p11 >= 1) { eggAdvance(12, 700); }
+        break;
+      }
+
+      // 12. ВОЗВРАЩЕНИЕ — кольцо раскрывается, уголёк растёт, 700 мс
+      case 12: {
+        const dur12 = 700;
+        const p12 = clamp(t / dur12, 0, 1);
+        const e = easeOutQuad(p12);
+        setVar(root, '--ringExpand', (2 + (1 - e) * 0).toFixed(2) + 'px');
+        setVar(root, '--ringPulse', String(1 + (1 - e) * 0.1));
+        egg.x += (0 - egg.x) * 0.06;
+        egg.y += (0 - egg.y) * 0.06;
+        egg.scale = 0.22 + e * 0.78;
+        egg.squish = (1 - e) * 0.05;
+        egg.tiltX = 0; egg.tiltY = 0;
+        if (!egg._bloomDone && p12 > 0.5) {
+          egg._bloomDone = true;
+          defer(() => spawnSpark(), 30);
+          defer(() => spawnSpark(), 90);
+        }
+        if (p12 >= 1) {
+          egg.scale  = 1;
           egg.squish = 0;
-        }
-        egg.x = egg.caretX + lookX;
-        egg.y = egg.caretY + lookY;
-        egg.tiltY = tiltYVal;
-        egg.tiltX = Math.sin(p * Math.PI * 2) * 9 + bodyLean;
-        if (!egg._glint1 && p > 0.15 && p < 0.2) { egg._glint1 = true; spawnSpark(); spawnSpark(); }
-        if (!egg._glint2 && p > 0.39 && p < 0.44) { egg._glint2 = true; spawnSpark(); spawnSpark(); }
-        if (!egg._glint3 && p > 0.63 && p < 0.68) { egg._glint3 = true; spawnSpark(); }
-        if (p >= 1) { egg.phase = 5; egg.phaseStart = now; egg._glint1 = false; egg._glint2 = false; egg._glint3 = false; }
-        break;
-      }
-
-      case 5: { // «РУКИ В БОКИ» — гордость, scaleX>1, задержка 300мс
-        const p = clamp(t / 300, 0, 1);
-        const e = easeOutQuad(p);
-        egg.x = egg.caretX;
-        egg.y = egg.caretY - e * 3;
-        egg.tiltY = -20 * e;
-        egg.tiltX = 6 * e;
-        egg.scale = 1.08 + e * 0.14;
-        egg.squish = -0.14 * e;
-        if (p >= 1) { egg.phase = 6; egg.phaseStart = now; }
-        break;
-      }
-
-      case 6: { // ЗАЛП — мгновенно 100мс старт, 16-20 пепла + 8 искр
-        const p = clamp(t / 300, 0, 1);
-        egg.x = egg.caretX; egg.y = egg.caretY;
-        egg.tiltX = Math.sin(p * Math.PI * 4) * 4 * p;
-        egg.tiltY = 0;
-        egg.scale = 1.22 + easeOutQuad(p) * 0.18;
-        egg.squish = -0.18 * p;
-        if (!egg._burstDone && p > 0.08) {
-          egg._burstDone = true;
-          const burstDir = Math.random() < 0.5 ? -1 : 1;
-          for (let i = 0; i < 18; i++) defer(spawnAshParticle, i * 18 + rand(0, 10));
-          for (let i = 0; i < 8; i++) defer(spawnSpark, 30 + i * 30);
-          defer(() => { egg.tiltY -= burstDir * 7; }, 200);
-        }
-        if (p >= 1) { egg.phase = 6.5; egg.phaseStart = now; egg._burstDone = false; }
-        break;
-      }
-
-      case 6.5: { // ОТДАЧА — быстрый дёрг назад, смущение
-        const p = clamp(t / 150, 0, 1);
-        const e = easeOutQuad(p);
-        egg.scale = 1.4 - e * 0.12;
-        egg.tiltX = -8 * (1 - e);
-        egg.squish = 0.08 * (1 - e);
-        if (p >= 1) { egg.phase = 7; egg.phaseStart = now; }
-        break;
-      }
-
-      case 7: { // СХЛОПЫВАНИЕ — mass утягивается в точку, easeIn
-        const p = clamp(t / 280, 0, 1);
-        egg.x = egg.caretX * (1 - easeInQuad(p) * 0.7);
-        egg.y = egg.caretY * (1 - easeInQuad(p) * 0.7);
-        egg.scale = 1.28 - easeInQuad(p) * 0.98;
-        egg.squish = easeInQuad(p) * 0.95;
-        egg.tiltY = Math.sign(-egg.caretX) * easeInQuad(p) * 14;
-        egg.tiltX = -easeInQuad(p) * 6;
-        if (p >= 1) { egg.phase = 8; egg.phaseStart = now; }
-        break;
-      }
-
-      case 8: { // ТЕЛЕПОРТ — дом, кольцо сжимается к центру
-        egg.x = 0; egg.y = 0; egg.scale = 0.5; egg.squish = 0.8;
-        egg.tiltY = 10; egg.tiltX = -4;
-        if (t > 90) { egg.phase = 9; egg.phaseStart = now; }
-        break;
-      }
-
-      case 9: { // ЗАГЛАТЫВАНИЕ КОЛЬЦОМ — кольцо сжимается внутрь, уголь выскакивает
-        const p = clamp(t / 500, 0, 1);
-        if (p < 0.2) {
-          const s = p / 0.2;
-          egg.scale = 0.5 * (1 - easeOutQuad(s) * 0.6);
-          egg.squish = 0.8 * (1 - easeOutQuad(s));
-          egg.tiltY = 10 * (1 - s);
-          egg.tiltX = -4 * (1 - s);
-          if (!egg._ringDone) {
-            egg._ringDone = true;
-            ringImpulse = rand(3, 5) * (Math.random() < 0.5 ? 1 : -1);
-            heatBoost = Math.max(heatBoost, 0.25);
-            setVar(root, '--ringOpacity', '1');
-            setVar(root, '--ringExpand', '-3px');
-            setVar(root, '--ringPulse', '0.7');
-          }
-        } else if (p < 0.4) {
-          const s = (p - 0.2) / 0.2;
-          egg.scale = 0.2;
-          egg.squish = 0;
-        } else {
-          const s = (p - 0.4) / 0.6;
-          const bounce = Math.sin(s * Math.PI * 2) * (1 - s) * 0.12;
-          egg.scale = 0.2 + easeOutQuad(s) * 0.8 + bounce;
-          egg.squish = -Math.sin(s * Math.PI) * 0.12;
-          egg.tiltY = Math.sin(s * Math.PI * 3) * 4 * (1 - s);
-          setVar(root, '--ringPulse', String(0.7 + easeOutQuad(s) * 0.38));
-          setVar(root, '--ringExpand', (-3 + easeOutQuad(s) * 6).toFixed(1) + 'px');
-        }
-        if (p >= 1) {
-          egg.scale = 1; egg.squish = 0; egg.active = false;
-          egg._ringDone = false;
+          egg.active = false;
+          egg.orbit = null;
+          egg._landGlowDone = false;
+          egg._hello = false;
+          egg._glintWatch = false;
+          egg._sighDone = false;
+          egg._ringHugDone = false;
+          egg._bloomDone = false;
           removeVar(root, '--ringOpacity');
           removeVar(root, '--ringExpand');
+          removeVar(root, '--ringExpandX');
           removeVar(root, '--ringPulse');
         }
         break;
       }
+    }
+
+    if (egg.orbit && egg.orbit.radius < 0.5) {
+      egg.x = egg.caretX;
+      egg.y = egg.caretY;
+      egg.orbit = null;
     }
   }
 
@@ -4212,6 +4355,11 @@ const Ember = (() => {
     anticipation.active = false;
     egg.active = false; egg.triggeredToday = false;
     egg._ringDone = false; egg._burstDone = false;
+    egg._landGlowDone = false; egg._hello = false;
+    egg._glintWatch = false; egg._sighDone = false;
+    egg._ringHugDone = false; egg._bloomDone = false;
+    egg.orbit = null; egg.orbitPrev = null; egg.lookTarget = null;
+    egg.greetingShown = false; egg.bored = 0;
     eggCharCount = 0; eggTriggeredDay = null;
     previewScare.active = false;
     flashHeat = 0; coreHeatReserve = 0;
