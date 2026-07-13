@@ -3145,6 +3145,7 @@ const Ember = (() => {
 
   function isSceneIdle() {
     if (!browserFocused || !onScreen) return false;
+    if (spawnCore < 1) return false;
     if (particles.length) return false;
     if (active.size || segmentEffects.length) return false;
     if (mouseMovedSinceLastFrame) return false;
