@@ -204,7 +204,7 @@
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
-| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy |
+| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy; `idleLevel` rAF throttle (60→30→8fps), `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip |
 
 ## Как работает
 
@@ -265,6 +265,22 @@
 - `visibilitychange` → `syncLoopState('visibility')`
 - `reduceMotionChange` → `syncLoopState('reduceMotion')`
 - IO callback → `syncLoopState('io')`
+
+---
+
+### idleLevel rAF throttle (задание 3.6)
+
+**Файл:** `ember.js`
+
+**Изменения:**
+1. **`idleLevel`** — три состояния: 0 (60fps), 1 (30fps, после ~2с idle), 2 (8fps, после ~8с idle)
+2. **`idleState(now)`** — считает `_idleConsecutive` (подряд кадров где `isSceneIdle()=true`), эскалирует уровень. Сброс на 0 при любом не-idle кадре.
+3. **`animate()` throttle** — level 2: `setTimeout(130ms)`, level 1: `setTimeout(33ms)`, level 0: `requestAnimationFrame`
+4. **`_idleLevel`/`_idleConsecutive`** — сброс в `destroy()`
+5. **`Math.hypot` → `dist²`** — `updateWind` (6400/40000), `updateAttention` (1600/62500), `updateTemperament` (2500/48400). `sqrt` только когда dist нужен для интерполяции.
+6. **`flashHeat`/`coreHeatReserve` early skip** — `if (val > 0)` перед decay
+
+**Эффект:** на длительном idle (8с+) — rAF идёт ~8fps вместо 60fps. ~7-8× экономия CPU на простаивающей странице.
 
 ---
 
