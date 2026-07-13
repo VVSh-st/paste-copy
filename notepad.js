@@ -54,6 +54,7 @@ const Notepad = (() => {
         activeTab: state.activeTab,
         tabOffset: state.tabOffset,
         fontSize:  state.fontSize,
+        mdPreview: state.mdPreview,
         minimized: state.minimized,
         pos:       state.pos,
         size:      state.size,
@@ -138,6 +139,7 @@ const Notepad = (() => {
     chevron: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>',
     resize:  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M10 2L2 10M10 6L6 10"/></svg>',
     notepad: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5h4M6 8h4M6 11h2"/></svg>',
+    md:      '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M3 10V6l2 2.5L7 6v4"/><path d="M9 10V6l4 4V6"/></svg>',
   };
 
   function _mkBtn(html, title, onclick) {
@@ -186,14 +188,7 @@ const Notepad = (() => {
   ================================================================ */
   function create() {
     if (_instance && _instance.el?.isConnected) {
-      if (_instance.minimized) {
-        _instance.minimized = false;
-        _instance.el.classList.remove('notepad-minimized');
-        const chevron = _instance.el.querySelector('.notepad-min-btn svg');
-        if (chevron) chevron.style.transform = '';
-        _persist(_instance);
-      }
-      _instance.el.querySelector('.notepad-body textarea')?.focus();
+      _closeNotepad(_instance);
       return;
     }
 
@@ -226,6 +221,7 @@ const Notepad = (() => {
         ? Math.max(0, Math.min(TAB_COUNT - VISIBLE_TABS, saved.tabOffset))
         : 0,
       fontSize:     saved?.fontSize || 12,
+      mdPreview:    saved?.mdPreview ?? false,
       minimized:    saved?.minimized ?? false,
       pos:          saved?.pos      || null,
       size:         saved?.size     || null,
@@ -242,6 +238,8 @@ const Notepad = (() => {
       el:           null,
       _tabsRow:     null,
       _countSpan:   null,
+      _mdContent:   null,
+      _mdBtn:       null,
       _doUndo:      null,
       _doRedo:      null,
       _pushHistory: null,
@@ -542,6 +540,10 @@ const Notepad = (() => {
       _persist(state);
     });
 
+    const mdBtn = _mkBtn(SVG.md, 'Markdown-превью', () => _toggleMdPreview(state, win));
+    mdBtn.classList.add('notepad-md-btn');
+    state._mdBtn = mdBtn;
+
     const prevTabBtn = _mkBtn('◀', 'Предыдущая вкладка',
       () => _switchTab(state, (state.activeTab - 1 + TAB_COUNT) % TAB_COUNT, win));
     prevTabBtn.classList.add('notepad-tab-arrow');
@@ -627,7 +629,7 @@ const Notepad = (() => {
       _mkDiv(),
       clearBtn, saveBtn, transferBtn,
       _mkDiv(),
-      fDecBtn, fIncBtn,
+      fDecBtn, fIncBtn, mdBtn,
       _mkDiv(),
       translateBtn,
       _mkDiv(),
@@ -765,6 +767,8 @@ const Notepad = (() => {
       ta.focus();
     }
 
+    if (state.mdPreview) _renderMdPreview(state);
+
     _renderTabs(state);
     _persist(state);
   }
@@ -781,6 +785,12 @@ const Notepad = (() => {
     ta.spellcheck     = false;
     ta.style.fontSize = state.fontSize + 'px';
     ta.value          = state.tabs[state.activeTab]?.value ?? '';
+
+    const mdContent = document.createElement('div');
+    mdContent.className = 'notepad-md-content';
+    mdContent.style.display = state.mdPreview ? '' : 'none';
+    ta.style.display = state.mdPreview ? 'none' : '';
+    state._mdContent = mdContent;
 
     _updateCount(ta, state._countSpan);
 
@@ -868,6 +878,7 @@ const Notepad = (() => {
     });
 
     body.appendChild(ta);
+    body.appendChild(mdContent);
     return body;
   }
 
@@ -891,6 +902,51 @@ const Notepad = (() => {
       : _byteLen(value);
     const kb = (bytes / 1024).toFixed(1);
     countSpan.textContent = `${chars}/${lines}/${kb}KB`;
+  }
+
+  /* ================================================================
+     Markdown preview
+  ================================================================ */
+  function _renderMdPreview(state) {
+    const mdEl = state._mdContent;
+    if (!mdEl) return;
+    const ta = state.el?.querySelector('.notepad-body textarea');
+    const text = ta?.value || state.tabs[state.activeTab]?.value || '';
+    if (!text.trim()) {
+      mdEl.innerHTML = '<span style="color:var(--text3);font-style:italic">Пусто</span>';
+      return;
+    }
+    if (typeof marked !== 'undefined') {
+      try {
+        const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        mdEl.innerHTML = marked.parse(safe);
+      } catch (_) {
+        mdEl.textContent = text;
+      }
+    } else {
+      mdEl.textContent = text;
+    }
+  }
+
+  function _toggleMdPreview(state, win) {
+    state.mdPreview = !state.mdPreview;
+    const ta = win.querySelector('.notepad-body textarea');
+    if (ta) {
+      state.tabs[state.activeTab].value = ta.value;
+    }
+    if (state._mdContent) {
+      state._mdContent.style.display = state.mdPreview ? '' : 'none';
+    }
+    if (ta) {
+      ta.style.display = state.mdPreview ? 'none' : '';
+      if (!state.mdPreview) {
+        ta.value = state.tabs[state.activeTab].value ?? '';
+        ta.focus();
+      }
+    }
+    if (state.mdPreview) _renderMdPreview(state);
+    if (state._mdBtn) state._mdBtn.classList.toggle('active', state.mdPreview);
+    _persist(state);
   }
 
   /* ================================================================
