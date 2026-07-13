@@ -2586,31 +2586,6 @@ const Ember = (() => {
       else   { targetX = window.innerWidth/2 + rand(-70, 70);
                targetY = window.innerHeight/2 + rand(-50, 50); }
     }
-    const startDx = targetX - ember.x;
-    const startDy = targetY - ember.y;
-    const startDist = Math.max(40, Math.hypot(startDx, startDy));
-    const launchDir = startDx === 0 && startDy === 0
-      ? { x: 1, y: 0 } : { x: startDx / startDist, y: startDy / startDist };
-
-    egg.active         = true;
-    egg.phase          = 1;
-    egg.phaseStart     = performance.now();
-    egg._phaseDur      = 0;
-    egg.startX         = cursorLean.x;
-    egg.startY         = cursorLean.y;
-    egg.caretX         = targetX - ember.x;
-    egg.caretY         = targetY - ember.y;
-    egg.x              = cursorLean.x;
-    egg.y              = cursorLean.y;
-    egg.scale          = 1; egg.squish = 0; egg.tiltX = 0; egg.tiltY = 0;
-    egg.orbit          = null;
-    egg.orbitPrev      = null;
-    egg.lookTarget     = { x: 0, y: 0 };
-    egg.greetingShown  = false;
-    egg.bored          = 0;
-    eggCharCount       = 0;
-    egg._launchAngle   = Math.atan2(launchDir.y, launchDir.x);
-    egg._nestAngle     = egg._launchAngle;
 
     // viewport-aware: clamp caret к safe range
     egg.vw = window.innerWidth;
@@ -2618,25 +2593,53 @@ const Ember = (() => {
     const SAFE_MARGIN = 80;
     const MAX_CX = egg.vw / 2 - SAFE_MARGIN - EGG_OBSERVE_R;
     const MAX_CY = egg.vh / 2 - SAFE_MARGIN - EGG_OBSERVE_R;
-    egg.caretX = clamp(egg.caretX, -MAX_CX, MAX_CX);
-    egg.caretY = clamp(egg.caretY, -MAX_CY, MAX_CY);
 
-    // safe start — если cursorLean близко к caret, сдвигаем старт
-    if (Math.hypot(egg.startX - egg.caretX, egg.startY - egg.caretY) < EGG_OBSERVE_R) {
-      const len = Math.max(40, Math.hypot(egg.caretX, egg.caretY));
-      egg.startX = (egg.caretX / len) * (len - EGG_OBSERVE_R);
-      egg.startY = (egg.caretY / len) * (len - EGG_OBSERVE_R);
-    }
+    // ember-local координаты каретки
+    const rawCaretX = targetX - ember.x;
+    const rawCaretY = targetY - ember.y;
 
-    // landing point — на 170-200px от caret, между ember и caret, clamped к viewport
-    const lenToCaret = Math.max(1, Math.hypot(egg.caretX, egg.caretY));
-    const landDist = clamp(lenToCaret - EGG_OBSERVE_R, 170, 200);
-    egg._landX = egg.caretX - (egg.caretX / lenToCaret) * landDist;
-    egg._landY = egg.caretY - (egg.caretY / lenToCaret) * landDist;
+    // egg.caretX/Y — clamped ember-local (для формул orbit)
+    egg.caretX = clamp(rawCaretX, -MAX_CX, MAX_CX);
+    egg.caretY = clamp(rawCaretY, -MAX_CY, MAX_CY);
+
+    // realCaret — viewport-абсолютные (для landing-glow, визуала)
+    egg.realCaretX = targetX;
+    egg.realCaretY = targetY;
+
+    // landing point — от РЕАЛЬНОЙ каретки, не от clamped
+    const actualLocalX = rawCaretX;
+    const actualLocalY = rawCaretY;
+    const actualDist = Math.max(40, Math.hypot(actualLocalX, actualLocalY));
+    const actualUnitX = actualLocalX / actualDist;
+    const actualUnitY = actualLocalY / actualDist;
+    egg._landX = actualLocalX - actualUnitX * EGG_OBSERVE_R;
+    egg._landY = actualLocalY - actualUnitY * EGG_OBSERVE_R;
     const eggSafeX = egg.vw / 2 - SAFE_MARGIN - 60;
     const eggSafeY = egg.vh / 2 - SAFE_MARGIN - 60;
     egg._landX = clamp(egg._landX, -eggSafeX, eggSafeX);
     egg._landY = clamp(egg._landY, -eggSafeY, eggSafeY);
+
+    // launchAngle — от ember к landing point
+    egg._launchAngle = Math.atan2(egg._landY, egg._landX);
+    egg._baseApproachAngle = egg._launchAngle;
+    egg._nestAngle = egg._launchAngle;
+
+    // старт — всегда от ember, НЕ от cursorLean
+    egg.active         = true;
+    egg.phase          = 1;
+    egg.phaseStart     = performance.now();
+    egg._phaseDur      = 0;
+    egg.startX         = 0;
+    egg.startY         = 0;
+    egg.x              = 0;
+    egg.y              = 0;
+    egg.scale          = 1; egg.squish = 0; egg.tiltX = 0; egg.tiltY = 0;
+    egg.orbit          = null;
+    egg.orbitPrev      = null;
+    egg.lookTarget     = { x: 0, y: 0 };
+    egg.greetingShown  = false;
+    egg.bored          = 0;
+    eggCharCount       = 0;
   }
 
   function updateEgg(now) {
@@ -2658,12 +2661,12 @@ const Ember = (() => {
         const dur1 = 110;
         const p1 = clamp(t / dur1, 0, 1);
         const e = easeOutQuad(p1);
-        const dir = egg._launchAngle;
-        egg.x = egg.startX - Math.cos(dir) * 5.5 * e;
-        egg.y = egg.startY - Math.sin(dir) * 5.5 * e;
+        // старт от ember (0,0), замах в обратном направлении от caret
+        egg.x = -Math.cos(egg._baseApproachAngle) * 5.5 * e;
+        egg.y = -Math.sin(egg._baseApproachAngle) * 5.5 * e;
         egg.scale = 1 - 0.10 * e;
         egg.squish = 0.15 * e;
-        egg.tiltY = Math.cos(dir) * 7 * e;
+        egg.tiltY = Math.cos(egg._baseApproachAngle) * 7 * e;
         if (p1 >= 1) {
           egg.orbitPrev = { x: egg.x, y: egg.y };
           eggAdvance(2, 280);
@@ -2677,11 +2680,11 @@ const Ember = (() => {
         const p2 = clamp(t / dur2, 0, 1);
         const e = easeInOutQuad(p2);
         const arc = Math.sin(p2 * Math.PI) * 14;
-        egg.x = egg.startX + (egg._landX - egg.startX) * e;
-        egg.y = egg.startY + (egg._landY - egg.startY) * e - arc;
+        egg.x = (egg._landX) * e;
+        egg.y = (egg._landY) * e - arc;
         egg.scale = 1 + Math.sin(p2 * Math.PI) * 0.05;
         egg.squish = -Math.sin(p2 * Math.PI) * 0.05;
-        egg.tiltY = Math.cos(egg._launchAngle) * 9 * (1 - p2);
+        egg.tiltY = Math.cos(egg._baseApproachAngle) * 9 * (1 - p2);
         egg.tiltX = -6 * Math.sin(p2 * Math.PI);
         if (Math.random() < 0.04) spawnSpark();
         if (p2 >= 1) {
@@ -2705,13 +2708,13 @@ const Ember = (() => {
         egg.scale = 1 + spring * 0.10 - 0.02 * p3;
         egg.squish = -spring * 0.30;
         egg.tiltX = -4 * Math.sin(now * 0.006);
-        egg.tiltY = Math.cos(egg._launchAngle) * 4;
+        egg.tiltY = Math.cos(egg._baseApproachAngle) * 4;
         if (!egg._landGlowDone) {
           egg._landGlowDone = true;
-          const ember = getEmberCenter();
+          // landing glow позиционируется по РЕАЛЬНОЙ каретке (viewport coords)
           spawnLandingGlow(
-            clamp((ember.x + egg._landX) / window.innerWidth * 100, 10, 90),
-            clamp((ember.y + egg._landY) / window.innerHeight * 100, 10, 90)
+            clamp(egg.realCaretX / window.innerWidth * 100, 10, 90),
+            clamp(egg.realCaretY / window.innerHeight * 100, 10, 90)
           );
         }
         if (!egg._hello && p3 > 0.4) { egg._hello = true; spawnSpark(); }
