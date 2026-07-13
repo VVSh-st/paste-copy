@@ -205,7 +205,7 @@
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
 | `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy; `idleLevel` rAF throttle (60→30→8fps), `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing: `breathCore/Glow/Crust/Ash`, `_throttleTimer` fix |
-| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX) |
+| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX); Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow` при ignited |
 
 ## Как работает
 
@@ -303,6 +303,27 @@
 - `.ember-haze` — `translateZ` + `scaleX` через `--breathAsh`
 
 **Доп:** `_throttleTimer` — `clearTimeout` в `stopLoop()` и перед `setTimeout` в `animate()`.
+
+---
+
+### Crack color-shift + Anomaly sparks (задание 3.8)
+
+**Файлы:** `ember.js`, `ember-styles.css`
+
+**Crack color-shift:**
+- `mixRgb()` — линейная интерполяция RGB между двумя цветами
+- `updateCrackLayers`: `heat` 0→1→0.3 через ignition cycle
+  - 0→1 за первые 15% (зажигание, `easeOutQuad`)
+  - 1→0.3 за остаток (остывание, `1 - 0.7 * easeInQuad`)
+- CSS variables: `--crack-c1` (цвет трещины), `--crack-glow-color` (свечение), `--crack-opacity`
+- `.ignited` → `drop-shadow` с цветом glow вместо `brightness(1.5)`
+
+**Anomaly sparks:**
+- `travel`: 380–720px (×1.5–2), `dur`: 1200–2400ms (×1.5)
+- `horizontalBias`: 40% летят вбок ±180px
+- `easeInOut` вместо `easeOut` — разгон→полёт→затухание
+- 3-фазное затухание: разгон (0–0.2) → пульсация ±18% (0.2–0.7) → сжатие+затухание (0.7–1.0)
+- Trail: квадратичное затухание `(1-t)² × 14 + 1.5`, красный color shift
 
 ---
 
