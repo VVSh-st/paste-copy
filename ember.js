@@ -3169,7 +3169,21 @@ const Ember = (() => {
       glowTrackX *= 0.92; glowTrackY *= 0.92;
       ashTrackX *= 0.92; ashTrackY *= 0.92;
 
+      const idleBreath = 1 + Math.sin(breathPhase * 2.5) * 0.012 * intensity;
+      breathScale += (idleBreath - breathScale) * 0.06;
+      const idleGlow = intensity * 0.6 + heatBoost * 0.25;
+      const idleBright = 0.55 + intensity * 0.25;
+
+      heat = clamp(intensity + heatBoost * 0.25, 0, 1);
       setVarApprox(root, '--breathScale', breathScale.toFixed(4), 0.001);
+      setVar(root, '--heat', heat.toFixed(3));
+      setVar(root, '--glow', idleGlow.toFixed(3));
+      setVarApprox(root, '--intensity', intensity.toFixed(3), 0.001);
+      setVarApprox(root, '--brightness', idleBright.toFixed(3), 0.001);
+      setVar(root, '--coreHue', (15 + intensity * 35).toFixed(1));
+      setVar(root, '--coreLight', (35 + intensity * 35).toFixed(1) + '%');
+      setVarApprox(root, '--ringOpacity', clamp(intensity * 0.4 + 0.2, 0, 1).toFixed(3), 0.001);
+      setVar(root, '--ashCoverage', (clamp(1 - intensity, 0, 1) ** 2 * (3 - 2 * clamp(1 - intensity, 0, 1))).toFixed(3));
 
       if (!nextAriaUpdate || now > nextAriaUpdate) {
         syncAccessibleLabel();
