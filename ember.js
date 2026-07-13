@@ -2587,59 +2587,42 @@ const Ember = (() => {
                targetY = window.innerHeight/2 + rand(-50, 50); }
     }
 
-    // viewport-aware: clamp caret к safe range
     egg.vw = window.innerWidth;
     egg.vh = window.innerHeight;
-    const SAFE_MARGIN = 80;
-    const MAX_CX = egg.vw / 2 - SAFE_MARGIN - EGG_OBSERVE_R;
-    const MAX_CY = egg.vh / 2 - SAFE_MARGIN - EGG_OBSERVE_R;
 
-    // ember-local координаты каретки
-    const rawCaretX = targetX - ember.x;
-    const rawCaretY = targetY - ember.y;
-
-    // egg.caretX/Y — clamped ember-local (для формул orbit)
-    egg.caretX = clamp(rawCaretX, -MAX_CX, MAX_CX);
-    egg.caretY = clamp(rawCaretY, -MAX_CY, MAX_CY);
-
-    // realCaret — viewport-абсолютные (для landing-glow, визуала)
+    // ember-local координаты каретки — RAW (для orbit中心)
+    egg.caretX = targetX - ember.x;
+    egg.caretY = targetY - ember.y;
     egg.realCaretX = targetX;
     egg.realCaretY = targetY;
 
-    // landing point — от РЕАЛЬНОЙ каретки, не от clamped
-    const actualLocalX = rawCaretX;
-    const actualLocalY = rawCaretY;
-    const actualDist = Math.max(40, Math.hypot(actualLocalX, actualLocalY));
-    const actualUnitX = actualLocalX / actualDist;
-    const actualUnitY = actualLocalY / actualDist;
-    egg._landX = actualLocalX - actualUnitX * EGG_OBSERVE_R;
-    egg._landY = actualLocalY - actualUnitY * EGG_OBSERVE_R;
+    // landing point — 175px от реальной каретки в стороне ember
+    const SAFE_MARGIN = 80;
+    const dist = Math.max(40, Math.hypot(egg.caretX, egg.caretY));
+    const ux = egg.caretX / dist;
+    const uy = egg.caretY / dist;
+    egg._landX = egg.caretX - ux * EGG_OBSERVE_R;
+    egg._landY = egg.caretY - uy * EGG_OBSERVE_R;
     const eggSafeX = egg.vw / 2 - SAFE_MARGIN - 60;
     const eggSafeY = egg.vh / 2 - SAFE_MARGIN - 60;
     egg._landX = clamp(egg._landX, -eggSafeX, eggSafeX);
     egg._landY = clamp(egg._landY, -eggSafeY, eggSafeY);
 
-    // launchAngle — от ember к landing point
+    // angles
     egg._launchAngle = Math.atan2(egg._landY, egg._landX);
-    egg._baseApproachAngle = egg._launchAngle;
+    egg._baseApproachAngle = Math.atan2(egg.caretY, egg.caretX);
     egg._nestAngle = egg._launchAngle;
 
-    // старт — всегда от ember, НЕ от cursorLean
-    egg.active         = true;
-    egg.phase          = 1;
-    egg.phaseStart     = performance.now();
-    egg._phaseDur      = 0;
-    egg.startX         = 0;
-    egg.startY         = 0;
-    egg.x              = 0;
-    egg.y              = 0;
-    egg.scale          = 1; egg.squish = 0; egg.tiltX = 0; egg.tiltY = 0;
-    egg.orbit          = null;
-    egg.orbitPrev      = null;
-    egg.lookTarget     = { x: 0, y: 0 };
-    egg.greetingShown  = false;
-    egg.bored          = 0;
-    eggCharCount       = 0;
+    // старт — всегда от ember (0,0)
+    egg.active = true; egg.phase = 1; egg.phaseStart = performance.now();
+    egg._phaseDur = 0;
+    egg.startX = 0; egg.startY = 0;
+    egg.x = 0; egg.y = 0;
+    egg.scale = 1; egg.squish = 0; egg.tiltX = 0; egg.tiltY = 0;
+    egg.orbit = null; egg.orbitPrev = null;
+    egg.lookTarget = { x: 0, y: 0 };
+    egg.greetingShown = false; egg.bored = 0;
+    eggCharCount = 0;
   }
 
   function updateEgg(now) {
@@ -2708,7 +2691,7 @@ const Ember = (() => {
         egg.scale = 1 + spring * 0.10 - 0.02 * p3;
         egg.squish = -spring * 0.30;
         egg.tiltX = -4 * Math.sin(now * 0.006);
-        egg.tiltY = Math.cos(egg._baseApproachAngle) * 4;
+        egg.tiltY = Math.cos(egg._baseApproachAngle) * 14;
         if (!egg._landGlowDone) {
           egg._landGlowDone = true;
           // landing glow позиционируется по РЕАЛЬНОЙ каретке (viewport coords)
@@ -2729,7 +2712,7 @@ const Ember = (() => {
         break;
       }
 
-      // 4. ОБЛЁТ 1 — дуга R=175px вокруг каретки, 1300 мс
+      // 4. ОБЛЁТ 1 — дуга вокруг caret, МОРДОЧКОЙ к caret
       case 4: {
         const dur4 = 1300;
         const p4 = clamp(t / dur4, 0, 1);
@@ -2738,9 +2721,9 @@ const Ember = (() => {
         const radius = 175 + Math.sin(p4 * Math.PI) * 18;
         eggOrbitSet(angle, radius);
         eggCommitPosToXY();
-        const inward = egg._arcDir * -1;
-        egg.tiltY = inward * 17 + Math.sin(p4 * Math.PI * 2) * 3;
-        egg.tiltX = Math.sin(p4 * Math.PI) * 6;
+        // смотрю на caret: direction = -(cos,sin) от позиции на орбите
+        egg.tiltY = Math.cos(angle) * -15 + Math.sin(p4 * Math.PI * 2) * 3;
+        egg.tiltX = Math.sin(angle) * -8 + Math.sin(p4 * Math.PI) * 5;
         egg.scale = 1 + Math.sin(p4 * Math.PI * 3) * 0.04;
         egg.squish = 0;
         if (Math.random() < 0.02) spawnAshParticle();
@@ -2748,17 +2731,15 @@ const Ember = (() => {
         break;
       }
 
-      // 5. ЗАВИСАНИЕ + ВЗГЛЯД — пауза на пике любопытства, 950 мс
+      // 5. ЗАВИСАНИЕ + ВЗГЛЯД — смотрю на caret
       case 5: {
         const dur5 = 950;
         const p5 = clamp(t / dur5, 0, 1);
-        eggOrbitSet(
-          egg._arcBase + egg._arcDir * egg._arcSpan,
-          175 + Math.sin(p5 * Math.PI * 2) * 12
-        );
+        const a = egg._arcBase + egg._arcDir * egg._arcSpan;
+        eggOrbitSet(a, 175 + Math.sin(p5 * Math.PI * 2) * 12);
         eggCommitPosToXY();
-        egg.tiltY = egg._arcDir * 12;
-        egg.tiltX = Math.sin(p5 * Math.PI * 2) * 4;
+        egg.tiltY = Math.cos(a) * -18 + Math.sin(p5 * Math.PI * 2) * 3;
+        egg.tiltX = Math.sin(a) * -10 + Math.sin(p5 * Math.PI * 2) * 4;
         egg.scale = 1 + Math.sin(p5 * Math.PI * 4) * 0.02;
         egg.squish = Math.sin(p5 * Math.PI * 4) * 0.02;
         if (!egg._glintWatch && p5 > 0.55) { egg._glintWatch = true; spawnSpark(); }
@@ -2772,7 +2753,7 @@ const Ember = (() => {
         break;
       }
 
-      // 6. ПЕРЕЛЁТ НА ДРУГУЮ СТОРОНУ — большая дуга, 1500 мс
+      // 6. ПЕРЕЛЁТ — большая дуга, смотрю на caret
       case 6: {
         const dur6 = 1500;
         const p6 = clamp(t / dur6, 0, 1);
@@ -2781,8 +2762,8 @@ const Ember = (() => {
         const radius = 190 + Math.sin(p6 * Math.PI) * 20;
         eggOrbitSet(angle, radius);
         eggCommitPosToXY();
-        egg.tiltY = -egg._crossDir * 17;
-        egg.tiltX = Math.sin(p6 * Math.PI) * 8;
+        egg.tiltY = Math.cos(angle) * -18 + Math.sin(p6 * Math.PI) * 3;
+        egg.tiltX = Math.sin(angle) * -10 + Math.sin(p6 * Math.PI) * 7;
         egg.scale = 1 + Math.sin(p6 * Math.PI * 2) * 0.04;
         egg.squish = 0;
         if (Math.random() < 0.03) spawnSpark();
@@ -2794,7 +2775,7 @@ const Ember = (() => {
         break;
       }
 
-      // 7. ЗАВИСАНИЕ НА ДРУГОЙ СТОРОНЕ — оглядываюсь, 1100 мс
+      // 7. ЗАВИСАНИЕ — смотрю на caret
       case 7: {
         const dur7 = 1100;
         const p7 = clamp(t / dur7, 0, 1);
@@ -2802,8 +2783,8 @@ const Ember = (() => {
         const baseA = egg._arc2Base + Math.sin(p7 * Math.PI * 2) * 0.05;
         eggOrbitSet(baseA, baseR);
         eggCommitPosToXY();
-        egg.tiltY = (egg._arcDir * 0.4) * 6 + Math.sin(p7 * Math.PI * 3) * 2;
-        egg.tiltX = Math.sin(p7 * Math.PI * 3) * 4;
+        egg.tiltY = Math.cos(baseA) * -16 + Math.sin(p7 * Math.PI * 3) * 3;
+        egg.tiltX = Math.sin(baseA) * -8 + Math.sin(p7 * Math.PI * 3) * 4;
         egg.scale = 1 - p7 * 0.02;
         egg.squish = 0;
         if (p7 >= 1) {
@@ -2818,7 +2799,7 @@ const Ember = (() => {
         break;
       }
 
-      // 8. ОБЛЁТ 3 — короткая дуга + «пиши-пиши», 1100 мс
+      // 8. ОБЛЁТ 3 — короткая дуга + «пиши-пиши», смотрю на caret
       case 8: {
         const dur8 = 1100;
         const p8 = clamp(t / dur8, 0, 1);
@@ -2827,8 +2808,8 @@ const Ember = (() => {
         const radius = 160 + Math.sin(p8 * Math.PI) * 15;
         eggOrbitSet(angle, radius);
         eggCommitPosToXY();
-        egg.tiltY = -egg._shortDir * 10;
-        egg.tiltX = Math.sin(p8 * Math.PI) * 4;
+        egg.tiltY = Math.cos(angle) * -12 + Math.sin(p8 * Math.PI) * 3;
+        egg.tiltX = Math.sin(angle) * -7 + Math.sin(p8 * Math.PI) * 4;
         egg.scale = 1 + Math.sin(p8 * Math.PI * 2) * 0.03;
         if (!egg._sighDone && p8 > 0.55) {
           egg._sighDone = true;
