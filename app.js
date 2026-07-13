@@ -863,7 +863,10 @@
   function exportCurrentTab() {
     const tab = State.getActive();
     if (!tab) { Toast.show('Нет активной вкладки', 'error'); return; }
-    const data = { tabs: [JSON.parse(JSON.stringify(tab))] };
+    const exported = JSON.parse(JSON.stringify(tab));
+    delete exported.history;
+    delete exported.historyIdx;
+    const data = { tabs: [exported] };
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
     );
