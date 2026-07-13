@@ -204,7 +204,7 @@
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only; **Аудит итерации 1-4:** AudioContext reuse (один на цикл, user-gesture init); `_cachePoints` аналитический (0 layout вместо 800); `_tickRAF` safety (`rafId=null`); `closeInlineInput` comma→if/else; inline-input фидбэк (shake+red); ResizeObserver debounce (`_resizeRaf`); cssText cache (`_cachedDigitCssText/Sig/Font`); `_applyArc` hot path оптимизация (display/r только при смене dir, `_lastHeadIdx` guard, убран strokeDashoffset='0'); AudioContext.resume().catch(); `restoreState` AudioContext init; `_updateDisplay` guards; `void offsetWidth` убран; `setIdleVisual` дубли убраны; `parentNode.style.position` вынесен в init |
-| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate (со спавном частиц внутри), `POSE_BUF`/`resetPose()`, particle throttle 30fps, `setVarApprox`, `deferBurst`, `mouseMovedSinceLastFrame`, `updateMood` в `requestIdleCallback`, `passive: true`; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry, fallback timeout, `_idleCallbackId` cleanup; `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing `breathCore/Glow/Crust/Ash`; `_throttleTimer` fix; crack color-shift `mixRgb()`; anomaly sparks 380-720px; micro-flicker idle; landed ash particles; dying tab guard; idleLevel throttle УДАЛЁН (убивал визуал); **Аудит R1:** `ringImpulse`/`cursorLean` обнуляются в reduce-motion; tooltip debounce 800мс (`_editTooltipTimer`); `startEgg` guard на `previewScare.active`; `--reveal-delay` через `setVar`/`removeVar`; **Аудит R2:** `deferBurst` рекурсия (fix timer leak), `updateCrackLayers` через `setVar` (fix cache bypass), `notifyEdit` чистит `tooltipHideTimer` (fix race), reduceMotion чистит glint vars, `peek.state` reset в idle, mousemove throttle-lock (_mouseDirty buffer); **Egg rewrite:** 12-фазный орбитальный сценарий (MiniMax-M3), хелперы `eggAdvance`/`eggOrbitSet`/`eggOrbitPos`/`eggCommitPosToXY`, ПКМ-тест включён |
+| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate (со спавном частиц внутри), `POSE_BUF`/`resetPose()`, particle throttle 30fps, `setVarApprox`, `deferBurst`, `mouseMovedSinceLastFrame`, `updateMood` в `requestIdleCallback`, `passive: true`; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry, fallback timeout, `_idleCallbackId` cleanup; `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing `breathCore/Glow/Crust/Ash`; `_throttleTimer` fix; crack color-shift `mixRgb()`; anomaly sparks 380-720px; micro-flicker idle; landed ash particles; dying tab guard; idleLevel throttle УДАЛЁН (убивал визуал); **Аудит R1:** `ringImpulse`/`cursorLean` обнуляются в reduce-motion; tooltip debounce 800мс; `startEgg` guard; `--reveal-delay` через `setVar`/`removeVar`; **Аудит R2:** `deferBurst` рекурсия, `updateCrackLayers` через `setVar`, `notifyEdit` tooltip fix, reduceMotion glint reset, `peek.state` reset в idle, mousemove throttle-lock; **Egg rewrite (4(5)-4(10)):** 12-фазный орбитальный сценарий, orbit中心=raw caret (не clamped), tilt к caret в фазах 4-8, старт от ember (0,0), landing point от реального caret, `_baseApproachAngle`, `realCaretX/Y`, `_landX/_landY` clamped к viewport, minDist guard 150px, viewport clamp, reduceMotion early-return, ПКМ-тест включён |
 | `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode); **Аудит:** segment transition `background-color` → `opacity`; `will-change: transform` на `.ember-core` |
 | `styles.css` | `capturePulse` infinite → 1; `prefers-reduced-motion` для capturePulse; `.timer-input-error` + `@keyframes timerInputShake` |
 
@@ -233,6 +233,7 @@
 - **Mini-chat geometry**: `_savedWin` хранит позицию/размер, обновляется при drag/resize end и beforeunload. Восстанавливается в `_open()`.
 - **Ember idle gate**: пропускает тяжёлые вычисления (commitPose, updateWind, etc.) но **всегда спавнит частицы** (ash/spark/shootingSpark) и вызывает `updateParticles`. Спавн внутри idle gate перед `return`.
 - **Ember color-scheme: dark**: `color-scheme: dark` на `.ember-slot`/`.ember` — обход Auto Dark Mode for Web Contents.
+- **Egg (пасхалка)**: 12-фазный орбитальный сценарий. `startEgg()` вычисляет `caretX/Y` (raw, не clamped), `_landX/_landY` (175px от caret, clamped к viewport), `_baseApproachAngle` (ember→caret). `updateEgg()`: phase 1=замах от ember, 2=подлёт к landing, 3=пружинка+взгляд, 4-8=орбиты вокруг caret (R=160-190px, tilt `cos(angle)*-15` = мордочка к caret), 9=отход, 10=сжатие, 11=укутывание кольцом, 12=возврат. Guards: minDist 150px, viewport clamp, reduceMotion early-return. ПКМ-тест: `allowTestMode=true`.
 
 ### Ember CPU-оптимизация (задание 3.4)
 
@@ -482,45 +483,44 @@
 
 ---
 
-### Egg — новый 12-фазный орбитальный сценарий (задание 4 (5) + 4 (6))
+### Egg — 12-фазный орбитальный сценарий (задания 4 (5)–4 (10))
 
 **Файл:** `ember.js`
 
-**Суть:** полная замена `startEgg()` + `updateEgg()`. Новый сценарий ~10 сек, **орбиты 150-225px от caret**:
+**Суть:** полная замена `startEgg()` + `updateEgg()`. 12 фаз ~10 сек. Orbit вокруг РЕАЛЬНОЙ каретки, мордочка к caret.
+
+**Фазы:**
 
 | Фаза | Название | Длительность | Описание |
 |------|----------|-------------|----------|
-| 1 | ЗАМАХ | 110мс | Приседает против хода |
-| 2 | ПОДЛЁТ | 280мс | Прямой ease + дуга 14px к landing point (170-200px от caret) |
-| 3 | ПРИЗЕМЛЕНИЕ | 900мс | Пружинка + зависание + взгляд на landing point |
-| 4 | ОБЛЁТ 1 | 1300мс | Дуга R=175±18px вокруг каретки (30–100°) |
-| 5 | ЗАВИСАНИЕ | 950мс | Пауза на пике любопытства (R=175±12) |
-| 6 | ПЕРЕЛЁТ | 1500мс | Большая дуга на противоположную сторону (R=190±20) |
-| 7 | ОБЛЁТ 2 | 1100мс | Зависание + оглядываюсь (R=165±12) |
-| 8 | ОБЛЁТ 3 | 1100мс | Короткая дуга + «пиши-пиши» (R=160±15) |
-| 9 | ОТХОД | 700мс | От кольца наружу (R: 160→225) |
-| 10 | СЖАТИЕ | 320мс | Собираюсь в точку |
-| 11 | УКУТЫВАНИЕ | 600мс | Кольцо сжимается вокруг |
+| 1 | ЗАМАХ | 110мс | Приседает от ember ПРОТИВ caret |
+| 2 | ПОДЛЁТ | 280мс | Ease к landing point + дуга 14px |
+| 3 | ПРИЗЕМЛЕНИЕ | 900мс | Пружинка + взгляд на caret |
+| 4 | ОБЛЁТ 1 | 1300мс | Дуга R=175±18px, смотрю на caret |
+| 5 | ЗАВИСАНИЕ | 950мс | Пауза R=175±12, смотрю на caret |
+| 6 | ПЕРЕЛЁТ | 1500мс | Дуга на противоположную сторону R=190±20 |
+| 7 | ОБЛЁТ 2 | 1100мс | R=165±12, смотрю на caret |
+| 8 | ОБЛЁТ 3 | 1100мс | R=160±15 + «пиши-пиши» |
+| 9 | ОТХОД | 700мс | R→225, от кольца |
+| 10 | СЖАТИЕ | 320мс | В точку |
+| 11 | УКУТЫВАНИЕ | 600мс | Кольцо вокруг |
 | 12 | ВОЗВРАЩЕНИЕ | 700мс | Вырастает обратно |
 
-**Ключевые фиксы (задание 4 (6)+(7)+(9)+(10)):**
-- **Orbit中心 = raw caret** — `egg.caretX/Y` не clamped, orbit крутится вокруг РЕАЛЬНОЙ каретки
-- **Tilt лица к caret** — фазы 4-8: `tiltY = cos(angle) * -15` (смотрит на caret, а не внутрь орбиты)
-- **Старт всегда от ember** (0,0) — cursorLean не влияет
-- **Landing point от raw caret** — `_landX/_landY` от реальной позиции
-- **`_baseApproachAngle`** — угол ember→caret для phase 1-3
-- **minDist guard + viewport clamp** — защита от edge-cases
-
-**ПКМ-тест включён:** `allowTestMode = true` — правый клик на эмбере запускает все эффекты.
-
-**Cleanup в destroy:** добавлены `_landGlowDone`, `_hello`, `_glintWatch`, `_sighDone`, `_ringHugDone`, `_bloomDone`, `orbit`, `orbitPrev`, `lookTarget`, `greetingShown`, `bored`.
+**Архитектура:**
+- `egg.caretX/Y` = raw ember-local (orbit中心 = реальная каретка)
+- `egg._landX/_landY` = landing point (175px от caret), clamped к viewport
+- `egg.realCaretX/Y` = viewport-абсолютные (для landing-glow)
+- `egg._baseApproachAngle` = угол ember→caret (для phases 1-3)
+- Tilt: `cos(orbitAngle) * -15` — мордочка к caret на каждой точке дуги
+- Guards: minDist 150px от caret + viewport clamp + reduceMotion early-return
+- ПКМ-тест: `allowTestMode = true`
 
 ---
 
 ## Следующий шаг
 
 1. Протестировать ПКМ-тест — правый клик на эмбере запускает все эффекты
-2. Протестировать eggFly — уголёк прилетает к landing point (170-200px от caret), облетает на 150-225px, укутывается кольцом
+2. Протестировать eggFly — уголёк стартует от ember, летит к landing (175px от caret), облетает вокруг реальной каретки (R=160-190), мордочкой к caret, укутывается кольцом
 3. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
 4. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
 5. Проверить highlight.js в мини-чате — streaming → finalize → markdown + подсветка
