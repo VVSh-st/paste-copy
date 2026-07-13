@@ -533,7 +533,7 @@ const State = (() => {
   }
 
   function _applyDelta(state, delta) {
-    const s = { blocks: state.blocks, separator: state.separator };
+    const s = { blocks: _cloneDeep(state.blocks), separator: state.separator };
     for (const ch of delta) {
       if (ch._sep !== undefined) { s.separator = ch._sep; continue; }
       if (ch._d) { s.blocks = s.blocks.filter(b => b.id !== ch.id); continue; }
@@ -541,6 +541,7 @@ const State = (() => {
       if (ch.patch) {
         const idx = s.blocks.findIndex(b => b.id === ch.id);
         if (idx >= 0) s.blocks[idx] = { ...s.blocks[idx], ...ch.patch };
+        // Если ID не найден — пропускаем (данные могли измениться между снапшотами)
       }
     }
     return s;
@@ -548,6 +549,8 @@ const State = (() => {
 
   function _rebuildFromHistory(tab, targetIdx) {
     if (!tab.history.base) return null;
+    // Оптимизация: если targetIdx < 0 — возвращаем base без применения дельт
+    if (targetIdx < 0) return { blocks: _cloneDeep(tab.history.base.blocks), separator: tab.history.base.separator };
     let state = { blocks: _cloneDeep(tab.history.base.blocks), separator: tab.history.base.separator };
     for (let i = 0; i <= targetIdx && i < tab.history.deltas.length; i++) {
       const d = tab.history.deltas[i];
@@ -731,7 +734,7 @@ const State = (() => {
     }
     if (!delta) return; // ничего не изменилось
 
-    // Обрезаем будущие ветки
+    // Обрезаем будущие ветки (historyIdx = deltas.length, slice до него сохраняет все прошлые)
     tab.history.deltas = tab.history.deltas.slice(0, tab.historyIdx);
     tab.history.deltas.push({ changes: delta, ts: Date.now() });
 
@@ -852,6 +855,7 @@ const State = (() => {
 
   function _rebuildBlockHistory(bh, targetIdx) {
     if (!bh.base) return null;
+    if (targetIdx < 0) return _cloneDeep(bh.base);
     let state = _cloneDeep(bh.base);
     for (let i = 0; i <= targetIdx && i < bh.deltas.length; i++) {
       const d = bh.deltas[i];
