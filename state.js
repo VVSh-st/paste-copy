@@ -488,6 +488,86 @@ const State = (() => {
   const _snapEmit = () => _snapListeners.forEach(l => _safeListenerCall(l, 'onSnapshot'));
   const onSnapshot = fn => { if (typeof fn !== 'function') return; _snapListeners.push(fn); };
 
+  /* ── diff snapshot helpers ── */
+
+  function _deepDiff(a, b) {
+    if (a === b) return null;
+    if (typeof a !== 'object' || typeof b !== 'object') return { v: _cloneDeep(b) };
+    if (Array.isArray(a) !== Array.isArray(b)) return { v: _cloneDeep(b) };
+
+    const patch = {};
+    let changed = false;
+    const allKeys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const key of allKeys) {
+      if (key === 'id') continue;
+      const av = JSON.stringify(a[key]);
+      const bv = JSON.stringify(b[key]);
+      if (av === bv) continue;
+      patch[key] = _cloneDeep(b[key]);
+      changed = true;
+    }
+    return changed ? patch : null;
+  }
+
+  function _computeDelta(base, current) {
+    const changes = [];
+    if (base.separator !== current.separator) {
+      changes.push({ _sep: current.separator });
+    }
+    const baseMap = new Map(base.blocks.map(b => [b.id, b]));
+    const curMap  = new Map(current.blocks.map(b => [b.id, b]));
+
+    for (const [id] of baseMap) {
+      if (!curMap.has(id)) changes.push({ id, _d: true });
+    }
+    for (const [id, block] of curMap) {
+      const bb = baseMap.get(id);
+      if (!bb) {
+        changes.push({ id, _n: true, block: _cloneDeep(block) });
+      } else {
+        const diff = _deepDiff(bb, block);
+        if (diff) changes.push({ id, patch: diff });
+      }
+    }
+    return changes.length ? changes : null;
+  }
+
+  function _applyDelta(state, delta) {
+    const s = { blocks: state.blocks, separator: state.separator };
+    for (const ch of delta) {
+      if (ch._sep !== undefined) { s.separator = ch._sep; continue; }
+      if (ch._d) { s.blocks = s.blocks.filter(b => b.id !== ch.id); continue; }
+      if (ch._n) { s.blocks.push(_cloneDeep(ch.block)); continue; }
+      if (ch.patch) {
+        const idx = s.blocks.findIndex(b => b.id === ch.id);
+        if (idx >= 0) s.blocks[idx] = { ...s.blocks[idx], ...ch.patch };
+      }
+    }
+    return s;
+  }
+
+  function _rebuildFromHistory(tab, targetIdx) {
+    if (!tab.history.base) return null;
+    let state = { blocks: _cloneDeep(tab.history.base.blocks), separator: tab.history.base.separator };
+    for (let i = 0; i <= targetIdx && i < tab.history.deltas.length; i++) {
+      const d = tab.history.deltas[i];
+      if (d?.changes) state = _applyDelta(state, d.changes);
+    }
+    return state;
+  }
+
+  function _migrateHistory(raw) {
+    if (Array.isArray(raw)) {
+      if (!raw.length) return { base: null, deltas: [] };
+      try {
+        const parsed = JSON.parse(raw[raw.length - 1]);
+        return { base: { blocks: parsed.blocks, separator: parsed.separator }, deltas: [] };
+      } catch { return { base: null, deltas: [] }; }
+    }
+    if (raw && typeof raw === 'object' && raw.base) return raw;
+    return { base: null, deltas: [] };
+  }
+
   /* ── tab management ── */
 
   function newTab(name) {
@@ -499,7 +579,7 @@ const State = (() => {
     const tab = {
       id: uid(), name, separator: '\n\n',
       blocks: defaultBlocks(),
-      history: [], historyIdx: -1,
+      history: { base: null, deltas: [] }, historyIdx: -1,
       namedSnapshots: [],
       anchors: [],
     };
@@ -631,26 +711,40 @@ const State = (() => {
     tab = tab ?? getActive();
     if (!tab) return;
 
-    // [FIX] Защита от JSON.stringify крэша — предотвращает остановку history pipeline
-    let snap;
-    try {
-      snap = JSON.stringify({ blocks: tab.blocks, separator: tab.separator });
-    } catch (err) {
-      console.error('[State.snapshot] Failed to serialize snapshot.', err);
+    const currentState = { blocks: tab.blocks, separator: tab.separator };
+
+    // Первый снапшот — сохраняем как base
+    if (!tab.history.base) {
+      try { tab.history.base = _cloneDeep(currentState); } catch (err) {
+        console.error('[State.snapshot] Failed to clone base.', err); return;
+      }
+      tab.history.deltas = [];
+      tab.historyIdx = 0;
+      _snapEmit();
       return;
     }
 
-    // Trim future branch before comparing tail
-    tab.history = tab.history.slice(0, tab.historyIdx + 1);
+    // Вычисляем дельту от base
+    let delta;
+    try { delta = _computeDelta(tab.history.base, currentState); } catch (err) {
+      console.error('[State.snapshot] Failed to compute delta.', err); return;
+    }
+    if (!delta) return; // ничего не изменилось
 
-    // Skip if nothing changed (string equality is sufficient for plain data)
-    if (tab.history.length > 0 && tab.history[tab.history.length - 1] === snap) return;
+    // Обрезаем будущие ветки
+    tab.history.deltas = tab.history.deltas.slice(0, tab.historyIdx);
+    tab.history.deltas.push({ changes: delta, ts: Date.now() });
 
-    tab.history.push(snap);
-    // Keep history bounded to 200 entries
-    if (tab.history.length > 200) tab.history.shift();
-    tab.historyIdx = tab.history.length - 1;
-    _snapEmit(); // уведомляем updateButtons без re-render
+    // Лимит 30: replay — создаём новый base из текущего состояния
+    if (tab.history.deltas.length > 30) {
+      try { tab.history.base = _cloneDeep(currentState); } catch (err) {
+        console.error('[State.snapshot] Failed to replay base.', err); return;
+      }
+      tab.history.deltas.shift();
+    }
+
+    tab.historyIdx = tab.history.deltas.length;
+    _snapEmit();
   }
 
   function scheduleSnapshot(tab) {
@@ -681,56 +775,160 @@ const State = (() => {
     if (!t || t.historyIdx <= 0) return;
     const prevIdx = t.historyIdx;
     t.historyIdx--;
-    if (!applySnap(t, t.history[t.historyIdx])) {
+    const state = t.historyIdx === 0
+      ? t.history.base
+      : _rebuildFromHistory(t, t.historyIdx - 1);
+    if (!state) { t.historyIdx = prevIdx; return; }
+    try {
+      t.blocks    = _deduplicateCommandsBlocks(migrate(_cloneDeep(state.blocks)));
+      t.separator = state.separator;
+    } catch (err) {
+      console.error('[State.undo] Failed to apply.', err);
       t.historyIdx = prevIdx;
       return;
     }
-    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
     _snapEmit();
     emit();
   }
 
   function redo() {
     const t = getActive();
-    if (!t || t.historyIdx >= t.history.length - 1) return;
+    if (!t || t.historyIdx >= t.history.deltas.length) return;
     const prevIdx = t.historyIdx;
     t.historyIdx++;
-    if (!applySnap(t, t.history[t.historyIdx])) {
+    const state = t.historyIdx === 0
+      ? t.history.base
+      : _rebuildFromHistory(t, t.historyIdx - 1);
+    if (!state) { t.historyIdx = prevIdx; return; }
+    try {
+      t.blocks    = _deduplicateCommandsBlocks(migrate(_cloneDeep(state.blocks)));
+      t.separator = state.separator;
+    } catch (err) {
+      console.error('[State.redo] Failed to apply.', err);
       t.historyIdx = prevIdx;
       return;
     }
-    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
     _snapEmit();
     emit();
   }
 
   const canUndo = () => { const t = getActive(); return !!t && t.historyIdx > 0; };
-  const canRedo = () => { const t = getActive(); return !!t && t.historyIdx < t.history.length - 1; };
+  const canRedo = () => { const t = getActive(); return !!t && t.historyIdx < t.history.deltas.length; };
 
-  /* ── per-block history ── */
+  /* ── per-block history (diff-based) ── */
 
   const _blockHistory = new Map();
 
-  // [FIX] Безопасный парсинг block snapshot — предотвращает JSON.parse крэш
-  function _parseBlockSubtabsSnap(snap) {
-    try {
-      const parsed = JSON.parse(snap);
-      return Array.isArray(parsed) ? parsed : null;
-    } catch (err) {
-      console.error('[State.blockHistory] Failed to parse block snapshot.', err);
-      return null;
-    }
+  function _bh(blockId) {
+    if (!_blockHistory.has(blockId)) _blockHistory.set(blockId, { base: null, deltas: [], idx: -1 });
+    return _blockHistory.get(blockId);
   }
 
-  // [FIX] Безопасная сериализация block snapshot — предотвращает JSON.stringify крэш
-  function _stringifyBlockSubtabsSnap(block) {
-    try {
-      return JSON.stringify(block.subtabs);
-    } catch (err) {
-      console.error('[State.blockHistory] Failed to serialize block snapshot.', err);
-      return null;
+  function _computeSubtabsDelta(base, current) {
+    if (!Array.isArray(base) || !Array.isArray(current)) return null;
+    const changes = [];
+    const maxLen = Math.max(base.length, current.length);
+    for (let i = 0; i < maxLen; i++) {
+      const bs = base[i];
+      const cs = current[i];
+      if (!bs && cs) { changes.push({ i, _n: true, v: _cloneDeep(cs) }); continue; }
+      if (bs && !cs) { changes.push({ i, _d: true }); continue; }
+      if (JSON.stringify(bs) !== JSON.stringify(cs)) {
+        changes.push({ i, v: _cloneDeep(cs) });
+      }
     }
+    return changes.length ? changes : null;
   }
+
+  function _applySubtabsDelta(base, delta) {
+    const result = _cloneDeep(base);
+    for (const ch of delta) {
+      if (ch._d) { result.splice(ch.i, 1); continue; }
+      if (ch._n) { result.splice(ch.i, 0, _cloneDeep(ch.v)); continue; }
+      result[ch.i] = _cloneDeep(ch.v);
+    }
+    return result;
+  }
+
+  function _rebuildBlockHistory(bh, targetIdx) {
+    if (!bh.base) return null;
+    let state = _cloneDeep(bh.base);
+    for (let i = 0; i <= targetIdx && i < bh.deltas.length; i++) {
+      const d = bh.deltas[i];
+      if (d?.changes) state = _applySubtabsDelta(state, d.changes);
+    }
+    return state;
+  }
+
+  function blockSnapshot(blockId) {
+    const tab = getActive();
+    if (!tab) return;
+    const block = findBlock(tab.blocks, blockId);
+    if (!block?.subtabs) return;
+
+    const bh = _bh(blockId);
+    const current = _cloneDeep(block.subtabs);
+
+    if (!bh.base) {
+      bh.base = current;
+      bh.deltas = [];
+      bh.idx = 0;
+      _snapEmit();
+      return;
+    }
+
+    const delta = _computeSubtabsDelta(bh.base, current);
+    if (!delta) return;
+
+    bh.deltas = bh.deltas.slice(0, bh.idx);
+    bh.deltas.push({ changes: delta });
+
+    if (bh.deltas.length > 30) {
+      bh.base = current;
+      bh.deltas.shift();
+    }
+    bh.idx = bh.deltas.length;
+    _snapEmit();
+  }
+
+  function blockUndo(blockId) {
+    const tab = getActive();
+    if (!tab) return;
+    const block = findBlock(tab.blocks, blockId);
+    if (!block?.subtabs) return;
+    const bh = _bh(blockId);
+    if (bh.idx <= 0) return;
+    bh.idx--;
+    const state = bh.idx === 0 ? bh.base : _rebuildBlockHistory(bh, bh.idx - 1);
+    if (!state) return;
+    block.subtabs = state;
+    _snapEmit();
+    emitLive();
+  }
+
+  function blockRedo(blockId) {
+    const tab = getActive();
+    if (!tab) return;
+    const block = findBlock(tab.blocks, blockId);
+    if (!block?.subtabs) return;
+    const bh = _bh(blockId);
+    if (bh.idx >= bh.deltas.length) return;
+    bh.idx++;
+    const state = bh.idx === 0 ? bh.base : _rebuildBlockHistory(bh, bh.idx - 1);
+    if (!state) return;
+    block.subtabs = state;
+    _snapEmit();
+    emitLive();
+  }
+
+  const canBlockUndo = blockId => {
+    const bh = _blockHistory.get(blockId);
+    return !!bh && bh.idx > 0;
+  };
+  const canBlockRedo = blockId => {
+    const bh = _blockHistory.get(blockId);
+    return !!bh && bh.idx < bh.deltas.length;
+  };
 
   // [FIX] Полный сброс runtime-состояния — предотвращает утечку при повторной загрузке
   function _resetInMemoryState() {
@@ -750,90 +948,6 @@ const State = (() => {
     const { globalSnippets: _, ...safeLayout } = savedLayout;
     return safeLayout;
   }
-
-  function _bh(blockId) {
-    if (!_blockHistory.has(blockId)) _blockHistory.set(blockId, { snaps: [], idx: -1 });
-    return _blockHistory.get(blockId);
-  }
-
-  function blockSnapshot(blockId) {
-    const tab = getActive();
-    if (!tab) return;
-    const block = findBlock(tab.blocks, blockId);
-    if (!block) return;
-    // История блоков поддерживается для блоков с subtabs: text/todo/table
-    if (!block.subtabs) return;
-    const snap = _stringifyBlockSubtabsSnap(block);
-    if (!snap) return;
-    const bh   = _bh(blockId);
-    bh.snaps = bh.snaps.slice(0, bh.idx + 1);
-    if (bh.snaps.length > 0 && bh.snaps[bh.snaps.length - 1] === snap) return;
-    bh.snaps.push(snap);
-    if (bh.snaps.length > 100) bh.snaps.shift();
-    bh.idx = bh.snaps.length - 1;
-    _snapEmit(); // уведомляем об изменении блочной истории
-  }
-
-  function blockUndo(blockId) {
-    const tab = getActive();
-    if (!tab) return;
-    const block = findBlock(tab.blocks, blockId);
-    // Проверяем subtabs — история блоков только для типов с subtabs
-    if (!block || !block.subtabs) return;
-    const bh = _bh(blockId);
-    if (bh.idx === -1) { blockSnapshot(blockId); }
-    // Если стоим на последнем снапе — проверяем, не ушёл ли текст вперёд (несохранённые изменения)
-    if (bh.idx === bh.snaps.length - 1) {
-      const cur = _stringifyBlockSubtabsSnap(block);
-      if (!cur) return;
-      if (cur !== bh.snaps[bh.idx]) {
-        bh.snaps = bh.snaps.slice(0, bh.idx + 1);
-        bh.snaps.push(cur);
-        if (bh.snaps.length > 100) bh.snaps.shift();
-        bh.idx = bh.snaps.length - 1;
-      }
-    }
-    if (bh.idx <= 0) return;
-    bh.idx--;
-    // [FIX] Защита от undefined snap — предотвращает JSON.parse крэш
-    const snap = bh.snaps[bh.idx];
-    if (!snap) return;
-    const parsed = _parseBlockSubtabsSnap(snap);
-    if (!parsed) return;
-    block.subtabs = parsed;
-    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
-    _snapEmit();
-    emitLive();
-  }
-
-  function blockRedo(blockId) {
-    const tab = getActive();
-    if (!tab) return;
-    const block = findBlock(tab.blocks, blockId);
-    // Проверяем subtabs — история блоков только для типов с subtabs
-    if (!block || !block.subtabs) return;
-    const bh = _bh(blockId);
-    if (bh.idx >= bh.snaps.length - 1) return;
-    bh.idx++;
-    const snap = bh.snaps[bh.idx];
-    if (!snap) return;
-    const parsed = _parseBlockSubtabsSnap(snap);
-    if (!parsed) return;
-    block.subtabs = parsed;
-    // [FIX] Уведомляем об изменении индекса истории — кнопки UI обновятся
-    _snapEmit();
-    emitLive();
-  }
-
-  // [FIX] Только чтение — не создаём записи в _blockHistory для несуществующих блоков
-  const canBlockUndo = blockId => {
-    const bh = _blockHistory.get(blockId);
-    return !!bh && bh.idx > 0;
-  };
-  const canBlockRedo = blockId => {
-    const bh = _blockHistory.get(blockId);
-    return !!bh && bh.idx < bh.snaps.length - 1;
-  };
 
   /* ── named snapshots ── */
 
@@ -859,7 +973,7 @@ const State = (() => {
       date: Date.now(),
       data,
     });
-    if (t.namedSnapshots.length > 10) t.namedSnapshots.pop();
+    if (t.namedSnapshots.length > 5) t.namedSnapshots.pop();
     emit();
   }
 
@@ -979,8 +1093,8 @@ const State = (() => {
         name:           typeof t.name === 'string' && t.name.trim() ? t.name : 'Project',
         separator:      t.separator ?? '\n\n',
         blocks:         _deduplicateCommandsBlocks(migrate(Array.isArray(t.blocks) ? t.blocks : [])),
-        history:        [],
-        historyIdx:     -1,
+        history:        _migrateHistory(t.history),
+        historyIdx:     typeof t.historyIdx === 'number' ? t.historyIdx : -1,
         // [FIX] Нормализуем namedSnapshots — фильтруем невалидные, удаляем [LLM] compress
         namedSnapshots: Array.isArray(t.namedSnapshots)
           ? t.namedSnapshots
@@ -992,7 +1106,7 @@ const State = (() => {
                 date: Number.isFinite(Number(s.date)) ? Number(s.date) : Date.now(),
                 data: s.data,
               }))
-              .slice(0, 10)
+              .slice(0, 5)
           : [],
         // [FIX] Нормализуем anchors — фильтруем невалидные элементы
         anchors:        Array.isArray(t.anchors)
@@ -1001,15 +1115,17 @@ const State = (() => {
       }));
 
       tabs.forEach(t => {
-        // [FIX] Защита от JSON.stringify крэша — один повреждённый блок не ломает все
-        try {
-          const snap = JSON.stringify({ blocks: t.blocks, separator: t.separator });
-          t.history    = [snap];
-          t.historyIdx = 0;
-        } catch (err) {
-          console.error('[State.load] Failed to create initial history snapshot.', err);
-          t.history    = [];
-          t.historyIdx = -1;
+        // Создаём base для diff-снапшотов если его нет (старый формат или новая вкладка)
+        if (!t.history.base) {
+          try {
+            t.history.base = { blocks: _cloneDeep(t.blocks), separator: t.separator };
+            t.history.deltas = [];
+            t.historyIdx = 0;
+          } catch (err) {
+            console.error('[State.load] Failed to create initial history base.', err);
+            t.history    = { base: null, deltas: [] };
+            t.historyIdx = -1;
+          }
         }
       });
 
@@ -1081,7 +1197,7 @@ const State = (() => {
         name:           t.name,
         separator:      t.separator,
         blocks:         t.blocks,
-        namedSnapshots: (t.namedSnapshots || []).filter(s => !String(s.name || '').startsWith('[LLM]')).slice(0, 10),
+        namedSnapshots: (t.namedSnapshots || []).filter(s => !String(s.name || '').startsWith('[LLM]')).slice(0, 5),
         anchors:        t.anchors || [],
       })),
       activeTabId,

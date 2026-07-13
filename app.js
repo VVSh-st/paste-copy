@@ -216,11 +216,25 @@
     });
   }
 
+  /* ── Close ALL menus (dropdowns + palettes) ────────────────────────────*/
+  function closeAllMenus(except) {
+    document.querySelectorAll('.ui-menu.open').forEach(d => {
+      if (d !== except) d.classList.remove('open');
+    });
+    document.querySelectorAll('.ui-menu[style*="display: block"], .ui-menu[style*="display:block"]').forEach(d => {
+      if (d !== except) d.style.display = 'none';
+    });
+    if (!except || !except.classList?.contains('pl-palette')) {
+      document.dispatchEvent(new Event('close-all-palettes'));
+    }
+  }
+  window.closeAllMenus = closeAllMenus;
+
   /* ── Add-block dropdown ─────────────────────────────────────────────────*/
   const addDd = $id('add-dropdown');
   onClick('btn-add-block', e => {
     e.stopPropagation();
-    closeAllDropdowns(addDd);
+    closeAllMenus(addDd);
     addDd?.classList.toggle('open');
   });
 
@@ -240,7 +254,7 @@
   const tplDd = $id('tpl-dropdown');
   onClick('btn-templates', e => {
     e.stopPropagation();
-    closeAllDropdowns(tplDd);
+    closeAllMenus(tplDd);
     tplDd?.classList.toggle('open');
   });
 
@@ -248,7 +262,7 @@
   onClick('btn-settings', e => {
     e.stopPropagation();
     const sd = $id('settings-dropdown');
-    closeAllDropdowns(sd);
+    closeAllMenus(sd);
     sd?.classList.toggle('open');
   });
 
@@ -649,6 +663,7 @@
         if (el.id === 'workspace' || el.tagName === 'BODY') return;
         if (el.classList.contains('open')) el.classList.remove('open');
       });
+      document.dispatchEvent(new Event('close-all-palettes'));
       const llmSettings = $id('llm-settings-modal');
       const llmHistory  = $id('llm-history-modal');
       if (llmSettings && getComputedStyle(llmSettings).display !== 'none') llmSettings.style.display = 'none';
@@ -666,6 +681,7 @@
     let longFired = false;
 
     function openDropdown() {
+      closeAllMenus(dropdown);
       dropdown.classList.add('open');
       longFired = true;
       const count = State.getLayout().columnCount || 2;
@@ -896,7 +912,7 @@
             idMap[oldId] = b.id;
             return b;
           });
-          incoming.history = [];
+          incoming.history = { base: null, deltas: [] };
           incoming.historyIdx = -1;
           incoming.namedSnapshots = [];
           incoming.anchors = (incoming.anchors || []).map(a => {
@@ -1046,7 +1062,7 @@
     const profileBar = $id('llm-profile-bar');
     onEvent('btn-llm-profile', 'click', e => {
       e.stopPropagation();
-      closeAllDropdowns(profileBar);
+      closeAllMenus(profileBar);
       profileBar?.classList.toggle('open');
     });
 
