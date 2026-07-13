@@ -967,6 +967,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       groomTrigger.addEventListener('click', e => {
         e.stopPropagation();
+        closeAllMenus?.(groomDd);
         document.querySelectorAll('.dropdown.open').forEach(d => {
           if (d !== groomDd) closeDropdownElement(d);
         });
@@ -1037,6 +1038,109 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       actions.appendChild(groomDd);
     }
 
+    // --- MD preview toggle (text blocks only) ---
+    if (b.type === 'text') {
+      const mdBtn = makeIconBtn(
+        '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M3 10V6l2 2.5L7 6v4"/><path d="M9 10V6h2.5c1.5 0 2.5 1 2.5 2.5S13 11 11.5 11H9"/></svg>',
+        'Markdown-превью (долгий клик — меню)'
+      );
+      mdBtn.classList.add('block-md-btn');
+
+      // --- MD dropdown (long-press) ---
+      const mdDropdown = document.createElement('div');
+      mdDropdown.className = 'translate-dropdown';
+      mdDropdown.style.display = 'none';
+      const _mdMenuItems = [
+        { action: 'copy-html', label: '📋 Копировать HTML' },
+        { action: 'copy-md',  label: '📝 Копировать Markdown' },
+      ];
+      _mdMenuItems.forEach(item => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'translate-lang-opt';
+        btn.dataset.mdAction = item.action;
+        btn.textContent = item.label;
+        mdDropdown.appendChild(btn);
+      });
+      mdDropdown.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          mdDropdown.style.display = 'none';
+          const action = btn.dataset.mdAction;
+          const blockEl = mdBtn.closest('.block');
+          if (!blockEl) return;
+          const ta = blockEl.querySelector('textarea.block-textarea');
+          const mdEl = blockEl.querySelector('.block-md-content');
+          if (action === 'copy-html') {
+            const html = mdEl?.innerHTML?.trim();
+            if (!html || !b.mdPreview) { Toast.show('Включи MD-превью', 'info'); return; }
+            navigator.clipboard.writeText(html).then(
+              () => Toast.show('HTML скопирован ✓', 'success'),
+              () => Toast.show('Ошибка копирования', 'error')
+            );
+          } else if (action === 'copy-md') {
+            const text = ta?.value || b.subtabs[b.activeSubtab]?.value || '';
+            if (!text.trim()) { Toast.show('Нет текста', 'info'); return; }
+            navigator.clipboard.writeText(text).then(
+              () => Toast.show('Markdown скопирован ✓', 'success'),
+              () => Toast.show('Ошибка копирования', 'error')
+            );
+          }
+        });
+      });
+      h.appendChild(mdDropdown);
+
+      let _mdLongPressTimer = null;
+      let _mdLongPressed = false;
+
+      mdBtn.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+        _mdLongPressed = false;
+        _mdLongPressTimer = setTimeout(() => {
+          _mdLongPressed = true;
+          const rect = mdBtn.getBoundingClientRect();
+          mdDropdown.style.left = rect.left + 'px';
+          mdDropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+          mdDropdown.style.top = 'auto';
+          mdDropdown.style.display = mdDropdown.style.display === 'none' ? 'block' : 'none';
+        }, 400);
+      });
+      mdBtn.addEventListener('mouseup', () => clearTimeout(_mdLongPressTimer));
+      mdBtn.addEventListener('mouseleave', () => clearTimeout(_mdLongPressTimer));
+
+      mdBtn.onclick = e => {
+        e.stopPropagation();
+        clearTimeout(_mdLongPressTimer);
+        if (_mdLongPressed) { _mdLongPressed = false; return; }
+        mdDropdown.style.display = 'none';
+        const blockEl = e.target.closest('.block');
+        if (!blockEl) return;
+        const ta = blockEl.querySelector('textarea.block-textarea');
+        const mdEl = blockEl.querySelector('.block-md-content');
+        if (!ta || !mdEl) return;
+        b.mdPreview = !b.mdPreview;
+        if (b.mdPreview) {
+          _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5);
+          ta.style.display = 'none';
+          mdEl.style.display = '';
+        } else {
+          mdEl.style.display = 'none';
+          ta.style.display = '';
+          ta.value = b.subtabs[b.activeSubtab]?.value ?? '';
+          ta.focus();
+        }
+        State.snapshot();
+      };
+
+      const _closeMdDropdown = e => {
+        if (!mdDropdown.contains(e.target) && e.target !== mdBtn) mdDropdown.style.display = 'none';
+      };
+      document.addEventListener('mousedown', _closeMdDropdown);
+      _pendingHoverEffects.add(() => document.removeEventListener('mousedown', _closeMdDropdown));
+
+      actions.appendChild(mdBtn);
+    }
+
     const collapseBtn = makeIconBtn(svgIcon('chevron'), 'Свернуть / развернуть');
     collapseBtn.classList.add('block-toggle-collapse');
     collapseBtn.onclick = e => { e.stopPropagation(); State.update(() => { b.collapsed = !b.collapsed; }); if (typeof Ember !== 'undefined') Ember.triggerReaction('blockCollapse', { collapsed: b.collapsed }); };
@@ -1097,6 +1201,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       ta.value = b.subtabs[newIdx].value || '';
       const savedTop = _taScrollMap.get(b.id + ':' + newIdx);
       if (savedTop != null) ta.scrollTop = savedTop;
+      // Если MD-превью включено — обновить контент для новой вкладки
+      if (b.mdPreview) {
+        const mdEl = blockEl.querySelector('.block-md-content');
+        if (mdEl) _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5);
+      }
       const body = blockEl.querySelector('.block-body');
       if (body) updateBlockCounter(ta, b, body);
     } else if (b.type === 'todo') {
@@ -1452,6 +1561,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           ta.value = val;
           ta.setSelectionRange(Math.min(ss, val.length), Math.min(se, val.length));
         }
+        if (b.mdPreview) {
+          const mdEl = body.closest('.block')?.querySelector('.block-md-content');
+          if (mdEl) _renderBlockMdPreview(val, mdEl, b.fontSize || 13.5);
+        }
         ta.focus();
         _syncBtns();
       });
@@ -1467,6 +1580,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           const ss = ta.selectionStart, se = ta.selectionEnd;
           ta.value = val;
           ta.setSelectionRange(Math.min(ss, val.length), Math.min(se, val.length));
+        }
+        if (b.mdPreview) {
+          const mdEl = body.closest('.block')?.querySelector('.block-md-content');
+          if (mdEl) _renderBlockMdPreview(val, mdEl, b.fontSize || 13.5);
         }
         ta.focus();
         _syncBtns();
@@ -2128,6 +2245,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     body.appendChild(lineWrap);
 
+    // --- MD preview div ---
+    const mdContent = document.createElement('div');
+    mdContent.className = 'block-md-content';
+    mdContent.style.fontSize = (b.fontSize || 13.5) + 'px';
+    mdContent.style.display = b.mdPreview ? '' : 'none';
+    ta.style.display = b.mdPreview ? 'none' : '';
+    body.appendChild(mdContent);
+    if (b.mdPreview) _renderBlockMdPreview(ta.value, mdContent, b.fontSize || 13.5);
+
     // Футер с кнопками размера шрифта и счётчиком
     const footer = document.createElement('div');
     footer.className = 'block-footer block-footer-compact';
@@ -2137,6 +2263,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       e.stopPropagation();
       State.updateLive(() => { b.fontSize = Math.max(8, Math.round(((b.fontSize || 13.5) - 0.5) * 2) / 2); });
       ta.style.fontSize = (b.fontSize || 13.5) + 'px';
+      mdContent.style.fontSize = (b.fontSize || 13.5) + 'px';
     };
 
     const fIncBtn = mkBtn('font-ctrl-btn', 'A+', 'Увеличить шрифт');
@@ -2144,6 +2271,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       e.stopPropagation();
       State.updateLive(() => { b.fontSize = Math.min(24, Math.round(((b.fontSize || 13.5) + 0.5) * 2) / 2); });
       ta.style.fontSize = (b.fontSize || 13.5) + 'px';
+      mdContent.style.fontSize = (b.fontSize || 13.5) + 'px';
     };
 
     const pasteCursorBtn = mkBtn('font-ctrl-btn paste-cursor-btn', '', '');
@@ -2354,6 +2482,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.value = prev.value;
         ta.setSelectionRange(prev.selStart, prev.selEnd);
         ta.dispatchEvent(new Event('input', { bubbles: true }));
+        if (b.mdPreview) {
+          const mdEl = body.closest('.block')?.querySelector('.block-md-content');
+          if (mdEl) _renderBlockMdPreview(prev.value, mdEl, b.fontSize || 13.5);
+        }
         if (!translateBtn._undoStack.length) {
           translateBtn._undoStack = null;
           translateBtn.dataset.state = '';
@@ -2403,6 +2535,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           ta.value = finalResult;
         }
         ta.dispatchEvent(new Event('input', { bubbles: true }));
+        if (b.mdPreview) {
+          const mdEl = body.closest('.block')?.querySelector('.block-md-content');
+          if (mdEl) _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5);
+        }
         if (typeof Ember !== 'undefined') Ember.triggerReaction('translate');
       }).catch(err => {
         console.error('[Translator]', err);
@@ -2579,6 +2715,27 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(translateDropdown);
   }
 
+  /* ================================================================
+     Markdown preview for text blocks
+  ================================================================ */
+  function _renderBlockMdPreview(text, mdEl, fontSize) {
+    if (!mdEl) return;
+    if (!text || !text.trim()) {
+      mdEl.innerHTML = '<span style="color:var(--text3);font-style:italic">Пусто</span>';
+      return;
+    }
+    if (typeof marked !== 'undefined') {
+      try {
+        const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        mdEl.innerHTML = marked.parse(safe);
+      } catch (_) {
+        mdEl.textContent = text;
+      }
+    } else {
+      mdEl.textContent = text;
+    }
+  }
+
   function _byteLen(s) {
     let b = 0; for (let i = 0; i < s.length; i++) {
       const c = s.charCodeAt(i); b += c < 128 ? 1 : c < 2048 ? 2 : 3;
@@ -2715,8 +2872,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   function _renderSlashPalette(ta, mode, query, triggerStart, pos, filtered) {
     if (!_slashPalette || _slashTa !== ta) {
       _closeSlashPalette();
+      closeAllMenus?.();
       _slashPalette = document.createElement('div');
-      _slashPalette.className = 'slash-palette';
+      _slashPalette.className = 'slash-palette ui-menu';
       _slashPalette.setAttribute('role', 'listbox');
       document.body.appendChild(_slashPalette);
       _slashTa = ta;
@@ -2847,6 +3005,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   }
 
   document.addEventListener('click',   e => { if (_slashPalette && !_slashPalette.contains(e.target)) _closeSlashPalette(); });
+  document.addEventListener('close-all-palettes', () => { if (_slashPalette) _closeSlashPalette(); });
   document.addEventListener('keydown',  e => {
     if (!_slashPalette) return;
     const rows = [..._slashPalette.querySelectorAll('.dropdown-item')];
@@ -2914,6 +3073,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const dd    = document.getElementById('snippet-dropdown');
     const items = (State.getAllSnippetsAndCommands?.()) || [];
     dd.innerHTML = '';
+    closeAllMenus?.(dd);
 
     if (!items.length) {
       const empty = document.createElement('div');

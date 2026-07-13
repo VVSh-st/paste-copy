@@ -2174,6 +2174,47 @@ textarea.block-textarea:focus {
 .notepad-md-content img { max-width: 100%; border-radius: var(--radius-sm); }
 .notepad-md-btn.active { background: rgba(79,142,247,0.15); color: var(--accent); border-color: rgba(79,142,247,0.28); }
 
+/* --- Block MD preview --- */
+.block-md-content {
+  overflow: auto; background: var(--bg0); color: var(--text1);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 9px; font-size: 13px; line-height: 1.6;
+  min-height: 110px; max-height: 60vh;
+}
+.block-md-content h1, .block-md-content h2, .block-md-content h3,
+.block-md-content h4, .block-md-content h5, .block-md-content h6 {
+  color: var(--text0); margin: 0.6em 0 0.3em; line-height: 1.3;
+}
+.block-md-content h1 { font-size: 1.4em; }
+.block-md-content h2 { font-size: 1.2em; }
+.block-md-content h3 { font-size: 1.1em; }
+.block-md-content p { margin: 0.4em 0; }
+.block-md-content ul, .block-md-content ol { margin: 0.3em 0; padding-left: 1.5em; }
+.block-md-content li { margin: 0.15em 0; }
+.block-md-content code {
+  background: var(--bg3); border-radius: 4px; padding: 1px 6px;
+  font-family: var(--mono); font-size: 0.9em;
+}
+.block-md-content pre {
+  background: var(--bg3); border-radius: var(--radius-sm);
+  padding: 10px 14px; overflow-x: auto; margin: 0.5em 0;
+  border: 1px solid var(--border);
+}
+.block-md-content pre code { background: transparent; padding: 0; border-radius: 0; font-size: 13px; line-height: 1.6; }
+.block-md-content blockquote {
+  border-left: 3px solid var(--accent); margin: 0.5em 0; padding: 4px 10px;
+  color: var(--text2);
+}
+.block-md-content table { border-collapse: collapse; margin: 0.5em 0; width: 100%; }
+.block-md-content th, .block-md-content td {
+  border: 1px solid var(--border); padding: 4px 8px; text-align: left; font-size: 0.95em;
+}
+.block-md-content th { background: var(--bg3); font-weight: 600; }
+.block-md-content a { color: var(--accent); text-decoration: none; }
+.block-md-content a:hover { text-decoration: underline; }
+.block-md-content hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
+.block-md-content img { max-width: 100%; border-radius: var(--radius-sm); }
+
 /* ===== LLM MODULE STYLES ===== */
 .llm-dot {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
