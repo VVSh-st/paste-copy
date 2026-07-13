@@ -249,19 +249,21 @@
 }
 
 .ember-crack-layer {
+  --crack-c1: rgba(255,180,60,0.9);
+  --crack-glow-color: rgba(255,220,150,0.8);
+  --crack-opacity: 0.5;
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  opacity: 0.5;
+  opacity: var(--crack-opacity, 0.5);
   mix-blend-mode: screen;
   filter: blur(0.3px);
-  transition: opacity 0.15s ease;
+  transition: opacity 0.12s ease;
 }
 
 .ember-crack-layer.ignited {
-  opacity: 1 !important;
-  filter: blur(0.3px) brightness(1.5);
+  filter: blur(0.3px) drop-shadow(0 0 3px var(--crack-glow-color, rgba(255, 220, 150, 0.8)));
 }
 
 /* зола, нарастающая со временем */

@@ -283,6 +283,14 @@ const Ember = (() => {
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function easeOutQuad(t) { return t * (2 - t); }
 
+  function mixRgb(r1,g1,b1, r2,g2,b2, t) {
+    return [
+      Math.round(r1 + (r2 - r1) * t),
+      Math.round(g1 + (g2 - g1) * t),
+      Math.round(b1 + (b2 - b1) * t),
+    ];
+  }
+
   // ---------- style cache ----------
   const styleCache = new Map();
   function setVar(el, name, value) {
@@ -991,12 +999,23 @@ const Ember = (() => {
   function updateCrackLayers(now, crackGlow) {
     crackLayers.forEach(layer => {
       let opacity = crackGlow;
+      let heat = 0;
       if (layer.ignited) {
         const t = clamp((now - layer.igniteStart) / layer.igniteDur, 0, 1);
         if (t >= 1) { layer.ignited = false; }
-        else { opacity = Math.min(1, crackGlow + (1 - crackGlow) * (1 - t) * 1.5); }
+        else {
+          heat = t < 0.15
+            ? easeOutQuad(t / 0.15)
+            : 1 - 0.7 * (1 - Math.pow(1 - (t - 0.15) / 0.85, 2));
+          opacity = clamp(crackGlow + (1 - crackGlow) * heat * 1.4, 0, 1);
+        }
       }
-      layer.el.style.opacity = clamp(opacity, 0, 1).toFixed(3);
+      layer.el.style.opacity = opacity.toFixed(3);
+      layer.el.style.setProperty('--crack-opacity', opacity.toFixed(3));
+      const c1 = mixRgb(255, 180, 60, 255, 240, 180, heat);
+      const glow = mixRgb(255, 180, 100, 255, 255, 230, heat);
+      layer.el.style.setProperty('--crack-c1', `rgba(${c1[0]},${c1[1]},${c1[2]},${(0.6 + heat * 0.4).toFixed(2)})`);
+      layer.el.style.setProperty('--crack-glow-color', `rgba(${glow[0]},${glow[1]},${glow[2]},${(0.5 + heat * 0.3).toFixed(2)})`);
     });
   }
 
@@ -1605,17 +1624,20 @@ const Ember = (() => {
     el.style.top = startY + '%';
     activeSparks++;
 
-    const travel = rand(100, 400);
-    const angle = rand(Math.PI * 0.45, Math.PI * 1.0);
-    const drift = Math.cos(angle) * travel;
+    const travel = rand(380, 720);
+    const angle = rand(Math.PI * 0.55, Math.PI * 1.05);
+    const horizontalBias = Math.random() < 0.4
+      ? rand(-180, 180)
+      : rand(-60, 60);
+    const drift = Math.cos(angle) * travel + horizontalBias;
     const rise = Math.sin(angle) * travel;
 
     particles.push({
       el, born: performance.now(),
       startX, startY,
-      dur: rand(850, 1900),
+      dur: rand(1200, 2400),
       rise, drift,
-      sway: rand(1, 8),
+      sway: rand(2, 12),
       isSpark: true,
       type: 'anomaly',
       trail: size > 2.25 ? Math.random() < 0.3 : Math.random() < 0.15,
@@ -1765,13 +1787,27 @@ const Ember = (() => {
       if (p.isSpark) {
         const grav = (p.gravity || 0.03) * t * t * 55;
         if (p.type === 'anomaly') {
-          const e = easeOutQuad(t);
-          const arc = Math.sin(t * Math.PI);
-          const jitter = Math.sin(t * Math.PI * (p.jitterFreq || 2)) * (p.jitterAmp || 0);
-          rise = p.rise * e + grav + (p.arcY || 0) * arc;
-          drift = p.drift * t + windGust * (p.windInfluence || 0.8) * t * 8 + (p.arcX || 0) * arc + jitter;
-          scale = 1 + Math.sin(t * Math.PI) * 0.22 - t * 0.46;
-          opacity = (t < 0.06 ? t / 0.06 : t < 0.76 ? 1 : 1 - (t - 0.76) / 0.24) * (p.brightPulse || 1);
+          const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+          const grav = (p.gravity || 0.03) * Math.pow(t, 1.6) * 30;
+          const arc = Math.sin(t * Math.PI * 0.9);
+          const jitterAmp = (p.jitterAmp || 0) * (0.5 + t * 1.2);
+          const jitter = Math.sin(t * Math.PI * (p.jitterFreq || 2)) * jitterAmp;
+          rise = p.rise * e - grav + (p.arcY || 0) * arc * 0.7;
+          drift = p.drift * t + windGust * (p.windInfluence || 0.8) * t * 12 + (p.arcX || 0) * arc + jitter;
+          if (t < 0.2) {
+            const a = t / 0.2;
+            scale = 0.3 + easeOutQuad(a) * 0.9;
+            opacity = a;
+          } else if (t < 0.7) {
+            const a = (t - 0.2) / 0.5;
+            scale = 1.2 + Math.sin(a * Math.PI * 2.5) * 0.18;
+            opacity = 1.0;
+          } else {
+            const a = (t - 0.7) / 0.3;
+            scale = 1.2 * (1 - a * a) + 0.35 * (1 - a);
+            opacity = 1 - a * a;
+          }
+          scale *= (p.brightPulse || 1);
         } else if (p.type === 'anomaly-dust') {
           rise = p.rise * easeOutQuad(t) + grav;
           drift = p.drift * t + Math.sin(t * Math.PI * 4) * (p.sway || 0);
@@ -1812,10 +1848,20 @@ const Ember = (() => {
       let shadow = '';
 
       if (p.trail && p.isSpark) {
-        const trailLen = (1 - t) * (p.type === 'shooting' ? 14 : p.type === 'anomaly' ? 7 : 9);
+        let trailLen, trailColor;
+        if (p.type === 'anomaly') {
+          trailLen = (1 - t) * (1 - t) * 14 + 1.5;
+          const cold = 1 - t;
+          trailColor = `rgba(${Math.round(255 - cold * 90)}, ${Math.round(140 - cold * 30)}, ${Math.round(50 - cold * 20)}, ${(0.6 * cold * (p.brightPulse || 1)).toFixed(2)})`;
+        } else if (p.type === 'shooting') {
+          trailLen = (1 - t) * 14;
+          trailColor = `rgba(255,150,50,${(0.65 * (1 - t)).toFixed(2)})`;
+        } else {
+          trailLen = (1 - t) * 9;
+          trailColor = `rgba(255,150,50,${(0.65 * (1 - t)).toFixed(2)})`;
+        }
         const trailX = (drift * 0.18).toFixed(1);
-        shadow =
-          `${trailX}px ${trailLen.toFixed(1)}px 4px rgba(255,150,50,${((p.type === 'anomaly' ? 0.4 : 0.65) * (1 - t)).toFixed(2)})`;
+        shadow = `${trailX}px ${trailLen.toFixed(1)}px 4px ${trailColor}`;
       }
 
       p.el.style.transform =
