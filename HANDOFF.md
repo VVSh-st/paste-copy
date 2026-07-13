@@ -503,12 +503,13 @@
 | 11 | УКУТЫВАНИЕ | 600мс | Кольцо сжимается вокруг |
 | 12 | ВОЗВРАЩЕНИЕ | 700мс | Вырастает обратно |
 
-**Ключевые фиксы (задание 4 (6)):**
+**Ключевые фиксы (задание 4 (6) + 4 (7)):**
 - **Радиусы 150-225px** вместо 24-30px — ТЗ "≥150px от курсора" соблюдено
 - **Landing point** `_landX/_landY` вместо `caretX/caretY` — приземление в стороне от caret
 - **Safe start** — если cursorLean близко к caret, старт сдвигается на 175px
 - **minDist guard** — в конце updateEgg: если phase 2-9 и <150px от caret, принудительно отодвигает
 - **reduceMotion early-return** — в economy режиме egg замирает на landing point (30% CPU экономия)
+- **Viewport-aware orbits** — `caretX/Y` clamped к safe range при старте; `_landX/_landY` clamped к viewport-safe region; общий viewport clamp в конце updateEgg (egg.x/y не за край экрана)
 
 **ПКМ-тест включён:** `allowTestMode = true` — правый клик на эмбере запускает все эффекты.
 
