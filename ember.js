@@ -165,6 +165,8 @@ const Ember = (() => {
 
   // --- mouse movement tracking for idle gate ---
   let mouseMovedSinceLastFrame = false;
+  let _mouseDirty = false;
+  let _lastMouseEvent = null;
 
   // --- particle throttle ---
   let _particleFrameToggle = 0;
@@ -262,16 +264,12 @@ const Ember = (() => {
     timers.clear();
   }
   function deferBurst(fn, count, interval) {
-    let cnt = 0;
     const id = setTimeout(function step() {
-      if (destroyed || !root) { timers.delete(id); return; }
+      timers.delete(id);
+      if (destroyed || !root) return;
       fn();
-      if (++cnt < count) {
-        const nid = setTimeout(step, interval);
-        timers.delete(id);
-        timers.add(nid);
-      } else {
-        timers.delete(id);
+      if (count > 1) {
+        deferBurst(fn, count - 1, interval);
       }
     }, interval);
     timers.add(id);
@@ -515,6 +513,8 @@ const Ember = (() => {
     window.addEventListener('storage', handlers.storageSync);
   }
 
+  let _editTooltipTimer = null;
+
   function notifyEdit() {
     if (!state) return;
     const now = Date.now();
@@ -524,7 +524,9 @@ const Ember = (() => {
     saveState();
     broadcast();
     syncAccessibleLabel(true);
-    if (tooltipEl) showTooltip();
+    clearDeferred(_editTooltipTimer);
+    clearDeferred(tooltipHideTimer);
+    _editTooltipTimer = defer(() => { if (tooltipEl) showTooltip(); }, 800);
   }
 
   function setStatus(type) {
@@ -728,11 +730,11 @@ const Ember = (() => {
       const totalWindow = clamp(300 + added * 20, 300, 500);
       const step = totalWindow / added;
       for (let i = prevRemaining; i < remaining; i++) {
-        segments[i].style.setProperty('--reveal-delay', ((i - prevRemaining) * step).toFixed(0));
+        setVar(segments[i], '--reveal-delay', ((i - prevRemaining) * step).toFixed(0));
       }
       defer(() => {
         for (let i = prevRemaining; i < remaining; i++) {
-          segments[i].style.removeProperty('--reveal-delay');
+          removeVar(segments[i], '--reveal-delay');
         }
       }, totalWindow + 50);
     }
@@ -1010,12 +1012,12 @@ const Ember = (() => {
           opacity = clamp(crackGlow + (1 - crackGlow) * heat * 1.4, 0, 1);
         }
       }
-      layer.el.style.opacity = opacity.toFixed(3);
-      layer.el.style.setProperty('--crack-opacity', opacity.toFixed(3));
+      setStyle(layer.el, 'opacity', opacity.toFixed(3));
+      setVar(layer.el, '--crack-opacity', opacity.toFixed(3));
       const c1 = mixRgb(255, 180, 60, 255, 240, 180, heat);
       const glow = mixRgb(255, 180, 100, 255, 255, 230, heat);
-      layer.el.style.setProperty('--crack-c1', `rgba(${c1[0]},${c1[1]},${c1[2]},${(0.6 + heat * 0.4).toFixed(2)})`);
-      layer.el.style.setProperty('--crack-glow-color', `rgba(${glow[0]},${glow[1]},${glow[2]},${(0.5 + heat * 0.3).toFixed(2)})`);
+      setVar(layer.el, '--crack-c1', `rgba(${c1[0]},${c1[1]},${c1[2]},${(0.6 + heat * 0.4).toFixed(2)})`);
+      setVar(layer.el, '--crack-glow-color', `rgba(${glow[0]},${glow[1]},${glow[2]},${(0.5 + heat * 0.3).toFixed(2)})`);
     });
   }
 
@@ -2032,6 +2034,15 @@ const Ember = (() => {
   let nextCaretSample = 0;
 
   function sampleMousePosition(now) {
+    if (_mouseDirty) {
+      _mouseDirty = false;
+      const e = _lastMouseEvent;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const margin = 200;
+      mouse.x = clamp(e.x, -margin, vw + margin);
+      mouse.y = clamp(e.y, -margin, vh + margin);
+    }
     if (now < nextMouseSample) return;
     nextMouseSample = now + CURSOR_SAMPLE_INTERVAL;
     const dx = mouse.x - mouse.lastSampleX;
@@ -2537,6 +2548,7 @@ const Ember = (() => {
   }
 
   function startEgg(targetOverride) {
+    if (previewScare.active) return;
     const ember = getEmberCenter();
     let targetX, targetY;
     if (targetOverride) {
@@ -3324,6 +3336,16 @@ const Ember = (() => {
     lastWarnRemaining = curRem;
 
     if (reduceMotion) {
+      ringImpulse = 0;
+      cursorLean.x = 0; cursorLean.y = 0;
+      cursorLean.squish = 0; cursorLean.scale = 1;
+      cursorLean.tiltX = 0; cursorLean.tiltY = 0;
+      if (coreEl) {
+        removeVar(coreEl, '--glintOpacity');
+        removeVar(coreEl, '--glintX');
+        removeVar(coreEl, '--glintY');
+        removeVar(coreEl, '--glintRot');
+      }
       heat = clamp(intensity + heatBoost * 0.15, 0, 1);
       const ashRaw = clamp(1 - intensity, 0, 1);
       ashCoverage = ashRaw * ashRaw * (3 - 2 * ashRaw);
@@ -3458,6 +3480,10 @@ const Ember = (() => {
       windGust *= 0.9;
       heatBoost *= 0.99;
       ringImpulse *= 0.95;
+      if (peek.state !== 'idle') {
+        peek.state = 'idle';
+        peek.cooldown = 5000;
+      }
 
       const idleBreath = 1 + Math.sin(now * 0.0015) * 0.015;
       breathScale += (idleBreath - breathScale) * 0.06;
@@ -3978,11 +4004,8 @@ const Ember = (() => {
     handlers.mousemove = (e) => {
       if (!browserFocused) return;
       mouseMovedSinceLastFrame = true;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const margin = 200;
-      mouse.x = clamp(e.clientX, -margin, vw + margin);
-      mouse.y = clamp(e.clientY, -margin, vh + margin);
+      _lastMouseEvent = { x: e.clientX, y: e.clientY };
+      _mouseDirty = true;
     };
     handlers.selectionchange = () => {
       const ae = document.activeElement;
@@ -4133,6 +4156,7 @@ const Ember = (() => {
     clearDeferred(tooltipHideTimer);
     clearDeferred(tooltipRemoveTimer);
     clearDeferred(allowTestModeTimer);
+    clearDeferred(_editTooltipTimer);
     hideTooltip(true);
     clearAllDeferred();
     particles.forEach(p => releaseEl(p.el));
@@ -4155,6 +4179,9 @@ const Ember = (() => {
     activeSparks = 0;
     glowTrackX = 0; glowTrackY = 0;
     ashTrackX = 0; ashTrackY = 0;
+    _mouseDirty = false;
+    _lastMouseEvent = null;
+    mouseMovedSinceLastFrame = false;
     hazeTrackX = 0;
     emberMood = 'calm';
     residualHeat = 0;
