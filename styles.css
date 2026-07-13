@@ -2150,14 +2150,15 @@ textarea.block-textarea:focus {
 .notepad-md-content ul, .notepad-md-content ol { margin: 0.3em 0; padding-left: 1.5em; }
 .notepad-md-content li { margin: 0.15em 0; }
 .notepad-md-content code {
-  background: var(--surface); padding: 1px 4px; border-radius: 3px;
+  background: var(--bg3); border-radius: 4px; padding: 1px 6px;
   font-family: var(--mono); font-size: 0.9em;
 }
 .notepad-md-content pre {
-  background: var(--surface); border-radius: var(--radius-sm);
-  padding: 8px; overflow-x: auto; margin: 0.5em 0;
+  background: var(--bg3); border-radius: var(--radius-sm);
+  padding: 10px 14px; overflow-x: auto; margin: 0.5em 0;
+  border: 1px solid var(--border);
 }
-.notepad-md-content pre code { background: none; padding: 0; }
+.notepad-md-content pre code { background: transparent; padding: 0; border-radius: 0; font-size: 13px; line-height: 1.6; }
 .notepad-md-content blockquote {
   border-left: 3px solid var(--accent); margin: 0.5em 0; padding: 4px 10px;
   color: var(--text2);
@@ -2166,7 +2167,7 @@ textarea.block-textarea:focus {
 .notepad-md-content th, .notepad-md-content td {
   border: 1px solid var(--border); padding: 4px 8px; text-align: left; font-size: 0.95em;
 }
-.notepad-md-content th { background: var(--surface); font-weight: 600; }
+.notepad-md-content th { background: var(--bg3); font-weight: 600; }
 .notepad-md-content a { color: var(--accent); text-decoration: none; }
 .notepad-md-content a:hover { text-decoration: underline; }
 .notepad-md-content hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
