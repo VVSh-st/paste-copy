@@ -3776,23 +3776,9 @@ const Ember = (() => {
 
   let reduceMotionFrameSkip = 0;
   let reducedMotionTimer = null;
-  let _throttleTimer = null;
   let destroyed = false;
   const fpsHistory = [];
   let lowFpsMode = false;
-  let _idleLevel = 0;
-  let _idleConsecutive = 0;
-
-  function idleState(now) {
-    if (!isSceneIdle()) {
-      if (_idleLevel !== 0) { _idleLevel = 0; _idleConsecutive = 0; }
-      return 0;
-    }
-    _idleConsecutive++;
-    if (_idleLevel < 1 && _idleConsecutive > 120) _idleLevel = 1;
-    if (_idleLevel < 2 && _idleConsecutive > 480) _idleLevel = 2;
-    return _idleLevel;
-  }
 
   function animate(timestamp) {
     rafId = null;
@@ -3827,26 +3813,7 @@ const Ember = (() => {
         rafId = requestAnimationFrame(animate);
       }, 100);
     } else {
-      const lvl = idleState(timestamp);
-      if (lvl >= 2) {
-        clearTimeout(_throttleTimer);
-        _throttleTimer = setTimeout(() => {
-          _throttleTimer = null;
-          if (destroyed || !root) return;
-          rafId = requestAnimationFrame(animate);
-        }, 130);
-      } else if (lvl === 1) {
-        clearTimeout(_throttleTimer);
-        _throttleTimer = setTimeout(() => {
-          _throttleTimer = null;
-          if (destroyed || !root) return;
-          rafId = requestAnimationFrame(animate);
-        }, 33);
-      } else {
-        clearTimeout(_throttleTimer);
-        _throttleTimer = null;
-        rafId = requestAnimationFrame(animate);
-      }
+      rafId = requestAnimationFrame(animate);
     }
   }
 
@@ -3879,7 +3846,6 @@ const Ember = (() => {
   function stopLoop() {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (reducedMotionTimer) { clearTimeout(reducedMotionTimer); reducedMotionTimer = null; }
-    if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null; }
   }
 
   // ---------- реакция на печать ----------
@@ -4167,7 +4133,6 @@ const Ember = (() => {
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
     attn.dirX = 0; attn.hotX = 50; attn.hotY = 50; attn.activeHsIdx = -1;
     _emberCenterCache.frame = -1;
-    _idleLevel = 0; _idleConsecutive = 0;
     focusState = 'active'; focusTimer = 0;
     temperament.curiosity = 0; temperament.nervousness = 0;
     temperament.tiredness = 0; temperament.satisfaction = 0;
