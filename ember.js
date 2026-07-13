@@ -673,20 +673,6 @@ const Ember = (() => {
       crackLayers.push({ el: layer, baseOpacity: 0.5, ignited: false, igniteStart: 0, igniteDur: 0 });
     });
 
-    const microSparkLayer = document.createElement('div');
-    microSparkLayer.className = 'ember-micro-sparks';
-    const microCount = Math.floor(rand(4, 7));
-    for (let i = 0; i < microCount; i++) {
-      const sp = document.createElement('div');
-      sp.className = 'micro-spark';
-      sp.style.left = rand(15, 85).toFixed(1) + '%';
-      sp.style.top = rand(15, 85).toFixed(1) + '%';
-      sp.style.animationDelay = (-rand(0, 2)).toFixed(2) + 's';
-      sp.style.animationDuration = rand(1.6, 2.8).toFixed(2) + 's';
-      microSparkLayer.appendChild(sp);
-    }
-    coreEl.appendChild(microSparkLayer);
-
     ashEl = document.createElement('div');
     ashEl.className = 'ember-ash-overlay';
     coreEl.appendChild(ashEl);
@@ -1197,7 +1183,7 @@ const Ember = (() => {
     const shadowBase = 1 + Math.abs(pose.y) * 0.02 + Math.abs(bobY) * 0.05 - pose.shadowTighten * 0.08;
     const shadowAlpha = clamp(0.45 - Math.abs(pose.y + bobY) * 0.01 + pose.shadowTighten * 0.06, 0.15, 0.62);
     setVar(root, '--shadowScale', shadowBase.toFixed(3));
-    setVar(root, '--shadowAlpha', (shadowAlpha + (bgIsDark ? 0.1 : 0)).toFixed(3));
+    setVar(root, '--shadowAlpha', shadowAlpha.toFixed(3));
 
     const shiftX = heatOffsetX * 0.6 + pose.x * 0.35 + ashTrackX * 0.3;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.35 + bobY;
@@ -1220,10 +1206,8 @@ const Ember = (() => {
     setVar(root, '--tiltX', (pose.tiltX + cursorLean.tiltX).toFixed(2) + 'deg');
     setVar(root, '--tiltY', (tiltCurrent * 0.6 + pose.tiltY + cursorLean.tiltY).toFixed(2) + 'deg');
 
-    const bgIsDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const darkBoost = bgIsDark ? 0.15 : 0;
-    const glow = clamp(intensity + heatBoost * 0.4 + pose.glow + hoverVal * 0.2 + windGust * 0.25 + darkBoost, 0, 1.8);
-    const brightness = clamp(0.8 + intensity * 0.35 + pose.brightness + heatBoost * 0.45 + hoverVal * 0.18 + windGust * 0.35 + darkBoost * 1.3, 0.4, 2.5);
+    const glow = clamp(intensity + heatBoost * 0.4 + pose.glow + hoverVal * 0.2 + windGust * 0.25, 0, 1.8);
+    const brightness = clamp(0.8 + intensity * 0.35 + pose.brightness + heatBoost * 0.45 + hoverVal * 0.18 + windGust * 0.35, 0.4, 2.5);
 
     setVar(root, '--heat', heat.toFixed(3));
     setVar(root, '--glow', glow.toFixed(3));
@@ -3273,9 +3257,8 @@ const Ember = (() => {
 
       const idleBreath = 1 + Math.sin(breathPhase * 2.5) * 0.012 * intensity;
       breathScale += (idleBreath - breathScale) * 0.06;
-      const _idleDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 0.15 : 0;
-      const idleGlow = clamp(intensity + heatBoost * 0.3 + idlePulse + _idleDark, 0, 1.8);
-      const idleBright = clamp(0.7 + intensity * 0.3 + heatBoost * 0.4 + idlePulse * 0.3 + _idleDark * 1.3, 0.35, 2.5);
+      const idleGlow = clamp(intensity + heatBoost * 0.3 + idlePulse, 0, 1.8);
+      const idleBright = clamp(0.7 + intensity * 0.3 + heatBoost * 0.4 + idlePulse * 0.3, 0.35, 2.5);
 
       heat = clamp(intensity + heatBoost * 0.25, 0, 1);
       setVarApprox(root, '--breathScale', breathScale.toFixed(4), 0.001);
@@ -3307,15 +3290,16 @@ const Ember = (() => {
         nextAriaUpdate = now + 60000;
       }
 
-      // --- idle gate: still spawn particles even when scene is idle ---
+      // --- particles still spawn/update in idle ---
       if (!reduceMotion && focusState === 'active') {
         if (Date.now() > nextAshSpawn) {
-          if (Math.random() < 0.35) spawnAshParticle();
-          nextAshSpawn = Date.now() + rand(800, 1600);
+          if (Math.random() < 0.4) spawnAshParticle();
+          nextAshSpawn = Date.now() + rand(700, 1400);
         }
         if (Date.now() > nextSparkCheck) {
-          if (Math.random() < 0.3 * (0.4 + intensity * 0.6)) spawnSpark();
-          nextSparkCheck = Date.now() + rand(2000, 4500);
+          if (Math.random() < 0.35 * (0.4 + intensity * 0.6)) spawnSpark();
+          if (intensity > 0.6 && Math.random() < 0.06) spawnShootingSpark();
+          nextSparkCheck = Date.now() + rand(1800, 4000);
         }
         if ((++_particleFrameToggle & 1) || particles.length < 16) updateParticles(now, dt);
       }
@@ -3790,9 +3774,23 @@ const Ember = (() => {
 
   let reduceMotionFrameSkip = 0;
   let reducedMotionTimer = null;
+  let _throttleTimer = null;
   let destroyed = false;
   const fpsHistory = [];
   let lowFpsMode = false;
+  let _idleLevel = 0;
+  let _idleConsecutive = 0;
+
+  function idleState(now) {
+    if (!isSceneIdle()) {
+      if (_idleLevel !== 0) { _idleLevel = 0; _idleConsecutive = 0; }
+      return 0;
+    }
+    _idleConsecutive++;
+    if (_idleLevel < 1 && _idleConsecutive > 120) _idleLevel = 1;
+    if (_idleLevel < 2 && _idleConsecutive > 480) _idleLevel = 2;
+    return _idleLevel;
+  }
 
   function animate(timestamp) {
     rafId = null;
@@ -3827,7 +3825,26 @@ const Ember = (() => {
         rafId = requestAnimationFrame(animate);
       }, 100);
     } else {
-      rafId = requestAnimationFrame(animate);
+      const lvl = idleState(timestamp);
+      if (lvl >= 2) {
+        clearTimeout(_throttleTimer);
+        _throttleTimer = setTimeout(() => {
+          _throttleTimer = null;
+          if (destroyed || !root) return;
+          rafId = requestAnimationFrame(animate);
+        }, 130);
+      } else if (lvl === 1) {
+        clearTimeout(_throttleTimer);
+        _throttleTimer = setTimeout(() => {
+          _throttleTimer = null;
+          if (destroyed || !root) return;
+          rafId = requestAnimationFrame(animate);
+        }, 33);
+      } else {
+        clearTimeout(_throttleTimer);
+        _throttleTimer = null;
+        rafId = requestAnimationFrame(animate);
+      }
     }
   }
 
@@ -3860,6 +3877,7 @@ const Ember = (() => {
   function stopLoop() {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (reducedMotionTimer) { clearTimeout(reducedMotionTimer); reducedMotionTimer = null; }
+    if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null; }
   }
 
   // ---------- реакция на печать ----------
@@ -4147,6 +4165,7 @@ const Ember = (() => {
     attn.state = 'idle'; attn.timer = 0; attn.hotHeat = 0;
     attn.dirX = 0; attn.hotX = 50; attn.hotY = 50; attn.activeHsIdx = -1;
     _emberCenterCache.frame = -1;
+    _idleLevel = 0; _idleConsecutive = 0;
     focusState = 'active'; focusTimer = 0;
     temperament.curiosity = 0; temperament.nervousness = 0;
     temperament.tiredness = 0; temperament.satisfaction = 0;
