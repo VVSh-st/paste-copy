@@ -204,7 +204,8 @@
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
-| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy; `idleLevel` rAF throttle (60→30→8fps), `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip |
+| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate, `POSE_BUF`/`resetPose()` переиспользование позы, particle throttle 30fps, `setVarApprox` epsilon-кеш, `deferBurst` вместо циклов defer, `mouseMovedSinceLastFrame` флаг, `updateMood` в `requestIdleCallback`, `passive: true` на mousemove; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry check, fallback timeout, `_idleCallbackId` cleanup в destroy; `idleLevel` rAF throttle (60→30→8fps), `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing: `breathCore/Glow/Crust/Ash`, `_throttleTimer` fix |
+| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust` (translateZ+scale), `.ember-glow` → `--breathGlow` (translateZ+scale), `.ember-ash-overlay` → `--breathAsh` (opacity+translate), `.ember-haze` → `--breathAsh` (translateZ+scaleX) |
 
 ## Как работает
 
@@ -281,6 +282,27 @@
 6. **`flashHeat`/`coreHeatReserve` early skip** — `if (val > 0)` перед decay
 
 **Эффект:** на длительном idle (8с+) — rAF идёт ~8fps вместо 60fps. ~7-8× экономия CPU на простаивающей странице.
+
+---
+
+### Layered breathing — breathCore/Glow/Crust/Ash (задание 3.7)
+
+**Файлы:** `ember.js`, `ember-styles.css`
+
+**Суть:** вместо одного `--breathScale` для всех слоёв — 4 независимые фазы с разной амплитудой:
+- `--breathCore` (×1.0) — ядро, синхронно с breathScale
+- `--breathGlow` (×0.85) — свечение, отстаёт (восходящий жар)
+- `--breathCrust` (×1.1) — корка, опережает (первая реагирует)
+- `--breathAsh` (×0.6) — пепел, сильно отстаёт (оседает когда жар отступил)
+
+**CSS:**
+- `.ember-core` — `scale()` через `--breathCore`
+- `.ember-crust` — `translateZ` + `scale` через `--breathCrust` (приподнимается при вдохе)
+- `.ember-glow` — `translateZ` + `scale` через `--breathGlow` (отстаёт)
+- `.ember-ash-overlay` — `opacity * --breathAsh`, `translate` через `--breathAsh`
+- `.ember-haze` — `translateZ` + `scaleX` через `--breathAsh`
+
+**Доп:** `_throttleTimer` — `clearTimeout` в `stopLoop()` и перед `setTimeout` в `animate()`.
 
 ---
 
