@@ -413,11 +413,14 @@ const Notepad = (() => {
     translateBtn.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       translateLongPressed = false;
+      if (typeof Translator === 'undefined') return;
       translateLongPressTimer = setTimeout(() => {
         translateLongPressed = true;
+        if (!translateDropdown.children.length && typeof Translator !== 'undefined') _buildTranslateMenu();
         const rect = translateBtn.getBoundingClientRect();
         translateDropdown.style.left = rect.left + 'px';
-        translateDropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        translateDropdown.style.top = (rect.bottom + 4) + 'px';
+        translateDropdown.style.bottom = '';
         translateDropdown.style.display = translateDropdown.style.display === 'none' ? 'block' : 'none';
       }, 400);
     });
