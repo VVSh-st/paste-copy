@@ -4,6 +4,7 @@
   align-items: center;
   margin: 0 4px 0 0;
   position: relative;
+  color-scheme: dark;
 }
 
 .ember::after {
@@ -27,6 +28,7 @@
   --shiftY: 0px;
   --breathScale: 1;
   --rotation: 0deg;
+  color-scheme: dark;
   --tiltX: 0deg;
   --tiltY: 0deg;
   --scaleX: 1;
@@ -407,39 +409,6 @@
 .ember:focus-visible {
   outline: 1px dashed rgba(255, 150, 70, 0.5);
   outline-offset: 3px;
-}
-
-/* ===== Micro-sparks on core surface ===== */
-.ember-micro-sparks {
-  position: absolute;
-  inset: 8%;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  border-radius: inherit;
-}
-
-.micro-spark {
-  position: absolute;
-  width: 1.2px;
-  height: 1.2px;
-  border-radius: 50%;
-  background: rgba(255, 220, 130, 0.95);
-  box-shadow:
-    0 0 2.5px rgba(255, 170, 70, 0.85),
-    0 0 5px rgba(255, 110, 30, 0.5);
-  opacity: 0;
-  animation: microSparkFlicker 2s ease-in-out infinite;
-}
-
-@keyframes microSparkFlicker {
-  0%, 100% { opacity: 0.15; transform: scale(0.8); }
-  20%       { opacity: 0.95; transform: scale(1.25); }
-  50%       { opacity: 0.4;  transform: scale(0.95); }
-  80%       { opacity: 0.75; transform: scale(1.1); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .micro-spark { animation: none; opacity: 0.6; }
 }
 
 /* ===== Частицы ===== */
