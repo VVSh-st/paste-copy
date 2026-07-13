@@ -203,9 +203,10 @@
 | `prompt-loom.js` | `renderPalette` — DOM-diff (не пересоздаёт search input); `close-all-palettes` listener; `closePalette` export; фикс `handleBackslashTrigger` |
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
-| `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only |
-| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate (со спавном частиц внутри), `POSE_BUF`/`resetPose()`, particle throttle 30fps, `setVarApprox`, `deferBurst`, `mouseMovedSinceLastFrame`, `updateMood` в `requestIdleCallback`, `passive: true`; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry, fallback timeout, `_idleCallbackId` cleanup; `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing `breathCore/Glow/Crust/Ash`; `_throttleTimer` fix; crack color-shift `mixRgb()`; anomaly sparks 380-720px; micro-flicker idle; landed ash particles; dying tab guard; idleLevel throttle УДАЛЁН (убивал визуал) |
-| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode) |
+| `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only; **Аудит итерации 1-4:** AudioContext reuse (один на цикл, user-gesture init); `_cachePoints` аналитический (0 layout вместо 800); `_tickRAF` safety (`rafId=null`); `closeInlineInput` comma→if/else; inline-input фидбэк (shake+red); ResizeObserver debounce (`_resizeRaf`); cssText cache (`_cachedDigitCssText/Sig/Font`); `_applyArc` hot path оптимизация (display/r только при смене dir, `_lastHeadIdx` guard, убран strokeDashoffset='0'); AudioContext.resume().catch(); `restoreState` AudioContext init; `_updateDisplay` guards; `void offsetWidth` убран; `setIdleVisual` дубли убраны; `parentNode.style.position` вынесен в init |
+| `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate (со спавном частиц внутри), `POSE_BUF`/`resetPose()`, particle throttle 30fps, `setVarApprox`, `deferBurst`, `mouseMovedSinceLastFrame`, `updateMood` в `requestIdleCallback`, `passive: true`; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry, fallback timeout, `_idleCallbackId` cleanup; `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing `breathCore/Glow/Crust/Ash`; `_throttleTimer` fix; crack color-shift `mixRgb()`; anomaly sparks 380-720px; micro-flicker idle; landed ash particles; dying tab guard; idleLevel throttle УДАЛЁН (убивал визуал); **Аудит R1:** `ringImpulse`/`cursorLean` обнуляются в reduce-motion; tooltip debounce 800мс (`_editTooltipTimer`); `startEgg` guard на `previewScare.active`; `--reveal-delay` через `setVar`/`removeVar`; **Аудит R2:** `deferBurst` рекурсия (fix timer leak), `updateCrackLayers` через `setVar` (fix cache bypass), `notifyEdit` чистит `tooltipHideTimer` (fix race), reduceMotion чистит glint vars, `peek.state` reset в idle, mousemove throttle-lock (_mouseDirty buffer) |
+| `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode); **Аудит:** segment transition `background-color` → `opacity`; `will-change: transform` на `.ember-core` |
+| `styles.css` | `capturePulse` infinite → 1; `prefers-reduced-motion` для capturePulse; `.timer-input-error` + `@keyframes timerInputShake` |
 
 ## Как работает
 
@@ -223,6 +224,11 @@
 - **Prompt Loom palette**: `renderPalette()` создаёт DOM один раз, при обновлении перестраивает только список. `close-all-palettes` событие закрывает palette извне. `handleBackslashTrigger` не закрывает palette если фокус внутри.
 - **closeAllMenus**: единая точка — закрывает `.ui-menu.open` + dispatches `close-all-palettes`. Palette-модули слушают событие и закрываются через свои close-функции с очисткой состояния.
 - **Timer segments**: 12 line-меток вдоль CW-пути, `viewBox` привязан к размерам кнопки. Сегменты только внутрь (dot product). `_syncSegments` при любом изменении `completedSegments`.
+- **Timer `_cachePoints`**: аналитический расчёт 401 точки по 9 сегментам (4 прямых + 4 дуги + замыкание) для CW и CCW. 0 layout-вызовов вместо 800 (DOM-based). `_lastHeadIdx` guard — `cx/cy` обновляются только при смене индекса.
+- **Timer `_applyArc` hot path**: `display`/`r='2'` ставятся только при смене направления; `strokeDashoffset='0'` убран (никогда не меняется); guard `_lastHeadIdx` для `cx/cy`.
+- **Timer AudioContext**: переиспользование одного `_audioCtx` на весь жизненный цикл. Создаётся при первом `pointerdown` (user-gesture для iOS). `restoreState` создаёт при восстановлении активного таймера. `.catch()` на `resume()` для Safari.
+- **Timer cssText cache**: `_cachedDigitCssText/Sig/Font` — один `getComputedStyle` за жизнь темы. Инвалидация при смене classList или font.
+- **Timer ResizeObserver debounce**: `_resizeRaf` через `requestAnimationFrame` — инвалидация кэшей раз за кадр вместо 60 раз/сек.
 - **Text Linter perf**: `many-commas` заменён на split by sentence + comma count — O(n) вместо экспоненциального regex.
 - **Mini-chat geometry**: `_savedWin` хранит позицию/размер, обновляется при drag/resize end и beforeunload. Восстанавливается в `_open()`.
 - **Ember idle gate**: пропускает тяжёлые вычисления (commitPose, updateWind, etc.) но **всегда спавнит частицы** (ash/spark/shootingSpark) и вызывает `updateParticles`. Спавн внутри idle gate перед `return`.
@@ -274,6 +280,22 @@
 ### idleLevel rAF throttle (задание 3.6) — УДАЛЁН
 
 **Причина удаления:** `idleLevel >= 2` использовал `setTimeout(130ms)` вместо `requestAnimationFrame`, что давало ~8fps. Эмбер "еле двигался", частицы не спавнились. Idle gate уже достаточно экономит CPU.
+
+---
+
+### Ember — аудит исправления (задание 3.13)
+
+**`ringImpulse`/`cursorLean` в reduce-motion:** `ringImpulse = 0` + сброс `cursorLean.*` в начале reduce-motion ветки. Раньше кольцо дёргалось при возврате фокуса, уголёк подпрыгивал.
+
+**Tooltip debounce:** `_editTooltipTimer` 800мс — tooltip появляется после паузы в печати, а не на каждом keystroke.
+
+**`startEgg` guard:** `if (previewScare.active) return;` — egg не запускается во время previewScare.
+
+**Segment CSS:** `transition: background-color` → `transition: opacity` (3-5% GPU).
+
+**`will-change: transform`** на `.ember-core` — подсказка браузеру для compositing layer.
+
+**`--reveal-delay`:** `setVar`/`removeVar` вместо прямого `setProperty`/`removeProperty` (консистентность кеша).
 
 ---
 
@@ -372,6 +394,91 @@
 
 **Баг fixes в idle gate:**
 - Спавн частиц (ash/spark/shootingSpark) и `updateParticles` добавлены **внутрь** idle gate перед `return`. Раньше `return` был ДО спавна — частицы не появлялись когда idle gate был активен.
+
+---
+
+### CPU-расследование в простое (задание 3.12)
+
+**Расследование:** что нагружает CPU в простое (кроме Ember и Timer).
+
+**Найдено:**
+- **memory-sync `scheduleAutoPullCheck`** — рекурсивный `setTimeout` каждые 5 сек. Лёгкая нагрузка, но непрерывная.
+- **word-complete `setInterval`** — автосохранение раз в 2 часа. Минимальная нагрузка.
+- **blocks.js ResizeObserver × N** — на каждый текстовый блок. В idle не стреляет.
+- **CSS `backdrop-filter: blur()`** — 15+ элементов, все скрыты в idle.
+- **CSS infinite анимации** — `capturePulse` на `.capture-active` (2.5s infinite).
+
+**Реализовано:**
+- `capturePulse` изменён с `infinite` на `1` — пульс срабатывает один раз при активации
+- Добавлен `prefers-reduced-motion` для `capturePulse`
+
+---
+
+### Ember — аудит и исправления (задание 3.13)
+
+**Файл:** `ember.js`, `ember-styles.css`
+
+**Исправленные баги:**
+1. **`ringImpulse` + `cursorLean` в reduce-motion** — `ringImpulse = 0` + сброс `cursorLean.*` в начале reduce-motion ветки. Раньше: кольцо дёргалось при возврате фокуса.
+2. **Tooltip на каждом keystroke** — debounce 800мс через `_editTooltipTimer`. Раньше: tooltip висел всю сессию печати.
+3. **`startEgg` без guard на previewScare** — добавлен `if (previewScare.active) return;`. Раньше: egg мог запуститься во время previewScare.
+
+**Улучшения:**
+4. **Segment CSS transition** — `background-color` → `opacity` (3-5% GPU на 12 сегментах)
+5. **`will-change: transform`** на `.ember-core` (уменьшает composite)
+6. **`--reveal-delay` через `setVar`/`removeVar`** вместо прямого `setProperty` (консистентность кеша)
+
+---
+
+### Timer — аудит и оптимизации (задание 4, итерации 1-4)
+
+**Файл:** `timer.js`, `styles.css`
+
+**Итерация 1 — основные фиксы:**
+1. **AudioContext — переиспользование** — один `_audioCtx` на весь жизненный цикл. Создаётся при первом `pointerdown` (user-gesture для iOS Safari). Убран `ctx.close()` через 2 сек.
+2. **`_tickRAF` safety** — `rafId = null` при early return (prevent RAF leak)
+3. **`closeInlineInput` — comma → if/else** — устранена ловушка для рефакторинга
+4. **Inline-input: фидбэк при невалидном вводе** — красный бордер + shake-анимация (400мс)
+5. **`_cachePoints` — аналитический расчёт** — замена DOM-based (800 layout-вызовов) на чистую математику (0 layout). 9 сегментов (4 прямых + 4 дуги + замыкание), CW и CCW.
+
+**Итерация 2 — edge cases:**
+6. **`_cachePoints` segment search** — `< d` → `<= d` (финальная точка попадала не в последний сегмент)
+7. **ResizeObserver debounce** — `_resizeRaf` через `requestAnimationFrame` (60× меньше вычислений при drag-resize)
+8. **`_updateDisplay` cssText cache** — `_cachedDigitCssText` (один `getComputedStyle` за жизнь модуля). Инвалидация через `_cachedDigitCssSig` (classList + font).
+9. **`_playCompletionSound` iOS fallback** — `if (!_audioCtx) return` вместо создания контекста без user-gesture
+
+**Итерация 3 — hot path:**
+10. **AudioContext в `restoreState`** — создаётся при восстановлении активного таймера (F5)
+11. **`_updateDisplay` guards** — `display !== 'flex'`, `classList.contains('dim')`, `+textContent !== minutes`
+12. **`void offsetWidth` в `setIdleVisual`** — убран (не нужен, нет animation restart)
+
+**Итерация 4 — финальная оптимизация:**
+13. **`_applyArc` hot path** — `display`/`r='2'` ставятся только при смене направления; guard `_lastHeadIdx` для `cx/cy`; убран `strokeDashoffset='0'` (никогда не меняется)
+14. **`AudioContext.resume().catch()`** — обработка Promise для Safari
+15. **`setIdleVisual` — убраны дубли `_hideArc()`** — `arcTail.style.stroke/opacity` больше не снимаются повторно
+16. **`_cachedDigitFont`** — кэш font отдельно (один `getComputedStyle` за жизнь темы)
+17. **`valueEl.parentNode.style.position`** — вынесен в `init()` (один раз вместо каждой смены цифры)
+18. **`void valueEl.offsetWidth` в `_updateDisplay`** — убран (redundant после `textContent`)
+
+---
+
+### Ember — аудит раунд 2 (задание 4 (4))
+
+**Файл:** `ember.js`
+
+**Исправленные баги:**
+1. **`deferBurst` утечка таймеров** — рекурсивный `nid` не удалялся из `timers` при следующем шаге. Переписан на рекурсию `deferBurst(fn, count-1, interval)` — каждый вызов сам управляет своим id.
+2. **`updateCrackLayers` мимо кеша** — `layer.el.style.setProperty()` напрямую минуя `setVar`/`styleCache`. Заменено на `setVar()`/`setStyle()` — кеш консистентен с DOM.
+3. **`notifyEdit` tooltip race** — `tooltipHideTimer` не сбрасывался при debounce → tooltip мог скрыться и снова появиться. Добавлен `clearDeferred(tooltipHideTimer)`.
+4. **`reduceMotion` не очищает glint** — при выходе из reduceMotion `--glintOpacity/X/Y/Rot` прыгали к старым значениям. Добавлен `removeVar()` для всех 4 переменных.
+5. **`peek.state` зависает при idle** — при focus loss peek.state не сбрасывался → возврат в active вызывал glitch. Добавлен `peek.state = 'idle'; peek.cooldown = 5000;` в idle-ветку.
+6. **`mousemove` throttle-lock** — mouse.x/y обновлялись на КАЖДОМ DOM-событии (200+ раз/сек), а RAF тикает 60 раз. Throttle-lock: `_lastMouseEvent` буфер в handler, `sampleMousePosition` читает 1 раз за кадр. Точность mouse.speed возросла (нет джиттера от рассинхрона).
+
+**Пропущено (аргументы):**
+- П.5 аудита (двойное `let crackLayers`) — уже исправлено в предыдущем раунде.
+- П.17/18 (defer + reveal-delay race) — уже исправлено (`clearAllDeferred` в destroy + `if (!root) return` в defer).
+- П.A (breathPhase throttle до 30fps) — опасно: уже были проблемы с throttling (idleLevel rAF throttle удалён за убивание визуала).
+- П.11 (updateHeatZones split) — микро-оптимизация, нет реального эффекта в idle (idle gate уже пропускает).
 
 ---
 
