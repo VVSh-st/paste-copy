@@ -198,6 +198,7 @@ const Notepad = (() => {
       clearTimeout(_instance.tabClickTimer);
       _instance.dragAbort?.abort();
       _instance.resizeAbort?.abort();
+      _instance._cleanupTranslate?.();
       document.body.style.userSelect = '';
       _persist(_instance);
       _instance = null;
@@ -232,15 +233,14 @@ const Notepad = (() => {
       tabClickTimer:null,
       dragAbort:    null,
       resizeAbort:  null,
-      _translateBusy: false,
-      _translateOriginal: null,
-      _translateOriginalTab: null,
       _saveToFile:  null,
       el:           null,
       _tabsRow:     null,
       _countSpan:   null,
       _mdContent:   null,
       _mdBtn:       null,
+      _translateBtn: null,
+      _cleanupTranslate: null,
       _doUndo:      null,
       _doRedo:      null,
       _pushHistory: null,
@@ -296,6 +296,7 @@ const Notepad = (() => {
       }
     }
 
+    state._cleanupTranslate?.();
     state.histTimer = null;
     clearTimeout(state.tabClickTimer);
     state.dragAbort?.abort();
@@ -351,68 +352,150 @@ const Notepad = (() => {
 
     /* ---- Translate button ---- */
     const getTa = () => win.querySelector('.notepad-body textarea');
-    const translateBtn = _mkBtn('<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>', 'Перевести текст');
-    const handleTranslate = () => {
-      if (typeof Translator === 'undefined') { _toast('Модуль переводчика не загружен', 'error'); return; }
-      const ta = getTa(); if (!ta) return;
-      if (state._translateBusy) {
-        _toast('Перевод уже выполняется...', 'info');
-        return;
-      }
 
-      if (state._translateOriginal !== null && state._translateOriginalTab === state.activeTab) {
-        state._pushHistory?.(ta.value);
-        ta.value = state._translateOriginal;
-        state.tabs[state.activeTab].value = state._translateOriginal;
-        state._translateOriginal = null;
-        state._translateOriginalTab = null;
-        ta.dispatchEvent(new Event('input'));
-        if (state.mdPreview) _renderMdPreview(state);
-        _toast('↩ Оригинал восстановлен');
-        return;
-      }
+    const TRANSLATE_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
+    const translateBtn = _mkBtn(TRANSLATE_SVG, 'Перевести текст');
+    translateBtn.dataset.lang = Translator?.targetLang || '';
+    state._translateBtn = translateBtn;
+
+    const translateDropdown = document.createElement('div');
+    translateDropdown.className = 'translate-dropdown';
+    translateDropdown.style.display = 'none';
+
+    function _buildTranslateMenu() {
+      if (typeof Translator === 'undefined') return;
+      translateDropdown.innerHTML = '';
+
+      const engineRow = document.createElement('div');
+      engineRow.className = 'translate-engine-row';
+      const engines = [
+        { id: 'auto', label: 'Auto', svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l2.5 1.5"/></svg>' },
+        { id: 'google', label: 'G', svg: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.2 6.8v2.6h3.7c-.15 1-.55 1.7-1.15 2.2l1.9 1.5c1.1-1 1.8-2.5 1.8-4.3 0-.4-.04-.8-.1-1.2H8.2z" opacity=".9"/><path d="M3.4 9.7l-.7.5-1.2 1C2.7 13.4 5.2 15 8.2 15c2.3 0 4.2-.8 5.6-2.1l-1.9-1.5c-.8.5-1.8.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8l-.3-.8z" opacity=".7"/><path d="M1.5 4.8C2 3.6 2.8 2.6 3.8 1.8L5.4 3c-.6.6-1 1.3-1.3 2.1L1.5 4.8z" opacity=".5"/><path d="M8 3c1.3 0 2.4.4 3.3 1.3L13 2.8C11.5 1.5 9.9.8 8 .8 5.2.8 2.7 2.4 1.5 4.8l2.4 1.9C4.4 5.1 6.1 3 8 3z" opacity=".6"/></svg>' },
+        { id: 'microsoft', label: 'MS', svg: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6.5" height="6.5" rx=".5" opacity=".9"/><rect x="8.5" y="1" width="6.5" height="6.5" rx=".5" opacity=".7"/><rect x="1" y="8.5" width="6.5" height="6.5" rx=".5" opacity=".7"/><rect x="8.5" y="8.5" width="6.5" height="6.5" rx=".5" opacity=".5"/></svg>' },
+        { id: 'tencent', label: 'T', svg: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1C4.1 1 1 3.6 1 6.8c0 1.8 1 3.4 2.6 4.5L3 13l2.2-1.1c.9.3 1.9.4 2.8.4 3.9 0 7-2.6 7-5.8S11.9 1 8 1z" opacity=".85"/></svg>' },
+      ];
+      const curEngine = Translator.engine;
+      engines.forEach(eng => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'translate-engine-btn' + (eng.id === curEngine ? ' active' : '');
+        btn.innerHTML = eng.svg + eng.label;
+        btn.onclick = e => {
+          e.stopPropagation();
+          Translator.engine = eng.id;
+          _buildTranslateMenu();
+        };
+        engineRow.appendChild(btn);
+      });
+      translateDropdown.appendChild(engineRow);
+
+      Translator.LANGUAGES.forEach(lang => {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'translate-lang-opt' + (lang.code === Translator.targetLang ? ' active' : '');
+        opt.textContent = lang.flag + ' ' + lang.name;
+        opt.onclick = e => {
+          e.stopPropagation();
+          Translator.targetLang = lang.code;
+          translateBtn.dataset.lang = lang.code;
+          translateBtn.title = 'Перевести → ' + lang.name;
+          _buildTranslateMenu();
+          translateDropdown.style.display = 'none';
+        };
+        translateDropdown.appendChild(opt);
+      });
+    }
+    if (typeof Translator !== 'undefined') _buildTranslateMenu();
+
+    let translateLongPressTimer = null;
+    let translateLongPressed = false;
+
+    translateBtn.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      translateLongPressed = false;
+      translateLongPressTimer = setTimeout(() => {
+        translateLongPressed = true;
+        const rect = translateBtn.getBoundingClientRect();
+        translateDropdown.style.left = rect.left + 'px';
+        translateDropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        translateDropdown.style.display = translateDropdown.style.display === 'none' ? 'block' : 'none';
+      }, 400);
+    });
+    translateBtn.addEventListener('mouseup', () => clearTimeout(translateLongPressTimer));
+    translateBtn.addEventListener('mouseleave', () => clearTimeout(translateLongPressTimer));
+
+    translateBtn.onclick = e => {
+      e.stopPropagation();
+      clearTimeout(translateLongPressTimer);
+      if (translateLongPressed) { translateLongPressed = false; return; }
+      translateDropdown.style.display = 'none';
+
+      if (typeof Translator === 'undefined') return;
+      const ta = getTa(); if (!ta) return;
 
       const selStart = ta.selectionStart;
       const selEnd   = ta.selectionEnd;
-      const tabAtStart = state.activeTab;
-      const sourceValue = ta.value;
-      const hasSel   = selStart !== selEnd;
-      const sel      = ta.value.substring(selStart, selEnd);
-      const text     = hasSel ? sel : ta.value;
-      if (!text.trim()) return;
-      const lang = Translator.LANG_BY_CODE[Translator.targetLang];
-      _toast('Перевод → ' + (lang?.name || Translator.targetLang) + '...');
-      state._translateBusy = true;
-      translateBtn.disabled = true;
-      Translator.translateProtected(text, Translator.targetLang).then(result => {
-        if (state.activeTab !== tabAtStart || !state.el?.isConnected) {
-          _toast('Перевод отменён: вкладка изменена', 'info');
-          return;
+      const hasSelection = selEnd > selStart;
+
+      // Откат: только если нет нового выделения
+      if (!hasSelection && translateBtn._undoStack?.length) {
+        const prev = translateBtn._undoStack.pop();
+        ta.value = prev.value;
+        ta.setSelectionRange(prev.selStart, prev.selEnd);
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        if (!translateBtn._undoStack.length) {
+          translateBtn._undoStack = null;
+          translateBtn.dataset.state = '';
         }
-        if (ta.value !== sourceValue) {
-          _toast('Перевод отменён: текст изменён', 'info');
-          return;
-        }
-        if (!result || result === text) { _toast('Не удалось перевести'); return; }
-        state._pushHistory?.(ta.value);
-        state._translateOriginal = ta.value;
-        state._translateOriginalTab = state.activeTab;
-        if (hasSel) {
-          ta.setRangeText(result, selStart, selEnd, 'select');
+        if (state.mdPreview) _renderMdPreview(state);
+        return;
+      }
+
+      const sel = ta.value.substring(selStart, selEnd);
+      const textToTranslate = sel.trim() || ta.value;
+      if (!textToTranslate.trim()) return;
+
+      const targetLang = Translator.targetLang;
+      const srcLang = Translator.detectLang(textToTranslate);
+      if (srcLang && srcLang.code === targetLang) return;
+
+      translateBtn.classList.add('translating');
+      translateBtn.textContent = '⏳';
+
+      const lines = textToTranslate.split('\n');
+      const translatePromise = lines.length > 1
+        ? (async () => { const r = []; for (const l of lines) r.push(await Translator.translateProtected(l, targetLang)); return r.join('\n'); })()
+        : Translator.translateProtected(textToTranslate, targetLang);
+
+      translatePromise.then(result => {
+        if (!result || result === textToTranslate) return;
+        Translator.addHistory(textToTranslate, result, srcLang?.code || '?', targetLang);
+
+        if (!translateBtn._undoStack) translateBtn._undoStack = [];
+        translateBtn._undoStack.push({ value: ta.value, selStart, selEnd });
+        translateBtn.dataset.state = 'translated';
+
+        if (hasSelection) {
+          ta.setRangeText(result, selStart, selEnd, 'end');
         } else {
           ta.value = result;
         }
-        state.tabs[state.activeTab].value = ta.value;
-        ta.dispatchEvent(new Event('input'));
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
         if (state.mdPreview) _renderMdPreview(state);
-        _toast('✓ Переведено → ' + (lang?.name || Translator.targetLang) + ' (клик ↩ — вернуть)');
-      }).catch(err => _toast('Ошибка: ' + err.message))
+      }).catch(() => {})
         .finally(() => {
-          state._translateBusy = false;
-          translateBtn.disabled = false;
+          translateBtn.classList.remove('translating');
+          translateBtn.innerHTML = TRANSLATE_SVG;
         });
     };
-    translateBtn.addEventListener('click', handleTranslate);
+
+    const _closeTranslateDropdown = e => {
+      if (!translateDropdown.contains(e.target) && e.target !== translateBtn) {
+        translateDropdown.style.display = 'none';
+      }
+    };
+    document.addEventListener('mousedown', _closeTranslateDropdown);
+    state._cleanupTranslate = () => document.removeEventListener('mousedown', _closeTranslateDropdown);
 
     // minBtn and closeBtn are proper <button> elements for keyboard accessibility
     const minBtn = document.createElement('button');
@@ -429,7 +512,7 @@ const Notepad = (() => {
     closeBtn.title     = 'Закрыть (данные сохранятся)';
     closeBtn.addEventListener('click', e => { e.stopPropagation(); _closeNotepad(state); });
 
-    header.append(iconEl, titleWrap, mdBtn, translateBtn, _mkDiv(), minBtn, closeBtn);
+    header.append(iconEl, titleWrap, mdBtn, translateBtn, translateDropdown, _mkDiv(), minBtn, closeBtn);
     header.style.cursor = 'grab';
     _makeDraggable(header, win, state);
     return header;
@@ -474,8 +557,6 @@ const Notepad = (() => {
     const doUndo = () => {
       const ta = getTa();
       if (!ta || state.histIdx <= 0) return;
-      state._translateOriginal = null;
-      state._translateOriginalTab = null;
       const wasFilled = !!state.tabs[state.activeTab].value;
       state.histIdx--;
       ta.value = state.history[state.histIdx];
@@ -489,8 +570,6 @@ const Notepad = (() => {
     const doRedo = () => {
       const ta = getTa();
       if (!ta || state.histIdx >= state.history.length - 1) return;
-      state._translateOriginal = null;
-      state._translateOriginalTab = null;
       const wasFilled = !!state.tabs[state.activeTab].value;
       state.histIdx++;
       ta.value = state.history[state.histIdx];
@@ -767,8 +846,9 @@ const Notepad = (() => {
     }
 
     state.activeTab = idx;
-    state._translateOriginal = null;
-    state._translateOriginalTab = null;
+
+    // Очищаем стек отката перевода при смене вкладки
+    if (state._translateBtn?._undoStack) { state._translateBtn._undoStack = null; state._translateBtn.dataset.state = ''; }
 
     if (ta) {
       const newVal = state.tabs[idx].value ?? '';
@@ -808,8 +888,6 @@ const Notepad = (() => {
     _updateCount(ta, state._countSpan);
 
     ta.addEventListener('input', () => {
-      state._translateOriginal = null;
-      state._translateOriginalTab = null;
       const wasFilled = !!state.tabs[state.activeTab].value;
       state.tabs[state.activeTab].value = ta.value;
       const isFilled = !!ta.value;
