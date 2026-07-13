@@ -673,6 +673,20 @@ const Ember = (() => {
       crackLayers.push({ el: layer, baseOpacity: 0.5, ignited: false, igniteStart: 0, igniteDur: 0 });
     });
 
+    const microSparkLayer = document.createElement('div');
+    microSparkLayer.className = 'ember-micro-sparks';
+    const microCount = Math.floor(rand(4, 7));
+    for (let i = 0; i < microCount; i++) {
+      const sp = document.createElement('div');
+      sp.className = 'micro-spark';
+      sp.style.left = rand(15, 85).toFixed(1) + '%';
+      sp.style.top = rand(15, 85).toFixed(1) + '%';
+      sp.style.animationDelay = (-rand(0, 2)).toFixed(2) + 's';
+      sp.style.animationDuration = rand(1.6, 2.8).toFixed(2) + 's';
+      microSparkLayer.appendChild(sp);
+    }
+    coreEl.appendChild(microSparkLayer);
+
     ashEl = document.createElement('div');
     ashEl.className = 'ember-ash-overlay';
     coreEl.appendChild(ashEl);
@@ -1183,7 +1197,7 @@ const Ember = (() => {
     const shadowBase = 1 + Math.abs(pose.y) * 0.02 + Math.abs(bobY) * 0.05 - pose.shadowTighten * 0.08;
     const shadowAlpha = clamp(0.45 - Math.abs(pose.y + bobY) * 0.01 + pose.shadowTighten * 0.06, 0.15, 0.62);
     setVar(root, '--shadowScale', shadowBase.toFixed(3));
-    setVar(root, '--shadowAlpha', shadowAlpha.toFixed(3));
+    setVar(root, '--shadowAlpha', (shadowAlpha + (bgIsDark ? 0.1 : 0)).toFixed(3));
 
     const shiftX = heatOffsetX * 0.6 + pose.x * 0.35 + ashTrackX * 0.3;
     const shiftY = heatOffsetY * 0.6 - hoverVal * 0.5 + pose.y * 0.35 + bobY;
@@ -1206,8 +1220,10 @@ const Ember = (() => {
     setVar(root, '--tiltX', (pose.tiltX + cursorLean.tiltX).toFixed(2) + 'deg');
     setVar(root, '--tiltY', (tiltCurrent * 0.6 + pose.tiltY + cursorLean.tiltY).toFixed(2) + 'deg');
 
-    const glow = clamp(intensity + heatBoost * 0.4 + pose.glow + hoverVal * 0.2 + windGust * 0.25, 0, 1.8);
-    const brightness = clamp(0.8 + intensity * 0.35 + pose.brightness + heatBoost * 0.45 + hoverVal * 0.18 + windGust * 0.35, 0.4, 2.5);
+    const bgIsDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const darkBoost = bgIsDark ? 0.15 : 0;
+    const glow = clamp(intensity + heatBoost * 0.4 + pose.glow + hoverVal * 0.2 + windGust * 0.25 + darkBoost, 0, 1.8);
+    const brightness = clamp(0.8 + intensity * 0.35 + pose.brightness + heatBoost * 0.45 + hoverVal * 0.18 + windGust * 0.35 + darkBoost * 1.3, 0.4, 2.5);
 
     setVar(root, '--heat', heat.toFixed(3));
     setVar(root, '--glow', glow.toFixed(3));
@@ -3257,8 +3273,9 @@ const Ember = (() => {
 
       const idleBreath = 1 + Math.sin(breathPhase * 2.5) * 0.012 * intensity;
       breathScale += (idleBreath - breathScale) * 0.06;
-      const idleGlow = clamp(intensity + heatBoost * 0.3 + idlePulse, 0, 1.8);
-      const idleBright = clamp(0.7 + intensity * 0.3 + heatBoost * 0.4 + idlePulse * 0.3, 0.35, 2.5);
+      const _idleDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 0.15 : 0;
+      const idleGlow = clamp(intensity + heatBoost * 0.3 + idlePulse + _idleDark, 0, 1.8);
+      const idleBright = clamp(0.7 + intensity * 0.3 + heatBoost * 0.4 + idlePulse * 0.3 + _idleDark * 1.3, 0.35, 2.5);
 
       heat = clamp(intensity + heatBoost * 0.25, 0, 1);
       setVarApprox(root, '--breathScale', breathScale.toFixed(4), 0.001);
