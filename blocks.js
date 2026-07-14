@@ -46,17 +46,17 @@ const Blocks = (() => {
     const val = sticky.value || '';
     sticky.value = val ? val + '\n\n' + text : text;
     State.updateLive(() => {});
-    function _syncTextarea() {
-      // [FIX] Проверяем что sticky-блок ещё существует в state перед обновлением DOM
-      const active = State.getActive();
-      if (!active || !active.blocks.some(x => x.id === sticky.id)) return;
-      const stickyEl = document.querySelector(`.block[data-id="${sticky.id}"] .block-textarea`);
-      if (stickyEl) {
-        stickyEl.value = sticky.value;
-        if (typeof autoGrow === 'function') autoGrow(stickyEl);
-      }
+    _syncCaptureTextarea(sticky);
+  }
+
+  function _syncCaptureTextarea(sticky) {
+    const active = State.getActive();
+    if (!active || !active.blocks.some(x => x.id === sticky.id)) return;
+    const stickyEl = document.querySelector(`.block[data-id="${sticky.id}"] .block-textarea`);
+    if (stickyEl) {
+      stickyEl.value = sticky.value;
+      if (typeof autoGrow === 'function') autoGrow(stickyEl);
     }
-    requestAnimationFrame(_syncTextarea);
   }
 
   function getVisibleColumns() {
@@ -2494,6 +2494,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const trimmed = sel.replace(/\s+$/, '');
         sticky.value = val ? val + ' ' + trimmed + ' ' : trimmed + ' ';
         State.updateLive(() => {});
+        _syncCaptureTextarea(sticky);
       } else {
         _appendCaptureText(sticky, sel);
       }
