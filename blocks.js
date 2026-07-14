@@ -1150,18 +1150,21 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           b._savedTaScrollTop = ta.scrollTop;
           const prevH = ta.offsetHeight;
           _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
-          ta.style.display = 'none';
-          mdEl.style.display = '';
-          // Высота MD = высота textarea, прокрутка пропорциональная
+          // Показываем MD СНАЧАЛА, потом прячем textarea
           mdEl.style.height = prevH + 'px';
-          const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
+          mdEl.style.display = '';
+          ta.style.display = 'none';
+          // Пропорциональная прокрутка MD
+          const maxScroll = Math.max(1, ta.scrollHeight - ta.clientHeight);
+          const ratio = maxScroll > 0 ? ta.scrollTop / maxScroll : 0;
           mdEl.scrollTop = ratio * Math.max(0, mdEl.scrollHeight - mdEl.clientHeight);
         } else {
-          mdEl.style.display = 'none';
-          ta.style.display = '';
+          // Показываем textarea СНАЧАЛА, потом прячем MD
           ta.value = b.subtabs[b.activeSubtab]?.value ?? '';
-          // Восстанавливаем высоту и scrollTop textarea
           ta.style.height = mdEl.offsetHeight + 'px';
+          ta.style.display = '';
+          mdEl.style.display = 'none';
+          // Восстанавливаем scrollTop
           ta.scrollTop = b._savedTaScrollTop || 0;
           ta.focus();
         }
