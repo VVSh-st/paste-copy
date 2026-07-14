@@ -713,6 +713,7 @@ const State = (() => {
   /* ── history ── */
 
   function snapshot(tab) {
+    if (_undoRedoInProgress) return;
     tab = tab ?? getActive();
     if (!tab) return;
 
@@ -780,6 +781,8 @@ const State = (() => {
     }
   }
 
+  let _undoRedoInProgress = false;
+
   function undo() {
     const t = getActive();
     if (!t || t.historyIdx <= 0) return;
@@ -789,16 +792,19 @@ const State = (() => {
       ? t.history.base
       : _rebuildFromHistory(t, t.historyIdx - 1);
     if (!state) { t.historyIdx = prevIdx; return; }
+    _undoRedoInProgress = true;
     try {
       t.blocks    = _deduplicateCommandsBlocks(migrate(_cloneDeep(state.blocks)));
       t.separator = state.separator;
     } catch (err) {
       console.error('[State.undo] Failed to apply.', err);
       t.historyIdx = prevIdx;
+      _undoRedoInProgress = false;
       return;
     }
     _snapEmit();
     emit();
+    _undoRedoInProgress = false;
   }
 
   function redo() {
@@ -810,16 +816,19 @@ const State = (() => {
       ? t.history.base
       : _rebuildFromHistory(t, t.historyIdx - 1);
     if (!state) { t.historyIdx = prevIdx; return; }
+    _undoRedoInProgress = true;
     try {
       t.blocks    = _deduplicateCommandsBlocks(migrate(_cloneDeep(state.blocks)));
       t.separator = state.separator;
     } catch (err) {
       console.error('[State.redo] Failed to apply.', err);
       t.historyIdx = prevIdx;
+      _undoRedoInProgress = false;
       return;
     }
     _snapEmit();
     emit();
+    _undoRedoInProgress = false;
   }
 
   const canUndo = () => { const t = getActive(); return !!t && t.historyIdx > 0; };
