@@ -192,14 +192,14 @@
 
 | Файл | Изменения |
 |------|-----------|
-| `state.js` | Diff-снапшоты: `_computeDelta`, `_deepDiff`, `_applyDelta`, `_rebuildFromHistory`, `_migrateHistory`; `snapshot()`/`undo()`/`redo()`/`canUndo()`/`canRedo()` переписаны на base+deltas; blockHistory аналогично; `_dropBlockHistory` рекурсивен; `closeTab()` чистит `_blockHistory`; лимиты: history 30, namedSnapshots 5, blockHistory 30 |
+| `state.js` | Diff-снапшоты: `_computeDelta`, `_deepDiff`, `_applyDelta`, `_rebuildFromHistory`, `_migrateHistory`; `snapshot()`/`undo()`/`redo()`/`canUndo()`/`canRedo()` переписаны на base+deltas; blockHistory аналогично; `_dropBlockHistory` рекурсивен; `closeTab()` чистит `_blockHistory`; лимиты: history 30, namedSnapshots 5, blockHistory 30; **Capture undo:** `_undoRedoInProgress` flag блокирует `snapshot()` во время undo/redo; `cancelPendingSnapshot()` |
 | `app.js` | `exportCurrentTab()` — удалены `history`/`historyIdx` из экспорта; `incoming.history = { base: null, deltas: [] }` для импорта |
-| `blocks.js` | MD-превью текстовых блоков: кнопка в шапке (toggle + long-press dropdown), `_renderBlockMdPreview`, `b.mdPreview`/`b.mdHighlight`, min-height 110px; sync MD при patchSubtab/undo/redo/translate; dropdown: "🎨 MD + Подсветка", "📋 Копировать HTML", "📝 Копировать Markdown"; active state синей подсветкой; скрытие кнопки при неактивном блоке |
+| `blocks.js` | MD-превью текстовых блоков: кнопка в шапке (toggle + long-press dropdown), `_renderBlockMdPreview`, `b.mdPreview`/`b.mdHighlight`, min-height 110px; sync MD при patchSubtab/undo/redo/translate; dropdown: "🎨 MD + Подсветка", "📋 Копировать HTML", "📝 Копировать Markdown"; active state синей подсветкой; скрытие кнопки при неактивном блоке; **Capture mode:** long-press dropdown ("В строчку"/"С пропуском"), `_captureInsertMode` persistence, `_captureBtns` Set (global toggle), `_captureUndoStack/_captureRedoStack` (↩️/↪️), `_ensureStickyBlock(sourceBlock)` — insert after source block, `State.makeBlock()` + push (no addBlock side effects), `_syncCaptureTextarea()`, `_getStickyBlock()` with stale ID reset, `_closeCaptureDropdown` document listener |
 | `ui.js` | Превью: 3-режимная кнопка MD (Text→MD→MD*→Text), `getMdHighlight()`, highlight.js только в режиме md-hl |
 | `notepad.js` | MD-превью: кнопка, `_renderMdPreview`, `_toggleMdPreview`, `marked.parse()`; `_loadSaved` возвращает `mdPreview`; A−/A+ работают в MD; render при открытии; SVG "MD"; кнопки MD + "Перевести текст" в header; перевод: `_undoStack`, dropdown (язык/движок), long-press 400ms, без toast, очистка при смене вкладки и закрытии; `_cleanupTranslate` listener; highlight.jsalways on |
 | `llm-features.js` | Мини-чат: `_renderChatMd` хелпер (marked.parse + hljs), assistant-сообщения рендерятся как markdown с подсветкой; `finalizeLastMessage` переключает на markdown после стриминга; translate undo сохраняет raw text в `dataset.rawText` |
 | `index.html` | highlight.js CSS + JS через CDN; `prev-md` button |
-| `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон |
+| `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон; **Capture pulse:** `@keyframes capturePulse` 1s infinite, `.capture-active` accent + glow, `prefers-reduced-motion` → animation none |
 | `prompt-loom.js` | `renderPalette` — DOM-diff (не пересоздаёт search input); `close-all-palettes` listener; `closePalette` export; фикс `handleBackslashTrigger` |
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
@@ -234,6 +234,7 @@
 - **Ember idle gate**: пропускает тяжёлые вычисления (commitPose, updateWind, etc.) но **всегда спавнит частицы** (ash/spark/shootingSpark) и вызывает `updateParticles`. Спавн внутри idle gate перед `return`.
 - **Ember color-scheme: dark**: `color-scheme: dark` на `.ember-slot`/`.ember` — обход Auto Dark Mode for Web Contents.
 - **Egg (пасхалка)**: 12-фазный орбитальный сценарий. `startEgg()` вычисляет `caretX/Y` (raw, не clamped), `_landX/_landY` (175px от caret, clamped к viewport), `_baseApproachAngle` (ember→caret). `updateEgg()`: phase 1=замах от ember, 2=подлёт к landing, 3=пружинка+взгляд, 4-8=орбиты вокруг caret (R=160-190px, tilt `cos(angle)*-15` = мордочка к caret), 9=отход, 10=сжатие, 11=укутывание кольцом, 12=возврат. Guards: minDist 150px, viewport clamp, reduceMotion early-return. ПКМ-тест: `allowTestMode=true`.
+- **Capture mode ("Ща как напишу")**: `_captureMode` global toggle через `_captureBtns` Set. Long-press 400ms → dropdown ("В строчку"/"С пропуском"), `localStorage('capture_insert_mode')`. `_ensureStickyBlock(sourceBlock)` — `State.makeBlock()` + `tab.blocks.splice(idx+1)` (без `State.addBlock` side effects). Sticky вставляется после вызвавшего блока в той же колонке. `_getStickyBlock()` — сброс `_captureStickyId` при потере sticky. `_syncCaptureTextarea()` — sync DOM после изменения `sticky.value`. Pulse: `capturePulse` 1s infinite, 60 BPM. Capture undo: `_captureUndoStack/_captureRedoStack` (лимит 50), ↩️/↪️ на текстовом блоке перехватывают capture undo/redo. `_undoRedoInProgress` flag в `state.js` — блокирует `snapshot()` во время undo/redo.
 
 ### Ember CPU-оптимизация (задание 3.4)
 
@@ -579,6 +580,58 @@
 - `9c40eb1` — MD scrollTop preserved on column resize (rAF)
 - `021a6c2` — resize:vertical for .block-md-content
 - `ff5df01` — scrollTop restore via rAF
+
+### Word Count — фикс пустого блока
+
+**Баг:** при открытии подсчёта слов на пустом блоке popup не показывал 0. При переключении фокуса на непустой блок и обратно — popup показывал данные предыдущего блока.
+
+**Причины:**
+1. `open()` сбрасывал `_lastSourceText = ''` → при пустом блоке `src === _lastSourceText` → early return в `_render()`.
+2. `_onFocusIn` проверял только `e.target` на класс `block-textarea`. При клике на div.block-body/div.block `e.target` не textarea → `_ta` не обновлялся.
+
+**Фиксы:**
+1. `_lastSourceText = '\x00'` (sentinel) в `open()` и `_onFocusIn` — гарантированно не совпадёт с реальным текстом.
+2. `_onFocusIn` ищет textarea через `closest('.block') → querySelector('textarea.block-textarea')` если `e.target` — не textarea.
+
+**Коммиты:**
+- `22581c5` — sentinel reset in open/focusin
+- `808b590` — focus tracking via block container
+
+**Файл:** `word-count.js`
+
+---
+
+### "Ща как напишу" — capture mode доработка
+
+**Файлы:** `blocks.js`, `state.js`, `styles.css`
+
+**Реализация:**
+1. **Долгий клик (400мс)** — dropdown с режимами вставки: "В строчку" / "С пропуском". Сохраняется в localStorage (`capture_insert_mode`).
+2. **"В строчку"** — убирает leading пробелы, сохраняет trailing пробелы как есть, если нет — добавляет 1 пробел.
+3. **"С пропуском"** — текущее поведение: текст + `\n\n`.
+4. **Dropdown** — стили `translate-dropdown` + `translate-lang-opt` (active state). Закрывается при клике вне.
+5. **Пульс кнопки** — `capturePulse` 1s infinite (60 BPM), синяя тень `rgba(79,142,247,0.55)`. `prefers-reduced-motion` → `animation: none`.
+6. **Глобальная кнопка** — `_captureBtns` Set, `_syncCaptureBtn()` обновляет ВСЕ кнопки.
+7. **Sticky позиция** — `_ensureStickyBlock(sourceBlock)` вставляет sticky сразу после вызвавшего текстового блока, в той же колонке. `State.makeBlock()` + `tab.blocks.push()` — без `State.addBlock` side effects.
+8. **Undo на ↩️/↪️** — в capture mode кнопки используют `_captureUndoStack/_captureRedoStack`. Хранят `{ stickyId, prevValue, afterValue }`. Лимит 50. Очистка при выключении capture.
+9. **Snapshot guard** — `_undoRedoInProgress` флаг в `state.js`. Блокирует `snapshot()` во время `undo()`/`redo()` — предотвращает побочные snapshot'ы от re-render/onblur.
+
+**Известный баг (отложен):** Ctrl+Z в шапке (глобальный undo) создаёт много sticky. `_undoRedoInProgress` предотвращает побочные snapshot'ы, но корневая причина не устранена. Возможная причина: `_computeDelta` определяет sticky как новый в каждой дельте.
+
+**Коммиты:**
+- `649ce9f` — long-press dropdown + 60bpm pulse
+- `4258212` — textarea sync fix (_syncCaptureTextarea)
+- `2a16aea` — inline capture: preserve trailing spaces
+- `818f058` — global toggle sync across all blocks
+- `b30c332` — State.snapshot() for undo/redo support
+- `9191937` — mouseup uses _getStickyBlock (no create), remove empty State.update
+- `ba15114` — reset _captureStickyId when sticky removed by undo
+- `379f41e` — capture undo/redo on ↩️/↪️ buttons
+- `c57c9ab` — _ensureStickyBlock uses makeBlock+push (no side effects)
+- `374eb64` — Blocks.render() after push
+- `5bedddf` — title 'Заметка' instead of emoji
+- `39fa09a` — sticky inserted after source block (same column)
+- `cefed9b` — _undoRedoInProgress guard in snapshot()
 
 ---
 
