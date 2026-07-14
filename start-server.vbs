@@ -4,11 +4,15 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 WshShell.CurrentDirectory = scriptDir
 
+Function IsPortListening()
+    Dim exec, output
+    Set exec = WshShell.Exec("cmd /c netstat -ano | findstr "":8080"" | findstr ""LISTENING""")
+    output = exec.StdOut.ReadAll()
+    IsPortListening = (InStr(output, "8080") > 0)
+End Function
+
 ' Проверяем, не запущен ли уже сервер
-Dim exec, output
-Set exec = WshShell.Exec("cmd /c netstat -ano | findstr "":8080""")
-output = exec.StdOut.ReadAll()
-If InStr(output, "8080") > 0 Then
+If IsPortListening() Then
     WshShell.Run "http://localhost:8080", 1, False
 Else
     Dim pyexe
@@ -18,7 +22,13 @@ Else
     Else
         WshShell.Run "python -m http.server 8080", 0, False
     End If
-    WScript.Sleep 2000
+    ' Ждём пока порт будет слушать (до 10 сек)
+    Dim waited : waited = 0
+    Do While waited < 10
+        WScript.Sleep 1000
+        waited = waited + 1
+        If IsPortListening() Then Exit Do
+    Loop
     WshShell.Run "http://localhost:8080", 1, False
 End If
 Set WshShell = Nothing
