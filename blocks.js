@@ -63,6 +63,7 @@ const Blocks = (() => {
       const b = State.makeBlock('📌', '📌', 0, '', 'sticky');
       tab.blocks.push(b);
       sticky = b;
+      Blocks.render();
     }
     _captureStickyId = sticky.id;
     return sticky;
