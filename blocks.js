@@ -2489,10 +2489,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const sticky = _ensureStickyBlock();
       if (!sticky) return;
       if (_captureInsertMode === 'inline') {
-        // В строчку: текст + один пробел в конце
+        // В строчку: убрать пробелы до, сохранить пробелы после, если нет — добавить 1
         const val = sticky.value || '';
-        const trimmed = sel.replace(/\s+$/, '');
-        sticky.value = val ? val + ' ' + trimmed + ' ' : trimmed + ' ';
+        const leadTrimmed = sel.replace(/^\s+/, '');
+        const hasTrailing = /\s+$/.test(leadTrimmed);
+        const text = hasTrailing ? leadTrimmed : leadTrimmed + ' ';
+        sticky.value = val ? val + text : text;
         State.updateLive(() => {});
         _syncCaptureTextarea(sticky);
       } else {
