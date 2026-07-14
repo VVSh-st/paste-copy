@@ -2489,26 +2489,19 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!_captureMode) return;
       const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd);
       if (!sel) return;
-      const sticky = _ensureStickyBlock();
+      const sticky = _getStickyBlock();
       if (!sticky) return;
       if (_captureInsertMode === 'inline') {
-        // В строчку: убрать пробелы до, сохранить пробелы после, если нет — добавить 1
         const val = sticky.value || '';
         const leadTrimmed = sel.replace(/^\s+/, '');
         const hasTrailing = /\s+$/.test(leadTrimmed);
         const text = hasTrailing ? leadTrimmed : leadTrimmed + ' ';
         sticky.value = val ? val + text : text;
-        State.updateLive(() => {});
         _syncCaptureTextarea(sticky);
       } else {
         _appendCaptureText(sticky, sel);
       }
       State.snapshot();
-      // expand sticky if collapsed
-      if (sticky.collapsed) {
-        State.update(() => { sticky.collapsed = false; });
-        Blocks.render();
-      }
     });
 
     // ── Translate button ───────────────────────────────────────
