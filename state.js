@@ -762,6 +762,11 @@ const State = (() => {
     }, 500));
   }
 
+  function cancelPendingSnapshot() {
+    for (const timer of snapTimers.values()) clearTimeout(timer);
+    snapTimers.clear();
+  }
+
   function applySnap(t, snap) {
     // [FIX] Защита от битых snapshots — предотвращает крэш
     try {
@@ -1503,7 +1508,7 @@ const State = (() => {
     undo, redo, canUndo, canRedo,
     blockSnapshot, blockUndo, blockRedo, canBlockUndo, canBlockRedo,
     saveNamedSnapshot, restoreNamedSnapshot, deleteNamedSnapshot, getNamedSnapshots,
-    update, updateLive, snapshot, emit,
+    update, updateLive, snapshot, emit, cancelPendingSnapshot,
     getLayout, setLayout,
     load, serialize, onChange, onLive, onSnapshot, uid,
     searchAll, replaceAll, getAllSnippetsAndCommands,

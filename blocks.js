@@ -62,6 +62,7 @@ const Blocks = (() => {
       State.addBlock('sticky');
       const tab = State.getActive();
       sticky = tab.blocks[tab.blocks.length - 1];
+      State.cancelPendingSnapshot?.();
     }
     _captureStickyId = sticky.id;
     return sticky;
