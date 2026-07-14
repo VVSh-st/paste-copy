@@ -1462,7 +1462,17 @@
                   </label>
                   <label class="settings-item settings-item-row" title="Цвет маркеров якорей">
                     Цвет маркеров
-                    <input type="color" id="opt-anchor-color" value="#4f8ef7" aria-label="Цвет маркеров якорей">
+                    <div class="llm-color-field">
+                      <div class="llm-color-swatches" role="group" aria-label="Быстрый выбор цвета">
+                        <button type="button" class="llm-color-swatch" data-color="#4f8ef7" style="--swatch:#4f8ef7" title="Синий"></button>
+                        <button type="button" class="llm-color-swatch" data-color="#00b96b" style="--swatch:#00b96b" title="Зелёный"></button>
+                        <button type="button" class="llm-color-swatch" data-color="#a05adc" style="--swatch:#a05adc" title="Фиолетовый"></button>
+                        <button type="button" class="llm-color-swatch" data-color="#f0a050" style="--swatch:#f0a050" title="Оранжевый"></button>
+                        <button type="button" class="llm-color-swatch" data-color="#e05c6a" style="--swatch:#e05c6a" title="Красный"></button>
+                        <button type="button" class="llm-color-swatch" data-color="#a0a0aa" style="--swatch:#a0a0aa" title="Серый"></button>
+                      </div>
+                      <input type="text" id="opt-anchor-color" value="#4f8ef7" spellcheck="false" aria-label="Цвет маркеров якорей">
+                    </div>
                   </label>
                 </div>
               </details>
