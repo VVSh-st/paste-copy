@@ -997,7 +997,6 @@ window.LLMCore = (() => {
     function _syncGeneral() {
       const llm = _State.getLayout()?.llm ?? {};
       _setCheck('llm-enabled', llm.enabled ?? false);
-      _setCheck('llm-save-results', llm.saveResults ?? true);
       _setCheck('llm-debug', llm.debugMode ?? false);
       _setCheck('llm-visual-diff', llm.visualDiff ?? false);
       _set('llm-diff-mode', llm.diffMode ?? 'classic');
@@ -1074,7 +1073,7 @@ window.LLMCore = (() => {
     }
     function _saveGeneral() {
       const lay = _State.getLayout();
-      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), saveResults: _getCheck('llm-save-results'), debugMode: _getCheck('llm-debug'), visualDiff: _getCheck('llm-visual-diff'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
+      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), debugMode: _getCheck('llm-debug'), visualDiff: _getCheck('llm-visual-diff'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
     }
     function _renderBroTags() {
       const lay = _State.getLayout();
@@ -1912,7 +1911,7 @@ tags.push({
         window.Toast?.show(`Банк «${name}» создан ✓`, 'success');
       });
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
-      ['llm-enabled','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
+      ['llm-enabled','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
       document.querySelectorAll('.llm-color-swatch').forEach(btn => {
         btn.addEventListener('click', () => {
           const input = btn.closest('.llm-color-field')?.querySelector('input[type="text"]');
