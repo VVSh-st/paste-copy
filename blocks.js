@@ -16,6 +16,7 @@ const Blocks = (() => {
     if (_captureStickyId) {
       const found = tab.blocks.find(b => b.id === _captureStickyId && b.type === 'sticky');
       if (found) return found;
+      _captureStickyId = null;
     }
     return tab.blocks.find(b => b.type === 'sticky') || null;
   }
@@ -2456,6 +2457,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         if (!_captureMode) {
           _captureMode = true;
           _ensureStickyBlock();
+          State.snapshot();
           _syncCaptureBtn();
         }
         const rect = captureBtn.getBoundingClientRect();
