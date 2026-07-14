@@ -262,15 +262,21 @@ const WordCount = (() => {
   }
 
   function _onFocusIn(e) {
-    const newTa = e.target;
-    const isBlockTextarea = newTa.classList?.contains('block-textarea');
-    const isNotepadTextarea = newTa.tagName === 'TEXTAREA' && newTa.closest('.notepad-body');
-    if ((!isBlockTextarea && !isNotepadTextarea) || newTa === _ta) return;
+    let newTa = e.target;
+    // Если кликнули не на textarea, а на элемент внутри блока — найдём textarea блока
+    if (!newTa.classList?.contains('block-textarea')) {
+      const isNotepadTextarea = newTa.tagName === 'TEXTAREA' && newTa.closest('.notepad-body');
+      if (isNotepadTextarea) { /* ok, use as-is */ }
+      else {
+        const block = newTa.closest?.('.block');
+        newTa = block?.querySelector('textarea.block-textarea') || null;
+        if (!newTa) return;
+      }
+    }
+    if (newTa === _ta) return;
     _ta = newTa;
     _lastSourceText = '\x00';
     _lastSel = '';
-    // При открытом попапе не обновляем — click на кнопке другого блока
-    // должен работать через toggle(), а не через focusin.
     if (_isOpen) _scheduleUpdate();
   }
 
