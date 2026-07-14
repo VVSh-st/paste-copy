@@ -24,7 +24,7 @@ const State = (() => {
     blockHeights:    {},
 
     llm: {
-      enabled:         false,
+      enabled:         true,
       activeProfileId: null,
       profiles:        [],
       streaming:       true,
