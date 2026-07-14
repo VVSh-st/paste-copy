@@ -2301,7 +2301,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     body.appendChild(mdContent);
     if (b.mdPreview) {
       _renderBlockMdPreview(ta.value, mdContent, b.fontSize || 13.5, b.mdHighlight);
-      if (b._mdScrollTop) mdContent.scrollTop = b._mdScrollTop;
+      const savedScroll = b._mdScrollTop || 0;
+      if (savedScroll) requestAnimationFrame(() => { mdContent.scrollTop = savedScroll; });
     }
     mdContent.addEventListener('scroll', () => {
       b._mdScrollTop = mdContent.scrollTop;
