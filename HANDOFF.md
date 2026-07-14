@@ -552,42 +552,33 @@
 
 ---
 
-### MindMap — доработка: radial placement + 3D + performance (задание 3)
+### MindMap — доработка (задание 3) — ОТКАЧЕНА
 
-**Файлы:** `mindmap.js`, `mindmap.css`
+Пользователь откатил изменения mindmap. Файлы вернулись в исходное состояние.
 
-**Реализовано (безопасные изменения):**
-1. **`_drawStarfield` расширен** — мир 4×3 вместо 1×1, плавное затухание плотности к краю. Фон ощущается «бесконечным».
-2. **`_buildPlacementGrid`** — bucket-grid (16×16) для коллизий. O(N) вместо O(N²). ~250 проверок вместо ~9k.
-3. **DocumentFragment** — один `appendChild` вместо N в `_drawWords`. Один re-flow.
-4. **`_addFilmGrain`** — `feTurbulence` фильтр на статичном rect. Дешёвая текстура шума.
-5. **`big-bloom` filter** — один общий SVG filter вместо N per-element.
-6. **HTML popup** — `_showWordCountAtClick` → `<div class="mm-count-pop">` с `text-shadow` (8-направленный контур + свечение) и count-up анимацией. Замена SVG filter popup.
-7. **CSS hover** — `.mm-word:hover { opacity:1; filter:drop-shadow }` + `.mm-word-hero` glow. Без JS listeners.
-8. **CSS `mm-circle` / `mm-circle-hot`** — замена SVG `filter="url(#glow)"` на CSS drop-shadow.
-9. **CSS `contain`** на `.mindmap-panel`.
+---
 
-**Пропущено (опасные/сомнительные):**
-- `.mm-world` wrapper — меняет DOM-структуру, может сломать CSS/layout
-- `_placeWordsRadial` — полная замена алгоритма размещения, ломает визуал
-- CSS parallax через `translate` property — непредсказуемо на SVG
-- Event delegation — меняет модель событий
-- `mm-enter-explode` / `mm-drift` — новые анимации, могут раздражать
-- Zone desaturation — CSS filter конфликтует
-- Soft re-render — может давать stale state
-- requestIdleCallback / LOD culling — лишняя сложность
+### Blocks — MD кнопка доработка (задание "доработка")
+
+**Файлы:** `blocks.js`, `styles.css`
+
+**Изменения:**
+1. **Размер не меняется** — при переключении MD/text сохраняется высота предыдущего элемента (`offsetHeight`), применяется к новому через `style.height`.
+2. **Прокрутка сохраняется** — `scrollTop` пропорционально пересчитывается при переключении (`prevScroll / prevScrollH * newScrollHeight`).
+3. **Active state dropdown** — кнопка "🎨 MD + Подсветка кода" получает `active` class (синий текст `var(--accent)`) когда `b.mdHighlight = true`. Обновляется при показе dropdown и при toggle.
+4. **F5 persistence** — `mdHighlight` уже сохранялся в block data. Теперь UI корректно отображает active state после перезагрузки.
 
 **Коммиты:**
-- `97da0a7` — безопасные perf + visual improvements
+- `115900f` — MD button improvements
 
 ---
 
 ## Следующий шаг
 
-1. Протестировать mindmap: starfield (расширенный фон), film grain (лёгкая текстура), popup (HTML с count-up)
-2. Протестировать graph/hierarchy: CSS drop-shadow вместо SVG filter
-3. Протестировать hover на словах: opacity + drop-shadow через CSS
-4. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
-5. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
-6. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
-7. Проверить MD-превью текстовых блоков — toggle, long-press dropdown, active state
+1. Протестировать MD кнопку: переключение без изменения размера блока
+2. Протестировать MD кнопку: сохранение прокрутки при переключении
+3. Протестировать dropdown: active state "🎨 MD + Подсветка кода" (синий текст)
+4. Протестировать F5: mdHighlight сохраняется и UI показывает active state
+5. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
+6. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
+7. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
