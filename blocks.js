@@ -9,6 +9,41 @@ const Blocks = (() => {
   let _captureInsertMode = localStorage.getItem('capture_insert_mode') || 'breaks';
   let _captureStickyId = null;
   const _captureBtns = new Set();
+  const _captureUndoStack = [];
+  const _captureRedoStack = [];
+  const CAPTURE_STACK_LIMIT = 50;
+
+  function captureUndo() {
+    if (!_captureMode || !_captureUndoStack.length) return false;
+    const entry = _captureUndoStack.pop();
+    const sticky = entry.stickyId
+      ? (State.getActive()?.blocks || []).find(b => b.id === entry.stickyId)
+      : null;
+    if (sticky) {
+      sticky.value = entry.prevValue;
+      _syncCaptureTextarea(sticky);
+      _captureRedoStack.push(entry);
+      if (_captureRedoStack.length > CAPTURE_STACK_LIMIT) _captureRedoStack.shift();
+      State.updateLive(() => {});
+    }
+    return true;
+  }
+
+  function captureRedo() {
+    if (!_captureMode || !_captureRedoStack.length) return false;
+    const entry = _captureRedoStack.pop();
+    const sticky = entry.stickyId
+      ? (State.getActive()?.blocks || []).find(b => b.id === entry.stickyId)
+      : null;
+    if (sticky) {
+      sticky.value = entry.afterValue;
+      _syncCaptureTextarea(sticky);
+      _captureUndoStack.push(entry);
+      if (_captureUndoStack.length > CAPTURE_STACK_LIMIT) _captureUndoStack.shift();
+      State.updateLive(() => {});
+    }
+    return true;
+  }
 
   function _getStickyBlock() {
     const tab = State.getActive();
@@ -1592,14 +1627,21 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     // Синхронизация disabled-состояния кнопок по текущей истории блока
 
     const _syncBtns = () => {
-
-      undoBtn.disabled = !State.canBlockUndo(b.id);
-
-      redoBtn.disabled = !State.canBlockRedo(b.id);
-
+      if (_captureMode) {
+        undoBtn.disabled = !_captureUndoStack.length;
+        redoBtn.disabled = !_captureRedoStack.length;
+      } else {
+        undoBtn.disabled = !State.canBlockUndo(b.id);
+        redoBtn.disabled = !State.canBlockRedo(b.id);
+      }
     };
 
     const undoBtn  = makeToolBtn(svgIcon('undo'), 'Отменить (блок)', () => {
+      if (_captureMode && captureUndo()) {
+        State.snapshot();
+        requestAnimationFrame(() => { ta.focus(); _syncBtns(); });
+        return;
+      }
       State.blockUndo(b.id);
       State.snapshot();
       if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: -1 });
@@ -1620,6 +1662,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     });
 
     const redoBtn  = makeToolBtn(svgIcon('redo'), 'Повторить (блок)', () => {
+      if (_captureMode && captureRedo()) {
+        State.snapshot();
+        requestAnimationFrame(() => { ta.focus(); _syncBtns(); });
+        return;
+      }
       State.blockRedo(b.id);
       State.snapshot();
       if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: 1 });
@@ -2482,7 +2529,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (captureLongPressed) { captureLongPressed = false; return; }
       captureDropdown.style.display = 'none';
       _captureMode = !_captureMode;
-      if (_captureMode) _ensureStickyBlock();
+      if (_captureMode) {
+        _ensureStickyBlock();
+      } else {
+        _captureUndoStack.length = 0;
+        _captureRedoStack.length = 0;
+      }
       _syncCaptureBtn();
     };
 
@@ -2493,6 +2545,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!sel) return;
       const sticky = _getStickyBlock();
       if (!sticky) return;
+      const prevValue = sticky.value || '';
       if (_captureInsertMode === 'inline') {
         const val = sticky.value || '';
         const leadTrimmed = sel.replace(/^\s+/, '');
@@ -2503,6 +2556,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else {
         _appendCaptureText(sticky, sel);
       }
+      _captureUndoStack.push({ stickyId: sticky.id, prevValue, afterValue: sticky.value });
+      if (_captureUndoStack.length > CAPTURE_STACK_LIMIT) _captureUndoStack.shift();
+      _captureRedoStack.length = 0;
       State.snapshot();
     });
 
