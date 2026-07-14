@@ -1163,13 +1163,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           ta.style.height = mdEl.offsetHeight + 'px';
           ta.style.display = '';
           mdEl.style.display = 'none';
-          // Восстанавливаем курсор ДО focus
           if (b._savedTaSelStart != null) {
             ta.selectionStart = b._savedTaSelStart;
             ta.selectionEnd = b._savedTaSelEnd;
           }
-          ta.focus();
-          // Восстанавливаем scrollTop ПОСЛЕ focus (browser может сбросить)
           ta.scrollTop = b._savedTaScrollTop || 0;
         }
         State.snapshot();
