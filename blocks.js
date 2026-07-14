@@ -60,7 +60,7 @@ const Blocks = (() => {
     let sticky = _getStickyBlock();
     if (!sticky) {
       const tab = State.getActive();
-      const b = State.makeBlock('📌', '📌', 0, '', 'sticky');
+      const b = State.makeBlock('Заметка', '📌', 0, '', 'sticky');
       tab.blocks.push(b);
       sticky = b;
       Blocks.render();
