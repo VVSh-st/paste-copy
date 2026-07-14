@@ -608,7 +608,7 @@ const InlineHint = (() => {
       position: 'fixed', pointerEvents: 'none', userSelect: 'none',
       zIndex: 'var(--z-hint)', display: 'none', whiteSpace: 'pre',
       background: 'transparent', color: 'rgba(176,188,207,0.35)',
-      borderRadius: '4px', padding: '2px 0', fontFamily: 'inherit',
+      borderRadius: '4px', padding: '0', fontFamily: 'inherit',
       fontSize: 'inherit', lineHeight: 'inherit', letterSpacing: 'inherit',
     });
     document.body.appendChild(listEl);
@@ -733,12 +733,13 @@ const InlineHint = (() => {
     const lineH = parseFloat(pos.cs.lineHeight) || (parseFloat(pos.cs.fontSize) || 12) * 1.4;
     const listY = pos.rawY + lineH + 2;
     const maxVisible = Math.min(_candidates.length, 6);
-    const itemH = lineH;
+    const itemH = lineH + 2;
     listEl.style.maxHeight = (maxVisible * itemH + 4) + 'px';
     listEl.style.left = pos.rawX + 'px';
     listEl.style.top = listY + 'px';
     listEl.style.maxWidth = pos.maxWidth + 'px';
     listEl.style.overflowY = _candidates.length > 6 ? 'auto' : 'hidden';
+    listEl.style.paddingBottom = '2px';
     listEl.style.display = 'block';
   }
 
@@ -753,8 +754,8 @@ const InlineHint = (() => {
     listEl.innerHTML = _candidates.map((w, i) => {
       const suffixPart = w.slice(_currentWord.length);
       const prefix = w.slice(0, _currentWord.length);
-      const opacity = i === _selectedIndex ? '0.8' : '0.5';
-      return `<div style="padding:1px 0;opacity:${opacity}"><span style="opacity:0.6">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
+      const opacity = i === _selectedIndex ? '1' : '0.95';
+      return `<div style="padding:1px 0;margin-top:-1px;opacity:${opacity}"><span style="opacity:0.6">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
     }).join('');
   }
 
