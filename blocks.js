@@ -1045,12 +1045,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         'Markdown-превью (долгий клик — меню)'
       );
       mdBtn.classList.add('block-md-btn');
+      if (b.mdPreview) mdBtn.classList.add('active');
 
       // --- MD dropdown (long-press) ---
       const mdDropdown = document.createElement('div');
       mdDropdown.className = 'translate-dropdown';
       mdDropdown.style.display = 'none';
       const _mdMenuItems = [
+        { action: 'toggle-hl', label: '🎨 MD + Подсветка кода' },
         { action: 'copy-html', label: '📋 Копировать HTML' },
         { action: 'copy-md',  label: '📝 Копировать Markdown' },
       ];
@@ -1071,7 +1073,21 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           if (!blockEl) return;
           const ta = blockEl.querySelector('textarea.block-textarea');
           const mdEl = blockEl.querySelector('.block-md-content');
-          if (action === 'copy-html') {
+          if (action === 'toggle-hl') {
+            b.mdHighlight = !b.mdHighlight;
+            if (!b.mdPreview) {
+              b.mdPreview = true;
+              if (ta) {
+                _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
+                ta.style.display = 'none';
+                mdEl.style.display = '';
+              }
+            } else if (mdEl) {
+              _renderBlockMdPreview(ta?.value || '', mdEl, b.fontSize || 13.5, b.mdHighlight);
+            }
+            Toast.show(b.mdHighlight ? 'Подсветка кода включена' : 'Подсветка кода выключена', 'success');
+            State.snapshot();
+          } else if (action === 'copy-html') {
             const html = mdEl?.innerHTML?.trim();
             if (!html || !b.mdPreview) { Toast.show('Включи MD-превью', 'info'); return; }
             navigator.clipboard.writeText(html).then(
@@ -1119,8 +1135,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const mdEl = blockEl.querySelector('.block-md-content');
         if (!ta || !mdEl) return;
         b.mdPreview = !b.mdPreview;
+        mdBtn.classList.toggle('active', b.mdPreview);
         if (b.mdPreview) {
-          _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5);
+          _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
           ta.style.display = 'none';
           mdEl.style.display = '';
         } else {
@@ -1204,7 +1221,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       // Если MD-превью включено — обновить контент для новой вкладки
       if (b.mdPreview) {
         const mdEl = blockEl.querySelector('.block-md-content');
-        if (mdEl) _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5);
+        if (mdEl) _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
       }
       const body = blockEl.querySelector('.block-body');
       if (body) updateBlockCounter(ta, b, body);
@@ -1393,23 +1410,26 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           }, 500);
         });
 
-        btn.addEventListener('mouseleave', _removeTooltip);
-
         let _clickTimer = null;
-        btn.addEventListener('dblclick', e => {
-          e.stopPropagation();
-          _removeTooltip();
-          clearTimeout(_clickTimer);
-          labelSpan.style.display = 'none';
-          renameInput.style.display = '';
-          renameInput.value = sub.name || '';
-          requestAnimationFrame(() => { renameInput.focus(); renameInput.select(); });
+        let _longPressFired = false;
+
+        btn.addEventListener('mousedown', e => {
+          if (e.button !== 0) return;
+          _longPressFired = false;
+          _clickTimer = setTimeout(() => {
+            _longPressFired = true;
+            _removeTooltip();
+            labelSpan.style.display = 'none';
+            renameInput.style.display = '';
+            renameInput.value = sub.name || '';
+            requestAnimationFrame(() => { renameInput.focus(); renameInput.select(); });
+          }, 500);
         });
 
-        btn.onclick = e => {
-          _removeTooltip();
+        btn.addEventListener('mouseup', e => {
           clearTimeout(_clickTimer);
-          _clickTimer = setTimeout(() => {
+          if (!_longPressFired) {
+            _removeTooltip();
             if (b.type === 'todo') {
               if (i === b.activeSubtab) return;
               const col = blockEl.closest('.column');
@@ -1436,8 +1456,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
               patchSubtab(b, i);
               if (typeof Ember !== 'undefined') Ember.triggerReaction('subtabSwitch', { dir });
             }
-          }, 220);
-        };
+          }
+          _longPressFired = false;
+        });
+
+        btn.addEventListener('mouseleave', () => {
+          _removeTooltip();
+          clearTimeout(_clickTimer);
+          _longPressFired = false;
+        });
 
         const commitRename = () => {
           const v = renameInput.value.trim();
@@ -1563,7 +1590,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         }
         if (b.mdPreview) {
           const mdEl = body.closest('.block')?.querySelector('.block-md-content');
-          if (mdEl) _renderBlockMdPreview(val, mdEl, b.fontSize || 13.5);
+          if (mdEl) _renderBlockMdPreview(val, mdEl, b.fontSize || 13.5, b.mdHighlight);
         }
         ta.focus();
         _syncBtns();
@@ -1583,7 +1610,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         }
         if (b.mdPreview) {
           const mdEl = body.closest('.block')?.querySelector('.block-md-content');
-          if (mdEl) _renderBlockMdPreview(val, mdEl, b.fontSize || 13.5);
+          if (mdEl) _renderBlockMdPreview(val, mdEl, b.fontSize || 13.5, b.mdHighlight);
         }
         ta.focus();
         _syncBtns();
@@ -2252,7 +2279,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     mdContent.style.display = b.mdPreview ? '' : 'none';
     ta.style.display = b.mdPreview ? 'none' : '';
     body.appendChild(mdContent);
-    if (b.mdPreview) _renderBlockMdPreview(ta.value, mdContent, b.fontSize || 13.5);
+    if (b.mdPreview) _renderBlockMdPreview(ta.value, mdContent, b.fontSize || 13.5, b.mdHighlight);
 
     // Футер с кнопками размера шрифта и счётчиком
     const footer = document.createElement('div');
@@ -2484,7 +2511,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.dispatchEvent(new Event('input', { bubbles: true }));
         if (b.mdPreview) {
           const mdEl = body.closest('.block')?.querySelector('.block-md-content');
-          if (mdEl) _renderBlockMdPreview(prev.value, mdEl, b.fontSize || 13.5);
+          if (mdEl) _renderBlockMdPreview(prev.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
         }
         if (!translateBtn._undoStack.length) {
           translateBtn._undoStack = null;
@@ -2537,7 +2564,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.dispatchEvent(new Event('input', { bubbles: true }));
         if (b.mdPreview) {
           const mdEl = body.closest('.block')?.querySelector('.block-md-content');
-          if (mdEl) _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5);
+          if (mdEl) _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
         }
         if (typeof Ember !== 'undefined') Ember.triggerReaction('translate');
       }).catch(err => {
@@ -2718,7 +2745,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   /* ================================================================
      Markdown preview for text blocks
   ================================================================ */
-  function _renderBlockMdPreview(text, mdEl, fontSize) {
+  function _renderBlockMdPreview(text, mdEl, fontSize, highlight) {
     if (!mdEl) return;
     if (!text || !text.trim()) {
       mdEl.innerHTML = '<span style="color:var(--text3);font-style:italic">Пусто</span>';
@@ -2726,13 +2753,18 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
     if (typeof marked !== 'undefined') {
       try {
-        const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        mdEl.innerHTML = marked.parse(safe);
+        mdEl.innerHTML = marked.parse(text);
       } catch (_) {
         mdEl.textContent = text;
       }
     } else {
       mdEl.textContent = text;
+    }
+    if (highlight && typeof hljs !== 'undefined') {
+      mdEl.querySelectorAll('pre code').forEach(block => {
+        delete block.dataset.highlighted;
+        hljs.highlightElement(block);
+      });
     }
   }
 
@@ -3754,8 +3786,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   function updateSubtabCompletedColors(b) {
     const blockEl = document.querySelector(`.block[data-id="${b.id}"]`);
     if (!blockEl) return;
-    blockEl.querySelectorAll('.block-subtab').forEach((btn, i) => {
-      btn.classList.toggle('subtab-completed', !!b.subtabs[i]?.completed);
+    blockEl.querySelectorAll('.block-subtab').forEach(btn => {
+      const idx = parseInt(btn.dataset.subtabIdx, 10);
+      btn.classList.toggle('subtab-completed', !!b.subtabs[idx]?.completed);
     });
   }
 
