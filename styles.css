@@ -1888,8 +1888,9 @@ textarea.block-textarea:focus {
 #inline-hint {
   position: fixed; pointer-events: none; user-select: none;
   z-index: var(--z-hint); display: none; white-space: pre;
-  background: transparent; color: rgba(200,210,225,0.55);
+  background: transparent; color: rgba(176,188,207,0.35);
 }
+#inline-hint-list::-webkit-scrollbar { display: none; }
 
 
 /* =Эффект принятия WordComplete= */

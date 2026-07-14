@@ -610,6 +610,7 @@ const InlineHint = (() => {
       background: 'transparent', color: 'rgba(176,188,207,0.35)',
       borderRadius: '4px', padding: '0', fontFamily: 'inherit',
       fontSize: 'inherit', lineHeight: 'inherit', letterSpacing: 'inherit',
+      scrollbarWidth: 'none', msOverflowStyle: 'none',
     });
     document.body.appendChild(listEl);
 
@@ -739,6 +740,8 @@ const InlineHint = (() => {
     listEl.style.top = listY + 'px';
     listEl.style.maxWidth = pos.maxWidth + 'px';
     listEl.style.overflowY = _candidates.length > 6 ? 'auto' : 'hidden';
+    listEl.style.scrollbarWidth = 'none';
+    listEl.style.msOverflowStyle = 'none';
     listEl.style.paddingBottom = '2px';
     listEl.style.display = 'block';
   }
@@ -755,7 +758,7 @@ const InlineHint = (() => {
       const suffixPart = w.slice(_currentWord.length);
       const prefix = w.slice(0, _currentWord.length);
       const opacity = i === _selectedIndex ? '1' : '0.95';
-      return `<div style="padding:1px 0;margin-top:-1px;opacity:${opacity}"><span style="opacity:0.6">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
+      return `<div style="padding:1px 0;margin-top:-5px;opacity:${opacity}"><span style="opacity:0.6">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
     }).join('');
   }
 
