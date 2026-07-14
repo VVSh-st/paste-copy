@@ -6,6 +6,7 @@ const Blocks = (() => {
 
   // ── "Ща как напишу" capture mode ──
   let _captureMode = false;
+  let _captureInsertMode = localStorage.getItem('capture_insert_mode') || 'breaks';
   let _captureStickyId = null;
 
   function _getStickyBlock() {
@@ -2415,12 +2416,66 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const captureBtn = mkBtn('font-ctrl-btn capture-btn', '', 'Ща как напишу');
     captureBtn.innerHTML = CAPTURE_SVG;
     captureBtn.setAttribute('aria-label', 'Режим быстрого копирования');
+
+    const captureDropdown = document.createElement('div');
+    captureDropdown.className = 'translate-dropdown';
+    captureDropdown.style.display = 'none';
+
+    function _buildCaptureMenu() {
+      captureDropdown.innerHTML = '';
+      const modes = [
+        { id: 'inline', label: 'В строчку' },
+        { id: 'breaks', label: 'С пропуском' },
+      ];
+      modes.forEach(m => {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'translate-lang-opt' + (m.id === _captureInsertMode ? ' active' : '');
+        opt.textContent = m.label;
+        opt.onclick = e => {
+          e.stopPropagation();
+          _captureInsertMode = m.id;
+          localStorage.setItem('capture_insert_mode', m.id);
+          _buildCaptureMenu();
+          captureDropdown.style.display = 'none';
+        };
+        captureDropdown.appendChild(opt);
+      });
+    }
+    _buildCaptureMenu();
+
+    let captureLongPressTimer = null;
+    let captureLongPressed = false;
+
+    captureBtn.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      captureLongPressed = false;
+      captureLongPressTimer = setTimeout(() => {
+        captureLongPressed = true;
+        if (!_captureMode) {
+          _captureMode = true;
+          _ensureStickyBlock();
+          _syncCaptureBtn();
+        }
+        const rect = captureBtn.getBoundingClientRect();
+        captureDropdown.style.left = rect.left + 'px';
+        captureDropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        captureDropdown.style.display = captureDropdown.style.display === 'none' ? 'block' : 'none';
+      }, 400);
+    });
+    captureBtn.addEventListener('mouseup', () => clearTimeout(captureLongPressTimer));
+    captureBtn.addEventListener('mouseleave', () => clearTimeout(captureLongPressTimer));
+
     function _syncCaptureBtn() {
       captureBtn.classList.toggle('capture-active', _captureMode);
     }
     _syncCaptureBtn();
+
     captureBtn.onclick = e => {
       e.stopPropagation();
+      clearTimeout(captureLongPressTimer);
+      if (captureLongPressed) { captureLongPressed = false; return; }
+      captureDropdown.style.display = 'none';
       _captureMode = !_captureMode;
       if (_captureMode) _ensureStickyBlock();
       _syncCaptureBtn();
@@ -2433,7 +2488,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       if (!sel) return;
       const sticky = _ensureStickyBlock();
       if (!sticky) return;
-      _appendCaptureText(sticky, sel);
+      if (_captureInsertMode === 'inline') {
+        // В строчку: текст + один пробел в конце
+        const val = sticky.value || '';
+        const trimmed = sel.replace(/\s+$/, '');
+        sticky.value = val ? val + ' ' + trimmed + ' ' : trimmed + ' ';
+        State.updateLive(() => {});
+      } else {
+        _appendCaptureText(sticky, sel);
+      }
       // expand sticky if collapsed
       if (sticky.collapsed) {
         State.update(() => { sticky.collapsed = false; });
@@ -2716,6 +2779,19 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       document.removeEventListener('contextmenu', _blockContextMenu);
     });
 
+    // capture dropdown close handler
+    const _closeCaptureDropdown = e => {
+      if (!captureDropdown.contains(e.target) && e.target !== captureBtn) {
+        captureDropdown.style.display = 'none';
+      }
+    };
+    document.addEventListener('mousedown', _closeCaptureDropdown);
+    _pendingHoverEffects.add(() => {
+      document.removeEventListener('mousedown', _closeCaptureDropdown);
+    });
+
+    footer.appendChild(captureBtn);
+    body.appendChild(captureDropdown);
     footer.appendChild(thesaurusBtn);
     body.appendChild(thesaurusDropdown);
 

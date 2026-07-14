@@ -666,7 +666,7 @@ body {
   50% { box-shadow: 0 0 8px 2px rgba(79,142,247,0.35); }
 }
 .font-ctrl-btn.capture-active {
-  animation: capturePulse 2.5s ease-in-out 1;
+  animation: capturePulse 1s ease-in-out infinite;
   color: var(--accent) !important;
   opacity: 1 !important;
   border-color: rgba(79,142,247,0.3);
