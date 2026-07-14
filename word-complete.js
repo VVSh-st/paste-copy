@@ -733,15 +733,9 @@ const InlineHint = (() => {
     if (!_candidates.length || !listEl) return;
     const lineH = parseFloat(pos.cs.lineHeight) || (parseFloat(pos.cs.fontSize) || 12) * 1.4;
     const listY = pos.rawY + lineH + 2;
-    const maxVisible = Math.min(_candidates.length, 6);
-    const itemH = lineH + 2;
-    listEl.style.maxHeight = (maxVisible * itemH + 4) + 'px';
     listEl.style.left = pos.rawX + 'px';
     listEl.style.top = listY + 'px';
     listEl.style.maxWidth = pos.maxWidth + 'px';
-    listEl.style.overflowY = _candidates.length > 6 ? 'auto' : 'hidden';
-    listEl.style.scrollbarWidth = 'none';
-    listEl.style.msOverflowStyle = 'none';
     listEl.style.paddingBottom = '2px';
     listEl.style.display = 'block';
   }
