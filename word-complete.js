@@ -576,6 +576,7 @@ const InlineHint = (() => {
 
   let mirrorEl = null;
   let hintEl = null;
+  let listEl = null;
   let _domReady = false;
 
   function _ensureDom() {
@@ -600,6 +601,17 @@ const InlineHint = (() => {
     hintEl.id = 'inline-hint';
     hintEl.setAttribute('aria-hidden', 'true');
     document.body.appendChild(hintEl);
+
+    listEl = document.createElement('div');
+    listEl.id = 'inline-hint-list';
+    Object.assign(listEl.style, {
+      position: 'fixed', pointerEvents: 'none', userSelect: 'none',
+      zIndex: 'var(--z-hint)', display: 'none', whiteSpace: 'pre',
+      background: 'rgba(30,35,48,0.88)', color: 'rgba(176,188,207,0.35)',
+      borderRadius: '4px', padding: '2px 0', fontFamily: 'inherit',
+      fontSize: 'inherit', lineHeight: 'inherit', letterSpacing: 'inherit',
+    });
+    document.body.appendChild(listEl);
 
     _domReady = true;
   }
@@ -660,6 +672,9 @@ const InlineHint = (() => {
   let activeTa = null;
   let composing = false;
   let _visible  = false;
+  let _candidates = [];
+  let _selectedIndex = 0;
+  let _currentWord = '';
 
   function _onTaScroll() {
     if (!_visible || !activeTa) return;
@@ -710,12 +725,49 @@ const InlineHint = (() => {
     _insertLeft = pos.insertX;
     _lastTop = pos.rawY;
     _lastLeft = pos.rawX;
+    _positionList(pos);
   }
 
-  function show(ta, suf) {
+  function _positionList(pos) {
+    if (!_candidates.length || !listEl) return;
+    const lineH = parseFloat(pos.cs.lineHeight) || (parseFloat(pos.cs.fontSize) || 12) * 1.4;
+    const listY = pos.rawY + lineH + 2;
+    const maxVisible = Math.min(_candidates.length, 6);
+    const itemH = lineH;
+    listEl.style.maxHeight = (maxVisible * itemH + 4) + 'px';
+    listEl.style.left = pos.rawX + 'px';
+    listEl.style.top = listY + 'px';
+    listEl.style.maxWidth = pos.maxWidth + 'px';
+    listEl.style.overflowY = _candidates.length > 6 ? 'auto' : 'hidden';
+    listEl.style.display = 'block';
+  }
+
+  function _renderList() {
+    if (!listEl || !_candidates.length) { if (listEl) listEl.style.display = 'none'; return; }
+    const cs = hintEl.style;
+    listEl.style.fontFamily = cs.fontFamily;
+    listEl.style.fontSize = cs.fontSize;
+    listEl.style.fontWeight = cs.fontWeight;
+    listEl.style.lineHeight = cs.lineHeight;
+    listEl.style.letterSpacing = cs.letterSpacing;
+    listEl.innerHTML = _candidates.map((w, i) => {
+      const suffixPart = w.slice(_currentWord.length);
+      const prefix = w.slice(0, _currentWord.length);
+      const sel = i === _selectedIndex ? ' color:rgba(200,215,235,0.95);' : '';
+      return `<div style="padding:1px 8px;cursor:default;${sel}"><span style="color:rgba(176,188,207,0.5)">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
+    }).join('');
+  }
+
+  function _escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  function show(ta, suf, candidates, currentWord) {
     _ensureDom();
     if (!suf || !ta) { hide(); return; }
     suffix = suf;
+
+    _candidates = candidates || [];
+    _currentWord = currentWord || '';
+    _selectedIndex = 0;
 
     if (activeTa) activeTa.removeEventListener('scroll', _onTaScroll);
     activeTa = ta;
@@ -735,21 +787,32 @@ const InlineHint = (() => {
       maxWidth:      pos.maxWidth + 'px',
       display:       'block',
     });
-    hintEl.textContent = suf;
+    hintEl.textContent = _candidates.length > 1 ? _candidates[0].slice(_currentWord.length) : suf;
     _insertLeft = pos.insertX;
     _lastTop = pos.rawY;
     _lastLeft = pos.rawX;
     _visible = true;
+
+    if (_candidates.length > 1) {
+      _renderList();
+      _positionList(pos);
+    } else {
+      if (listEl) listEl.style.display = 'none';
+    }
   }
 
   function hide() {
     _ensureDom();
     hintEl.style.display = 'none';
+    if (listEl) listEl.style.display = 'none';
     if (activeTa) {
       activeTa.removeEventListener('scroll', _onTaScroll);
     }
     suffix   = '';
     activeTa = null;
+    _candidates = [];
+    _selectedIndex = 0;
+    _currentWord = '';
     _insertLeft = 0;
     _lastTop = 0;
     _lastLeft = 0;
@@ -757,8 +820,19 @@ const InlineHint = (() => {
   }
 
   function isVisible()   { return _visible; }
-  function getSuffix()   { return suffix; }
+  function getSuffix()   { return _candidates.length ? _candidates[_selectedIndex].slice(_currentWord.length) : suffix; }
   function getActiveTa() { return activeTa; }
+  function getCandidates() { return _candidates; }
+  function getSelectedIndex() { return _selectedIndex; }
+  function getCurrentWord() { return _currentWord; }
+
+  function cycleNext() {
+    if (_candidates.length < 2) return;
+    _selectedIndex = (_selectedIndex + 1) % _candidates.length;
+    suffix = _candidates[_selectedIndex].slice(_currentWord.length);
+    hintEl.textContent = suffix;
+    _renderList();
+  }
 
   function getSnapshot() {
     _ensureDom();
@@ -788,7 +862,7 @@ const InlineHint = (() => {
   window.addEventListener('resize', hide, { passive: true });
   window.addEventListener('scroll', () => { if (_visible) _reposition(); }, { passive: true, capture: true });
 
-  return { show, hide, isVisible, getSuffix, getActiveTa, getSnapshot, isComposing: () => composing };
+  return { show, hide, isVisible, getSuffix, getActiveTa, getSnapshot, isComposing: () => composing, cycleNext, getCandidates, getSelectedIndex, getCurrentWord };
 })();
 
 
@@ -1061,7 +1135,7 @@ const WordComplete = (() => {
     if (currentWord.length >= cfg.minLen) {
       const candidates = WordDict.suggest(currentWord);
       if (candidates.length) {
-        InlineHint.show(ta, candidates[0].slice(currentWord.length));
+        InlineHint.show(ta, candidates[0].slice(currentWord.length), candidates, currentWord);
         return;
       }
       InlineHint.hide();
@@ -1076,7 +1150,7 @@ const WordComplete = (() => {
         if (_needsCapitalization(before)) {
           suffix = next.charAt(0).toUpperCase() + next.slice(1);
         }
-        InlineHint.show(ta, suffix);
+        InlineHint.show(ta, suffix, [next], '');
         return;
       }
     }
@@ -1091,6 +1165,16 @@ const WordComplete = (() => {
       InlineHint.hide();
       e.stopPropagation();
       return;
+    }
+
+    // Right arrow — cycle through candidates
+    if (e.key === 'ArrowRight' && InlineHint.isVisible() && InlineHint.getActiveTa() === ta) {
+      if (InlineHint.getCandidates().length > 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        InlineHint.cycleNext();
+        return;
+      }
     }
 
     if (e.key !== 'Tab') {
