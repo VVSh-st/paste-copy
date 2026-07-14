@@ -56,12 +56,17 @@ const Blocks = (() => {
     return tab.blocks.find(b => b.type === 'sticky') || null;
   }
 
-  function _ensureStickyBlock() {
+  function _ensureStickyBlock(sourceBlock) {
     let sticky = _getStickyBlock();
     if (!sticky) {
       const tab = State.getActive();
-      const b = State.makeBlock('Заметка', '📌', 0, '', 'sticky');
-      tab.blocks.push(b);
+      const b = State.makeBlock('Заметка', '📌', sourceBlock?.column ?? 0, '', 'sticky');
+      if (sourceBlock) {
+        const idx = tab.blocks.findIndex(x => x.id === sourceBlock.id);
+        tab.blocks.splice(idx + 1, 0, b);
+      } else {
+        tab.blocks.push(b);
+      }
       sticky = b;
       Blocks.render();
     }
@@ -2505,7 +2510,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         captureLongPressed = true;
         if (!_captureMode) {
           _captureMode = true;
-          _ensureStickyBlock();
+          _ensureStickyBlock(b);
           State.snapshot();
           _syncCaptureBtn();
         }
@@ -2532,7 +2537,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       captureDropdown.style.display = 'none';
       _captureMode = !_captureMode;
       if (_captureMode) {
-        _ensureStickyBlock();
+        _ensureStickyBlock(b);
       } else {
         _captureUndoStack.length = 0;
         _captureRedoStack.length = 0;
