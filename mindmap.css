@@ -122,16 +122,62 @@
   flex: 1; overflow: hidden;
   padding: 0;
   cursor: grab;
+  position: relative;
+  contain: layout style;
 }
 .mindmap-canvas:active { cursor: grabbing; }
-.mindmap-canvas svg { width: 100%; height: 100%; display: block; }
+
+/* ── World wrapper (pan/zoom via CSS vars → GPU composite) ── */
+.mm-world {
+  transform: translate3d(var(--px, 0px), var(--py, 0px), 0) scale(var(--sz, 1));
+  transform-origin: 0 0;
+  will-change: transform;
+  contain: layout paint style;
+  position: absolute; inset: 0;
+}
+.mm-world svg { width: 100%; height: 100%; display: block; }
+
+/* ── Parallax: 3 depth tiers via CSS custom properties ── */
+.mm-viewport > [data-depth-t="fg"] { translate: var(--ptx-fg, 0px) var(--pty-fg, 0px); }
+.mm-viewport > [data-depth-t="md"] { translate: var(--ptx-md, 0px) var(--pty-md, 0px); }
+.mm-viewport > [data-depth-t="bg"] { translate: var(--ptx-bg, 0px) var(--pty-bg, 0px); }
+
+/* ── Word elements (CSS hover, no JS listeners) ── */
+.mm-word {
+  cursor: pointer;
+  transition: opacity 0.18s, scale 0.15s ease-out;
+  will-change: translate, opacity;
+}
+.mm-word:hover {
+  opacity: 1 !important;
+  scale: 1.06;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+.mm-word-hero {
+  filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 9px rgba(0,0,0,0.55));
+}
+.mm-word-hero:hover {
+  filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 18px currentColor);
+}
+
+/* ── Drift animation (peripheral ring-2 words) ── */
+@keyframes mm-drift {
+  0%   { translate: var(--tx, 0px) var(--ty, 0px); }
+  50%  { translate: calc(var(--tx, 0px) + var(--dx, 6px)) calc(var(--ty, 0px) + var(--dy, -5px)); }
+  100% { translate: var(--tx, 0px) var(--ty, 0px); }
+}
+.mm-drift { animation: mm-drift 8s ease-in-out infinite; will-change: translate; }
+
+/* ── Circle drop-shadow (graph mode — replaces SVG filter) ── */
+.mm-circle { filter: drop-shadow(0 0 3px currentColor); }
+.mm-circle-hot { filter: drop-shadow(0 0 6px #4f8ef7) drop-shadow(0 0 12px #4f8ef7); }
 
 .mm-pulse {
   animation: mm-pulse-kf 0.6s ease-in-out;
 }
 @keyframes mm-pulse-kf {
   0%   { filter: none; }
-  50%  { filter: url(#bloom) brightness(1.3); }
+  50%  { filter: brightness(1.3); }
   100% { filter: none; }
 }
 
@@ -143,20 +189,41 @@
   to   { opacity: 1; transform: scale(1); }
 }
 
+/* ── Explode enter (words mode — words fly from center) ── */
+@keyframes mm-explode {
+  0%   { opacity: 0; translate: var(--src-x, 0px) var(--src-y, 0px); scale: 0.35; filter: blur(6px); }
+  60%  { filter: blur(2px); }
+  100% { opacity: 1; translate: 0px 0px; scale: 1; filter: blur(0); }
+}
+.mm-enter-explode {
+  animation: mm-explode 0.9s cubic-bezier(.18,.85,.25,1.02) backwards;
+}
+
+/* ── Count popup (HTML div with text-shadow) ── */
 .mm-count-pop {
-  opacity: 0; pointer-events: none;
-  animation: mm-count-appear 0.28s ease-out forwards;
+  position: absolute;
+  transform: translate(-50%, -50%) scale(0.5);
+  opacity: 0;
+  pointer-events: none;
+  font: 900 26px/1 var(--mono);
+  color: #fff;
+  text-shadow:
+    -1px -1px 0 var(--pop-c, #4f8ef7), 1px -1px 0 var(--pop-c, #4f8ef7),
+    -1px  1px 0 var(--pop-c, #4f8ef7), 1px  1px 0 var(--pop-c, #4f8ef7),
+     0    0   6px var(--pop-c, #4f8ef7),
+     0    0  16px var(--pop-c, #4f8ef7);
+  animation: mm-count-anim 0.32s cubic-bezier(.2,.8,.2,1) forwards;
 }
-.mm-count-pop.vanish {
-  animation: mm-count-vanish 0.7s ease-in forwards;
+@keyframes mm-count-anim {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.5);  filter: blur(6px); }
+  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.18); filter: blur(0); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1);    filter: blur(0); }
 }
-@keyframes mm-count-appear {
-  from { opacity: 0; transform: scale(0.65); filter: blur(5px); }
-  to   { opacity: 1; transform: scale(1); filter: blur(0); }
-}
-@keyframes mm-count-vanish {
-  from { opacity: 1; transform: scale(1); filter: blur(0); }
-  to   { opacity: 0; transform: scale(1.35); filter: blur(8px); }
+.mm-count-pop::after {
+  content: '';
+  position: absolute; inset: -12px -18px;
+  border-radius: 50%;
+  z-index: -1;
 }
 
 .jump-highlight {
