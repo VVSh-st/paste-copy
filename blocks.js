@@ -1146,28 +1146,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         b.mdPreview = !b.mdPreview;
         mdBtn.classList.toggle('active', b.mdPreview);
         if (b.mdPreview) {
-          // Сохраняем позицию перед переключением
-          b._savedTaScrollTop = ta.scrollTop;
-          b._savedTaSelStart = ta.selectionStart;
-          b._savedTaSelEnd = ta.selectionEnd;
+          // Текст → MD: сохраняем пропорцию, рендерим, прокручиваем MD
           const prevH = ta.offsetHeight;
+          const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
           _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
           mdEl.style.height = prevH + 'px';
           mdEl.style.display = '';
           ta.style.display = 'none';
-          const maxScroll = Math.max(1, ta.scrollHeight - ta.clientHeight);
-          const ratio = maxScroll > 0 ? ta.scrollTop / maxScroll : 0;
           mdEl.scrollTop = ratio * Math.max(0, mdEl.scrollHeight - mdEl.clientHeight);
         } else {
+          // MD → Текст: сохраняем пропорцию, показываем textarea, прокручиваем
+          const ratio = mdEl.scrollTop / Math.max(1, mdEl.scrollHeight - mdEl.clientHeight);
           ta.value = b.subtabs[b.activeSubtab]?.value ?? '';
           ta.style.height = mdEl.offsetHeight + 'px';
           ta.style.display = '';
           mdEl.style.display = 'none';
-          if (b._savedTaSelStart != null) {
-            ta.selectionStart = b._savedTaSelStart;
-            ta.selectionEnd = b._savedTaSelEnd;
-          }
-          ta.scrollTop = b._savedTaScrollTop || 0;
+          ta.scrollTop = ratio * Math.max(1, ta.scrollHeight - ta.clientHeight);
         }
         State.snapshot();
       };
