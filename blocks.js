@@ -1156,6 +1156,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           mdEl.scrollTop = ratio * Math.max(0, mdEl.scrollHeight - mdEl.clientHeight);
         } else {
           // MD → Текст: сохраняем пропорцию, показываем textarea, прокручиваем
+          b._mdScrollTop = mdEl.scrollTop;
           const ratio = mdEl.scrollTop / Math.max(1, mdEl.scrollHeight - mdEl.clientHeight);
           b.height = mdEl.offsetHeight;
           ta.value = b.subtabs[b.activeSubtab]?.value ?? '';
@@ -2298,7 +2299,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.style.display = b.mdPreview ? 'none' : '';
     if (b.mdPreview && b.height) mdContent.style.height = b.height + 'px';
     body.appendChild(mdContent);
-    if (b.mdPreview) _renderBlockMdPreview(ta.value, mdContent, b.fontSize || 13.5, b.mdHighlight);
+    if (b.mdPreview) {
+      _renderBlockMdPreview(ta.value, mdContent, b.fontSize || 13.5, b.mdHighlight);
+      if (b._mdScrollTop) mdContent.scrollTop = b._mdScrollTop;
+    }
+    mdContent.addEventListener('scroll', () => {
+      b._mdScrollTop = mdContent.scrollTop;
+    }, { passive: true });
 
     // Футер с кнопками размера шрифта и счётчиком
     const footer = document.createElement('div');
