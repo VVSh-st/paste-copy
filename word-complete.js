@@ -607,7 +607,7 @@ const InlineHint = (() => {
     Object.assign(listEl.style, {
       position: 'fixed', pointerEvents: 'none', userSelect: 'none',
       zIndex: 'var(--z-hint)', display: 'none', whiteSpace: 'pre',
-      background: 'rgba(30,35,48,0.88)', color: 'rgba(176,188,207,0.35)',
+      background: 'transparent', color: 'rgba(176,188,207,0.35)',
       borderRadius: '4px', padding: '2px 0', fontFamily: 'inherit',
       fontSize: 'inherit', lineHeight: 'inherit', letterSpacing: 'inherit',
     });
@@ -753,8 +753,8 @@ const InlineHint = (() => {
     listEl.innerHTML = _candidates.map((w, i) => {
       const suffixPart = w.slice(_currentWord.length);
       const prefix = w.slice(0, _currentWord.length);
-      const sel = i === _selectedIndex ? ' color:rgba(200,215,235,0.95);' : '';
-      return `<div style="padding:1px 8px;cursor:default;${sel}"><span style="color:rgba(176,188,207,0.5)">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
+      const opacity = i === _selectedIndex ? '0.55' : '0.35';
+      return `<div style="padding:1px 0;opacity:${opacity}"><span style="opacity:0.6">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
     }).join('');
   }
 
