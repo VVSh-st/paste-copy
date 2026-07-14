@@ -2193,6 +2193,7 @@ textarea.block-textarea:focus {
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 7px 9px; font-size: 13px; line-height: 1.6;
   min-height: 80px; max-height: 60vh;
+  resize: vertical;
 }
 .block-md-content h1, .block-md-content h2, .block-md-content h3,
 .block-md-content h4, .block-md-content h5, .block-md-content h6 {
