@@ -2503,6 +2503,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else {
         _appendCaptureText(sticky, sel);
       }
+      State.snapshot();
       // expand sticky if collapsed
       if (sticky.collapsed) {
         State.update(() => { sticky.collapsed = false; });
