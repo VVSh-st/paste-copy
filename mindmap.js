@@ -15,7 +15,6 @@ const MindMap = (() => {
   let _rafPending = false;
   let _parallaxNX = 0, _parallaxNY = 0;
   let _wordsAnimatedForHash = null;
-  let _viewportDelegationSetup = false;
 
   const PALETTE = ['#4f8ef7', '#5cb87a', '#f0a050', '#e05c6a', '#a78bfa', '#f472b6', '#22d3ee', '#fbbf24'];
   const ROLE_COLORS = { topic: '#4f8ef7', action: '#5cb87a', modifier: '#a78bfa', entity: '#f0a050' };
@@ -236,20 +235,11 @@ const MindMap = (() => {
 
   function _resetTransform() {
     _zoom = 1; _panX = 0; _panY = 0;
-    const w = _overlay?.querySelector('.mm-world');
-    if (w) {
-      w.style.setProperty('--px', '0px');
-      w.style.setProperty('--py', '0px');
-      w.style.setProperty('--sz', '1');
-    }
+    if (_viewport) _viewport.setAttribute('transform', 'translate(0,0) scale(1)');
   }
 
   function _applyTransform() {
-    const w = _overlay?.querySelector('.mm-world');
-    if (!w) return;
-    w.style.setProperty('--px', `${_panX}px`);
-    w.style.setProperty('--py', `${_panY}px`);
-    w.style.setProperty('--sz', String(_zoom));
+    if (_viewport) _viewport.setAttribute('transform', `translate(${_panX},${_panY}) scale(${_zoom})`);
   }
 
   function _ensureOverlay() {
@@ -279,15 +269,11 @@ const MindMap = (() => {
     _panel = _overlay.querySelector('.mindmap-panel');
     const canvas = _overlay.querySelector('.mindmap-canvas');
 
-    const world = document.createElement('div');
-    world.className = 'mm-world';
-    canvas.appendChild(world);
-
     _svg = document.createElementNS(SVG_NS, 'svg');
     _svg.setAttribute('width', '100%');
     _svg.setAttribute('height', '100%');
     _svg.style.display = 'block';
-    world.appendChild(_svg);
+    canvas.appendChild(_svg);
     _setupSvgListeners();
 
     _overlay.addEventListener('click', e => {
@@ -430,14 +416,11 @@ const MindMap = (() => {
   function _showWordCountAtClick(word, evt, sourceEl) {
     const safeWord = String(word ?? '').slice(0, 100).trim();
     if (!safeWord) return;
-
     const sourceText = window.Preview?.getText?.() ?? '';
     const finalCount = _findWordOccurrences(sourceText, safeWord).length;
-
     const r = _panel.getBoundingClientRect();
     const x = evt.clientX - r.left;
     const y = evt.clientY - r.top;
-
     const el = document.createElement('div');
     el.className = 'mm-count-pop';
     el.style.left = `${x}px`;
@@ -445,7 +428,6 @@ const MindMap = (() => {
     el.dataset.color = sourceEl?.getAttribute?.('fill') || '#4f8ef7';
     el.style.setProperty('--pop-c', el.dataset.color);
     el.textContent = '0';
-
     const start = performance.now();
     const tick = (now) => {
       const t = Math.min(1, (now - start) / 700);
@@ -455,7 +437,6 @@ const MindMap = (() => {
     };
     setTimeout(() => el.remove(), 1900);
     requestAnimationFrame(tick);
-
     _panel.appendChild(el);
   }
 
@@ -590,17 +571,17 @@ const MindMap = (() => {
   }
 
   function _smoothZoomTo(targetX, targetY, targetZoom) {
-    const w = _overlay?.querySelector('.mm-world');
-    if (!w || !_svg) return;
+    if (!_viewport || !_svg) return;
     cancelAnimationFrame(_inertiaRaf);
-    w.style.transition = 'transform 0.4s cubic-bezier(.2,.8,.2,1)';
+    const vp = _viewport;
+    vp.style.transition = 'transform 0.4s cubic-bezier(.2,.8,.2,1)';
     const rect = _svg.getBoundingClientRect();
     _zoom = targetZoom;
     _panX = rect.width / 2 - targetX * targetZoom;
     _panY = rect.height / 2 - targetY * targetZoom;
     _applyTransform();
     _syncZoomSlider();
-    setTimeout(() => { if (w) w.style.transition = ''; }, 400);
+    setTimeout(() => { if (vp) vp.style.transition = ''; }, 400);
   }
 
   function _startInertia() {
@@ -649,11 +630,7 @@ const MindMap = (() => {
   }
 
   function _applyParallax(nx, ny) {
-    if (_mode === 'words') {
-      _applyParallaxCSS(nx, ny);
-      return;
-    }
-    const mul = 40;
+    const mul = _mode === 'words' ? 58 : 40;
     _depthEls.forEach(el => {
       const depth = parseFloat(el.dataset.depth);
       const px = nx * depth * mul;
@@ -953,9 +930,6 @@ const MindMap = (() => {
 
     _viewport.appendChild(_drawStarfield(W, H));
 
-    const vignette = _drawVignette(W, H);
-    if (vignette) _viewport.appendChild(vignette);
-
     _addFilmGrain(W, H);
 
     switch (_mode) {
@@ -966,12 +940,7 @@ const MindMap = (() => {
       case 'hierarchy': _drawHierarchy(W, H); break;
       case 'timeline': _drawTimeline(W, H); break;
     }
-    if (_mode === 'words') {
-      _setupViewportDelegation();
-      _applyParallaxCSS(_parallaxNX, _parallaxNY);
-    } else {
-      _applyDepthBlur();
-    }
+    _applyDepthBlur();
     _applyTransform();
     _depthEls = Array.from(_viewport.querySelectorAll('[data-depth]'));
   }
@@ -1160,70 +1129,84 @@ const MindMap = (() => {
       visualWeight: Math.max(1, Math.min(10, Number(item.weight) || 1)),
     }));
 
+    const maxW = Math.max(...enriched.map(w => w.visualWeight));
+    const padding = 4;
+    const MIN_FONT = 9;
+    const MAX_FONT = 74;
+    const grid = _buildPlacementGrid(W, H, 22);
+    const frag = document.createDocumentFragment();
+
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
-    const placed = _placeWordsRadial(sorted, W, H);
-
     const animateWords = _wordsAnimatedForHash !== _textHash;
-    const worldCx = W / 2, worldCy = H / 2;
-
-    placed.forEach((item, i) => {
-      const { x, y, w, ring, color, fontSize, tw, th } = item;
+    sorted.forEach((item, i) => {
+      const t = item.visualWeight / maxW;
+      let fontSize = MIN_FONT + Math.pow(t, 4.25) * (MAX_FONT - MIN_FONT);
+      const color = PALETTE[i % PALETTE.length];
+      const maxTextW = Math.max(40, W - padding * 2);
+      let tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
+      if (tw > maxTextW) {
+        fontSize = Math.max(MIN_FONT, (maxTextW / (item.w.length * 0.6)));
+        tw = _estimateTextWidth(item.w, fontSize, item.visualWeight > 6 ? '700' : '400');
+      }
+      const th = fontSize * 1.14;
+      const itemPad = fontSize > 42 ? 5 : fontSize > 24 ? 3 : 1;
+      const maxTries = fontSize <= 12 ? 260 : fontSize <= 18 ? 190 : 110;
+      let x, y, tries = 0, collides = false;
+      do {
+        const rangeX = Math.max(1, W - tw - padding * 2);
+        const rangeY = Math.max(1, H - th - padding * 2);
+        const seed = _hashString(item.w + '_' + tries);
+        x = padding + _rand01(seed) * rangeX;
+        y = padding + th + _rand01(seed ^ 0x9e3779b9) * rangeY;
+        collides = grid.check(x + tw / 2, y - th / 2, tw / 2 + itemPad, th / 2 + itemPad);
+        tries++;
+      } while (tries < maxTries && collides);
+      if (collides) return;
+      grid.push(x + tw / 2, y - th / 2, tw / 2 + itemPad, th / 2 + itemPad);
 
       const enterG = document.createElementNS(SVG_NS, 'g');
-
-      if (animateWords && i < 40 && w >= 2) {
-        enterG.classList.add('mm-enter-explode');
-        const centerDx = -(x - worldCx) / worldCx * 100;
-        const centerDy = -(y - worldCy) / worldCy * 100;
-        enterG.style.setProperty('--src-x', `${centerDx}%`);
-        enterG.style.setProperty('--src-y', `${centerDy}%`);
-        enterG.style.animationDelay = `${Math.min(i * 6, 240) + ring * 80}ms`;
+      if (animateWords && i < 40 && item.visualWeight >= 2) {
+        enterG.classList.add('mm-enter');
+        enterG.style.animationDelay = `${Math.min(i * 18, 450)}ms`;
       }
+
+      const depth = 0.08 + Math.pow(t, 1.8) * 0.28;
+      const depthG = document.createElementNS(SVG_NS, 'g');
+      depthG.dataset.depth = depth.toFixed(2);
 
       const text = document.createElementNS(SVG_NS, 'text');
       text.classList.add('mm-word');
-      if (w > 7) text.classList.add('mm-word-hero');
-      text.dataset.depthT = ring === 0 ? 'fg' : ring === 1 ? 'md' : 'bg';
-      text.dataset.cx = x.toFixed(1);
-      text.dataset.cy = y.toFixed(1);
-      text.dataset.word = item.w;
-
+      if (item.visualWeight > 7) text.classList.add('mm-word-hero');
       text.setAttribute('x', x);
       text.setAttribute('y', y);
       text.setAttribute('font-size', fontSize);
       text.setAttribute('fill', color);
       text.setAttribute('font-family', 'var(--mono)');
-      text.setAttribute('font-weight', w > 6 ? '700' : '400');
-      text.setAttribute('opacity', 0.4 + (w / 10) * 0.6);
+      text.setAttribute('font-weight', item.visualWeight > 6 ? '700' : '400');
+      text.setAttribute('opacity', 0.4 + (item.visualWeight / maxW) * 0.6);
       if (item.count === 0) {
         text.setAttribute('opacity', '0.35');
         text.setAttribute('stroke', color);
         text.setAttribute('stroke-opacity', '0.3');
         text.setAttribute('stroke-width', '0.4');
-      } else if (w > 7) {
+      } else if (item.visualWeight > 7) {
         text.setAttribute('paint-order', 'stroke');
         text.setAttribute('stroke', 'rgba(0,0,0,0.35)');
         text.setAttribute('stroke-width', '1.2');
         text.setAttribute('stroke-linejoin', 'round');
-      } else if (w > 4) {
+      } else if (item.visualWeight > 4) {
         text.setAttribute('paint-order', 'stroke');
         text.setAttribute('stroke', 'rgba(0,0,0,0.25)');
         text.setAttribute('stroke-width', '0.8');
         text.setAttribute('stroke-linejoin', 'round');
       }
       text.textContent = item.w;
-
-      if (ring === 2 && Math.random() < 0.4) {
-        enterG.classList.add('mm-drift');
-        const dx = (_rand01(_hashString(item.w + ':dx')) - 0.5) * 10;
-        const dy = (_rand01(_hashString(item.w + ':dy')) - 0.5) * 10;
-        enterG.style.setProperty('--dx', `${dx}px`);
-        enterG.style.setProperty('--dy', `${dy}px`);
-      }
-
-      enterG.appendChild(text);
-      _viewport.appendChild(enterG);
+      _attachWordInteractions(text, item.w, x + tw / 2, y - th / 2);
+      depthG.appendChild(text);
+      enterG.appendChild(depthG);
+      frag.appendChild(enterG);
     });
+    _viewport.appendChild(frag);
     if (animateWords) _wordsAnimatedForHash = _textHash;
   }
 
@@ -2199,47 +2182,32 @@ const MindMap = (() => {
     _viewport.appendChild(line);
   }
 
-  function _drawStarfield(W, H) {
+  function _drawStarfield(W, H, worldScaleX = 4, worldScaleY = 3) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.depth = '0.05';
-    const marginX = W * 0.5;
-    const marginY = H * 0.5;
-    const totalW = W + marginX * 2;
-    const totalH = H + marginY * 2;
-    const count = Math.floor((totalW * totalH) / 9000);
+    g.setAttribute('class', 'mm-starfield');
+    const marginX = W * (worldScaleX - 1) * 0.5;
+    const marginY = H * (worldScaleY - 1) * 0.5;
+    const totalW = W * worldScaleX;
+    const totalH = H * worldScaleY;
+    const cx = totalW / 2, cy = totalH / 2;
+    const baseCount = Math.floor((W * H) / 9000);
+    const count = Math.floor(baseCount * (worldScaleX * worldScaleY) * 0.6);
     for (let i = 0; i < count; i++) {
-      const seed = _hashString(`${_textHash}:${W}:${H}:star:${i}`);
+      const seed = _hashString(`${_textHash}:star:${i}`);
+      const wx = -marginX + _rand01(seed) * totalW;
+      const wy = -marginY + _rand01(seed ^ 0x9e3779b9) * totalH;
+      const r = Math.hypot(wx - cx, wy - cy) / Math.max(totalW, totalH);
+      const keep = _rand01(seed ^ 0xdeadbeef) > r * 0.85;
+      if (!keep) continue;
       const dot = document.createElementNS(SVG_NS, 'circle');
-      dot.setAttribute('cx', String(-marginX + _rand01(seed) * totalW));
-      dot.setAttribute('cy', String(-marginY + _rand01(seed ^ 0x9e3779b9) * totalH));
-      dot.setAttribute('r', (_rand01(seed ^ 0xdeadbeef) * 1.2 + 0.3).toFixed(1));
-      dot.setAttribute('fill', 'rgba(255,255,255,0.25)');
+      dot.setAttribute('cx', wx.toFixed(1));
+      dot.setAttribute('cy', wy.toFixed(1));
+      dot.setAttribute('r', (_rand01(seed ^ 0xcafebabe) * 1.2 + 0.3).toFixed(1));
+      const alpha = 0.05 + (1 - r) * 0.30;
+      dot.setAttribute('fill', `rgba(255,255,255,${alpha.toFixed(3)})`);
       g.appendChild(dot);
     }
-    return g;
-  }
-
-  function _drawVignette(W, H) {
-    const defs = _svg.querySelector('defs') || _svg.appendChild(document.createElementNS(SVG_NS, 'defs'));
-    const gradId = 'mm-vignette';
-    if (_svg.querySelector('#' + gradId)) return;
-    const grad = document.createElementNS(SVG_NS, 'radialGradient');
-    grad.setAttribute('id', gradId);
-    grad.setAttribute('cx', '50%'); grad.setAttribute('cy', '50%'); grad.setAttribute('r', '75%');
-    grad.innerHTML = `
-      <stop offset="0%"  stop-color="rgba(60,90,160,0.18)"/>
-      <stop offset="35%" stop-color="rgba(20,30,55,0.15)"/>
-      <stop offset="100%" stop-color="rgba(0,0,0,0.65)"/>
-    `;
-    defs.appendChild(grad);
-
-    const g = document.createElementNS(SVG_NS, 'g');
-    g.dataset.depth = '0.02';
-    const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('x', 0); rect.setAttribute('y', 0);
-    rect.setAttribute('width', W); rect.setAttribute('height', H);
-    rect.setAttribute('fill', `url(#${gradId})`);
-    g.appendChild(rect);
     return g;
   }
 
@@ -2253,7 +2221,6 @@ const MindMap = (() => {
       <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.06 0"/>
     `;
     defs.appendChild(filter);
-
     const rect = document.createElementNS(SVG_NS, 'rect');
     rect.setAttribute('width', W); rect.setAttribute('height', H);
     rect.setAttribute('filter', 'url(#mm-grain)');
@@ -2262,131 +2229,33 @@ const MindMap = (() => {
     _svg.appendChild(rect);
   }
 
-  function _getFontSize(w) {
-    const MIN_FONT = 9, MAX_FONT = 74;
-    const t = Math.max(1, Math.min(10, w)) / 10;
-    return MIN_FONT + Math.pow(t, 4.25) * (MAX_FONT - MIN_FONT);
-  }
-
-  function _placeWordsRadial(sorted, worldW, worldH) {
-    const placed = [];
-    const cx = worldW / 2, cy = worldH / 2;
-    const Rw = Math.min(worldW, worldH) * 0.5;
-
-    const GHOST_GRID_X = 11, GHOST_GRID_Y = 8;
-    const stepX = worldW / GHOST_GRID_X, stepY = worldH / GHOST_GRID_Y;
-    const cellJitter = 0.6;
-
-    const ghosts = [];
-    for (let gx = 0; gx < GHOST_GRID_X; gx++) {
-      for (let gy = 0; gy < GHOST_GRID_Y; gy++) {
-        const seed = _hashString(`ghost:${gx}:${gy}`);
-        const x = (gx + 0.5) * stepX + (_rand01(seed) - 0.5) * stepX * cellJitter;
-        const y = (gy + 0.5) * stepY + (_rand01(seed ^ 0x9e3779b9) - 0.5) * stepY * cellJitter;
-        ghosts.push({ x, y, used: false });
-      }
-    }
-
-    const grid = {
-      _items: [],
+  function _buildPlacementGrid(W, H, cell = 22) {
+    const cols = Math.ceil(W / cell), rows = Math.ceil(H / cell);
+    const grid = Array.from({ length: cols * rows }, () => []);
+    return {
+      grid, cols, rows, cell,
       check(x, y, hw, hh) {
-        return this._items.some(p =>
-          Math.abs(x - p.x) < (hw + p.hw) &&
-          Math.abs(y - p.y) < (hh + p.hh)
-        );
+        const cx = Math.floor(x / this.cell);
+        const cy = Math.floor(y / this.cell);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const ix = cx + dx, iy = cy + dy;
+            if (ix < 0 || iy < 0 || ix >= this.cols || iy >= this.rows) continue;
+            const bucket = this.grid[iy * this.cols + ix];
+            for (let k = 0; k < bucket.length; k++) {
+              const p = bucket[k];
+              if (Math.abs(x - p.cx) < (hw + p.hw) && Math.abs(y - p.cy) < (hh + p.hh)) return true;
+            }
+          }
+        }
+        return false;
       },
       push(x, y, hw, hh) {
-        this._items.push({ x, y, hw, hh });
+        const ix = Math.max(0, Math.min(this.cols - 1, Math.floor(x / this.cell)));
+        const iy = Math.max(0, Math.min(this.rows - 1, Math.floor(y / this.cell)));
+        this.grid[iy * this.cols + ix].push({ cx: x, cy: y, hw, hh });
       }
     };
-
-    sorted.forEach((item, idx) => {
-      const w = Math.max(1, Math.min(10, Number(item.visualWeight) || 1));
-      const color = PALETTE[idx % PALETTE.length];
-      const baseSeed = _hashString(item.w + '|v2');
-
-      let x, y, ring;
-      if (w >= 7) {
-        ring = 0;
-        const rFrac = Math.pow(_rand01(baseSeed), 0.7) * 0.22;
-        const a = _rand01(baseSeed ^ 0xa5a5a5a5) * Math.PI * 2;
-        x = cx + Math.cos(a) * rFrac * Rw;
-        y = cy + Math.sin(a) * rFrac * Rw * (worldH / worldW);
-      } else if (w >= 3) {
-        const g = ghosts.find(g => !g.used);
-        if (!g) return;
-        x = g.x; y = g.y; g.used = true; ring = 1;
-      } else {
-        ring = 2;
-        const rFrac = 0.45 + Math.pow(_rand01(baseSeed), 1.8) * 0.55;
-        const a = _rand01(baseSeed ^ 0xc0ffee) * Math.PI * 2;
-        x = cx + Math.cos(a) * rFrac * Rw;
-        y = cy + Math.sin(a) * rFrac * Rw * (worldH / worldW);
-        if (_rand01(baseSeed ^ 0xdeadbeef) > 0.55) return;
-      }
-
-      const fontSize = _getFontSize(w);
-      const tw = _estimateTextWidth(item.w, fontSize, w > 6 ? '700' : '400');
-      const th = fontSize * 1.14;
-      const itemPad = fontSize > 24 ? 3 : 1;
-
-      if (grid.check(x, y, tw / 2 + itemPad, th / 2 + itemPad)) {
-        let tries = 0;
-        while (tries < 4 && grid.check(x, y, tw / 2 + itemPad, th / 2 + itemPad)) {
-          x += (_rand01(baseSeed ^ tries) - 0.5) * 22;
-          y += (_rand01(baseSeed ^ 0x80 ^ tries) - 0.5) * 22;
-          tries++;
-        }
-        if (grid.check(x, y, tw / 2 + itemPad, th / 2 + itemPad)) return;
-      }
-      grid.push(x, y, tw / 2 + itemPad, th / 2 + itemPad);
-      placed.push({ x, y, w, ring, color, idx: idx, ...item, fontSize, tw, th });
-    });
-
-    return placed;
-  }
-
-  function _setupViewportDelegation() {
-    if (_viewportDelegationSetup) return;
-    _viewportDelegationSetup = true;
-    let clickTimer = null;
-
-    _viewport.addEventListener('click', (e) => {
-      const target = e.target.closest('.mm-word');
-      if (!target) return;
-      e.stopPropagation();
-      if (e.shiftKey) { _jumpToWord(target.dataset.word); return; }
-      clearTimeout(clickTimer);
-      clickTimer = setTimeout(() => {
-        clickTimer = null;
-        if (!_overlay?.classList.contains('visible')) return;
-        _showWordCountAtClick(target.dataset.word, e, target);
-      }, 180);
-    });
-
-    _viewport.addEventListener('dblclick', (e) => {
-      const target = e.target.closest('.mm-word');
-      if (!target) return;
-      e.stopPropagation();
-      clearTimeout(clickTimer);
-      clickTimer = null;
-      const cx = Number(target.dataset.cx);
-      const cy = Number(target.dataset.cy);
-      _smoothZoomTo(cx, cy, 2);
-    });
-  }
-
-  function _applyParallaxCSS(nx, ny) {
-    const fg = nx * 36, bg = nx * 8, md = nx * 18;
-    const fgY = ny * 36, bgY = ny * 8, mdY = ny * 18;
-    const vp = _viewport;
-    if (!vp) return;
-    vp.style.setProperty('--ptx-fg', `${fg}px`);
-    vp.style.setProperty('--pty-fg', `${fgY}px`);
-    vp.style.setProperty('--ptx-md', `${md}px`);
-    vp.style.setProperty('--pty-md', `${mdY}px`);
-    vp.style.setProperty('--ptx-bg', `${bg}px`);
-    vp.style.setProperty('--pty-bg', `${bgY}px`);
   }
 
   return { open, close };
