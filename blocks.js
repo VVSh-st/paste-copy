@@ -1056,12 +1056,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         { action: 'copy-html', label: '📋 Копировать HTML' },
         { action: 'copy-md',  label: '📝 Копировать Markdown' },
       ];
+      let _toggleHLBtn = null;
       _mdMenuItems.forEach(item => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'translate-lang-opt';
         btn.dataset.mdAction = item.action;
         btn.textContent = item.label;
+        if (item.action === 'toggle-hl') {
+          _toggleHLBtn = btn;
+          if (b.mdHighlight) btn.classList.add('active');
+        }
         mdDropdown.appendChild(btn);
       });
       mdDropdown.querySelectorAll('button').forEach(btn => {
@@ -1075,8 +1080,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           const mdEl = blockEl.querySelector('.block-md-content');
           if (action === 'toggle-hl') {
             b.mdHighlight = !b.mdHighlight;
+            if (_toggleHLBtn) _toggleHLBtn.classList.toggle('active', b.mdHighlight);
             if (!b.mdPreview) {
               b.mdPreview = true;
+              mdBtn.classList.add('active');
               if (ta) {
                 _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
                 ta.style.display = 'none';
@@ -1118,6 +1125,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           mdDropdown.style.left = rect.left + 'px';
           mdDropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
           mdDropdown.style.top = 'auto';
+          if (_toggleHLBtn) _toggleHLBtn.classList.toggle('active', b.mdHighlight);
           mdDropdown.style.display = mdDropdown.style.display === 'none' ? 'block' : 'none';
         }, 400);
       });
@@ -1134,16 +1142,32 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const ta = blockEl.querySelector('textarea.block-textarea');
         const mdEl = blockEl.querySelector('.block-md-content');
         if (!ta || !mdEl) return;
+
+        // Сохраняем размер и прокрутку перед переключением
+        const prevH = b.mdPreview ? mdEl.offsetHeight : ta.offsetHeight;
+        const prevScroll = b.mdPreview ? mdEl.scrollTop : ta.scrollTop;
+        const prevScrollH = b.mdPreview ? mdEl.scrollHeight : ta.scrollHeight;
+
         b.mdPreview = !b.mdPreview;
         mdBtn.classList.toggle('active', b.mdPreview);
         if (b.mdPreview) {
           _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
           ta.style.display = 'none';
           mdEl.style.display = '';
+          // Восстанавливаем размер и прокрутку
+          mdEl.style.height = prevH + 'px';
+          if (prevScrollH > prevH) {
+            mdEl.scrollTop = (prevScroll / prevScrollH) * mdEl.scrollHeight;
+          }
         } else {
           mdEl.style.display = 'none';
           ta.style.display = '';
           ta.value = b.subtabs[b.activeSubtab]?.value ?? '';
+          // Восстанавливаем размер и прокрутку
+          ta.style.height = prevH + 'px';
+          if (prevScrollH > prevH) {
+            ta.scrollTop = (prevScroll / prevScrollH) * ta.scrollHeight;
+          }
           ta.focus();
         }
         State.snapshot();
