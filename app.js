@@ -451,10 +451,33 @@
       document.querySelectorAll('.current-line-highlight').forEach(el => {
         el.style.background = value;
       });
+      const pk = $id('opt-current-line-color-picker');
+      if (pk) {
+        const m = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (m) pk.value = '#' + [m[1], m[2], m[3]].map(n => (+n).toString(16).padStart(2, '0')).join('');
+      }
       scheduleSave();
     };
     optCurrentLineColor.oninput = saveLineColor;
     optCurrentLineColor.onchange = saveLineColor;
+  }
+
+  const optLineColorPicker = $id('opt-current-line-color-picker');
+  if (optLineColorPicker) {
+    const syncPickerFromText = () => {
+      const raw = optCurrentLineColor?.value || '';
+      const m = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (m) optLineColorPicker.value = '#' + [m[1], m[2], m[3]].map(n => (+n).toString(16).padStart(2, '0')).join('');
+    };
+    syncPickerFromText();
+    optLineColorPicker.oninput = e => {
+      const hex = e.target.value;
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      const rgba = `rgba(${r},${g},${b},0.18)`;
+      if (optCurrentLineColor) { optCurrentLineColor.value = rgba; optCurrentLineColor.dispatchEvent(new Event('change', { bubbles: true })); }
+    };
   }
 
   const optColScrollbar = $id('opt-col-scrollbar');
