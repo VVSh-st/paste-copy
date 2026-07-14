@@ -171,10 +171,6 @@
     const skeletonWorker = $id('opt-skeleton-worker');
     if (skeletonWorker) skeletonWorker.checked = lay.skeletonWorker !== false;
 
-    const optColScrollbar = $id('opt-col-scrollbar');
-    if (optColScrollbar) optColScrollbar.checked = lay.colScrollbar === true;
-    document.getElementById('workspace')?.classList.toggle('col-scrollbar', lay.colScrollbar === true);
-
     const optEmojiPicker = $id('opt-emoji-picker');
     if (optEmojiPicker) optEmojiPicker.checked = lay.emojiPicker !== false;
   }
@@ -479,14 +475,6 @@
       if (optCurrentLineColor) { optCurrentLineColor.value = rgba; optCurrentLineColor.dispatchEvent(new Event('change', { bubbles: true })); }
     };
   }
-
-  const optColScrollbar = $id('opt-col-scrollbar');
-  if (optColScrollbar) optColScrollbar.onchange = e => {
-    const enabled = e.target.checked;
-    State.setLayout({ colScrollbar: enabled });
-    document.getElementById('workspace')?.classList.toggle('col-scrollbar', enabled);
-    scheduleSave();
-  };
 
   const optEmojiPicker = $id('opt-emoji-picker');
   if (optEmojiPicker) optEmojiPicker.onchange = e => {

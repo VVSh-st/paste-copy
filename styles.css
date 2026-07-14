@@ -307,6 +307,16 @@ body {
   box-shadow: 0 0 0 2px rgba(79,142,247,0.2);
 }
 #btn-timer .timer-input:focus { border-color: var(--accent); }
+#btn-timer .timer-input.timer-input-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239,68,68,0.3);
+  animation: timerInputShake 0.3s ease;
+}
+@keyframes timerInputShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
 
 /* ── Пульсация (лимит) — только тень ── */
 #btn-timer.timer-pulsing {
@@ -479,9 +489,7 @@ body {
   flex: 1; scrollbar-width: none;
 }
 .column::-webkit-scrollbar { display: none; }
-.col-scrollbar .column { scrollbar-width: thin; }
-.col-scrollbar .column::-webkit-scrollbar { display: block; width: 5px; }
-.col-scrollbar .column::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+
 .column.drop-target {
   outline: 2px dashed var(--accent); outline-offset: -4px;
   border-radius: var(--radius); background: rgba(79,142,247,0.03);
@@ -658,7 +666,7 @@ body {
   50% { box-shadow: 0 0 8px 2px rgba(79,142,247,0.35); }
 }
 .font-ctrl-btn.capture-active {
-  animation: capturePulse 2.5s ease-in-out infinite;
+  animation: capturePulse 2.5s ease-in-out 1;
   color: var(--accent) !important;
   opacity: 1 !important;
   border-color: rgba(79,142,247,0.3);
@@ -854,6 +862,9 @@ body {
   line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 .block-toggle:hover { color: var(--text0); background: var(--surface2); }
+.block-md-btn { opacity: 0; transition: opacity var(--trans), color var(--trans), background var(--trans); }
+.block:hover .block-md-btn { opacity: 1; }
+.block-md-btn.active { opacity: 1; color: var(--accent); background: rgba(79,142,247,0.15); }
 .block-toggle svg { width: 13px; height: 13px; stroke: currentColor; fill: none; transition: transform var(--trans); }
 .block.collapsed .block-toggle-collapse svg { transform: rotate(-90deg); }
 
@@ -1211,6 +1222,7 @@ textarea.block-textarea:focus {
 @media (prefers-reduced-motion: reduce) {
   .slash-palette { animation: none; }
   .slash-item { transition: none; }
+  .font-ctrl-btn.capture-active { animation: none; }
 }
 
 .variable-block-body { display: flex; flex-direction: column; gap: 8px; padding: 6px 0 0; }
@@ -2200,6 +2212,7 @@ textarea.block-textarea:focus {
   padding: 10px 14px; overflow-x: auto; margin: 0.5em 0;
   border: 1px solid var(--border);
 }
+.block-md-content pre code.hljs { background: transparent; padding: 0; }
 .block-md-content pre code { background: transparent; padding: 0; border-radius: 0; font-size: 13px; line-height: 1.6; }
 .block-md-content blockquote {
   border-left: 3px solid var(--accent); margin: 0.5em 0; padding: 4px 10px;
@@ -2214,6 +2227,16 @@ textarea.block-textarea:focus {
 .block-md-content a:hover { text-decoration: underline; }
 .block-md-content hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .block-md-content img { max-width: 100%; border-radius: var(--radius-sm); }
+
+/* --- hljs code blocks in notepad and chat --- */
+.notepad-md-content pre code.hljs,
+.llm-chat-msg-text pre code.hljs { background: transparent; padding: 0; }
+.notepad-md-content pre,
+.llm-chat-msg-text pre {
+  background: var(--bg3); border-radius: var(--radius-sm);
+  padding: 10px 14px; overflow-x: auto; margin: 0.5em 0;
+  border: 1px solid var(--border);
+}
 
 /* ===== LLM MODULE STYLES ===== */
 .llm-dot {
