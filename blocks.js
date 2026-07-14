@@ -8,6 +8,7 @@ const Blocks = (() => {
   let _captureMode = false;
   let _captureInsertMode = localStorage.getItem('capture_insert_mode') || 'breaks';
   let _captureStickyId = null;
+  const _captureBtns = new Set();
 
   function _getStickyBlock() {
     const tab = State.getActive();
@@ -2467,8 +2468,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     captureBtn.addEventListener('mouseleave', () => clearTimeout(captureLongPressTimer));
 
     function _syncCaptureBtn() {
-      captureBtn.classList.toggle('capture-active', _captureMode);
+      _captureBtns.forEach(btn => btn.classList.toggle('capture-active', _captureMode));
     }
+    _captureBtns.add(captureBtn);
+    _pendingHoverEffects.add(() => { _captureBtns.delete(captureBtn); });
     _syncCaptureBtn();
 
     captureBtn.onclick = e => {
