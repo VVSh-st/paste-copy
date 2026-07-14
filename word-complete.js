@@ -757,8 +757,8 @@ const InlineHint = (() => {
     listEl.innerHTML = _candidates.map((w, i) => {
       const suffixPart = w.slice(_currentWord.length);
       const prefix = w.slice(0, _currentWord.length);
-      const opacity = i === _selectedIndex ? '1' : '0.95';
-      return `<div style="padding:1px 0;margin-top:-5px;opacity:${opacity}"><span style="opacity:0.6">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
+      const bg = i === _selectedIndex ? 'rgba(79,142,247,0.18)' : 'transparent';
+      return `<div style="padding:1px 4px;border-radius:2px;background:${bg}"><span style="opacity:0.6">${_escHtml(prefix)}</span><span>${_escHtml(suffixPart)}</span></div>`;
     }).join('');
   }
 
