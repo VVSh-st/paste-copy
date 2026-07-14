@@ -226,7 +226,7 @@ const WordCount = (() => {
     _clampPosition();
     _isOpen = true;
     _btn?.classList.add('active');
-    _lastSourceText = '';
+    _lastSourceText = '\x00'; // sentinel: гарантированно не совпадёт с реальным текстом
     _lastSel = '';
     _render();
     _attachListeners();
@@ -267,7 +267,7 @@ const WordCount = (() => {
     const isNotepadTextarea = newTa.tagName === 'TEXTAREA' && newTa.closest('.notepad-body');
     if ((!isBlockTextarea && !isNotepadTextarea) || newTa === _ta) return;
     _ta = newTa;
-    _lastSourceText = '';
+    _lastSourceText = '\x00';
     _lastSel = '';
     // При открытом попапе не обновляем — click на кнопке другого блока
     // должен работать через toggle(), а не через focusin.
