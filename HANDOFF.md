@@ -563,22 +563,27 @@
 **Файлы:** `blocks.js`, `styles.css`
 
 **Изменения:**
-1. **Размер не меняется** — при переключении MD/text сохраняется высота предыдущего элемента (`offsetHeight`), применяется к новому через `style.height`.
-2. **Прокрутка сохраняется** — `scrollTop` пропорционально пересчитывается при переключении (`prevScroll / prevScrollH * newScrollHeight`).
+1. **Размер не меняется** — при переключении MD/text показывается новый элемент ПЕРВЫМ (с `style.height` от предыдущего), потом прячется старый. Блок не схлопывается.
+2. **Прокрутка сохраняется пропорционально в ОБЕ стороны** — ratio `scrollTop / scrollable` рассчитывается из текущего элемента и применяется к другому. Текст→MD = MD на той же позиции. MD→Текст = текст на той же позиции. Без `focus()`.
 3. **Active state dropdown** — кнопка "🎨 MD + Подсветка кода" получает `active` class (синий текст `var(--accent)`) когда `b.mdHighlight = true`. Обновляется при показе dropdown и при toggle.
 4. **F5 persistence** — `mdHighlight` уже сохранялся в block data. Теперь UI корректно отображает active state после перезагрузки.
+5. **Resize колонок** — `b.height` обновляется при MD→текст, восстанавливается на mdContent при перерисовке. scrollTop сохраняется в `b._mdScrollTop` и восстанавливается через `requestAnimationFrame` (после layout).
+6. **CSS** — `min-height: 80px` (как у textarea), `resize: vertical` (регулятор размера в углу).
 
 **Коммиты:**
-- `115900f` — MD button improvements
+- `115900f` — MD button improvements (size, scroll, active state)
+- `f14fdcd` — preserve exact textarea scrollTop
+- `eaa9d3a` — no focus() on return
+- `36c0cbe` — proportional scroll in both directions
+- `ace3468` — MD block height preserved on column resize
+- `9c40eb1` — MD scrollTop preserved on column resize (rAF)
+- `021a6c2` — resize:vertical for .block-md-content
+- `ff5df01` — scrollTop restore via rAF
 
 ---
 
 ## Следующий шаг
 
-1. Протестировать MD кнопку: переключение без изменения размера блока
-2. Протестировать MD кнопку: сохранение прокрутки при переключении
-3. Протестировать dropdown: active state "🎨 MD + Подсветка кода" (синий текст)
-4. Протестировать F5: mdHighlight сохраняется и UI показывает active state
-5. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
-6. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
-7. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
+1. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
+2. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
+3. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
