@@ -19,6 +19,8 @@
   <link rel="stylesheet" href="keyboard-trainer.css">
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark-dimmed.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 
   <style>
 
@@ -311,7 +313,7 @@
 
     <!-- Add block -->
 
-    <div id="add-dropdown" class="dropdown">
+    <div id="add-dropdown" class="dropdown ui-menu">
 
       <button id="btn-add-block" type="button" title="Добавить блок" class="tb-btn tb-btn-icon-only" aria-haspopup="true" aria-expanded="false">
 
@@ -423,7 +425,7 @@
 
     <!-- Templates -->
 
-    <div id="tpl-dropdown" class="dropdown">
+    <div id="tpl-dropdown" class="dropdown ui-menu">
 
       <button id="btn-templates" type="button" title="Шаблоны" class="tb-btn tb-btn-icon-only" aria-haspopup="true" aria-expanded="false">
 
@@ -465,7 +467,7 @@
 
 
 
-    <button id="btn-notepad" type="button" title="Блокнот" class="tb-btn tb-btn-icon-only" aria-label="Открыть блокнот">
+    <button id="btn-notepad" type="button" title="Блокнот" class="tb-btn tb-btn-icon-only" aria-label="Свернуть/развернуть блокнот">
 
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
 
@@ -483,7 +485,7 @@
 
     <!-- ── LLM Profile switcher ───────────────────────────────────────────-->
 
-    <div id="llm-profile-bar" class="dropdown">
+    <div id="llm-profile-bar" class="dropdown ui-menu">
 
       <button id="btn-llm-profile" type="button" title="Активный LLM-профиль" class="tb-btn tb-btn-text" aria-haspopup="true" aria-expanded="false" aria-label="LLM профиль">
 
@@ -533,7 +535,7 @@
       </svg>
 
     </button>
-    <div id="col-count-dropdown" class="col-count-dropdown">
+    <div id="col-count-dropdown" class="col-count-dropdown ui-menu">
       <button data-count="2" title="2 колонки" aria-label="2 колонки">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:14px;height:14px"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M10 3v14"/></svg>
       </button>
@@ -555,7 +557,7 @@
 
     <!-- Settings -->
 
-    <div id="settings-dropdown" class="dropdown">
+    <div id="settings-dropdown" class="dropdown ui-menu">
 
       <button id="btn-settings" type="button" title="Настройки" class="tb-btn tb-btn-icon-only" aria-label="Настройки" aria-haspopup="true" aria-expanded="false">
 
@@ -732,12 +734,13 @@
     <!-- Square Timer -->
     <button id="btn-timer" type="button" title="Таймер (одиночный клик — вперёд, долгий — ввести минуты)" class="tb-btn tb-btn-accent tb-btn-icon-only" aria-label="Таймер">
       <svg class="timer-arc" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g class="timer-segments"></g>
         <path class="timer-arc-tail" d="" fill="none" />
         <path class="timer-arc-head-segment" d="" fill="none" />
         <circle class="timer-arc-head-dot" r="2" cx="0" cy="0" />
       </svg>
       <span class="timer-value"></span>
-      <input class="timer-input" type="text" inputmode="numeric" maxlength="2" style="display:none">
+      <input class="timer-input" type="text" inputmode="numeric" maxlength="3" style="display:none">
     </button>
 
     <span class="hint" aria-hidden="true"></span>
@@ -1289,7 +1292,7 @@
                       <span id="llm-storage-bank-label" class="llm-prompt-status-text">Хранилище</span>
                       <span aria-hidden="true">▾</span>
                     </button>
-                    <div class="llm-prompt-menu" role="menu">
+                    <div class="llm-prompt-menu ui-menu" role="menu">
                       <div id="llm-storage-bank-list" class="llm-prompt-menu-sublist" role="none"></div>
                       <div class="llm-prompt-menu-divider" role="none"></div>
                       <div class="llm-storage-bank-new-row" role="none">
@@ -1352,7 +1355,7 @@
 
                   <div class="llm-prompt-menu-wrap">
                     <button type="button" id="llm-prompt-menu-trigger" class="btn-icon" title="Ещё" aria-label="Ещё действия" aria-haspopup="true" aria-expanded="false">⋮</button>
-                    <div class="llm-prompt-menu" role="menu">
+                    <div class="llm-prompt-menu ui-menu" role="menu">
                       <span class="llm-prompt-menu-label">Вставить из хранилища</span>
                       <div id="llm-prompt-insert-storage-list" class="llm-prompt-menu-sublist" role="none"></div>
                       <div class="llm-prompt-menu-divider" role="none"></div>
@@ -1443,7 +1446,6 @@
                   </label>
                   <label class="settings-item"><input id="pl-hover-open" type="checkbox" checked> Hover открывает панель Loom</label>
                   <label class="settings-item"><input id="opt-emoji-picker" type="checkbox" checked> Эмодзи по ":"</label>
-                  <label class="settings-item"><input id="llm-auto-snapshot" type="checkbox" checked> Авто-снапшот до операций</label>
                   <label class="settings-item"><input id="llm-save-results" type="checkbox" checked> Сохранять результаты в [LLM]-снапшоты</label>
                   <label class="settings-item"><input id="opt-col-scrollbar" type="checkbox"> Полоса прокрутки колонок</label>
                   <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
@@ -1687,7 +1689,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-  <div id="snippet-dropdown" class="dropdown-menu" style="position:fixed;display:none;z-index:600;"
+  <div id="snippet-dropdown" class="dropdown-menu ui-menu" style="position:fixed;display:none;z-index:600;"
 
        role="listbox" aria-label="Вставить сниппет"></div>
 

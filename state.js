@@ -28,7 +28,6 @@ const State = (() => {
       activeProfileId: null,
       profiles:        [],
       streaming:       true,
-      autoSnapshot:    true,
       debugMode:       false,
       customPrompts:   {},
       diffMode:        'classic',
@@ -962,8 +961,6 @@ const State = (() => {
   function saveNamedSnapshot(name) {
     const t = getActive();
     if (!t) return;
-    // Skip auto-generated LLM snapshots — they waste storage with full block copies
-    if (String(name || '').startsWith('[LLM]')) return;
     if (!t.namedSnapshots) t.namedSnapshots = [];
 
     // [FIX] Защита от JSON.stringify крэша

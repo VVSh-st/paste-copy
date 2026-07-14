@@ -15,9 +15,6 @@ window.LLMFeatures = (() => {
     }
     return true;
   }
-  function _withAutoSnap(label) {
-    if (_State?.getLayout()?.llm?.autoSnapshot) _State.saveNamedSnapshot('[LLM] ' + label);
-  }
   function _esc(s) {
     return String(s ?? '').replace(/[&<>"']/g,
       c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1663,8 +1660,6 @@ window.LLMFeatures = (() => {
     const { text, selStart, selEnd, hasSel } = _getScope(ta);
     if (!text.trim()) { window.Toast?.show('Нет текста для обработки', 'error'); return; }
 
-    try { _withAutoSnap('groom ' + mode); } catch {}
-
     const modeAlias = mode === 'grammar' ? 'edit' : mode;
     if (modeAlias === 'grade') { PromptGrader.grade(); return; }
 
@@ -2085,7 +2080,6 @@ window.LLMFeatures = (() => {
 
       _compressing = true;
       try {
-        _withAutoSnap('compress');
         const toksBefore = _LLMCore.estimateTokens(origText) || 0;
 
         // Сжатие skeletonizer'ом (бесплатно)
@@ -2153,7 +2147,6 @@ window.LLMFeatures = (() => {
         return;
       }
 
-      _withAutoSnap('fill placeholders');
       _showThinking(`◕ Заполняю ${jobs.length} плейсхолдеров...`);
 
       let results;
@@ -3606,14 +3599,20 @@ const AutoPoet = (() => {
     }
     function close() { const p = _panel(); if (p) p.style.display = 'none'; }
 
+    function _saveWinGeometry() {
+      const p = _panel();
+      if (p && p.style.display !== 'none') {
+        try {
+          const r = p.getBoundingClientRect();
+          _savedWin = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
+        } catch {}
+      }
+    }
+
     function _saveSessions() {
       try {
         const data = { sessions: _sessions, sessionIdx: _sessionIdx, fontSize: _fontSize };
-        const p = _panel();
-        if (p && p.style.display !== 'none') {
-          const r = p.getBoundingClientRect();
-          data.win = { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-        }
+        if (_savedWin) data.win = _savedWin;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } catch {}
     }
@@ -3677,6 +3676,7 @@ const AutoPoet = (() => {
           if (firstUser) _sessions[_sessionIdx].title = firstUser.content.slice(0, 40) || 'Новый чат';
         }
       }
+      _saveWinGeometry();
       _saveSessions();
     }
 
@@ -3861,6 +3861,26 @@ const AutoPoet = (() => {
       msgsEl.addEventListener('scroll', _updateScrollDownBtn, { passive: true });
     }
 
+    function _renderChatMd(span, text) {
+      if (!span || !text) { if (span) span.textContent = text || ''; return; }
+      if (typeof marked !== 'undefined') {
+        try {
+          const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          span.innerHTML = marked.parse(safe);
+          if (typeof hljs !== 'undefined') {
+            span.querySelectorAll('pre code').forEach(block => {
+              delete block.dataset.highlighted;
+              hljs.highlightElement(block);
+            });
+          }
+        } catch (_) {
+          span.textContent = text;
+        }
+      } else {
+        span.textContent = text;
+      }
+    }
+
     function _appendMsg(role, text) {
       const el = _msgsEl();
       if (!el) return;
@@ -3872,7 +3892,11 @@ const AutoPoet = (() => {
       div.className = 'llm-chat-msg ' + role;
       const span = document.createElement('span');
       span.className = 'llm-chat-msg-text';
-      span.textContent = text;
+      if (role === 'assistant' && text) {
+        _renderChatMd(span, text);
+      } else {
+        span.textContent = text;
+      }
       div.appendChild(span);
       el.appendChild(div);
       if (role === 'assistant' && text) {
@@ -3960,7 +3984,7 @@ const AutoPoet = (() => {
       if (last) {
         last.classList.remove('streaming');
         const span = last.querySelector('.llm-chat-msg-text');
-        if (full && span) span.textContent = full;
+        if (full && span) _renderChatMd(span, full);
         const textToCopy = full || span?.textContent || '';
         if (textToCopy) {
           _addCopyButton(last, textToCopy);
@@ -4003,6 +4027,8 @@ const AutoPoet = (() => {
       if (container.querySelector('.llm-chat-msg-translate')) return;
       if (typeof Translator === 'undefined') return;
 
+      container.dataset.rawText = text;
+
       const TRANSLATE_CHAT_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
       const btn = document.createElement('button');
       btn.className = 'llm-chat-msg-translate';
@@ -4013,7 +4039,7 @@ const AutoPoet = (() => {
         if (btn.dataset.translated === '1') {
           const span = container.querySelector('.llm-chat-msg-text');
           if (span && btn.dataset.original) {
-            span.textContent = btn.dataset.original;
+            _renderChatMd(span, btn.dataset.original);
             btn.dataset.translated = '0';
             btn.innerHTML = TRANSLATE_CHAT_SVG;
             btn.title = 'Перевести RU↔EN';
@@ -4022,7 +4048,7 @@ const AutoPoet = (() => {
         }
         const span = container.querySelector('.llm-chat-msg-text');
         if (!span) return;
-        const srcText = span.textContent;
+        const srcText = container.dataset.rawText || span.textContent;
         const lang = Translator.detectLang(srcText);
         const targetLang = (lang?.code === 'ru') ? 'en' : 'ru';
         const langName = Translator.LANG_BY_CODE[targetLang]?.name || targetLang;
@@ -4032,7 +4058,7 @@ const AutoPoet = (() => {
           if (!result || result === srcText) { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести RU↔EN'; return; }
           btn.dataset.original = srcText;
           btn.dataset.translated = '1';
-          span.textContent = result;
+          _renderChatMd(span, result);
           btn.innerHTML = '↩';
           btn.title = 'Вернуть оригинал';
         }).catch(() => { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести RU↔EN'; });
@@ -4203,7 +4229,7 @@ const AutoPoet = (() => {
         }
       };
 
-      const onEnd = () => { _dragging = _resizing = false; _saveSessions(); };
+      const onEnd = () => { _dragging = _resizing = false; _saveWinGeometry(); _saveSessions(); };
 
       document.addEventListener('mousemove', onMove, { passive: true });
       document.addEventListener('mouseup', onEnd);

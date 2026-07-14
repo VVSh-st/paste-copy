@@ -73,7 +73,19 @@ window.LLMCore = (() => {
       _persist();
     }
     function clear() { _data = { entries: {}, order: [] }; _Storage?.clearLLMCache?.(); }
-    function stats() { _load(); return { count: _data.order.length, estimatedKb: Math.round(JSON.stringify(_data).length / 1024) }; }
+    function stats() {
+      _load();
+      const ttlMs = ((_State?.getLayout()?.llm?.cache?.ttlH) ?? 24) * 3_600_000;
+      const now = Date.now();
+      const alive = [];
+      for (const k of _data.order) {
+        const e = _data.entries[k];
+        if (e && (now - e.ts <= ttlMs)) alive.push(k);
+        else delete _data.entries[k];
+      }
+      if (alive.length !== _data.order.length) { _data.order = alive; _persist(); }
+      return { count: alive.length, estimatedKb: Math.round(JSON.stringify(_data).length / 1024) };
+    }
     function invalidate() { _data = null; }
     return { get, set, clear, stats, invalidate };
   })();
@@ -985,7 +997,6 @@ window.LLMCore = (() => {
     function _syncGeneral() {
       const llm = _State.getLayout()?.llm ?? {};
       _setCheck('llm-enabled', llm.enabled ?? false);
-      _setCheck('llm-auto-snapshot', llm.autoSnapshot ?? true);
       _setCheck('llm-save-results', llm.saveResults ?? true);
       _setCheck('llm-debug', llm.debugMode ?? false);
       _setCheck('llm-visual-diff', llm.visualDiff ?? false);
@@ -1063,7 +1074,7 @@ window.LLMCore = (() => {
     }
     function _saveGeneral() {
       const lay = _State.getLayout();
-      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), autoSnapshot: _getCheck('llm-auto-snapshot'), saveResults: _getCheck('llm-save-results'), debugMode: _getCheck('llm-debug'), visualDiff: _getCheck('llm-visual-diff'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
+      _State.setLayout({ llm: { ...(lay?.llm ?? {}), enabled: _getCheck('llm-enabled'), saveResults: _getCheck('llm-save-results'), debugMode: _getCheck('llm-debug'), visualDiff: _getCheck('llm-visual-diff'), diffMode: _get('llm-diff-mode') || 'classic', diffEffectMs: _clampEffectMs(_get('llm-diff-effect-ms')), cache: { ...(lay?.llm?.cache ?? {}), enabled: _getCheck('llm-cache-enabled'), ttlH: parseInt(_get('llm-cache-ttl'), 10) || 24, maxEntries: parseInt(_get('llm-cache-max'), 10) || 200 } } });
     }
     function _renderBroTags() {
       const lay = _State.getLayout();
@@ -1819,7 +1830,10 @@ tags.push({
         menuTrigger.addEventListener('click', e => {
           e.stopPropagation();
           const opening = !menuEl.classList.contains('open');
-          if (opening) _renderInsertStorageMenu();
+          if (opening) {
+            closeAllMenus?.(menuEl);
+            _renderInsertStorageMenu();
+          }
           menuEl.classList.toggle('open');
           menuTrigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
         });
@@ -1853,7 +1867,10 @@ tags.push({
         bankTrigger.addEventListener('click', e => {
           e.stopPropagation();
           const opening = !bankMenuEl.classList.contains('open');
-          if (opening) _renderStorageBankMenu();
+          if (opening) {
+            closeAllMenus?.(bankMenuEl);
+            _renderStorageBankMenu();
+          }
           bankMenuEl.classList.toggle('open');
           bankTrigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
         });
@@ -1895,7 +1912,7 @@ tags.push({
         window.Toast?.show(`Банк «${name}» создан ✓`, 'success');
       });
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
-      ['llm-enabled','llm-auto-snapshot','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
+      ['llm-enabled','llm-save-results','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));
       document.querySelectorAll('.llm-color-swatch').forEach(btn => {
         btn.addEventListener('click', () => {
           const input = btn.closest('.llm-color-field')?.querySelector('input[type="text"]');
