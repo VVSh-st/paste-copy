@@ -552,15 +552,49 @@
 
 ---
 
+### MindMap — доработка: radial placement + 3D + performance (задание 3)
+
+**Файлы:** `mindmap.js`, `mindmap.css`
+
+**Фаза 1 — Визуальный эффект «космос + 3D»:**
+1. **`_placeWordsRadial`** — исправленное размещение: ghost-grid (11×8) для средних слов, радиальные hero (ring 0), разреженные осколки периферии (ring 2). Центр плотный, край редкий.
+2. **`_drawVignette`** — radialGradient vignette (1 SVG rect). Концентрирует внимание на центре.
+3. **`_addFilmGrain`** — `feTurbulence` фильтр на статичном rect. Дешёвая текстура.
+4. **CSS `mm-enter-explode`** — анимация взрыва: `--src-x/--src-y` CSS vars, `translate + scale + blur` keyframe. Слова «вылетают» из эпицентра.
+5. **CSS parallax** — 3 depth tiers (`data-depth-t="fg/md/bg"`), 6 `setProperty` на `_viewport` вместо N per-element writes. CSS `translate` property.
+6. **`mm-drift`** — CSS animation для периферии (ring 2), 40% слов лениво «плывут».
+
+**Фаза 2 — Полировка:**
+7. **HTML-popup** — `_showWordCountAtClick` → `<div class="mm-count-pop">` с `text-shadow` (8-направленный контур + свечение) и count-up анимацией (ease-out-cubic). Замена SVG `<filter>` popup.
+8. **CSS hover** — `.mm-word:hover { opacity:1; scale:1.06; filter:drop-shadow }` — без JS listeners. **−90 listeners** (4 на слово × слов).
+9. **CSS `drop-shadow` glow** — `.mm-word-hero` (hero слова), `.mm-circle-hot` (graph/hierarchy hero). Замена SVG `filter="url(#glow)"`.
+
+**Фаза 3 — Перфоманс:**
+10. **Event delegation** — `_setupViewportDelegation()`: 3 listeners на `_viewport` (click, dblclick, passive mousemove). Делегирование через `e.target.closest('.mm-word')`.
+11. **`.mm-world` wrapper** — HTML div с CSS vars `--px/--py/--sz`. `transform: translate3d()` → GPU composite (0ms re-layout).
+12. **Bucket parallax** — `_applyParallaxCSS(nx, ny)`: 6 `setProperty` вместо 90 `el.style.transform`.
+13. **CSS `contain`** — `.mindmap-panel { contain: layout style }`, `.mindmap-canvas { contain: layout style }`, `.mm-world { contain: layout paint style }`.
+14. **`big-bloom` filter** — 1 общий SVG filter на контейнер вместо N per-element.
+15. **rAF throttle** — `_rafPending` флаг для parallax (уже был, теперь для CSS версии).
+16. **SVG glow → CSS drop-shadow** — `filter="url(#glow)"` удалён со всех circles/texts. CSS `filter: drop-shadow()` — GPU.
+
+**Фаза 4 (по желанию):**
+- Zone desaturation (`[data-zone="bg"] { filter: gray(0.18) }`) — не реализовано (опционально).
+- Twinkling hero-stars — не реализовано (опционально).
+
+**Коммиты:**
+- `cacd663` — основная реализация: radial placement, 3D effects, performance overhaul
+
+---
+
 ## Следующий шаг
 
-1. **Отменить** изменение цвета inline-hint: `styles.css:1891` — вернуть `rgba(176,188,207,0.35)` если ещё не сделано
-2. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов) — это **missing feature**, не баг
-3. Протестировать ПКМ-тест — правый клик на эмбере запускает все эффекты
-4. Протестировать eggFly — уголёк стартует от ember, летит к landing (175px от caret), облетает вокруг реальной каретки (R=160-190), мордочкой к caret, укутывается кольцом
-5. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
-6. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
-7. Проверить highlight.js в мини-чате — streaming → finalize → markdown + подсветка
-8. Проверить MD-превью текстовых блоков — toggle, long-press dropdown, active state
-9. Проверить undo/redo — работает ли ветвление (undo → изменение → redo)
-10. Проверить импорт старого формата файла (до R1)
+1. Протестировать mindmap: radial placement (hero в центре, средние на ghost-grid, осколки на периферии)
+2. Протестировать 3D: взрыв при появлении, vignette, film grain, drift периферии
+3. Протестировать performance: hover через CSS (без задержки), popup мгновенный, pan/zoom плавный
+4. Протестировать event delegation: клик/double-click на словах words mode
+5. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
+6. Проверить graph/hierarchy/clusters modes — CSS drop-shadow работает корректно
+7. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
+8. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
+9. Проверить MD-превью текстовых блоков — toggle, long-press dropdown, active state
