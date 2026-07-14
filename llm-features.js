@@ -6,7 +6,7 @@ window.LLMFeatures = (() => {
   function _isEnabled() { return !!_State?.getLayout()?.llm?.enabled; }
   function _guard() {
     if (!_isEnabled()) {
-      window.Toast?.show('LLM-модуль отключён. Включите в Настройки LLM → Общее.', 'error');
+      window.Toast?.show('LLM-модуль отключён. Включите в Настройки → Общее.', 'error');
       return false;
     }
     if (!_State?.getLayout()?.llm?.activeProfileId) {
@@ -135,7 +135,7 @@ window.LLMFeatures = (() => {
       menuEl.appendChild(histBtn);
       const settingsBtn = document.createElement('button');
       settingsBtn.type = 'button';
-      settingsBtn.textContent = '⚙️ Настройки LLM';
+      settingsBtn.textContent = '⚙️ Настройки';
       settingsBtn.addEventListener('click', e => {
         e.stopPropagation();
         document.getElementById('llm-profile-bar')?.classList.remove('open');

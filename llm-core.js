@@ -1729,6 +1729,17 @@ tags.push({
     }
     function _saveAll() { _saveCurrentProfile(); _saveAutoPoet(); _saveGeneral(); _saveBroDepth(); _saveBroTags(); }
     function _bindEvents() {
+      const STORAGE_KEY = 'llm-spoiler-state';
+      const savedState = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; } })();
+      document.querySelectorAll('.llm-settings-fold').forEach(d => {
+        const key = d.querySelector('summary')?.textContent?.trim() || '';
+        if (key && key in savedState) d.open = savedState[key];
+        d.addEventListener('toggle', () => {
+          const s = (() => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; } })();
+          s[key] = d.open;
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+        });
+      });
       document.querySelectorAll('.llm-tab').forEach(tab => tab.addEventListener('click', () => { _saveAll(); _switchTab(tab.dataset.ltab); }));
       document.getElementById('llm-prf-list')?.addEventListener('click', e => {
         const btn = e.target.closest('.llm-prf-card[data-profile-id]');

@@ -904,7 +904,7 @@
 
       <div class="modal-header">
 
-        <span class="modal-title" id="llm-settings-title">⚙ Настройки LLM</span>
+        <span class="modal-title" id="llm-settings-title">⚙ Настройки</span>
 
         <button type="button" class="modal-close" id="llm-modal-close" aria-label="Закрыть">✕</button>
 
@@ -1469,25 +1469,6 @@
               </details>
             </div>
 
-            <details class="llm-settings-fold llm-misc-fold" open>
-              <summary>Сжатие текста (LLM)</summary>
-              <div class="llm-compact-settings">
-                <label class="settings-item settings-item-row" title="Уровень сжатия текста перед отправкой в LLM">
-                  Сжатие
-                  <select id="opt-skeleton-level">
-                    <option value="off">Выключено</option>
-                    <option value="light" selected>Лёгкое (заголовки)</option>
-                    <option value="medium">Среднее (+термины)</option>
-                    <option value="aggressive">Полное (+списки, код)</option>
-                    <option value="auto">Авто (по размеру)</option>
-                  </select>
-                </label>
-                <label class="settings-item" title="Web Worker для больших текстов (>20K)">
-                  <input id="opt-skeleton-worker" type="checkbox" checked> Web Worker
-                </label>
-              </div>
-            </details>
-
             <details class="llm-settings-fold llm-misc-fold llm-misc-wordcomplete" open>
               <summary>Автозавершение слов</summary>
               <div class="llm-compact-settings">
@@ -1513,6 +1494,25 @@
                 </label>
                 <label class="settings-item"><input type="checkbox" id="opt-wc-enter-numbering-misc"> Авто-нумерация Enter</label>
                 <label class="settings-item"><input type="checkbox" id="opt-wordlist-save-misc" checked> Сохранять словарь сессии</label>
+              </div>
+            </details>
+
+            <details class="llm-settings-fold llm-misc-fold" open>
+              <summary>Сжатие текста (LLM)</summary>
+              <div class="llm-compact-settings">
+                <label class="settings-item settings-item-row" title="Уровень сжатия текста перед отправкой в LLM">
+                  Сжатие
+                  <select id="opt-skeleton-level">
+                    <option value="off">Выключено</option>
+                    <option value="light" selected>Лёгкое (заголовки)</option>
+                    <option value="medium">Среднее (+термины)</option>
+                    <option value="aggressive">Полное (+списки, код)</option>
+                    <option value="auto">Авто (по размеру)</option>
+                  </select>
+                </label>
+                <label class="settings-item" title="Web Worker для больших текстов (>20K)">
+                  <input id="opt-skeleton-worker" type="checkbox" checked> Web Worker
+                </label>
               </div>
             </details>
 
