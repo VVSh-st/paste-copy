@@ -1143,31 +1143,26 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const mdEl = blockEl.querySelector('.block-md-content');
         if (!ta || !mdEl) return;
 
-        // Сохраняем размер и прокрутку перед переключением
-        const prevH = b.mdPreview ? mdEl.offsetHeight : ta.offsetHeight;
-        const prevScroll = b.mdPreview ? mdEl.scrollTop : ta.scrollTop;
-        const prevScrollH = b.mdPreview ? mdEl.scrollHeight : ta.scrollHeight;
-
         b.mdPreview = !b.mdPreview;
         mdBtn.classList.toggle('active', b.mdPreview);
         if (b.mdPreview) {
+          // Сохраняем scrollTop textarea перед переключением
+          b._savedTaScrollTop = ta.scrollTop;
+          const prevH = ta.offsetHeight;
           _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
           ta.style.display = 'none';
           mdEl.style.display = '';
-          // Восстанавливаем размер и прокрутку
+          // Высота MD = высота textarea, прокрутка пропорциональная
           mdEl.style.height = prevH + 'px';
-          if (prevScrollH > prevH) {
-            mdEl.scrollTop = (prevScroll / prevScrollH) * mdEl.scrollHeight;
-          }
+          const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
+          mdEl.scrollTop = ratio * Math.max(0, mdEl.scrollHeight - mdEl.clientHeight);
         } else {
           mdEl.style.display = 'none';
           ta.style.display = '';
           ta.value = b.subtabs[b.activeSubtab]?.value ?? '';
-          // Восстанавливаем размер и прокрутку
-          ta.style.height = prevH + 'px';
-          if (prevScrollH > prevH) {
-            ta.scrollTop = (prevScroll / prevScrollH) * ta.scrollHeight;
-          }
+          // Восстанавливаем высоту и scrollTop textarea
+          ta.style.height = mdEl.offsetHeight + 'px';
+          ta.scrollTop = b._savedTaScrollTop || 0;
           ta.focus();
         }
         State.snapshot();
