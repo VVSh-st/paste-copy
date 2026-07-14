@@ -1146,27 +1146,31 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         b.mdPreview = !b.mdPreview;
         mdBtn.classList.toggle('active', b.mdPreview);
         if (b.mdPreview) {
-          // Сохраняем scrollTop textarea перед переключением
+          // Сохраняем позицию перед переключением
           b._savedTaScrollTop = ta.scrollTop;
+          b._savedTaSelStart = ta.selectionStart;
+          b._savedTaSelEnd = ta.selectionEnd;
           const prevH = ta.offsetHeight;
           _renderBlockMdPreview(ta.value, mdEl, b.fontSize || 13.5, b.mdHighlight);
-          // Показываем MD СНАЧАЛА, потом прячем textarea
           mdEl.style.height = prevH + 'px';
           mdEl.style.display = '';
           ta.style.display = 'none';
-          // Пропорциональная прокрутка MD
           const maxScroll = Math.max(1, ta.scrollHeight - ta.clientHeight);
           const ratio = maxScroll > 0 ? ta.scrollTop / maxScroll : 0;
           mdEl.scrollTop = ratio * Math.max(0, mdEl.scrollHeight - mdEl.clientHeight);
         } else {
-          // Показываем textarea СНАЧАЛА, потом прячем MD
           ta.value = b.subtabs[b.activeSubtab]?.value ?? '';
           ta.style.height = mdEl.offsetHeight + 'px';
           ta.style.display = '';
           mdEl.style.display = 'none';
-          // Восстанавливаем scrollTop
-          ta.scrollTop = b._savedTaScrollTop || 0;
+          // Восстанавливаем курсор ДО focus
+          if (b._savedTaSelStart != null) {
+            ta.selectionStart = b._savedTaSelStart;
+            ta.selectionEnd = b._savedTaSelEnd;
+          }
           ta.focus();
+          // Восстанавливаем scrollTop ПОСЛЕ focus (browser может сбросить)
+          ta.scrollTop = b._savedTaScrollTop || 0;
         }
         State.snapshot();
       };
