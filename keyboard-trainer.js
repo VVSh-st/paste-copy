@@ -364,8 +364,9 @@ const KeyboardTrainer = (() => {
         const layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
         const spec = layout[k.code] || {};
 
+        var shiftedEl = null;
         if (_showShiftedSymbols && spec.shift) {
-          var shiftedEl = document.createElement('span');
+          shiftedEl = document.createElement('span');
           shiftedEl.className = 'kb-key-shifted';
           shiftedEl.textContent = spec.shift;
           el.appendChild(shiftedEl);
@@ -375,6 +376,10 @@ const KeyboardTrainer = (() => {
         glyph.className = 'kb-key-label';
         glyph.textContent = spec.base || '';
         el.appendChild(glyph);
+
+        // Cache DOM refs for fast updates
+        el._labelEl = glyph;
+        el._shiftedEl = shiftedEl;
 
         rowEl.appendChild(el);
         _keyEls[k.code] = el;
@@ -425,9 +430,10 @@ const KeyboardTrainer = (() => {
       var el = _keyEls[code];
       if (el.classList.contains('kb-key-extra')) continue;
       var spec = layout[code] || {};
-      var label = el.querySelector('.kb-key-label');
+      // Use cached DOM refs instead of querySelector
+      var label = el._labelEl;
       if (label) label.textContent = spec.base || '';
-      var shifted = el.querySelector('.kb-key-shifted');
+      var shifted = el._shiftedEl;
       if (shifted) {
         if (_showShiftedSymbols && spec.shift) {
           shifted.textContent = spec.shift;
@@ -555,14 +561,16 @@ const KeyboardTrainer = (() => {
     if (changed) _save();
   }
 
-  // Flash on keydown — CSS animation handles the visual
+  // Flash on keydown — CSS animation, double RAF avoids sync reflow
   function _flashKey(code) {
     var el = _keyEls[code];
     if (!el) return;
-    // Force reflow to restart animation if already running
     el.classList.remove('kb-flash');
-    void el.offsetWidth;
-    el.classList.add('kb-flash');
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        el.classList.add('kb-flash');
+      });
+    });
   }
 
   // Cleanup kb-flash class after animation ends
@@ -605,6 +613,8 @@ const KeyboardTrainer = (() => {
   }
 
   // Event handlers
+  let _mouseMoveThrottle = 0;
+
   function _onKeyDown(e) {
     if (!_enabled) return;
     if (['Shift','Control','Alt','Meta'].includes(e.key)) return;
@@ -616,6 +626,8 @@ const KeyboardTrainer = (() => {
 
   function _onMouseMove() {
     if (!_enabled || !_isForeground) return;
+    if (_mouseMoveThrottle) return;
+    _mouseMoveThrottle = setTimeout(function() { _mouseMoveThrottle = 0; }, 250);
     _scheduleAutoHide();
   }
 
@@ -840,7 +852,7 @@ const KeyboardTrainer = (() => {
     btn.addEventListener('pointerleave', onEnd);
   }
 
-  // Drag + Resize (reusing MiniChat pattern)
+  // Drag + Resize — listeners added only during drag, removed on end
   function _initDragResize() {
     if (_dragBound) return;
     _dragBound = true;
@@ -851,35 +863,6 @@ const KeyboardTrainer = (() => {
     function getClientPos(e) {
       if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
       return { x: e.clientX, y: e.clientY };
-    }
-
-    function onStart(e, mode) {
-      if (mode === 'drag' && e.target.closest && e.target.closest('button')) return;
-      if (mode === 'drag') {
-        _dragging = true;
-        var rect = _panel.getBoundingClientRect();
-        _dragOffset = {
-          x: getClientPos(e).x - rect.left,
-          y: getClientPos(e).y - rect.top
-        };
-      }
-      if (mode === 'resize') {
-        _resizing = true;
-        var rect2 = _panel.getBoundingClientRect();
-        var pos = getClientPos(e);
-        _resizeStartPos = { x: pos.x, y: pos.y };
-        _resizeStartRect = { w: rect2.width, h: rect2.height };
-      }
-      e.preventDefault();
-    }
-
-    if (bar) {
-      bar.addEventListener('mousedown', function(e) { onStart(e, 'drag'); });
-      bar.addEventListener('touchstart', function(e) { onStart(e, 'drag'); }, { passive: false });
-    }
-    if (handle) {
-      handle.addEventListener('mousedown', function(e) { onStart(e, 'resize'); });
-      handle.addEventListener('touchstart', function(e) { onStart(e, 'resize'); }, { passive: false });
     }
 
     function onMove(e) {
@@ -906,6 +889,10 @@ const KeyboardTrainer = (() => {
     }
 
     function onEnd() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
       if (_dragging || _resizing) {
         _save();
         _scheduleMetricsUpdate();
@@ -913,10 +900,38 @@ const KeyboardTrainer = (() => {
       _dragging = _resizing = false;
     }
 
-    document.addEventListener('mousemove', onMove, { passive: false });
-    document.addEventListener('mouseup', onEnd);
-    document.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchend', onEnd);
+    function onStart(e, mode) {
+      if (mode === 'drag' && e.target.closest && e.target.closest('button')) return;
+      if (mode === 'drag') {
+        _dragging = true;
+        var rect = _panel.getBoundingClientRect();
+        _dragOffset = {
+          x: getClientPos(e).x - rect.left,
+          y: getClientPos(e).y - rect.top
+        };
+      }
+      if (mode === 'resize') {
+        _resizing = true;
+        var rect2 = _panel.getBoundingClientRect();
+        var pos = getClientPos(e);
+        _resizeStartPos = { x: pos.x, y: pos.y };
+        _resizeStartRect = { w: rect2.width, h: rect2.height };
+      }
+      document.addEventListener('mousemove', onMove, { passive: false });
+      document.addEventListener('mouseup', onEnd);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd);
+      e.preventDefault();
+    }
+
+    if (bar) {
+      bar.addEventListener('mousedown', function(e) { onStart(e, 'drag'); });
+      bar.addEventListener('touchstart', function(e) { onStart(e, 'drag'); }, { passive: false });
+    }
+    if (handle) {
+      handle.addEventListener('mousedown', function(e) { onStart(e, 'resize'); });
+      handle.addEventListener('touchstart', function(e) { onStart(e, 'resize'); }, { passive: false });
+    }
   }
 
   // Settings popup
@@ -1266,6 +1281,8 @@ const KeyboardTrainer = (() => {
       _updateAllButtons();
       document.removeEventListener('keydown', _onKeyDown, true);
       document.removeEventListener('mousemove', _onMouseMove);
+      clearTimeout(_mouseMoveThrottle);
+      _mouseMoveThrottle = 0;
       _cancelMetricsUpdate();
       if (_resizeObserver) {
         _resizeObserver.disconnect();
