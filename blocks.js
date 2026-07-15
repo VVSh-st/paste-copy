@@ -730,6 +730,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     badge.className = 'block-order block-order-btn';
 
     function updateBadge() {
+      badge.classList.toggle('block-order-done', b.previewDone === true);
       if (b.type === 'text') {
         const disabled = b.previewDisabled === true;
         badge.classList.toggle('block-order-disabled', disabled);
@@ -763,10 +764,25 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     updateBadge();
 
     if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
-      badge.onclick = e => {
-        e.stopPropagation();
-        State.update(() => { b.previewDisabled = !b.previewDisabled; });
-      };
+      let _longPressTimer = null;
+      let _longPressed = false;
+      badge.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        _longPressed = false;
+        _longPressTimer = setTimeout(() => {
+          _longPressed = true;
+          State.update(() => { b.previewDone = !b.previewDone; });
+          badge.classList.toggle('block-order-done', b.previewDone === true);
+        }, 400);
+      });
+      badge.addEventListener('pointerup', e => {
+        clearTimeout(_longPressTimer);
+        if (!_longPressed) {
+          e.stopPropagation();
+          State.update(() => { b.previewDisabled = !b.previewDisabled; });
+        }
+      });
+      badge.addEventListener('pointerleave', () => clearTimeout(_longPressTimer));
     } else {
       badge.style.cursor = 'default';
       badge.onclick = e => e.stopPropagation();
