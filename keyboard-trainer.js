@@ -153,8 +153,7 @@ const KeyboardTrainer = (() => {
   let _problemKeysOnly = false;
   let _focusLayerEnabled = true;
   let _resizeObserver = null;
-  let _metricsRaf1 = 0;
-  let _metricsRaf2 = 0;
+  let _metricsRaf = 0;
   let _savedBounds = null;
   let _onWindowResize = null;
 
@@ -209,6 +208,12 @@ const KeyboardTrainer = (() => {
         panelHeight: boundsVisible ? Math.round(_panel.getBoundingClientRect().height) + 'px' : ''
       }));
     } catch(e) { console.warn('[KBTrainer]', e); }
+  }
+
+  let _saveTimer = 0;
+  function _saveDebounced() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(_save, 100);
   }
 
   function _load() {
@@ -318,7 +323,7 @@ const KeyboardTrainer = (() => {
       }
     }, { capture: true });
     _renderKeys();
-    _updateClickHandlers();
+    _initOnScreenDelegation();
     _initDragResize();
     _applyVisualSettings();
     _setupResizeObserver();
@@ -414,13 +419,14 @@ const KeyboardTrainer = (() => {
   function _updateLayoutLabels() {
     if (!_panel) return;
     var layout = _currentLayout === 'ru' ? LAYOUT_RU : LAYOUT_EN;
-    Object.keys(_keyEls).forEach(function(code) {
+    for (var code in _keyEls) {
+      if (!_keyEls.hasOwnProperty(code)) continue;
       var el = _keyEls[code];
-      if (el.classList.contains('kb-key-extra')) return;
+      if (el.classList.contains('kb-key-extra')) continue;
       var spec = layout[code] || {};
       var label = el.querySelector('.kb-key-label');
       if (label) label.textContent = spec.base || '';
-      var shifted = _keyEls[code].querySelector('.kb-key-shifted');
+      var shifted = el.querySelector('.kb-key-shifted');
       if (shifted) {
         if (_showShiftedSymbols && spec.shift) {
           shifted.textContent = spec.shift;
@@ -429,7 +435,7 @@ const KeyboardTrainer = (() => {
           shifted.style.display = 'none';
         }
       }
-    });
+    }
   }
 
   function _applyVisualSettings() {
@@ -500,21 +506,16 @@ const KeyboardTrainer = (() => {
   }
 
   function _scheduleMetricsUpdate() {
-    if (_metricsRaf1 || _metricsRaf2) return;
-    _metricsRaf1 = requestAnimationFrame(function() {
-      _metricsRaf1 = 0;
-      _metricsRaf2 = requestAnimationFrame(function() {
-        _metricsRaf2 = 0;
-        _updateFontSize();
-      });
+    if (_metricsRaf) return;
+    _metricsRaf = requestAnimationFrame(function() {
+      _metricsRaf = 0;
+      _updateFontSize();
     });
   }
 
   function _cancelMetricsUpdate() {
-    if (_metricsRaf1) cancelAnimationFrame(_metricsRaf1);
-    if (_metricsRaf2) cancelAnimationFrame(_metricsRaf2);
-    _metricsRaf1 = 0;
-    _metricsRaf2 = 0;
+    if (_metricsRaf) cancelAnimationFrame(_metricsRaf);
+    _metricsRaf = 0;
   }
 
   function _applySavedBounds() {
@@ -553,12 +554,14 @@ const KeyboardTrainer = (() => {
     if (changed) _save();
   }
 
-  // Flash on keydown
+  // Flash on keydown — CSS animation handles the visual, no setTimeout needed
   function _flashKey(code) {
     var el = _keyEls[code];
     if (!el) return;
+    // Force reflow to restart animation if already running
+    el.classList.remove('kb-flash');
+    void el.offsetWidth;
     el.classList.add('kb-flash');
-    setTimeout(function() { el.classList.remove('kb-flash'); }, 250);
   }
 
   // Auto-show / auto-hide
@@ -680,23 +683,40 @@ const KeyboardTrainer = (() => {
   var _keyLongPressFired = {};
   var _lastFocusedEl = null;
   var _lastEditableRange = null;
+  let _focusUpdateScheduled = false;
 
-  function _rememberFocusedEditable() {
-    var el = document.activeElement;
-    if (!el) return;
-    if (_isTextInput(el) || el.isContentEditable) {
-      _lastFocusedEl = el;
-      if (el.isContentEditable) {
-        var sel = window.getSelection && window.getSelection();
-        if (sel && sel.rangeCount) _lastEditableRange = sel.getRangeAt(0).cloneRange();
+  function _rememberFocusedEditableThrottled() {
+    if (_focusUpdateScheduled) return;
+    _focusUpdateScheduled = true;
+    requestAnimationFrame(function() {
+      _focusUpdateScheduled = false;
+      var el = document.activeElement;
+      if (!el) return;
+      if (_isTextInput(el) || el.isContentEditable) {
+        _lastFocusedEl = el;
+        if (el.isContentEditable) {
+          var sel = window.getSelection && window.getSelection();
+          if (sel && sel.rangeCount) _lastEditableRange = sel.getRangeAt(0).cloneRange();
+        }
       }
-    }
+    });
   }
 
-  function _setupKeyClick(el, code) {
-    var _startX = 0, _startY = 0;
-    var onDown = function(e) {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
+  function _initOnScreenDelegation() {
+    if (_panel._delegationBound) return;
+    _panel._delegationBound = true;
+
+    var _delegState = { activeCode: null, startX: 0, startY: 0, fired: false };
+    var _longPressTimers = {};
+
+    _panel.addEventListener('pointerdown', function(e) {
+      if (!_onScreenMode) return;
+      var keyEl = e.target.closest('.kb-key');
+      if (!keyEl) return;
+      var code = keyEl.dataset.code;
+      if (!code) return;
+
+      // Remember focus
       var active = document.activeElement;
       if (_isTextInput(active) || (active && active.isContentEditable)) {
         _lastFocusedEl = active;
@@ -706,37 +726,36 @@ const KeyboardTrainer = (() => {
           if (sel && sel.rangeCount) _lastEditableRange = sel.getRangeAt(0).cloneRange();
         }
       }
-      _keyLongPressFired[code] = false;
-      _startX = e.clientX;
-      _startY = e.clientY;
-      _keyLongPressTimers[code] = setTimeout(function() {
-        if (!_onScreenMode) return;
-        if (!_isForeground) _show();
-        else _scheduleAutoHide();
-        _keyLongPressFired[code] = true;
+
+      _delegState.activeCode = code;
+      _delegState.startX = e.clientX;
+      _delegState.startY = e.clientY;
+      _delegState.fired = false;
+
+      _longPressTimers[code] = setTimeout(function() {
+        _delegState.fired = true;
+        if (!_isForeground) _show(); else _scheduleAutoHide();
         if (code === 'Backspace' || code === 'Enter') {
-          _insertKey(code);
-          _flashKey(code);
-          if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
+          _insertKey(code); _flashKey(code);
         } else {
           var spec = _getLayout()[code];
           if (spec) {
             var ch = spec.shift || (spec.base ? spec.base.toUpperCase() : '');
-            if (ch) {
-              _insertChar(ch);
-              _flashKey(code);
-              if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
-            }
+            if (ch) { _insertChar(ch); _flashKey(code); }
           }
         }
+        if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
       }, LONG_PRESS_MS);
-    };
-    var onUp = function(e) {
-      clearTimeout(_keyLongPressTimers[code]);
-      if (_keyLongPressFired[code]) { _keyLongPressFired[code] = false; return; }
+    }, { passive: true });
+
+    _panel.addEventListener('pointerup', function(e) {
       if (!_onScreenMode) return;
-      if (!_isForeground) _show();
-      else _scheduleAutoHide();
+      var code = _delegState.activeCode;
+      if (!code) return;
+      clearTimeout(_longPressTimers[code]);
+      if (_delegState.fired) { _delegState.fired = false; _delegState.activeCode = null; return; }
+
+      if (!_isForeground) _show(); else _scheduleAutoHide();
       if (code === 'Backspace' || code === 'Enter') {
         _insertKey(code);
       } else {
@@ -745,30 +764,25 @@ const KeyboardTrainer = (() => {
       }
       _flashKey(code);
       if (_lastFocusedEl && _lastFocusedEl.isConnected) _lastFocusedEl.focus();
-    };
-    var onMove = function(e) {
-      var dx = e.clientX - _startX, dy = e.clientY - _startY;
-      if (Math.sqrt(dx * dx + dy * dy) > LONG_PRESS_MOVE_THRESHOLD) {
-        clearTimeout(_keyLongPressTimers[code]);
+      _delegState.activeCode = null;
+    });
+
+    _panel.addEventListener('pointercancel', function() {
+      clearTimeout(_longPressTimers[_delegState.activeCode]);
+      _delegState.activeCode = null;
+    });
+
+    _panel.addEventListener('pointermove', function(e) {
+      if (!_delegState.activeCode || _delegState.fired) return;
+      var dx = e.clientX - _delegState.startX, dy = e.clientY - _delegState.startY;
+      if (Math.sqrt(dx*dx + dy*dy) > LONG_PRESS_MOVE_THRESHOLD) {
+        clearTimeout(_longPressTimers[_delegState.activeCode]);
       }
-    };
-    var onCancel = function() { clearTimeout(_keyLongPressTimers[code]); };
-    el.addEventListener('pointerdown', onDown);
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', onCancel);
-    el.addEventListener('pointerleave', onCancel);
-    el.addEventListener('pointermove', onMove);
-    el._clickBound = true;
+    });
   }
 
   function _updateClickHandlers() {
-    if (!_panel) return;
-    Object.keys(_keyEls).forEach(function(code) {
-      var el = _keyEls[code];
-      if (_onScreenMode && !el._clickBound) {
-        _setupKeyClick(el, code);
-      }
-    });
+    // Event delegation handles all clicks — no per-key setup needed
   }
 
   function _setupLangHandleClick() {
@@ -1058,7 +1072,7 @@ const KeyboardTrainer = (() => {
       _opacity = parseInt(e.target.value) / 100;
       opVal.textContent = e.target.value + '%';
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     var fontSlider = _settingsPopup.querySelector('#kb-set-fontscale');
@@ -1067,7 +1081,7 @@ const KeyboardTrainer = (() => {
       _fontScale = parseInt(e.target.value) / 100;
       fontVal.textContent = e.target.value + '%';
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     var labelColorInput = _settingsPopup.querySelector('#kb-set-labelcolor');
@@ -1076,7 +1090,7 @@ const KeyboardTrainer = (() => {
       _labelColor = e.target.value;
       labelColorVal.textContent = _labelColor;
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     var labelAlphaSlider = _settingsPopup.querySelector('#kb-set-labelalpha');
@@ -1085,7 +1099,7 @@ const KeyboardTrainer = (() => {
       _labelAlpha = parseInt(e.target.value, 10) / 100;
       labelAlphaVal.textContent = e.target.value + '%';
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     var keyBgAlphaSlider = _settingsPopup.querySelector('#kb-set-keybgalpha');
@@ -1094,7 +1108,7 @@ const KeyboardTrainer = (() => {
       _keyBgAlpha = parseInt(e.target.value, 10) / 100;
       keyBgAlphaVal.textContent = e.target.value + '%';
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     var hbSlider = _settingsPopup.querySelector('#kb-set-homeborder');
@@ -1103,7 +1117,7 @@ const KeyboardTrainer = (() => {
       _homeBorderAlpha = parseInt(e.target.value) / 100;
       hbVal.textContent = e.target.value + '%';
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     var hbWidthSlider = _settingsPopup.querySelector('#kb-set-homeborder-width');
@@ -1112,7 +1126,7 @@ const KeyboardTrainer = (() => {
       _homeBorderWidth = parseInt(e.target.value);
       hbWidthVal.textContent = _homeBorderWidth + 'px';
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     var flashSlider = _settingsPopup.querySelector('#kb-set-flash');
@@ -1121,7 +1135,7 @@ const KeyboardTrainer = (() => {
       _flashAlpha = parseInt(e.target.value) / 100;
       flashVal.textContent = e.target.value + '%';
       _applyVisualSettings();
-      _save();
+      _saveDebounced();
     });
 
     _settingsPopup.querySelector('#kb-set-layout').addEventListener('change', function(e) {
@@ -1141,7 +1155,7 @@ const KeyboardTrainer = (() => {
       } else {
         clearTimeout(_autoHideTimer);
       }
-      _save();
+      _saveDebounced();
     });
 
     _settingsPopup.querySelector('#kb-set-stayvisible').addEventListener('change', function(e) {
@@ -1291,8 +1305,8 @@ const KeyboardTrainer = (() => {
   // Init
   function init() {
     _load();
-    document.addEventListener('focusin', _rememberFocusedEditable, true);
-    document.addEventListener('selectionchange', _rememberFocusedEditable);
+    document.addEventListener('focusin', function() { _rememberFocusedEditableThrottled(); }, true);
+    document.addEventListener('selectionchange', function() { _rememberFocusedEditableThrottled(); });
     if (_enabled) {
       _buildPanel();
       _show();

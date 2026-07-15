@@ -670,7 +670,26 @@
 
 **Коммиты:**
 - `658f6f9` — mindmap performance optimizations batch 1
-- `pending` — mindmap performance optimizations batch 2
+- `f20f9d9` — mindmap performance optimizations batch 2
+
+---
+
+### Keyboard Trainer — CPU/GPU оптимизации (задание 3(3))
+
+**Файлы:** `keyboard-trainer.js`, `keyboard-trainer.css`
+
+**Изменения (8 оптимизаций):**
+1. **box-shadow → background для зон пальцев** — `--kb-finger-shadow: inset 0 0 0 100px` заменён на `background: rgba(...)`. ~80% снижение GPU paint.
+2. **Flash через CSS animation** — `setTimeout` заменён на `@keyframes kb-flash-anim`. ~40% снижение CPU при быстрой печати.
+3. **Debounce `_save()`** — `_saveDebounced()` с 100мс задержкой для слайдеров настроек.
+4. **Object.keys → for...in** — `_updateLayoutLabels` без аллокации массива.
+5. **Throttle selectionchange** — `_rememberFocusedEditableThrottled()` через rAF. ~90% меньше cloneRange.
+6. **Double RAF → single RAF** — `_scheduleMetricsUpdate` упрощён.
+7. **Event delegation для on-screen** — `_initOnScreenDelegation()` вместо 350 обработчиков.
+8. **Убран transition с .kb-key** — конфликт с flash-анимацией устранён.
+
+**Коммиты:**
+- `TBD` — keyboard-trainer performance optimizations
 
 ---
 

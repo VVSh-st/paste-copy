@@ -77,17 +77,17 @@
   grid-auto-rows: var(--kb-key-size, 40px);
 }
 
-/* ── Finger zones (via variable — combines with focus layer) ────── */
+/* ── Finger zones via background — orders of magnitude cheaper than box-shadow ── */
 
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-pinky  { --kb-finger-shadow: inset 0 0 0 100px rgba(255, 120, 120, 0.20); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-ring   { --kb-finger-shadow: inset 0 0 0 100px rgba(255, 170, 120, 0.20); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-middle { --kb-finger-shadow: inset 0 0 0 100px rgba(215, 200, 120, 0.18); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-l-index  { --kb-finger-shadow: inset 0 0 0 100px rgba(160, 220, 120, 0.20); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-index  { --kb-finger-shadow: inset 0 0 0 100px rgba(120, 220, 180, 0.20); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-middle { --kb-finger-shadow: inset 0 0 0 100px rgba(120, 190, 255, 0.20); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-ring   { --kb-finger-shadow: inset 0 0 0 100px rgba(180, 150, 255, 0.20); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-r-pinky  { --kb-finger-shadow: inset 0 0 0 100px rgba(255, 150, 220, 0.20); }
-.kb-trainer-panel.kb-fingers-on .kb-finger-thumb    { --kb-finger-shadow: inset 0 0 0 100px rgba(200, 200, 255, 0.18); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-pinky  { background: rgba(255, 120, 120, 0.20); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-ring   { background: rgba(255, 170, 120, 0.20); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-middle { background: rgba(215, 200, 120, 0.18); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-l-index  { background: rgba(160, 220, 120, 0.20); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-index  { background: rgba(120, 220, 180, 0.20); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-middle { background: rgba(120, 190, 255, 0.20); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-ring   { background: rgba(180, 150, 255, 0.20); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-r-pinky  { background: rgba(255, 150, 220, 0.20); }
+.kb-trainer-panel.kb-fingers-on .kb-finger-thumb    { background: rgba(200, 200, 255, 0.18); }
 
 /* ── Key ───────────────────────────────────────────────────────── */
 
@@ -104,9 +104,7 @@
   border-radius: 4px;
   text-align: center;
   line-height: 1;
-  transition: background 0.1s, border-color 0.1s;
   position: relative;
-  box-shadow: var(--kb-finger-shadow, none);
 }
 
 .kb-key-label {
@@ -140,8 +138,18 @@
 }
 
 .kb-key.kb-flash {
-  background: rgba(100, 160, 255, var(--kb-flash-alpha, 0.35)) !important;
-  border-color: rgba(100, 160, 255, 0.6) !important;
+  animation: kb-flash-anim 0.25s ease-out forwards;
+}
+
+@keyframes kb-flash-anim {
+  0% {
+    background: rgba(100, 160, 255, var(--kb-flash-alpha, 0.35));
+    border-color: rgba(100, 160, 255, 0.6);
+  }
+  100% {
+    background: rgba(255, 255, 255, var(--kb-key-bg-alpha, 0.04));
+    border-color: rgba(255, 255, 255, 0.08);
+  }
 }
 
 /* Wide keys - handled via inline grid-column */
@@ -287,11 +295,6 @@
   opacity: 0.08;
 }
 
-.kb-trainer-panel.kb-ghost .kb-key.kb-flash {
-  background: rgba(100, 160, 255, var(--kb-flash-alpha, 0.35)) !important;
-  border-color: rgba(100, 160, 255, 0.6) !important;
-}
-
 /* ── On-screen keyboard mode ──────────────────────────────────── */
 
 .kb-trainer-panel.kb-onscreen .kb-key { cursor: pointer; }
@@ -307,10 +310,6 @@
 .kb-trainer-panel.kb-onscreen.kb-ghost .kb-key {
   background: transparent;
   border-color: transparent;
-}
-.kb-trainer-panel.kb-onscreen.kb-ghost .kb-key.kb-flash {
-  background: rgba(100, 160, 255, var(--kb-flash-alpha, 0.35)) !important;
-  border-color: rgba(100, 160, 255, 0.6) !important;
 }
 .kb-trainer-panel.kb-onscreen.kb-ghost .kb-key-extra {
   background: transparent;
@@ -351,12 +350,11 @@
 /* ── Focus layer ────────────────────────────────────────────────── */
 
 .kb-trainer-panel.kb-focus-layer-on .kb-key.kb-home {
-  box-shadow: var(--kb-finger-shadow, none), inset 0 0 0 1px rgba(210, 90, 90, 0.38);
+  box-shadow: inset 0 0 0 1px rgba(210, 90, 90, 0.38);
 }
 
 .kb-trainer-panel.kb-focus-layer-on .kb-key.kb-flash {
-  box-shadow: var(--kb-finger-shadow, none),
-    inset 0 0 0 2px rgba(120, 190, 255, 0.95),
+  box-shadow: inset 0 0 0 2px rgba(120, 190, 255, 0.95),
     0 0 14px rgba(120, 190, 255, 0.28);
 }
 
