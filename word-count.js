@@ -13,8 +13,10 @@ const WordCount = (() => {
   let _pinned = localStorage.getItem('wc-pinned') === 'true';
   let _updateTimer = null;
   let _lastSourceText = '';
-  let _lastSel = '';
+  let _lastSelStart = -1;
+  let _lastSelEnd = -1;
   let _rowValueEls = new Map();
+  let _wordsValEl = null;
 
   /* ---- drag state ---- */
   let _dragging = false;
@@ -29,17 +31,24 @@ const WordCount = (() => {
     { label: 'Время чтения', stat: 'readingTime' },
   ];
 
+  /* ---- cached regex (module-level) ---- */
+  const RE_SPACES = /\s/g;
+  const RE_WORDS = /\s+/;
+  const RE_SENTENCES = /[.!?]+(?:\s|$)/g;
+  const RE_PARAGRAPHS = /\n\s*\n/;
+
   /* ---- stats computation ---- */
   function computeStats(text) {
-    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { words: 0, chars: text.length, charsNoSpaces: text.length, sentences: 0, paragraphs: 0, readingTime: '< 1 мин' };
+    }
+    const words = trimmed.split(RE_WORDS).length;
     const chars = text.length;
-    const charsNoSpaces = text.replace(/\s/g, '').length;
-    const sentences = text.trim()
-      ? (text.match(/[.!?]+(?:\s|$)/g) || []).length || (text.trim() ? 1 : 0)
-      : 0;
-    const paragraphs = text.trim()
-      ? text.split(/\n\s*\n/).filter(s => s.trim()).length || 1
-      : 0;
+    const spaces = (text.match(RE_SPACES) || []).length;
+    const charsNoSpaces = chars - spaces;
+    const sentences = (trimmed.match(RE_SENTENCES) || []).length || 1;
+    const paragraphs = text.split(RE_PARAGRAPHS).filter(s => s.trim()).length || 1;
     const readingMinutes = Math.ceil(words / 200);
     const readingTime = words < 200 ? '< 1 мин' : readingMinutes + ' мин';
     return { words, chars, charsNoSpaces, sentences, paragraphs, readingTime };
@@ -85,12 +94,18 @@ const WordCount = (() => {
     if (!_rowValueEls.size) _buildRowsSkeleton();
     const stats = computeStats(src);
 
-    const wordsEl = _popup.querySelector('.wc-words-value');
-    if (wordsEl) wordsEl.textContent = stats.words;
+    // Diff-update: only write if value changed
+    const strWords = String(stats.words);
+    if (_wordsValEl && _wordsValEl.textContent !== strWords) {
+      _wordsValEl.textContent = strWords;
+    }
 
     for (const def of _ROW_DEFS) {
       const el = _rowValueEls.get(def.stat);
-      if (el) el.textContent = stats[def.stat];
+      const newVal = String(stats[def.stat]);
+      if (el && el.textContent !== newVal) {
+        el.textContent = newVal;
+      }
     }
   }
 
@@ -165,6 +180,7 @@ const WordCount = (() => {
     wordsVal.className = 'wc-words-value';
     wordsVal.textContent = '0';
     wordsVal.setAttribute('aria-live', 'polite');
+    _wordsValEl = wordsVal;
     wordsBlock.append(pin, wordsLabel, wordsVal);
     _popup.appendChild(wordsBlock);
 
@@ -173,17 +189,8 @@ const WordCount = (() => {
     rows.className = 'wc-rows';
     _popup.appendChild(rows);
 
-    // drag — guard: skip if click started on pin
-    wordsBlock.addEventListener('mousedown', e => {
-      if (e.target === pin || pin.contains(e.target)) return;
-      _dragging = true;
-      const rect = _popup.getBoundingClientRect();
-      _dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      wordsBlock.style.cursor = 'grabbing';
-      e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', e => {
+    // drag handlers (added dynamically, removed on end)
+    function _onDragMove(e) {
       if (!_dragging || !_popup) return;
       let left = e.clientX - _dragOffset.x;
       let top = e.clientY - _dragOffset.y;
@@ -197,14 +204,28 @@ const WordCount = (() => {
       _popup.style.top = top + 'px';
       _popup.style.right = 'auto';
       _popup.style.bottom = 'auto';
-    }, { passive: true });
+    }
 
-    document.addEventListener('mouseup', () => {
+    function _onDragEnd() {
+      document.removeEventListener('mousemove', _onDragMove);
+      document.removeEventListener('mouseup', _onDragEnd);
       if (_dragging) {
         _dragging = false;
         if (_popup) wordsBlock.style.cursor = 'grab';
         _savePosition();
       }
+    }
+
+    // drag — guard: skip if click started on pin
+    wordsBlock.addEventListener('mousedown', e => {
+      if (e.target === pin || pin.contains(e.target)) return;
+      _dragging = true;
+      const rect = _popup.getBoundingClientRect();
+      _dragOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      wordsBlock.style.cursor = 'grabbing';
+      document.addEventListener('mousemove', _onDragMove, { passive: true });
+      document.addEventListener('mouseup', _onDragEnd);
+      e.preventDefault();
     });
 
     document.body.appendChild(_popup);
@@ -227,7 +248,8 @@ const WordCount = (() => {
     _isOpen = true;
     _btn?.classList.add('active');
     _lastSourceText = '\x00'; // sentinel: гарантированно не совпадёт с реальным текстом
-    _lastSel = '';
+    _lastSelStart = -1;
+    _lastSelEnd = -1;
     _render();
     _attachListeners();
   }
@@ -254,9 +276,11 @@ const WordCount = (() => {
 
   function _onSelection() {
     if (!_ta) return;
-    const sel = _ta.selectionStart + ':' + _ta.selectionEnd;
-    if (sel !== _lastSel) {
-      _lastSel = sel;
+    const s = _ta.selectionStart;
+    const e = _ta.selectionEnd;
+    if (s !== _lastSelStart || e !== _lastSelEnd) {
+      _lastSelStart = s;
+      _lastSelEnd = e;
       _scheduleUpdate();
     }
   }
@@ -276,7 +300,8 @@ const WordCount = (() => {
     if (newTa === _ta) return;
     _ta = newTa;
     _lastSourceText = '\x00';
-    _lastSel = '';
+    _lastSelStart = -1;
+    _lastSelEnd = -1;
     if (_isOpen) _scheduleUpdate();
   }
 
