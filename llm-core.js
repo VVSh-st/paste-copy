@@ -1842,7 +1842,6 @@ tags.push({
           const opening = !menuEl.classList.contains('open');
           if (opening) {
             closeAllMenus?.(menuEl);
-            _renderInsertStorageMenu();
           }
           menuEl.classList.toggle('open');
           menuTrigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
@@ -1863,13 +1862,36 @@ tags.push({
         });
       }
       document.getElementById('llm-prompt-reset-all')?.addEventListener('click', _resetAllPrompts);
+      const insertTrigger = document.getElementById('llm-prompt-insert-trigger');
+      const insertMenuEl = insertTrigger?.closest('.llm-prompt-menu-wrap')?.querySelector('.llm-prompt-menu');
+      if (insertTrigger && insertMenuEl) {
+        insertTrigger.addEventListener('click', e => {
+          e.stopPropagation();
+          const opening = !insertMenuEl.classList.contains('open');
+          if (opening) { closeAllMenus?.(insertMenuEl); _renderInsertStorageMenu(); }
+          insertMenuEl.classList.toggle('open');
+          insertTrigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        });
+        document.addEventListener('click', e => {
+          if (!insertMenuEl.classList.contains('open')) return;
+          if (insertTrigger.contains(e.target) || insertMenuEl.contains(e.target)) return;
+          insertMenuEl.classList.remove('open');
+          insertTrigger.setAttribute('aria-expanded', 'false');
+        });
+        document.addEventListener('keydown', e => {
+          if (e.key === 'Escape' && insertMenuEl.classList.contains('open')) {
+            insertMenuEl.classList.remove('open');
+            insertTrigger.setAttribute('aria-expanded', 'false');
+          }
+        });
+      }
       document.getElementById('llm-prompt-insert-storage-list')?.addEventListener('click', e => {
         const btn = e.target.closest('[data-insert-storage-id]');
         if (!btn) return;
         _storageSelectedId = btn.dataset.insertStorageId;
         _applyStorageToCurrentPrompt();
-        menuEl.classList.remove('open');
-        menuTrigger.setAttribute('aria-expanded', 'false');
+        insertMenuEl?.classList.remove('open');
+        insertTrigger?.setAttribute('aria-expanded', 'false');
       });
       const bankTrigger = document.getElementById('llm-storage-bank-trigger');
       const bankMenuEl = bankTrigger?.closest('.llm-prompt-menu-wrap')?.querySelector('.llm-prompt-menu');
@@ -1904,8 +1926,8 @@ tags.push({
         _saveStorageEditor();
         _activeBankId = btn.dataset.bankId;
         _storageSelectedId = null;
-        _renderPromptFnList();
         _selectPromptKey(STORAGE_GROUP_KEY + ':' + _activeBankId, true);
+        _renderPromptFnList();
         bankMenuEl?.classList.remove('open');
         bankTrigger?.setAttribute('aria-expanded', 'false');
       });
@@ -1915,11 +1937,17 @@ tags.push({
         if (!name) { input?.focus(); return; }
         const bank = _addBank(name);
         input.value = '';
-        _renderPromptFnList();
         _selectPromptKey(STORAGE_GROUP_KEY + ':' + bank.id, true);
+        _renderPromptFnList();
         bankMenuEl?.classList.remove('open');
         bankTrigger?.setAttribute('aria-expanded', 'false');
         window.Toast?.show(`Банк «${name}» создан ✓`, 'success');
+      });
+      document.getElementById('llm-storage-bank-name-input')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('llm-storage-bank-add-btn')?.click();
+        }
       });
       document.getElementById('llm-cache-clear')?.addEventListener('click', e => { if (!_armDangerButton(e.currentTarget, '✕ Очистить?')) return; _clearDangerButton(e.currentTarget, '🗑 Очистить кэш', 'Очистить кэш'); LLMCache.clear(); LLMCache.invalidate(); _syncGeneral(); window.Toast?.show('Кэш очищен ✓', 'success'); });
       ['llm-enabled','llm-debug','llm-visual-diff','llm-diff-mode','llm-diff-effect-ms','llm-cache-enabled','llm-cache-ttl','llm-cache-max'].forEach(id => document.getElementById(id)?.addEventListener('change', _saveGeneral));

@@ -1286,6 +1286,12 @@
                 <div class="llm-prompt-card-head">
                   <h3 id="llm-prompt-title" class="llm-prompt-title">Выберите функцию</h3>
                   <span id="llm-prompt-status" class="llm-prompt-status-badge default" aria-label="по умолчанию" title="По умолчанию"><span class="llm-prompt-status-dot"></span><span class="llm-prompt-status-text">по умолч.</span></span>
+                  <div class="llm-prompt-menu-wrap">
+                    <button type="button" id="llm-prompt-insert-trigger" class="btn-icon" title="Вставить из хранилища" aria-label="Вставить из хранилища" aria-haspopup="true" aria-expanded="false">📥</button>
+                    <div class="llm-prompt-menu ui-menu" role="menu">
+                      <div id="llm-prompt-insert-storage-list" class="llm-prompt-menu-sublist" role="none"></div>
+                    </div>
+                  </div>
                   <div class="llm-prompt-menu-wrap" id="llm-storage-bank-wrap" hidden>
                     <button type="button" id="llm-storage-bank-trigger" class="llm-prompt-status-badge default" title="Банки хранилища" aria-haspopup="true" aria-expanded="false">
                       <span class="llm-prompt-status-dot"></span>
@@ -1356,9 +1362,6 @@
                   <div class="llm-prompt-menu-wrap">
                     <button type="button" id="llm-prompt-menu-trigger" class="btn-icon" title="Ещё" aria-label="Ещё действия" aria-haspopup="true" aria-expanded="false">⋮</button>
                     <div class="llm-prompt-menu ui-menu" role="menu">
-                      <span class="llm-prompt-menu-label">Вставить из хранилища</span>
-                      <div id="llm-prompt-insert-storage-list" class="llm-prompt-menu-sublist" role="none"></div>
-                      <div class="llm-prompt-menu-divider" role="none"></div>
                       <button type="button" id="llm-prompt-reset-all" role="menuitem">↺ Сбросить все</button>
                     </div>
                   </div>
