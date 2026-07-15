@@ -230,12 +230,23 @@ const Translator = (() => {
     try {
       const storage = getStorage();
       if (!storage) return;
-      const arr = [...cache.entries()].slice(-MAX_CACHE);
-      storage.setItem(CACHE_KEY, JSON.stringify(arr));
-      _cacheDirty = false;
-    } catch {
-      // dirty flag stays true so we retry on next flush
-    }
+      let arr = [...cache.entries()].slice(-MAX_CACHE);
+      try {
+        storage.setItem(CACHE_KEY, JSON.stringify(arr));
+        _cacheDirty = false;
+      } catch (e) {
+        if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+          // Drop 20% oldest entries and retry
+          const dropCount = Math.max(10, Math.floor(arr.length * 0.2));
+          arr = arr.slice(dropCount);
+          cache = new Map(arr);
+          try {
+            storage.setItem(CACHE_KEY, JSON.stringify(arr));
+            _cacheDirty = false;
+          } catch {}
+        }
+      }
+    } catch {}
   }
 
   function scheduleCacheSave() {
@@ -402,45 +413,56 @@ const Translator = (() => {
     const key = await fetchGoogleKey();
     if (!key) throw new Error(`Google auth failed${googleKeyError ? ': ' + googleKeyError : ''}`);
     _stats.googleRequests++;
-    const results = [];
-    for (let i = 0; i < texts.length; i += 50) {
-      const chunk = texts.slice(i, i + 50);
-      const r = await fetchWithTimeout(
-        'https://translate-pa.googleapis.com/v1/translateHtml',
-        {
-          method: 'POST',
-          credentials: 'omit',
-          referrerPolicy: 'no-referrer',
-          headers: { 'Content-Type': 'application/json+protobuf', 'X-Goog-Api-Key': key },
-          body: JSON.stringify([[chunk, 'auto', to], 'te']),
-          signal,
-        },
-        GOOGLE_TIMEOUT
-      );
-      if (r.status === 401 || r.status === 403) {
-        googleKey = null;
-        googleKeyTs = 0;
-        throw Object.assign(new Error(`google auth http ${r.status}`), { status: r.status });
-      }
-      if (r.status === 429) {
-        const retryAfter = Number(r.headers.get('Retry-After') || 0);
-        throw Object.assign(new Error('rate limit'), {
-          status: 429,
-          retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0
-        });
-      }
-      if (!r.ok) throw Object.assign(new Error(`google http ${r.status}`), { status: r.status });
-      try {
-        const data = await r.json();
-        const rows = Array.isArray(data?.[0]) ? data[0] : [];
-        for (let j = 0; j < chunk.length; j++) {
-          const v = rows[j];
-          results.push(v ? decodeHtmlEntities(String(v).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) : null);
+    const CONCURRENCY = 3;
+    const chunks = [];
+    for (let i = 0; i < texts.length; i += 50) chunks.push(texts.slice(i, i + 50));
+    const results = new Array(texts.length).fill(null);
+    let next = 0;
+    let stop = false;
+    const worker = async () => {
+      while (!stop && next < chunks.length) {
+        if (signal?.aborted) break;
+        const ci = next++;
+        const chunk = chunks[ci];
+        const offset = ci * 50;
+        try {
+          const r = await fetchWithTimeout(
+            'https://translate-pa.googleapis.com/v1/translateHtml',
+            {
+              method: 'POST',
+              credentials: 'omit',
+              referrerPolicy: 'no-referrer',
+              headers: { 'Content-Type': 'application/json+protobuf', 'X-Goog-Api-Key': key },
+              body: JSON.stringify([[chunk, 'auto', to], 'te']),
+              signal,
+            },
+            GOOGLE_TIMEOUT
+          );
+          if (r.status === 401 || r.status === 403) {
+            googleKey = null; googleKeyTs = 0;
+            throw Object.assign(new Error(`google auth http ${r.status}`), { status: r.status });
+          }
+          if (r.status === 429) {
+            const retryAfter = Number(r.headers.get('Retry-After') || 0);
+            throw Object.assign(new Error('rate limit'), {
+              status: 429,
+              retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0
+            });
+          }
+          if (!r.ok) throw Object.assign(new Error(`google http ${r.status}`), { status: r.status });
+          const data = await r.json();
+          const rows = Array.isArray(data?.[0]) ? data[0] : [];
+          for (let j = 0; j < chunk.length; j++) {
+            const v = rows[j];
+            results[offset + j] = v ? decodeHtmlEntities(String(v).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) : null;
+          }
+        } catch (e) {
+          if (e?.status === 401 || e?.status === 403 || e?.status === 429) { stop = true; throw e; }
+          for (let j = 0; j < chunk.length; j++) results[offset + j] = null;
         }
-      } catch {
-        results.push(...chunk.map(() => null));
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
     return results;
   }
 
@@ -484,43 +506,55 @@ const Translator = (() => {
     if (!token) throw new Error(`MS auth failed${msTokenError ? ': ' + msTokenError : ''}`);
     _stats.msRequests++;
     const tg = MS_LANG_MAP[to] || to;
-    const results = [];
-    for (let i = 0; i < texts.length; i += 100) {
-      const chunk = texts.slice(i, i + 100);
-      const r = await fetchWithTimeout(
-        `https://api-edge.cognitive.microsofttranslator.com/translate?to=${encodeURIComponent(tg)}&api-version=3.0`,
-        {
-          method: 'POST',
-          credentials: 'omit',
-          referrerPolicy: 'no-referrer',
-          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-          body: JSON.stringify(chunk.map(Text => ({ Text }))),
-          signal,
-        },
-        MS_TIMEOUT
-      );
-      if (r.status === 401 || r.status === 403) {
-        msToken = null; msTokenTs = 0;
-        throw Object.assign(new Error('ms auth'), { status: r.status });
-      }
-      if (r.status === 429) {
-        const retryAfter = Number(r.headers.get('Retry-After') || 0);
-        throw Object.assign(new Error('rate limit'), {
-          status: 429,
-          retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0
-        });
-      }
-      if (!r.ok) throw Object.assign(new Error(`ms http ${r.status}`), { status: r.status });
-      try {
-        const data = await r.json();
-        const rows = Array.isArray(data) ? data : [];
-        for (let j = 0; j < chunk.length; j++) {
-          results.push(decodeHtmlEntities(rows[j]?.translations?.[0]?.text || null));
+    const CONCURRENCY = 3;
+    const chunks = [];
+    for (let i = 0; i < texts.length; i += 100) chunks.push(texts.slice(i, i + 100));
+    const results = new Array(texts.length).fill(null);
+    let next = 0;
+    let stop = false;
+    const worker = async () => {
+      while (!stop && next < chunks.length) {
+        if (signal?.aborted) break;
+        const ci = next++;
+        const chunk = chunks[ci];
+        const offset = ci * 100;
+        try {
+          const r = await fetchWithTimeout(
+            `https://api-edge.cognitive.microsofttranslator.com/translate?to=${encodeURIComponent(tg)}&api-version=3.0`,
+            {
+              method: 'POST',
+              credentials: 'omit',
+              referrerPolicy: 'no-referrer',
+              headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify(chunk.map(Text => ({ Text }))),
+              signal,
+            },
+            MS_TIMEOUT
+          );
+          if (r.status === 401 || r.status === 403) {
+            msToken = null; msTokenTs = 0;
+            throw Object.assign(new Error('ms auth'), { status: r.status });
+          }
+          if (r.status === 429) {
+            const retryAfter = Number(r.headers.get('Retry-After') || 0);
+            throw Object.assign(new Error('rate limit'), {
+              status: 429,
+              retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0
+            });
+          }
+          if (!r.ok) throw Object.assign(new Error(`ms http ${r.status}`), { status: r.status });
+          const data = await r.json();
+          const rows = Array.isArray(data) ? data : [];
+          for (let j = 0; j < chunk.length; j++) {
+            results[offset + j] = decodeHtmlEntities(rows[j]?.translations?.[0]?.text || null);
+          }
+        } catch (e) {
+          if (e?.status === 401 || e?.status === 403 || e?.status === 429) { stop = true; throw e; }
+          for (let j = 0; j < chunk.length; j++) results[offset + j] = null;
         }
-      } catch {
-        results.push(...chunk.map(() => null));
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
     return results;
   }
 
@@ -538,43 +572,52 @@ const Translator = (() => {
   async function translateTencent(texts, to, signal) {
     _stats.tencentRequests++;
     const tg = TENCENT_LANG_MAP[to] || to;
-    const results = [];
-    for (let i = 0; i < texts.length; i += 50) {
-      const chunk = texts.slice(i, i + 50);
-      const r = await fetchWithTimeout(
-        'https://transmart.qq.com/api/imt',
-        {
-          method: 'POST',
-          credentials: 'omit',
-          referrerPolicy: 'no-referrer',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            header: { fn: 'auto_translation', session: '', client_key: tencentClientKey(), user: '' },
-            type: 'plain',
-            model_category: 'normal',
-            text_domain: 'general',
-            source: { lang: 'auto', text_list: chunk },
-            target: { lang: tg },
-          }),
-          signal,
-        },
-        MS_TIMEOUT
-      );
-      if (!r.ok) throw Object.assign(new Error(`tencent http ${r.status}`), { status: r.status });
-      try {
-        const data = await r.json();
-        const out = data?.auto_translation;
-        if (Array.isArray(out)) {
-          for (let j = 0; j < chunk.length; j++) {
-            results.push(out[j] || null);
+    const CONCURRENCY = 3;
+    const chunks = [];
+    for (let i = 0; i < texts.length; i += 50) chunks.push(texts.slice(i, i + 50));
+    const results = new Array(texts.length).fill(null);
+    let next = 0;
+    let stop = false;
+    const worker = async () => {
+      while (!stop && next < chunks.length) {
+        if (signal?.aborted) break;
+        const ci = next++;
+        const chunk = chunks[ci];
+        const offset = ci * 50;
+        try {
+          const r = await fetchWithTimeout(
+            'https://transmart.qq.com/api/imt',
+            {
+              method: 'POST',
+              credentials: 'omit',
+              referrerPolicy: 'no-referrer',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                header: { fn: 'auto_translation', session: '', client_key: tencentClientKey(), user: '' },
+                type: 'plain',
+                model_category: 'normal',
+                text_domain: 'general',
+                source: { lang: 'auto', text_list: chunk },
+                target: { lang: tg },
+              }),
+              signal,
+            },
+            MS_TIMEOUT
+          );
+          if (!r.ok) throw Object.assign(new Error(`tencent http ${r.status}`), { status: r.status });
+          const data = await r.json();
+          const out = data?.auto_translation;
+          if (Array.isArray(out)) {
+            for (let j = 0; j < chunk.length; j++) {
+              results[offset + j] = out[j] || null;
+            }
           }
-        } else {
-          results.push(...chunk.map(() => null));
+        } catch (e) {
+          if (e?.status) { stop = true; throw e; }
         }
-      } catch {
-        results.push(...chunk.map(() => null));
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
     return results;
   }
 
