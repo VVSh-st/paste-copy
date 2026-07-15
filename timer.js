@@ -43,6 +43,7 @@ const SquareTimer = (() => {
   let _pathCCW = null;
   let _radius = null;
   let _resizeObserver = null;
+  let _resizeRaf = null;
 
   // Corner glow
   let _cornerGlowActive = false;
@@ -54,12 +55,19 @@ const SquareTimer = (() => {
   let _lastDir = null;
   let _wasWarm = false;
   let _lastTs = 0;
+  let _lastHeadIdx = -1;
+  let _lastHeadPos = -1;
+  let _lastHLen = -1;
+  let _nextCornerIdx = 0;
 
   // Pointerleave reference
   let _onPointerLeave = null;
 
   // Gesture cancel flag
   let _gestureCancelled = false;
+
+  // Shared AudioContext (создаётся при первом user-gesture)
+  let _audioCtx = null;
 
   /* ════════════════════════════════════════════════════════════════
      ПЕРИМЕТР: путь с дугами в углах (повторяет border-radius)
@@ -101,64 +109,116 @@ const SquareTimer = (() => {
     if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
     if (_pathCW == null) {
       _pathCW = _buildPath('cw');
-      _cachedPtsCW = _cachePoints(_pathCW);
+      _cachedPtsCW = _cachePoints('cw');
     }
     if (_pathCCW == null) {
       _pathCCW = _buildPath('ccw');
-      _cachedPtsCCW = _cachePoints(_pathCCW);
+      _cachedPtsCCW = _cachePoints('ccw');
     }
     return true;
   }
-  function _cachePoints(dStr) {
-    const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    tmp.setAttribute('d', dStr);
-    arcSvg.appendChild(tmp);
-    const len = tmp.getTotalLength();
+  function _cachePoints(dir) {
+    const w = btn.offsetWidth, h = btn.offsetHeight;
+    const r = Math.min(_radius, w / 2, h / 2);
     const N = 400;
+
+    const segs = dir === 'cw' ? [
+      { type: 'line', x0: w/2, y0: 0, x1: w-r, y1: 0 },
+      { type: 'arc', cx: w-r, cy: r, r, a0: -Math.PI/2, a1: 0 },
+      { type: 'line', x0: w, y0: r, x1: w, y1: h-r },
+      { type: 'arc', cx: w-r, cy: h-r, r, a0: 0, a1: Math.PI/2 },
+      { type: 'line', x0: w-r, y0: h, x1: r, y1: h },
+      { type: 'arc', cx: r, cy: h-r, r, a0: Math.PI/2, a1: Math.PI },
+      { type: 'line', x0: 0, y0: h-r, x1: 0, y1: r },
+      { type: 'arc', cx: r, cy: r, r, a0: Math.PI, a1: Math.PI*1.5 },
+      { type: 'line', x0: r, y0: 0, x1: w/2, y1: 0 },
+    ] : [
+      { type: 'line', x0: w/2, y0: 0, x1: r, y1: 0 },
+      { type: 'arc', cx: r, cy: r, r, a0: -Math.PI/2, a1: -Math.PI },
+      { type: 'line', x0: 0, y0: r, x1: 0, y1: h-r },
+      { type: 'arc', cx: r, cy: h-r, r, a0: Math.PI, a1: Math.PI/2 },
+      { type: 'line', x0: 0, y0: h-r, x1: w-r, y1: h },
+      { type: 'arc', cx: w-r, cy: h-r, r, a0: Math.PI/2, a1: 0 },
+      { type: 'line', x0: w, y0: h-r, x1: w, y1: r },
+      { type: 'arc', cx: w-r, cy: r, r, a0: 0, a1: -Math.PI/2 },
+      { type: 'line', x0: w-r, y0: 0, x1: w/2, y1: 0 },
+    ];
+
+    const segLens = segs.map(s => {
+      if (s.type === 'line') return Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
+      return s.r * Math.abs(s.a1 - s.a0);
+    });
+    let totalLen = 0;
+    for (const l of segLens) totalLen += l;
+
+    const cum = [0];
+    for (const l of segLens) cum.push(cum[cum.length - 1] + l);
+
     const pts = new Array(N + 1);
-    for (let i = 0; i <= N; i++) pts[i] = tmp.getPointAtLength(len * i / N);
-    arcSvg.removeChild(tmp);
-    return { len, pts, N };
+    for (let i = 0; i <= N; i++) {
+      const d = (i / N) * totalLen;
+      let si = 0;
+      while (si < segLens.length - 1 && cum[si + 1] <= d) si++;
+      const t = segLens[si] > 0 ? (d - cum[si]) / segLens[si] : 0;
+      const s = segs[si];
+      if (s.type === 'line') {
+        pts[i] = { x: s.x0 + (s.x1 - s.x0) * t, y: s.y0 + (s.y1 - s.y0) * t };
+      } else {
+        const a = s.a0 + (s.a1 - s.a0) * t;
+        pts[i] = { x: s.cx + s.r * Math.cos(a), y: s.cy + s.r * Math.sin(a) };
+      }
+    }
+    return { len: totalLen, pts, N };
   }
 
   function _invalidateCaches() {
-    _pathCW = null;
-    _pathCCW = null;
-    _radius = null;
-    _cachedPtsCW = null;
-    _cachedPtsCCW = null;
-    _pts = null;
-    _lastDir = null;
+    if (_resizeRaf) return;
+    _resizeRaf = requestAnimationFrame(() => {
+      _resizeRaf = null;
+      _pathCW = null;
+      _pathCCW = null;
+      _radius = null;
+      _cachedPtsCW = null;
+      _cachedPtsCCW = null;
+      _pts = null;
+      _lastDir = null;
+      _lastHeadIdx = -1;
+      _lastHeadPos = -1;
+      _lastHLen = -1;
+      _nextCornerIdx = 0;
+    });
   }
 
   /* ════════════════════════════════════════════════════════════════
      CORNER GLOW
      ════════════════════════════════════════════════════════════════ */
 
+  const _CORNER_POSITIONS = [0.25, 0.5, 0.75];
+
   function _checkCornerGlow(headPos, P) {
     if (_cornerGlowActive) return;
 
-    const corners = [0.25, 0.5, 0.75];
     const threshold = P * 0.008;
 
-    for (const c of corners) {
-      const key = c.toString();
-      if (_firedCorners.has(key)) continue;
-      if (Math.abs(headPos - c * P) < threshold) {
-        _firedCorners.add(key);
+    // Check only the next expected corner
+    if (_nextCornerIdx < _CORNER_POSITIONS.length) {
+      const c = _CORNER_POSITIONS[_nextCornerIdx];
+      const targetPos = c * P;
+
+      if (headPos >= targetPos - threshold && headPos <= targetPos + threshold) {
         _cornerGlowActive = true;
         btn.classList.add('timer-corner-glow');
         setTimeout(() => {
           btn.classList.remove('timer-corner-glow');
           _cornerGlowActive = false;
         }, 500);
-        break;
+        _nextCornerIdx++;
       }
     }
 
-    // Сброс при полном обороте (progress перешёл через 0)
+    // Reset on full revolution
     if (headPos < P * 0.02) {
-      _firedCorners.clear();
+      _nextCornerIdx = 0;
     }
   }
 
@@ -181,6 +241,7 @@ const SquareTimer = (() => {
     arcHeadDot  = btn.querySelector('.timer-arc-head-dot');
     valueEl     = btn.querySelector('.timer-value');
     inputEl     = btn.querySelector('.timer-input');
+    if (valueEl?.parentNode) valueEl.parentNode.style.position = 'relative';
 
     _resizeObserver = new ResizeObserver(_invalidateCaches);
     _resizeObserver.observe(btn);
@@ -203,8 +264,13 @@ const SquareTimer = (() => {
     _pointerDownPos = null; _prevMin = null;
     _longPressFired = false;
     _initialized = false;
+    _lastHeadIdx = -1;
+    _lastHeadPos = -1;
+    _lastHLen = -1;
+    _nextCornerIdx = 0;
     _resizeObserver?.disconnect();
     _resizeObserver = null;
+    if (_resizeRaf) { cancelAnimationFrame(_resizeRaf); _resizeRaf = null; }
     if (btn) {
       btn.removeEventListener('pointerdown',   onPointerDown);
       btn.removeEventListener('pointerup',     onPointerUp);
@@ -243,6 +309,7 @@ const SquareTimer = (() => {
 
   function onPointerDown(e) {
     if (e.button !== 0 || (inputEl && getComputedStyle(inputEl).display !== 'none')) return;
+    if (!_audioCtx) try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
     btn.setPointerCapture?.(e.pointerId);
     _longPressFired = false;
     _gestureCancelled = false;
@@ -313,7 +380,12 @@ const SquareTimer = (() => {
     inputEl.onmousedown = ev => ev.stopPropagation();
     inputEl.onblur = () => {
       const v = Number.parseInt(inputEl.value, 10);
-      (Number.isFinite(v) && v >= 1 && v <= 99) ? startCountDown(v) : closeInlineInput();
+      if (Number.isFinite(v) && v >= 1 && v <= 99) {
+        startCountDown(v);
+      } else {
+        inputEl.classList.add('timer-input-error');
+        setTimeout(() => { inputEl.classList.remove('timer-input-error'); closeInlineInput(); }, 400);
+      }
     };
     inputEl.onkeydown = ev => {
       if (ev.key === 'Enter')  { ev.preventDefault(); inputEl.blur(); }
@@ -326,7 +398,12 @@ const SquareTimer = (() => {
     inputEl.value = '';
     inputEl.style.display = 'none';
     inputEl.onblur = inputEl.onkeydown = inputEl.onclick = inputEl.onmousedown = null;
-    mode ? (valueEl.style.display = 'flex', valueEl.classList.remove('timer-value-dim')) : setIdleVisual();
+    if (mode) {
+      valueEl.style.display = 'flex';
+      valueEl.classList.remove('timer-value-dim');
+    } else {
+      setIdleVisual();
+    }
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -334,9 +411,10 @@ const SquareTimer = (() => {
      ════════════════════════════════════════════════════════════════ */
 
   function _playCompletionSound() {
+    if (!_audioCtx) return;
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      ctx.resume();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+      const ctx = _audioCtx;
       const t0 = ctx.currentTime;
       [523.25, 659.25, 783.99].forEach((f, i) => {
         const o = ctx.createOscillator(), g = ctx.createGain();
@@ -347,7 +425,6 @@ const SquareTimer = (() => {
         o.connect(g); g.connect(ctx.destination);
         o.start(t0 + i * .12); o.stop(t0 + i * .12 + .7);
       });
-      setTimeout(() => ctx.close(), 2000);
     } catch (e) { console.warn('[SquareTimer] Sound:', e); }
   }
 
@@ -408,7 +485,7 @@ const SquareTimer = (() => {
   function stopTick()  { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } }
 
   function _tickRAF(ts) {
-    if (!startTs || mode === null) return;
+    if (!startTs || mode === null) { rafId = null; return; }
     if (ts - _lastTs < 33) { rafId = requestAnimationFrame(_tickRAF); return; }
     _lastTs = ts;
     const elapsed = (Date.now() - startTs) / 1000;
@@ -482,29 +559,20 @@ const SquareTimer = (() => {
      ════════════════════════════════════════════════════════════════ */
 
   function _updateDisplay(minutes, progress, dir) {
-    valueEl.style.display = 'flex';
-    valueEl.classList.remove('timer-value-dim');
+    if (valueEl.style.display !== 'flex') valueEl.style.display = 'flex';
+    if (valueEl.classList.contains('timer-value-dim')) valueEl.classList.remove('timer-value-dim');
 
     if (_prevMin !== null && minutes !== _prevMin) {
-      // Удаляем предыдущие overlay-элементы
       valueEl.parentNode.querySelectorAll('.timer-digit-old').forEach(el => el.remove());
 
-      // Stacking: старая цифра уезжает вверх с blur, новая въезжает снизу
+      // Use CSS class instead of getComputedStyle().cssText
       const oldEl = document.createElement('div');
       oldEl.className = 'timer-digit-old';
       oldEl.textContent = _prevMin;
-      oldEl.style.cssText = getComputedStyle(valueEl).cssText;
-      oldEl.style.position = 'absolute';
-      oldEl.style.inset = '0';
-      oldEl.style.display = 'flex';
-      oldEl.style.alignItems = 'center';
-      oldEl.style.justifyContent = 'center';
 
-      valueEl.parentNode.style.position = 'relative';
       valueEl.parentNode.appendChild(oldEl);
 
       valueEl.textContent = minutes;
-      void valueEl.offsetWidth;
       valueEl.classList.add('timer-digit-enter');
       oldEl.classList.add('timer-digit-old-exit');
 
@@ -512,7 +580,7 @@ const SquareTimer = (() => {
         oldEl.remove();
         valueEl.classList.remove('timer-digit-enter');
       }, 400);
-    } else {
+    } else if (+valueEl.textContent !== minutes) {
       valueEl.textContent = minutes;
     }
     _prevMin = minutes;
@@ -535,49 +603,51 @@ const SquareTimer = (() => {
 
   function _applyArc(progress, dir) {
     if (!arcTail) return;
-    arcSvg.style.display = 'block';
 
     if (!_ensurePaths()) return;
-    const d = dir === 'cw' ? _pathCW : _pathCCW;
-    if (!d) return;
 
     if (_lastDir !== dir) {
+      arcSvg.style.display = 'block';
+      const d = dir === 'cw' ? _pathCW : _pathCCW;
+      if (!d) return;
       arcTail.setAttribute('d', d);
       arcHeadSeg.setAttribute('d', d);
       arcTail.style.opacity = '0.55';
       _lastDir = dir;
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
+      _lastHeadIdx = -1;
+      arcTail.style.display = '';
+      arcHeadSeg.style.display = '';
+      arcHeadDot.style.display = '';
+      arcHeadDot.setAttribute('r', '2');
     }
 
     const P = _pts.len;
-
     const visualProgress = Math.max(progress, MIN_VISIBLE_PROGRESS);
     const headPos = visualProgress * P;
 
-    // Хвост
-    arcTail.style.display = '';
-    arcTail.style.strokeDasharray  = headPos + ' ' + P;
-    arcTail.style.strokeDashoffset = '0';
-
-    // Головной сегмент
-    const hLen = Math.min(headPos, P * HEAD_FRAC);
-    arcHeadSeg.style.display = '';
-    arcHeadSeg.style.strokeDasharray  = hLen + ' ' + P;
-    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
-
-    // Точка-голова (из кэша вместо getPointAtLength)
-    if (_pts) {
-      const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
-      const pt = _pts.pts[idx];
-      arcHeadDot.style.display = '';
-      arcHeadDot.setAttribute('cx', pt.x);
-      arcHeadDot.setAttribute('cy', pt.y);
-      arcHeadDot.setAttribute('r', '2');
-
-      // Corner glow
-      _checkCornerGlow(headPos, P);
+    // Delta check: only update DOM if change > 0.5px
+    if (Math.abs(headPos - _lastHeadPos) > 0.5) {
+      arcTail.style.strokeDasharray = headPos + ' ' + P;
+      _lastHeadPos = headPos;
     }
 
+    const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
+    if (Math.abs(hLen - _lastHLen) > 0.5 || Math.abs(headPos - _lastHeadPos) > 0.5) {
+      arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
+      arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
+      _lastHLen = hLen;
+    }
+
+    const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
+    if (_lastHeadIdx !== idx) {
+      const pt = _pts.pts[idx];
+      arcHeadDot.setAttribute('cx', pt.x);
+      arcHeadDot.setAttribute('cy', pt.y);
+      _lastHeadIdx = idx;
+    }
+
+    _checkCornerGlow(headPos, P);
     _applyWarmGlow(progress);
   }
 
@@ -597,7 +667,6 @@ const SquareTimer = (() => {
   function setIdleVisual() {
     _prevMin = null;
     valueEl.classList.remove('timer-digit-animate', 'timer-digit-enter', 'timer-value-pulse');
-    void valueEl.offsetWidth;
     valueEl.style.display = 'flex'; valueEl.textContent = '0'; valueEl.classList.add('timer-value-dim');
 
     if (inputEl) {
@@ -608,7 +677,6 @@ const SquareTimer = (() => {
 
     arcSvg.style.display = 'none'; arcSvg.style.opacity = '';
     _hideArc();
-    arcTail.style.stroke = '';  arcTail.style.opacity = '';
     arcHeadSeg.style.stroke = ''; arcHeadSeg.style.filter = '';
     arcHeadDot.style.fill = '';  arcHeadDot.style.filter = '';
 
@@ -644,6 +712,7 @@ const SquareTimer = (() => {
       mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null;
       btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
       arcSvg.style.display = 'block'; startTick();
+      if (!_audioCtx) try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); _audioCtx.resume().catch(() => {}); } catch {}
     } catch (e) { console.warn('[SquareTimer] restore:', e); safeSet(STORAGE_KEY, ''); setIdleVisual(); }
   }
 

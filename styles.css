@@ -274,6 +274,24 @@ body {
 }
 
 /* ── Stacking: old exits ── */
+.timer-digit-old {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  font-family: inherit;
+  background: linear-gradient(180deg, #a8d0ff 0%, #4f8ef7 40%, #2a5cb8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  pointer-events: none;
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,0.6))
+          drop-shadow(0 1px 0 rgba(255,255,255,0.15));
+}
 .timer-digit-old-exit {
   animation: digitStackOut 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: none;
