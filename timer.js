@@ -56,7 +56,6 @@ const SquareTimer = (() => {
   let _wasWarm = false;
   let _lastTs = 0;
   let _lastHeadIdx = -1;
-  let _lastHeadPos = -1;
   let _lastHLen = -1;
   let _nextCornerIdx = 0;
 
@@ -183,7 +182,6 @@ const SquareTimer = (() => {
       _pts = null;
       _lastDir = null;
       _lastHeadIdx = -1;
-      _lastHeadPos = -1;
       _lastHLen = -1;
       _nextCornerIdx = 0;
     });
@@ -265,7 +263,6 @@ const SquareTimer = (() => {
     _longPressFired = false;
     _initialized = false;
     _lastHeadIdx = -1;
-    _lastHeadPos = -1;
     _lastHLen = -1;
     _nextCornerIdx = 0;
     _resizeObserver?.disconnect();
@@ -616,7 +613,6 @@ const SquareTimer = (() => {
       _lastDir = dir;
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
       _lastHeadIdx = -1;
-      _lastHeadPos = -1;
       _lastHLen = -1;
       arcTail.style.display = '';
       arcHeadSeg.style.display = '';
@@ -628,11 +624,8 @@ const SquareTimer = (() => {
     const visualProgress = Math.max(progress, MIN_VISIBLE_PROGRESS);
     const headPos = visualProgress * P;
 
-    // Delta check: only update DOM if change > 0.01px (sub-pixel threshold)
-    if (Math.abs(headPos - _lastHeadPos) > 0.01) {
-      arcTail.style.strokeDasharray = headPos + ' ' + P;
-      _lastHeadPos = headPos;
-    }
+    // Paint properties — no reflow, safe to update every frame
+    arcTail.style.strokeDasharray = headPos + ' ' + P;
 
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
 
