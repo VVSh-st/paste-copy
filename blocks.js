@@ -1938,6 +1938,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       State.updateLive(() => { b.subtabs[b.activeSubtab].value = val; });
 
+      /* update filled indicator on subtab button */
+      const blockEl = ta.closest('.block');
+      if (blockEl) {
+        const btn = blockEl.querySelector(`.block-subtab[data-subtab-idx="${b.activeSubtab}"]`);
+        if (btn) btn.classList.toggle('filled', !!val.trim());
+      }
+
       updateBlockCounter(ta, b, body);
 
       _scheduleBadgeUpdate();
