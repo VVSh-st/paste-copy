@@ -1632,6 +1632,7 @@ window.LLMCore = (() => {
       const customPrompts = { ...(lay?.llm?.customPrompts ?? {}) };
       delete customPrompts[key];
       _State.setLayout({ llm: { ...(lay?.llm ?? {}), customPrompts } });
+      ed.value = BUILTIN_PROMPTS[key] ?? '';
       _renderPromptFnList();
       _selectPromptKey(key, true);
       window.Toast?.show('Промпт сброшен к дефолту ✓', 'success');
