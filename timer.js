@@ -635,11 +635,15 @@ const SquareTimer = (() => {
     }
 
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
+
+    // Update segment LENGTH only while it grows (0 → HEAD_FRAC)
     if (Math.abs(hLen - _lastHLen) > 0.01) {
       arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
-      arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
       _lastHLen = hLen;
     }
+
+    // Update segment POSITION whenever head moves (always, full animation)
+    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
     const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
     if (_lastHeadIdx !== idx) {
