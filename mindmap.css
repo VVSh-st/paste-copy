@@ -156,6 +156,15 @@
 .mm-blur-soft { filter: blur(0.6px); }
 .mm-blur-mid  { filter: blur(1.5px); }
 .mm-blur-hard { filter: blur(3px); }
+
+.mindmap-canvas svg {
+  contain: layout style;
+}
+
+.mm-viewport {
+  will-change: transform;
+  contain: layout style;
+}
 @keyframes mm-count-appear {
   from { opacity: 0; transform: scale(0.65); filter: blur(5px); }
   to   { opacity: 1; transform: scale(1); filter: blur(0); }

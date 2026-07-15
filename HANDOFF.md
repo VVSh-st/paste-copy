@@ -669,7 +669,8 @@
 - #6 Event delegation — затрагивает 4 места, высокий риск регрессий
 
 **Коммиты:**
-- `pending` — mindmap performance optimizations
+- `658f6f9` — mindmap performance optimizations batch 1
+- `pending` — mindmap performance optimizations batch 2
 
 ---
 

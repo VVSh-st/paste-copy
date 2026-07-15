@@ -37,6 +37,8 @@ const MindMap = (() => {
     'promise', 'class', 'async', 'await', 'new', 'this',
   ]);
 
+  const RE_TOKEN = /[\p{L}\p{N}][\p{L}\p{N}_-]{1,}/giu;
+
   function _isGraphNoiseWord(w) {
     return STOP_WORDS_CODE.has(_wordKey(w));
   }
@@ -210,10 +212,10 @@ const MindMap = (() => {
       const direct = JSON.parse(s);
       if (_looksLikeMindmap(direct)) return direct;
     } catch {}
-    const fences = [...s.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
-    for (const m of fences) {
+    const fenceMatch = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
       try {
-        const obj = JSON.parse(m[1].trim());
+        const obj = JSON.parse(fenceMatch[1].trim());
         if (_looksLikeMindmap(obj)) return obj;
       } catch {}
     }
@@ -224,12 +226,6 @@ const MindMap = (() => {
       } catch {}
     }
     try { return JSON.parse(s); } catch {}
-    for (const m of fences) {
-      try { return JSON.parse(m[1].trim()); } catch {}
-    }
-    for (const c of _findBalancedJsonObjects(s)) {
-      try { return JSON.parse(c); } catch {}
-    }
     return null;
   }
 
@@ -350,6 +346,7 @@ const MindMap = (() => {
     });
     window.addEventListener('mouseup', () => {
       _dragging = false;
+      _viewport?.style.removeProperty('will-change');
       if (_movedEnough && (Math.abs(_velX) + Math.abs(_velY) > 0.5)) _startInertia();
     });
 
@@ -609,21 +606,20 @@ const MindMap = (() => {
     if (!_viewport) return;
     const noBlur = _mode === 'hierarchy' || _mode === 'timeline' || _mode === 'tree';
     const BLUR_CLASSES = ['mm-blur-soft', 'mm-blur-mid', 'mm-blur-hard'];
-    _viewport.querySelectorAll('[data-depth]').forEach(el => {
+    for (const { el, depth } of _depthEls) {
       el.classList.remove(...BLUR_CLASSES);
-      if (noBlur) return;
-      const depth = parseFloat(el.dataset.depth);
+      if (noBlur) continue;
       const diff = 0.3 - depth;
       if (_mode === 'words') {
         if (diff > 0.25) el.classList.add('mm-blur-hard');
         else if (diff > 0.12) el.classList.add('mm-blur-mid');
         else if (diff > 0.05) el.classList.add('mm-blur-soft');
       } else if (_mode === 'graph') {
-        if (el.classList.contains('mm-graph-legend') || el.classList.contains('mm-graph-backdrops') || el.querySelector?.('text')) return;
+        if (el.classList.contains('mm-graph-legend') || el.classList.contains('mm-graph-backdrops') || el.querySelector?.('text')) continue;
         if (diff > 0.2) el.classList.add('mm-blur-mid');
         else if (diff > 0.08) el.classList.add('mm-blur-soft');
       }
-    });
+    }
   }
 
   function _syncZoomSlider() {
@@ -633,13 +629,10 @@ const MindMap = (() => {
 
   function _applyParallax(nx, ny) {
     const mul = _mode === 'words' ? 58 : 40;
-    _depthEls.forEach(el => {
-      const depth = parseFloat(el.dataset.depth);
-      if (depth < 0.25) return;
-      const px = nx * depth * mul;
-      const py = ny * depth * mul;
-      el.style.transform = `translate(${px}px, ${py}px)`;
-    });
+    for (const { el, depth } of _depthEls) {
+      if (depth < 0.25) continue;
+      el.style.transform = `translate(${(nx * depth * mul).toFixed(1)}px, ${(ny * depth * mul).toFixed(1)}px)`;
+    }
   }
 
   function open() {
@@ -705,7 +698,16 @@ const MindMap = (() => {
     _overlay.querySelector('.mindmap-refresh')?.classList.add('spinning');
 
     _render();
-    _fetch(text);
+
+    if (_mode === 'words' && _data?.localOnly) {
+      setTimeout(() => {
+        if (_overlay?.classList.contains('visible') && _mode === 'words') {
+          _fetch(text);
+        }
+      }, 800);
+    } else {
+      _fetch(text);
+    }
   }
 
   function _setupSvgListeners() {
@@ -728,6 +730,7 @@ const MindMap = (() => {
       cancelAnimationFrame(_inertiaRaf);
       _dragging = true; _movedEnough = false;
       _lastX = e.clientX; _lastY = e.clientY;
+      _viewport?.style.setProperty('will-change', 'transform');
     });
 
     _svg.addEventListener('mousemove', e => {
@@ -912,17 +915,22 @@ const MindMap = (() => {
 
   function _render() {
     if (!_data || !_svg) return;
-    _svg.innerHTML = '';
     const rect = _svg.getBoundingClientRect();
     const W = rect.width || 700;
     const H = rect.height || 450;
     _svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
 
-    _svg.appendChild(_buildDefs(W, H));
+    if (!_svg.querySelector('defs')) {
+      _svg.appendChild(_buildDefs(W, H));
+    }
 
-    _viewport = document.createElementNS(SVG_NS, 'g');
-    _viewport.setAttribute('class', 'mm-viewport');
-    _svg.appendChild(_viewport);
+    if (_viewport) {
+      while (_viewport.firstChild) _viewport.removeChild(_viewport.firstChild);
+    } else {
+      _viewport = document.createElementNS(SVG_NS, 'g');
+      _viewport.setAttribute('class', 'mm-viewport');
+    }
+    if (!_viewport.parentNode) _svg.appendChild(_viewport);
 
     _viewport.appendChild(_drawStarfield(W, H));
 
@@ -936,12 +944,13 @@ const MindMap = (() => {
     }
     _applyDepthBlur();
     _applyTransform();
-    _depthEls = Array.from(_viewport.querySelectorAll('[data-depth]'));
+    _depthEls = Array.from(_viewport.querySelectorAll('[data-depth]'))
+      .map(el => ({ el, depth: parseFloat(el.dataset.depth) }));
   }
 
   function _estimateTextWidth(text, fontSize, fontWeight) {
     const s = String(text ?? '');
-    const wide = [...s].filter(ch => /[А-Яа-яЁёШЩЮЖМЫФ]/u.test(ch)).length;
+    const wide = s.length - s.replace(/[А-Яа-яЁёШЩЮЖМЫФ]/gu, '').length;
     const narrow = s.length - wide;
     const weightFactor = fontWeight === '700' ? 1.08 : 1;
     return ((wide * 0.68 + narrow * 0.58) * fontSize) * weightFactor;
@@ -1030,9 +1039,9 @@ const MindMap = (() => {
     if (source.length < 30) return [];
 
     const counts = new Map();
-    const re = /[\p{L}\p{N}][\p{L}\p{N}_-]{1,}/giu;
+    RE_TOKEN.lastIndex = 0;
 
-    for (const m of source.matchAll(re)) {
+    for (const m of source.matchAll(RE_TOKEN)) {
       const raw = m[0];
       const key = raw.toLowerCase();
       if (key.length < 3) continue;
@@ -1066,12 +1075,13 @@ const MindMap = (() => {
     const key = s => String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
     const wordSet = new Map(words.map(w => [key(w.w), w.w]));
     const weightByKey = new Map(words.map(w => [key(w.w), Number(w.weight) || 0]));
-    const chunks = String(text).split(/(?:[.!?]+|\n{2,})+/).map(s => s.trim()).filter(s => s.length > 30);
+    const chunks = String(text).split(/(?:[.!?]+|\n{2,})+/).map(s => s.trim()).filter(s => s.length > 30).slice(0, 200);
     const pairCounts = new Map();
 
     for (const chunk of chunks) {
       const foundSet = new Set();
-      for (const m of chunk.matchAll(/[\p{L}\p{N}][\p{L}\p{N}_-]{1,}/giu)) {
+      RE_TOKEN.lastIndex = 0;
+      for (const m of chunk.matchAll(RE_TOKEN)) {
         const k = key(m[0]);
         if (wordSet.has(k)) foundSet.add(k);
       }
@@ -1160,6 +1170,7 @@ const MindMap = (() => {
 
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     const animateWords = _wordsAnimatedForHash !== _textHash;
+    const frag = document.createDocumentFragment();
     sorted.forEach((item, i) => {
       const t = item.visualWeight / maxW;
       let fontSize = MIN_FONT + Math.pow(t, 4.25) * (MAX_FONT - MIN_FONT);
@@ -1228,8 +1239,9 @@ const MindMap = (() => {
       _attachWordInteractions(text, item.w, x + tw / 2, y - th / 2);
       depthG.appendChild(text);
       enterG.appendChild(depthG);
-      _viewport.appendChild(enterG);
+      frag.appendChild(enterG);
     });
+    _viewport.appendChild(frag);
     if (animateWords) _wordsAnimatedForHash = _textHash;
   }
 
@@ -1550,6 +1562,7 @@ const MindMap = (() => {
 
     _drawGraphComponentBackdrops(comps, nodes);
 
+    const frag = document.createDocumentFragment();
     nodes.forEach((n, i) => {
       const isIsolated = !links.some(l => graphKey(l.from) === graphKey(n.w) || graphKey(l.to) === graphKey(n.w));
       const r = isIsolated ? 5 + (n.weight / maxW) * 9 : 6 + (n.weight / maxW) * 16;
@@ -1592,8 +1605,9 @@ const MindMap = (() => {
       text.textContent = n.w;
       depthG.appendChild(text);
       enterG.appendChild(depthG);
-      _viewport.appendChild(enterG);
+      frag.appendChild(enterG);
     });
+    _viewport.appendChild(frag);
     _drawGraphLegend(W, H, nodes.length, links.length);
   }
 
@@ -1707,6 +1721,7 @@ const MindMap = (() => {
 
     const defs = _svg?.querySelector('defs');
 
+    const frag = document.createDocumentFragment();
     prepared.forEach((r, i) => {
       const enterG = document.createElementNS(SVG_NS, 'g');
       enterG.classList.add('mm-enter');
@@ -1782,13 +1797,14 @@ const MindMap = (() => {
         line.setAttribute('stroke-width', '1.2');
         line.setAttribute('stroke-dasharray', '3 5');
         line.setAttribute('stroke-linecap', 'round');
-        _viewport.appendChild(line);
+        frag.appendChild(line);
       }
 
       enterG.appendChild(depthG);
-      _viewport.appendChild(enterG);
+      frag.appendChild(enterG);
       y += r.h + gap;
     });
+    _viewport.appendChild(frag);
 
     if (rows.length > visibleRows.length) {
       const more = document.createElementNS(SVG_NS, 'text');
@@ -1821,6 +1837,7 @@ const MindMap = (() => {
     const desiredDist = Math.max(Math.min(W, H) * 0.28, maxR * 0.98);
     const dist = Math.min(desiredDist, safeDist);
 
+    const frag = document.createDocumentFragment();
     clusters.forEach((cl, ci) => {
       const angle = angleStep * ci - Math.PI / 2;
       const ccx = cx + Math.cos(angle) * dist;
@@ -1836,18 +1853,21 @@ const MindMap = (() => {
       depthG.dataset.depth = '0.3';
 
       const cgradId = `mindmap-cgrad-${ci}`;
-      const cgradSeed = _hashString(`${cl.topic}:${ci}`);
-      const cgrad = document.createElementNS(SVG_NS, 'radialGradient');
-      cgrad.setAttribute('id', cgradId);
-      cgrad.setAttribute('cx', `${24 + _rand01(cgradSeed) * 52}%`);
-      cgrad.setAttribute('cy', `${24 + _rand01(cgradSeed ^ 0x9e3779b9) * 52}%`);
-      cgrad.setAttribute('r', '72%');
-      cgrad.innerHTML = `
-        <stop offset="0%" stop-color="#fff" stop-opacity="0.34"/>
-        <stop offset="34%" stop-color="${color}" stop-opacity="0.48"/>
-        <stop offset="100%" stop-color="${color}" stop-opacity="0.10"/>
-      `;
-      _svg.querySelector('defs').appendChild(cgrad);
+      const existingGrad = _svg.querySelector(`#${cgradId}`);
+      if (!existingGrad) {
+        const cgradSeed = _hashString(`${cl.topic}:${ci}`);
+        const cgrad = document.createElementNS(SVG_NS, 'radialGradient');
+        cgrad.setAttribute('id', cgradId);
+        cgrad.setAttribute('cx', `${24 + _rand01(cgradSeed) * 52}%`);
+        cgrad.setAttribute('cy', `${24 + _rand01(cgradSeed ^ 0x9e3779b9) * 52}%`);
+        cgrad.setAttribute('r', '72%');
+        cgrad.innerHTML = `
+          <stop offset="0%" stop-color="#fff" stop-opacity="0.34"/>
+          <stop offset="34%" stop-color="${color}" stop-opacity="0.48"/>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0.10"/>
+        `;
+        _svg.querySelector('defs').appendChild(cgrad);
+      }
 
       const ellipse = document.createElementNS(SVG_NS, 'ellipse');
       ellipse.setAttribute('cx', ccx); ellipse.setAttribute('cy', ccy);
@@ -1937,8 +1957,9 @@ const MindMap = (() => {
       });
       depthG.appendChild(wordsG);
       enterG.appendChild(depthG);
-      _viewport.appendChild(enterG);
+      frag.appendChild(enterG);
     });
+    _viewport.appendChild(frag);
   }
 
   function _shortLabel(s, max = 42) {
@@ -1996,6 +2017,8 @@ const MindMap = (() => {
       return { x: from.x + (dx / dist) * offset, y: from.y + (dy / dist) * offset };
     }
 
+    const frag = document.createDocumentFragment();
+
     function drawLink(a, b, opacity) {
       const start = edgePoint(a, b, (a.r || 14) + 3);
       const end = edgePoint(b, a, (b.r || 10) + 3);
@@ -2008,7 +2031,7 @@ const MindMap = (() => {
       path.setAttribute('stroke-width', '1.2');
       path.setAttribute('stroke-linecap', 'round');
       path.setAttribute('vector-effect', 'non-scaling-stroke');
-      _viewport.appendChild(path);
+      frag.appendChild(path);
     }
 
     let nodeIdx = 0;
@@ -2066,9 +2089,10 @@ const MindMap = (() => {
       depthG.appendChild(label);
 
       enterG.appendChild(depthG);
-      _viewport.appendChild(enterG);
+      frag.appendChild(enterG);
     }
     renderNode(_data.hierarchy);
+    _viewport.appendChild(frag);
   }
 
   function _drawTimeline(W, H) {
@@ -2107,17 +2131,19 @@ const MindMap = (() => {
     maxCardH = Math.max(minCardH, Math.min(maxCardH, H - 80));
     const y = Math.max(40, H / 2 - maxCardH / 2);
 
+    const frag = document.createDocumentFragment();
     visibleSteps.forEach((step, i) => {
       const x = startX + i * (cardW + gap);
       if (i > 0) {
         const prevRight = startX + (i - 1) * (cardW + gap) + cardW;
-        _drawFlowArrow(prevRight, y + maxCardH / 2, x, y + maxCardH / 2);
+        _drawFlowArrow(prevRight, y + maxCardH / 2, x, y + maxCardH / 2, frag);
       }
-      _drawStepCard(step, x, y, cardW, maxCardH, i);
+      _drawStepCard(step, x, y, cardW, maxCardH, i, frag);
     });
+    _viewport.appendChild(frag);
   }
 
-  function _drawStepCard(step, x, y, w, h, i) {
+  function _drawStepCard(step, x, y, w, h, i, frag) {
     const enterG = document.createElementNS(SVG_NS, 'g');
     enterG.classList.add('mm-enter');
     enterG.style.animationDelay = `${i * 60}ms`;
@@ -2166,10 +2192,10 @@ const MindMap = (() => {
     });
 
     enterG.appendChild(depthG);
-    _viewport.appendChild(enterG);
+    frag.appendChild(enterG);
   }
 
-  function _drawFlowArrow(x1, y1, x2, y2) {
+  function _drawFlowArrow(x1, y1, x2, y2, frag) {
     const mid = (x1 + x2) / 2;
     const available = Math.max(0, x2 - x1);
     const len = Math.min(34, Math.max(18, available - 28));
@@ -2183,7 +2209,7 @@ const MindMap = (() => {
     line.setAttribute('stroke-width', '1.3');
     line.setAttribute('stroke-linecap', 'round');
     line.setAttribute('marker-end', 'url(#flow-arrow-head)');
-    _viewport.appendChild(line);
+    frag.appendChild(line);
   }
 
   function _drawStarfield(W, H) {
