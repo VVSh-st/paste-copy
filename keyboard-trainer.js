@@ -399,6 +399,8 @@ const KeyboardTrainer = (() => {
           glyph.className = 'kb-key-label';
           glyph.textContent = ek.label;
           el.appendChild(glyph);
+          el._labelEl = glyph;
+          el._shiftedEl = null;
           rowEl.appendChild(el);
           _keyEls[ek.code] = el;
         }
