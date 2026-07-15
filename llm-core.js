@@ -1527,9 +1527,20 @@ window.LLMCore = (() => {
         const bank = _getBanks().find(b => b.id === _activeBankId);
         const fallbackKey = _lastNonStoragePromptKey && BUILTIN_PROMPTS[_lastNonStoragePromptKey]
           ? _lastNonStoragePromptKey
-          : Object.keys(BUILTIN_PROMPTS)[0];
+          : null;
         ed.dataset.key = key;
-        ed.dataset.applyKey = fallbackKey;
+        ed.dataset.applyKey = fallbackKey || '';
+        const applyBtn = document.getElementById('llm-storage-apply');
+        if (applyBtn) {
+          if (fallbackKey) {
+            const targetMeta = PROMPT_META[fallbackKey] ?? _promptFallbackMeta(fallbackKey);
+            applyBtn.title = `Применить к: ${targetMeta.title}`;
+            applyBtn.disabled = false;
+          } else {
+            applyBtn.title = 'Сначала откройте функцию, к которой хотите применить промпт';
+            applyBtn.disabled = true;
+          }
+        }
         // Показать storage, скрыть editor
         if (panel) panel.hidden = false;
         ed.hidden = true;
@@ -1834,6 +1845,16 @@ tags.push({
       document.getElementById('llm-prompt-reset')?.addEventListener('click', _resetPrompt);
       document.getElementById('llm-prompt-save')?.addEventListener('click', _savePrompt);
       document.getElementById('llm-prompt-test-run')?.addEventListener('click', _testPrompt);
+
+      function closeAllMenus(except) {
+        document.querySelectorAll('.llm-prompt-menu.open').forEach(m => {
+          if (m === except) return;
+          m.classList.remove('open');
+          const trigger = m.closest('.llm-prompt-menu-wrap')?.querySelector('[aria-haspopup="true"]');
+          if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        });
+      }
+
       // Dropdown menu toggle
       const menuTrigger = document.getElementById('llm-prompt-menu-trigger');
       const menuEl = document.querySelector('.llm-prompt-menu');
