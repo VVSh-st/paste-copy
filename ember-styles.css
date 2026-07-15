@@ -129,7 +129,7 @@
     brightness(calc(1 + var(--seg-brightness, 0)))
     drop-shadow(0 0 calc(var(--seg-flash, 0) * 4px) rgba(255, 140, 50, calc(var(--seg-flash, 0) * 0.8)));
   transition:
-    opacity 0.3s ease;
+    background-color 0.3s ease;
   transition-delay: calc(var(--reveal-delay, 0) * 1ms);
 }
 
@@ -145,7 +145,6 @@
   position: relative;
   width: 20px;
   height: 20px;
-  will-change: transform;
   border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%;
   background:
     radial-gradient(circle at calc(50% + var(--lightX, 0%)) calc(38% + var(--lightY, 0%)),
@@ -346,7 +345,7 @@
   filter: blur(calc(var(--glowBlur) + 2px)) saturate(1.08);
   opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
   transform:
-    translate(calc(var(--glowX, 0px) * 0.5 + var(--cursorLeanX, 0) * 0.5px), calc(var(--glowY, 0px) * 0.5 + var(--cursorLeanY, 0) * 0.5px))
+    translate(calc(var(--glowX, 0px) * 0.5), calc(var(--glowY, 0px) * 0.5))
     translateZ(calc(var(--glowDepth, 0px) + (var(--breathGlow, 1) - 1) * 4px))
     scale(calc((var(--glowScale) + 0.05) * var(--breathGlow, 1)))
     skewX(var(--glowSkewX, 0deg))
