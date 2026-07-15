@@ -777,12 +777,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       });
       badge.addEventListener('pointerup', e => {
         clearTimeout(_longPressTimer);
-        if (!_longPressed) {
-          e.stopPropagation();
-          State.update(() => { b.previewDisabled = !b.previewDisabled; });
-        }
+        if (_longPressed) { e.stopPropagation(); return; }
+        e.stopPropagation();
+        State.update(() => { b.previewDisabled = !b.previewDisabled; });
       });
       badge.addEventListener('pointerleave', () => clearTimeout(_longPressTimer));
+      badge.addEventListener('click', e => {
+        if (_longPressed) { e.stopPropagation(); e.preventDefault(); }
+      });
     } else {
       badge.style.cursor = 'default';
       badge.onclick = e => e.stopPropagation();
