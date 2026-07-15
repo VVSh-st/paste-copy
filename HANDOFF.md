@@ -674,11 +674,11 @@
 
 ---
 
-### Keyboard Trainer — CPU/GPU оптимизации (задание 3(3))
+### Keyboard Trainer — CPU/GPU оптимизации (задания 3(3)–3(5))
 
 **Файлы:** `keyboard-trainer.js`, `keyboard-trainer.css`
 
-**Изменения (8 оптимизаций):**
+**Изменения (13 оптимизаций):**
 1. **box-shadow → background для зон пальцев** — `--kb-finger-shadow: inset 0 0 0 100px` заменён на `background: rgba(...)`. ~80% снижение GPU paint.
 2. **Flash через CSS animation** — `setTimeout` заменён на `@keyframes kb-flash-anim`. ~40% снижение CPU при быстрой печати.
 3. **Debounce `_save()`** — `_saveDebounced()` с 100мс задержкой для слайдеров настроек.
@@ -687,9 +687,55 @@
 6. **Double RAF → single RAF** — `_scheduleMetricsUpdate` упрощён.
 7. **Event delegation для on-screen** — `_initOnScreenDelegation()` вместо 350 обработчиков.
 8. **Убран transition с .kb-key** — конфликт с flash-анимацией устранён.
+9. **Safe drag/resize** — обработчики добавляются/снимаются только во время перетаскивания (утечка устранена).
+10. **Throttle mousemove** — 250мс для auto-hide (не чаще 4 раз/сек).
+11. **Кэш DOM-ссылок** — `_labelEl`/`_shiftedEl` на DOM-узлах вместо querySelector.
+12. **Double RAF для flash** — вместо `void el.offsetWidth` (sync reflow убран).
+13. **Кэш для on-screen клавиш** — `_labelEl` для Backspace/Enter.
 
 **Коммиты:**
-- `TBD` — keyboard-trainer performance optimizations
+- `3eeb9a2` — keyboard-trainer performance optimizations (8 оптимизаций)
+- `6220130` — fix: finger zones visible in slim mode
+- `f41add0` — fix: remove kb-flash class after CSS animation ends
+- `70709d2` — safe drag/resize, throttle mousemove, cache DOM refs, double RAF
+- `dab434d` — fix: cache _labelEl for on-screen extra keys
+
+---
+
+### Word Count — CPU/GC оптимизации (задание 3(6))
+
+**Файлы:** `word-count.js`
+
+**Изменения (4 оптимизации):**
+1. **Кэширование regex** — `RE_SPACES`, `RE_WORDS`, `RE_SENTENCES`, `RE_PARAGRAPHS` вынесены в константы модуля.
+2. **Оптимизация `computeStats`** — `text.replace(/\s/g, '')` заменён на `match` + вычитание (без создания строки).
+3. **DOM diffing** — обновляю `textContent` только при изменении значения.
+4. **Safe drag & drop** — обработчики `mousemove`/`mouseup` добавляются/снимаются только во время перетаскивания.
+5. **selectionchange** — храню `_lastSelStart`/`_lastSelEnd` как числа вместо строк.
+
+**Коммиты:**
+- `e4e3868` — word-count: cached regex, DOM diffing, selectionchange optimization, safe drag&drop
+
+---
+
+### Square Timer — CPU/GPU оптимизации (задания 3(7)–3(8))
+
+**Файлы:** `timer.js`, `styles.css`
+
+**Изменения (7 оптимизаций):**
+1. **CSS-класс `.timer-digit-old`** — вместо `getComputedStyle().cssText` (sync reflow убран).
+2. **Оптимизация `_checkCornerGlow`** — проверяю только следующий угол вместо перебора всех.
+3. **Сброс `_nextCornerIdx`** — при ресайзе и смене направления.
+4. **Delta-check для `strokeDasharray` головного сегмента** — 0.01px порог.
+5. **Сброс кэша при смене направления** — `_lastHeadPos`, `_lastHLen`, `_lastHeadIdx`.
+6. **`strokeDashoffset` обновляется всегда** — не привязан к `hLen` (комета следует за головой).
+7. **Убрана delta-проверка для хвоста** — paint-свойство, без reflow.
+
+**Коммиты:**
+- `b04ef71` — timer: delta check, CSS class for digit animation, optimize corner glow
+- `6f61431` — fix: reduce delta threshold, reset cache on direction change
+- `bd3af06` — fix: arcHeadSeg position updates independently of segment length
+- `c8d0912` — fix: remove delta check for tail strokeDasharray to eliminate lag
 
 ---
 
