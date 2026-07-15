@@ -4,6 +4,9 @@ const Blocks = (() => {
 
   const workspace = document.getElementById('workspace');
 
+  // ── badge long-press done marker ──
+  let _longPressDoneAt = 0;
+
   // ── "Ща как напишу" capture mode ──
   let _captureMode = false;
   let _captureInsertMode = localStorage.getItem('capture_insert_mode') || 'breaks';
@@ -765,25 +768,22 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     if (b.type === 'text' || b.type === 'todo' || b.type === 'table') {
       let _longPressTimer = null;
-      let _longPressed = false;
       badge.addEventListener('pointerdown', e => {
         if (e.button !== 0) return;
-        _longPressed = false;
         _longPressTimer = setTimeout(() => {
-          _longPressed = true;
+          _longPressDoneAt = Date.now();
           State.update(() => { b.previewDone = !b.previewDone; });
-          badge.classList.toggle('block-order-done', b.previewDone === true);
         }, 400);
       });
       badge.addEventListener('pointerup', e => {
         clearTimeout(_longPressTimer);
-        if (_longPressed) { e.stopPropagation(); return; }
+        if (Date.now() - _longPressDoneAt < 100) { e.stopPropagation(); return; }
         e.stopPropagation();
         State.update(() => { b.previewDisabled = !b.previewDisabled; });
       });
       badge.addEventListener('pointerleave', () => clearTimeout(_longPressTimer));
       badge.addEventListener('click', e => {
-        if (_longPressed) { e.stopPropagation(); e.preventDefault(); }
+        if (Date.now() - _longPressDoneAt < 100) { e.stopPropagation(); e.preventDefault(); }
       });
     } else {
       badge.style.cursor = 'default';
