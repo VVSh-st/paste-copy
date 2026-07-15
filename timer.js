@@ -616,6 +616,8 @@ const SquareTimer = (() => {
       _lastDir = dir;
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
       _lastHeadIdx = -1;
+      _lastHeadPos = -1;
+      _lastHLen = -1;
       arcTail.style.display = '';
       arcHeadSeg.style.display = '';
       arcHeadDot.style.display = '';
@@ -626,14 +628,14 @@ const SquareTimer = (() => {
     const visualProgress = Math.max(progress, MIN_VISIBLE_PROGRESS);
     const headPos = visualProgress * P;
 
-    // Delta check: only update DOM if change > 0.5px
-    if (Math.abs(headPos - _lastHeadPos) > 0.5) {
+    // Delta check: only update DOM if change > 0.01px (sub-pixel threshold)
+    if (Math.abs(headPos - _lastHeadPos) > 0.01) {
       arcTail.style.strokeDasharray = headPos + ' ' + P;
       _lastHeadPos = headPos;
     }
 
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
-    if (Math.abs(hLen - _lastHLen) > 0.5 || Math.abs(headPos - _lastHeadPos) > 0.5) {
+    if (Math.abs(hLen - _lastHLen) > 0.01) {
       arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
       arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
       _lastHLen = hLen;
