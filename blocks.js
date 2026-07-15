@@ -3574,17 +3574,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.style.minHeight = '60px';
     ta.style.resize = 'vertical';
     ta.style.fontSize = (b.fontSize || 13) + 'px';
-    ta.oninput = () => {
-      b.value = ta.value;
-      State.updateLive(() => {});
-      autoGrow(ta);
-      /* update filled indicator on subtab button */
-      const blockEl = document.querySelector(`.block[data-id="${b.id}"]`);
-      if (blockEl) {
-        const btn = blockEl.querySelector(`.block-subtab[data-subtab-idx="${b.activeSubtab}"]`);
-        if (btn) btn.classList.toggle('filled', !!ta.value.trim());
-      }
-    };
+    ta.oninput = () => { b.value = ta.value; State.updateLive(() => {}); autoGrow(ta); };
     ta.onblur = () => State.snapshot();
     ta.addEventListener('input', () => autoGrow(ta));
 
