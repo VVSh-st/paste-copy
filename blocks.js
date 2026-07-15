@@ -775,12 +775,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           _lpFired = true;
           b.previewDone = !b.previewDone;
           badge.classList.toggle('block-order-done', b.previewDone === true);
-          /* clear blocked state from all subtabs */
-          if (b.previewDone && b.subtabs) {
-            b.subtabs.forEach(s => { s.blocked = false; });
-            updateSubtabBlockedState(b);
-            badge.classList.remove('block-order-blocked');
-          }
         }, 400);
       });
       badge.addEventListener('pointerup', e => {
