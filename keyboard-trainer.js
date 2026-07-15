@@ -322,6 +322,7 @@ const KeyboardTrainer = (() => {
         e.preventDefault();
       }
     }, { capture: true });
+    _panel.addEventListener('animationend', _onFlashAnimEnd);
     _renderKeys();
     _initOnScreenDelegation();
     _initDragResize();
@@ -554,7 +555,7 @@ const KeyboardTrainer = (() => {
     if (changed) _save();
   }
 
-  // Flash on keydown — CSS animation handles the visual, no setTimeout needed
+  // Flash on keydown — CSS animation handles the visual
   function _flashKey(code) {
     var el = _keyEls[code];
     if (!el) return;
@@ -562,6 +563,13 @@ const KeyboardTrainer = (() => {
     el.classList.remove('kb-flash');
     void el.offsetWidth;
     el.classList.add('kb-flash');
+  }
+
+  // Cleanup kb-flash class after animation ends
+  function _onFlashAnimEnd(e) {
+    if (e.animationName === 'kb-flash-anim') {
+      e.target.classList.remove('kb-flash');
+    }
   }
 
   // Auto-show / auto-hide
