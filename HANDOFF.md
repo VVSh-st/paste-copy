@@ -646,6 +646,7 @@
 
 **Коммиты:**
 - `8840177` — fix: menu settings — separate insert-storage button, bank order, input contrast
+- `83da321` — fix: _resetPrompt — explicit ed.value reset before _selectPromptKey
 
 ---
 
