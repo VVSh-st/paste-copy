@@ -731,6 +731,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     function updateBadge() {
       badge.classList.toggle('block-order-done', b.previewDone === true);
+      const hasBlocked = b.subtabs?.some(s => s.blocked);
+      badge.classList.toggle('block-order-blocked', !!hasBlocked);
       if (b.type === 'text') {
         const disabled = b.previewDisabled === true;
         badge.classList.toggle('block-order-disabled', disabled);
@@ -3574,7 +3576,17 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     ta.style.minHeight = '60px';
     ta.style.resize = 'vertical';
     ta.style.fontSize = (b.fontSize || 13) + 'px';
-    ta.oninput = () => { b.value = ta.value; State.updateLive(() => {}); autoGrow(ta); };
+    ta.oninput = () => {
+      b.value = ta.value;
+      State.updateLive(() => {});
+      autoGrow(ta);
+      /* update filled indicator on subtab button */
+      const blockEl = document.querySelector(`.block[data-id="${b.id}"]`);
+      if (blockEl) {
+        const activeBtn = blockEl.querySelector(`.block-subtab[data-subtab-idx="${b.activeSubtab}"]`);
+        if (activeBtn) activeBtn.classList.toggle('filled', !!ta.value.trim());
+      }
+    };
     ta.onblur = () => State.snapshot();
     ta.addEventListener('input', () => autoGrow(ta));
 
@@ -3981,6 +3993,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     /* find first blocked subtab */
     const blockedIdx = b.subtabs.findIndex(s => s.blocked);
+    const hasBlocked = blockedIdx >= 0;
 
     /* mark blocked number */
     blockEl.querySelectorAll('.block-subtab').forEach(btn => {
@@ -3993,10 +4006,14 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     if (arrows.length >= 2) {
       const cur = b.activeSubtab;
       let dir = 0;
-      if (blockedIdx >= 0 && blockedIdx !== cur) dir = blockedIdx > cur ? 1 : -1;
+      if (hasBlocked) dir = blockedIdx > cur ? 1 : blockedIdx < cur ? -1 : 0;
       arrows[0].classList.toggle('arrow-blocked', dir === -1);
       arrows[1].classList.toggle('arrow-blocked', dir === 1);
     }
+
+    /* color badge red when blocked */
+    const badge = blockEl.querySelector('.block-order-btn');
+    if (badge) badge.classList.toggle('block-order-blocked', hasBlocked);
   }
 
   /* ================================================================
