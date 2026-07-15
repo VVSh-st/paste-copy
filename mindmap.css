@@ -16,7 +16,7 @@
   width: 70vw; max-width: 900px;
   height: 60vh; max-height: 600px;
   background: linear-gradient(135deg, rgba(20,22,30,0.55), rgba(15,16,22,0.45));
-  backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(120%);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
   box-shadow:
@@ -26,17 +26,17 @@
   display: flex; flex-direction: column;
   transform-style: preserve-3d;
   transition: transform 0.15s ease-out;
-  contain: layout style;
 }
 
 .mindmap-controls {
   position: absolute; top: 12px; right: 12px;
   display: flex; gap: 6px;
   opacity: 0; transform: translateY(-8px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition: opacity 0.4s ease, transform 0.4s ease;
   z-index: 10;
   pointer-events: none;
 }
+.mindmap-panel:hover .mindmap-controls,
 .mindmap-controls.near { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
 .mindmap-btn {
@@ -75,6 +75,7 @@
   pointer-events: none;
   z-index: 10;
 }
+.mindmap-panel:hover .mindmap-zoom,
 .mindmap-zoom.near, .mindmap-zoom.dragging { opacity: 1; pointer-events: auto; }
 
 .mindmap-zoom-range {
@@ -144,52 +145,25 @@
   to   { opacity: 1; transform: scale(1); }
 }
 
-/* ── Count popup (HTML div with text-shadow) ── */
 .mm-count-pop {
-  position: absolute;
-  transform: translate(-50%, -50%) scale(0.5);
-  opacity: 0;
-  pointer-events: none;
-  font: 900 26px/1 var(--mono);
-  color: #fff;
-  text-shadow:
-    -1px -1px 0 var(--pop-c, #4f8ef7), 1px -1px 0 var(--pop-c, #4f8ef7),
-    -1px  1px 0 var(--pop-c, #4f8ef7), 1px  1px 0 var(--pop-c, #4f8ef7),
-     0    0   6px var(--pop-c, #4f8ef7),
-     0    0  16px var(--pop-c, #4f8ef7);
-  animation: mm-count-anim 0.32s cubic-bezier(.2,.8,.2,1) forwards;
+  opacity: 0; pointer-events: none;
+  animation: mm-count-appear 0.28s ease-out forwards;
 }
-@keyframes mm-count-anim {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.5);  filter: blur(6px); }
-  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.18); filter: blur(0); }
-  100% { opacity: 1; transform: translate(-50%, -50%) scale(1);    filter: blur(0); }
-}
-.mm-count-pop::after {
-  content: '';
-  position: absolute; inset: -12px -18px;
-  border-radius: 50%;
-  z-index: -1;
+.mm-count-pop.vanish {
+  animation: mm-count-vanish 0.7s ease-in forwards;
 }
 
-/* ── Word elements (CSS hover, no JS listeners) ── */
-.mm-word {
-  cursor: pointer;
-  transition: opacity 0.18s;
+.mm-blur-soft { filter: blur(0.6px); }
+.mm-blur-mid  { filter: blur(1.5px); }
+.mm-blur-hard { filter: blur(3px); }
+@keyframes mm-count-appear {
+  from { opacity: 0; transform: scale(0.65); filter: blur(5px); }
+  to   { opacity: 1; transform: scale(1); filter: blur(0); }
 }
-.mm-word:hover {
-  opacity: 1 !important;
-  filter: drop-shadow(0 0 6px currentColor);
+@keyframes mm-count-vanish {
+  from { opacity: 1; transform: scale(1); filter: blur(0); }
+  to   { opacity: 0; transform: scale(1.35); filter: blur(8px); }
 }
-.mm-word-hero {
-  filter: drop-shadow(0 0 4px currentColor);
-}
-.mm-word-hero:hover {
-  filter: drop-shadow(0 0 8px currentColor) drop-shadow(0 0 18px currentColor);
-}
-
-/* ── Circle drop-shadow (graph/hierarchy — replaces SVG filter) ── */
-.mm-circle { filter: drop-shadow(0 0 3px currentColor); }
-.mm-circle-hot { filter: drop-shadow(0 0 6px #4f8ef7) drop-shadow(0 0 12px #4f8ef7); }
 
 .jump-highlight {
   outline: 2px solid rgba(79,142,247,0.6);

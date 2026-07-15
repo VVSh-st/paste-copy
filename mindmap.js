@@ -315,17 +315,6 @@ const MindMap = (() => {
       _fetch(text);
     });
 
-    function _setupProximityReveal(el, radius) {
-      _overlay.addEventListener('mousemove', e => {
-        const r = el.getBoundingClientRect();
-        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-        const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-        el.classList.toggle('near', dist < radius);
-      });
-    }
-    _setupProximityReveal(_overlay.querySelector('.mindmap-controls'), 150);
-    _setupProximityReveal(_overlay.querySelector('.mindmap-zoom'), 120);
-
     const zoomRange = _overlay.querySelector('.mindmap-zoom-range');
     const zoomWrap = _overlay.querySelector('.mindmap-zoom');
     zoomRange.addEventListener('input', () => {
@@ -414,30 +403,49 @@ const MindMap = (() => {
   }
 
   function _showWordCountAtClick(word, evt, sourceEl) {
+    if (!_viewport || !_svg) return;
     const safeWord = String(word ?? '').slice(0, 100).trim();
     if (!safeWord) return;
     const sourceText = window.Preview?.getText?.() ?? '';
-    const finalCount = _findWordOccurrences(sourceText, safeWord).length;
-    const r = _panel.getBoundingClientRect();
-    const x = evt.clientX - r.left;
-    const y = evt.clientY - r.top;
-    const el = document.createElement('div');
-    el.className = 'mm-count-pop';
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
-    el.dataset.color = sourceEl?.getAttribute?.('fill') || '#4f8ef7';
-    el.style.setProperty('--pop-c', el.dataset.color);
-    el.textContent = '0';
-    const start = performance.now();
-    const tick = (now) => {
-      const t = Math.min(1, (now - start) / 700);
-      const eased = 1 - Math.pow(1 - t, 3.4);
-      el.textContent = String(Math.round(finalCount * eased));
-      if (t < 1) requestAnimationFrame(tick);
-    };
-    setTimeout(() => el.remove(), 1900);
-    requestAnimationFrame(tick);
-    _panel.appendChild(el);
+    const count = _findWordOccurrences(sourceText, safeWord).length;
+    const rect = _svg.getBoundingClientRect();
+    const svgX = (evt.clientX - rect.left - _panX) / _zoom;
+    const svgY = (evt.clientY - rect.top - _panY) / _zoom;
+    const color = sourceEl?.getAttribute?.('fill') || '#ffffff';
+    const isCircle = sourceEl?.tagName === 'circle';
+    const srcFontSize = isCircle
+      ? (Number(sourceEl?.getAttribute?.('r')) || 16) * 1.2
+      : (Number(sourceEl?.getAttribute?.('font-size')) || 18);
+    const fontSize = srcFontSize * (isCircle ? 1.6 : 1.3);
+    const fontWeight = '700';
+
+    const g = document.createElementNS(SVG_NS, 'g');
+    g.setAttribute('transform', `translate(${svgX}, ${svgY})`);
+
+    const anim = document.createElementNS(SVG_NS, 'g');
+    anim.setAttribute('class', 'mm-count-pop');
+
+    const halo = document.createElementNS(SVG_NS, 'circle');
+    halo.setAttribute('cx', '0'); halo.setAttribute('cy', '0');
+    halo.setAttribute('r', String(Math.max(20, fontSize * 0.9)));
+    halo.setAttribute('fill', color); halo.setAttribute('opacity', '0.2');
+    halo.setAttribute('filter', 'url(#glow)');
+
+    const t = document.createElementNS(SVG_NS, 'text');
+    t.setAttribute('x', '0'); t.setAttribute('y', '0');
+    t.setAttribute('text-anchor', 'middle'); t.setAttribute('dominant-baseline', 'middle');
+    t.setAttribute('font-family', 'var(--mono)');
+    t.setAttribute('font-size', String(Math.max(18, fontSize)));
+    t.setAttribute('font-weight', fontWeight); t.setAttribute('fill', '#ffffff');
+    t.setAttribute('stroke', color); t.setAttribute('stroke-width', '2');
+    t.setAttribute('filter', 'url(#glow)');
+    t.textContent = String(count);
+
+    anim.appendChild(halo); anim.appendChild(t);
+    g.appendChild(anim);
+    _viewport.appendChild(g);
+    setTimeout(() => { if (anim.isConnected) anim.classList.add('vanish'); }, 3000);
+    setTimeout(() => { g.remove(); }, 3700);
   }
 
   function _attachWordInteractions(el, word, cx, cy) {
@@ -600,27 +608,21 @@ const MindMap = (() => {
   function _applyDepthBlur() {
     if (!_viewport) return;
     const noBlur = _mode === 'hierarchy' || _mode === 'timeline' || _mode === 'tree';
+    const BLUR_CLASSES = ['mm-blur-soft', 'mm-blur-mid', 'mm-blur-hard'];
     _viewport.querySelectorAll('[data-depth]').forEach(el => {
-      if (noBlur) { el.style.filter = ''; return; }
-      if (_mode === 'graph') {
-        if (el.classList.contains('mm-graph-legend') || el.classList.contains('mm-graph-backdrops') || el.querySelector?.('text')) {
-          el.style.filter = '';
-          return;
-        }
-        const depth = parseFloat(el.dataset.depth);
-        const blurAmt = (0.3 - depth) * 0.65;
-        el.style.filter = blurAmt > 0.75 ? `blur(${blurAmt.toFixed(1)}px)` : '';
-        return;
-      }
-      if (_mode === 'words') {
-        const depth = parseFloat(el.dataset.depth);
-        const blurAmt = (0.3 - depth) * 1.4;
-        el.style.filter = blurAmt > 0.55 ? `blur(${blurAmt.toFixed(1)}px)` : '';
-        return;
-      }
+      el.classList.remove(...BLUR_CLASSES);
+      if (noBlur) return;
       const depth = parseFloat(el.dataset.depth);
-      const blurAmt = (0.3 - depth) * 3;
-      el.style.filter = blurAmt > 0.4 ? `blur(${blurAmt.toFixed(1)}px)` : '';
+      const diff = 0.3 - depth;
+      if (_mode === 'words') {
+        if (diff > 0.25) el.classList.add('mm-blur-hard');
+        else if (diff > 0.12) el.classList.add('mm-blur-mid');
+        else if (diff > 0.05) el.classList.add('mm-blur-soft');
+      } else if (_mode === 'graph') {
+        if (el.classList.contains('mm-graph-legend') || el.classList.contains('mm-graph-backdrops') || el.querySelector?.('text')) return;
+        if (diff > 0.2) el.classList.add('mm-blur-mid');
+        else if (diff > 0.08) el.classList.add('mm-blur-soft');
+      }
     });
   }
 
@@ -633,6 +635,7 @@ const MindMap = (() => {
     const mul = _mode === 'words' ? 58 : 40;
     _depthEls.forEach(el => {
       const depth = parseFloat(el.dataset.depth);
+      if (depth < 0.25) return;
       const px = nx * depth * mul;
       const py = ny * depth * mul;
       el.style.transform = `translate(${px}px, ${py}px)`;
@@ -877,15 +880,8 @@ const MindMap = (() => {
           <feMergeNode in="SourceGraphic"/>
         </feMerge>
       </filter>
-      <filter id="big-bloom" x="-40%" y="-40%" width="180%" height="180%">
-        <feGaussianBlur stdDeviation="0.6" result="b1"/>
-        <feGaussianBlur in="b1" stdDeviation="3" result="b2"/>
-        <feColorMatrix in="b2" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1.2 0" result="cm"/>
-        <feMerge>
-          <feMergeNode in="cm"/>
-          <feMergeNode in="SourceGraphic"/>
-        </feMerge>
-      </filter>
+      <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.3"/></filter>
       <marker id="arrow-head" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
         <path d="M0,0 L6,3 L0,6 Z" fill="rgba(255,255,255,0.3)"/>
@@ -929,8 +925,6 @@ const MindMap = (() => {
     _svg.appendChild(_viewport);
 
     _viewport.appendChild(_drawStarfield(W, H));
-
-    _addFilmGrain(W, H);
 
     switch (_mode) {
       case 'words': _drawWords(W, H); break;
@@ -1133,8 +1127,36 @@ const MindMap = (() => {
     const padding = 4;
     const MIN_FONT = 9;
     const MAX_FONT = 74;
-    const grid = _buildPlacementGrid(W, H, 22);
-    const frag = document.createDocumentFragment();
+    const CELL = 40;
+    const grid = new Map();
+
+    function _gridKey(x, y) {
+      return `${Math.floor(x / CELL)}:${Math.floor(y / CELL)}`;
+    }
+
+    function _checkCollision(x, y, hw, hh, itemPad) {
+      const cx = x, cy = y;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const key = _gridKey(cx + dx * CELL, cy + dy * CELL);
+          const cell = grid.get(key);
+          if (!cell) continue;
+          for (const p of cell) {
+            if (Math.abs(cx - p.cx) < (hw + p.hw + itemPad) &&
+                Math.abs(cy - p.cy) < (hh + p.hh + itemPad)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function _addToGrid(x, y, hw, hh) {
+      const key = _gridKey(x, y);
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push({ cx: x, cy: y, hw, hh });
+    }
 
     const sorted = [...enriched].sort((a, b) => b.visualWeight - a.visualWeight);
     const animateWords = _wordsAnimatedForHash !== _textHash;
@@ -1158,11 +1180,11 @@ const MindMap = (() => {
         const seed = _hashString(item.w + '_' + tries);
         x = padding + _rand01(seed) * rangeX;
         y = padding + th + _rand01(seed ^ 0x9e3779b9) * rangeY;
-        collides = grid.check(x + tw / 2, y - th / 2, tw / 2 + itemPad, th / 2 + itemPad);
+        collides = _checkCollision(x + tw / 2, y - th / 2, tw / 2, th / 2, itemPad);
         tries++;
       } while (tries < maxTries && collides);
       if (collides) return;
-      grid.push(x + tw / 2, y - th / 2, tw / 2 + itemPad, th / 2 + itemPad);
+      _addToGrid(x + tw / 2, y - th / 2, tw / 2, th / 2);
 
       const enterG = document.createElementNS(SVG_NS, 'g');
       if (animateWords && i < 40 && item.visualWeight >= 2) {
@@ -1175,8 +1197,6 @@ const MindMap = (() => {
       depthG.dataset.depth = depth.toFixed(2);
 
       const text = document.createElementNS(SVG_NS, 'text');
-      text.classList.add('mm-word');
-      if (item.visualWeight > 7) text.classList.add('mm-word-hero');
       text.setAttribute('x', x);
       text.setAttribute('y', y);
       text.setAttribute('font-size', fontSize);
@@ -1190,6 +1210,7 @@ const MindMap = (() => {
         text.setAttribute('stroke-opacity', '0.3');
         text.setAttribute('stroke-width', '0.4');
       } else if (item.visualWeight > 7) {
+        text.setAttribute('filter', 'url(#bloom)');
         text.setAttribute('paint-order', 'stroke');
         text.setAttribute('stroke', 'rgba(0,0,0,0.35)');
         text.setAttribute('stroke-width', '1.2');
@@ -1201,12 +1222,14 @@ const MindMap = (() => {
         text.setAttribute('stroke-linejoin', 'round');
       }
       text.textContent = item.w;
+      text.style.transition = 'opacity 0.2s, font-size 0.2s';
+      text.addEventListener('mouseenter', () => { text.setAttribute('opacity', '1'); text.setAttribute('font-size', fontSize + 4); text.classList.add('mm-pulse'); });
+      text.addEventListener('mouseleave', () => { text.setAttribute('opacity', String(0.4 + (item.visualWeight / maxW) * 0.6)); text.setAttribute('font-size', fontSize); text.classList.remove('mm-pulse'); });
       _attachWordInteractions(text, item.w, x + tw / 2, y - th / 2);
       depthG.appendChild(text);
       enterG.appendChild(depthG);
-      frag.appendChild(enterG);
+      _viewport.appendChild(enterG);
     });
-    _viewport.appendChild(frag);
     if (animateWords) _wordsAnimatedForHash = _textHash;
   }
 
@@ -1431,17 +1454,23 @@ const MindMap = (() => {
     const COLLIDE_PAD = 42;
     const CENTER_PULL = comps.length > 1 ? 0.006 : 0.002;
     const DAMPING = 0.82;
-    const iterCount = nodes.length > 32 ? 90 : 120;
+    const iterCount = nodes.length > 32 ? 50 : 80;
 
     for (let iter = 0; iter < iterCount; iter++) {
-      nodes.forEach(a => {
-        nodes.forEach(b => {
-          if (a === b) return;
+      for (let ai = 0; ai < nodes.length; ai++) {
+        const a = nodes[ai];
+        for (let bi = ai + 1; bi < nodes.length; bi++) {
+          const b = nodes[bi];
           let dx = a.x - b.x, dy = a.y - b.y;
-          let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          let force = REPULSE / (dist * dist);
-          a.vx += (dx / dist) * force;
-          a.vy += (dy / dist) * force;
+          let distSq = dx * dx + dy * dy;
+          if (distSq < 1) distSq = 1;
+          const dist = Math.sqrt(distSq);
+          if (dist > 300) continue;
+          let force = REPULSE / distSq;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+          a.vx += fx; a.vy += fy;
+          b.vx -= fx; b.vy -= fy;
           const labelA = Math.min(90, String(a.w || '').length * 5);
           const labelB = Math.min(90, String(b.w || '').length * 5);
           const minDist = Math.max((a.r || 16) * 2, labelA) * 0.55 + Math.max((b.r || 16) * 2, labelB) * 0.55 + COLLIDE_PAD;
@@ -1450,8 +1479,8 @@ const MindMap = (() => {
             a.vx += (dx / dist) * push; a.vy += (dy / dist) * push;
             b.vx -= (dx / dist) * push; b.vy -= (dy / dist) * push;
           }
-        });
-      });
+        }
+      }
       links.forEach(l => {
         const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
         if (ai == null || bi == null) return;
@@ -1489,60 +1518,35 @@ const MindMap = (() => {
       return { x: (a.x + b.x) / 2 + nx * bend, y: (a.y + b.y) / 2 + ny * bend };
     }
 
-    const defs = _svg?.querySelector('defs');
-    if (defs) {
-      const maskId = `graph-mask-${_requestSeq}`;
-      const mask = document.createElementNS(SVG_NS, 'mask');
-      mask.setAttribute('id', maskId);
-      mask.setAttribute('maskUnits', 'userSpaceOnUse');
-      mask.setAttribute('maskContentUnits', 'userSpaceOnUse');
-      mask.setAttribute('x', '0'); mask.setAttribute('y', '0');
-      mask.setAttribute('width', String(W)); mask.setAttribute('height', String(H));
-      const bg = document.createElementNS(SVG_NS, 'rect');
-      bg.setAttribute('x', '0'); bg.setAttribute('y', '0');
-      bg.setAttribute('width', String(W)); bg.setAttribute('height', String(H));
-      bg.setAttribute('fill', 'white');
-      mask.appendChild(bg);
-      nodes.forEach(n => {
-        const cut = document.createElementNS(SVG_NS, 'circle');
-        cut.setAttribute('cx', String(n.x)); cut.setAttribute('cy', String(n.y));
-        cut.setAttribute('r', String((n.r || 16) + 5));
-        cut.setAttribute('fill', 'black');
-        mask.appendChild(cut);
-      });
-      defs.appendChild(mask);
+    const EDGE_GAP = 6;
+    const linksG = document.createElementNS(SVG_NS, 'g');
+    linksG.dataset.depth = '0.12';
 
-      const EDGE_GAP = 6;
-      const linksG = document.createElementNS(SVG_NS, 'g');
-      linksG.dataset.depth = '0.12';
-      linksG.setAttribute('mask', `url(#${maskId})`);
-
-      links.forEach(l => {
-        const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
-        if (ai == null || bi == null) return;
-        const a = nodes[ai], b = nodes[bi];
-        const start = edgePoint(a, b, a.r + EDGE_GAP);
-        const end = edgePoint(b, a, b.r + EDGE_GAP);
-        const mid = curvedMidpoint(start, end, `${l.from}|${l.to}`);
-        const strength = Math.max(0, Math.min(1, Number(l.strength) || 0.3));
-        const alpha = l.source === 'llm' ? 0.075 + strength * 0.10 : 0.045 + strength * 0.065;
-        const path = document.createElementNS(SVG_NS, 'path');
-        path.setAttribute('d', `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`);
-        path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.025)' : `rgba(255,255,255,${alpha.toFixed(3)})`);
-        path.setAttribute('stroke-width', String(l.source === 'llm' ? 0.75 + strength * 1.25 : 0.65 + strength * 0.95));
-        path.setAttribute('stroke-linecap', 'round');
-        path.setAttribute('vector-effect', 'non-scaling-stroke');
-        if (l.synthetic) path.setAttribute('stroke-dasharray', '4 6');
-        else if (l.source === 'local') path.setAttribute('stroke-dasharray', '6 9');
-        const edgeTitle = document.createElementNS(SVG_NS, 'title');
-        const srcLabel = l.source === 'llm' ? 'смысловая связь' : 'часто рядом в тексте';
-        edgeTitle.textContent = `${l.from} ↔ ${l.to} · ${srcLabel} · ${(strength * 100).toFixed(0)}%`;
-        path.appendChild(edgeTitle);
-        linksG.appendChild(path);
-      });
-      _viewport.appendChild(linksG);
-    }
+    links.forEach(l => {
+      const ai = nodeMap.get(graphKey(l.from)), bi = nodeMap.get(graphKey(l.to));
+      if (ai == null || bi == null) return;
+      const a = nodes[ai], b = nodes[bi];
+      const start = edgePoint(a, b, a.r + EDGE_GAP);
+      const end = edgePoint(b, a, b.r + EDGE_GAP);
+      const mid = curvedMidpoint(start, end, `${l.from}|${l.to}`);
+      const strength = Math.max(0, Math.min(1, Number(l.strength) || 0.3));
+      const alpha = l.source === 'llm' ? 0.075 + strength * 0.10 : 0.045 + strength * 0.065;
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', l.synthetic ? 'rgba(255,255,255,0.025)' : `rgba(255,255,255,${alpha.toFixed(3)})`);
+      path.setAttribute('stroke-width', String(l.source === 'llm' ? 0.75 + strength * 1.25 : 0.65 + strength * 0.95));
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('vector-effect', 'non-scaling-stroke');
+      if (l.synthetic) path.setAttribute('stroke-dasharray', '4 6');
+      else if (l.source === 'local') path.setAttribute('stroke-dasharray', '6 9');
+      const edgeTitle = document.createElementNS(SVG_NS, 'title');
+      const srcLabel = l.source === 'llm' ? 'смысловая связь' : 'часто рядом в тексте';
+      edgeTitle.textContent = `${l.from} ↔ ${l.to} · ${srcLabel} · ${(strength * 100).toFixed(0)}%`;
+      path.appendChild(edgeTitle);
+      linksG.appendChild(path);
+    });
+    _viewport.appendChild(linksG);
 
     _drawGraphComponentBackdrops(comps, nodes);
 
@@ -1564,7 +1568,7 @@ const MindMap = (() => {
       circle.setAttribute('r', r);
       circle.setAttribute('fill', `url(#${gradId})`);
       circle.setAttribute('opacity', isIsolated ? '0.22' : '0.85');
-      if (n.weight > 8.5 && !isIsolated) circle.classList.add('mm-circle-hot');
+      if (n.weight > 8.5 && !isIsolated) circle.setAttribute('filter', 'url(#glow)');
       circle.style.cursor = 'pointer';
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
@@ -2029,7 +2033,7 @@ const MindMap = (() => {
       circle.setAttribute('cx', x); circle.setAttribute('cy', y); circle.setAttribute('r', r);
       circle.setAttribute('fill', `url(#${_gradIdFor(color)})`);
       circle.setAttribute('opacity', '0.85');
-      if (depth === 0) circle.classList.add('mm-circle-hot');
+      if (depth === 0) circle.setAttribute('filter', 'url(#glow)');
       circle.style.cursor = 'pointer';
       circle.style.transition = 'r 0.2s, opacity 0.2s';
       circle.addEventListener('mouseenter', () => { circle.setAttribute('opacity', '1'); circle.setAttribute('r', r + 3); circle.classList.add('mm-pulse'); });
@@ -2182,80 +2186,24 @@ const MindMap = (() => {
     _viewport.appendChild(line);
   }
 
-  function _drawStarfield(W, H, worldScaleX = 4, worldScaleY = 3) {
+  function _drawStarfield(W, H) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.depth = '0.05';
-    g.setAttribute('class', 'mm-starfield');
-    const marginX = W * (worldScaleX - 1) * 0.5;
-    const marginY = H * (worldScaleY - 1) * 0.5;
-    const totalW = W * worldScaleX;
-    const totalH = H * worldScaleY;
-    const cx = totalW / 2, cy = totalH / 2;
-    const baseCount = Math.floor((W * H) / 9000);
-    const count = Math.floor(baseCount * (worldScaleX * worldScaleY) * 0.6);
+    const marginX = W * 0.5;
+    const marginY = H * 0.5;
+    const totalW = W + marginX * 2;
+    const totalH = H + marginY * 2;
+    const count = Math.floor((totalW * totalH) / 18000);
     for (let i = 0; i < count; i++) {
-      const seed = _hashString(`${_textHash}:star:${i}`);
-      const wx = -marginX + _rand01(seed) * totalW;
-      const wy = -marginY + _rand01(seed ^ 0x9e3779b9) * totalH;
-      const r = Math.hypot(wx - cx, wy - cy) / Math.max(totalW, totalH);
-      const keep = _rand01(seed ^ 0xdeadbeef) > r * 0.85;
-      if (!keep) continue;
+      const seed = _hashString(`${_textHash}:${W}:${H}:star:${i}`);
       const dot = document.createElementNS(SVG_NS, 'circle');
-      dot.setAttribute('cx', wx.toFixed(1));
-      dot.setAttribute('cy', wy.toFixed(1));
-      dot.setAttribute('r', (_rand01(seed ^ 0xcafebabe) * 1.2 + 0.3).toFixed(1));
-      const alpha = 0.05 + (1 - r) * 0.30;
-      dot.setAttribute('fill', `rgba(255,255,255,${alpha.toFixed(3)})`);
+      dot.setAttribute('cx', String(-marginX + _rand01(seed) * totalW));
+      dot.setAttribute('cy', String(-marginY + _rand01(seed ^ 0x9e3779b9) * totalH));
+      dot.setAttribute('r', (_rand01(seed ^ 0xdeadbeef) * 1.2 + 0.3).toFixed(1));
+      dot.setAttribute('fill', 'rgba(255,255,255,0.25)');
       g.appendChild(dot);
     }
     return g;
-  }
-
-  function _addFilmGrain(W, H) {
-    const defs = _svg.querySelector('defs');
-    if (_svg.querySelector('#mm-grain')) return;
-    const filter = document.createElementNS(SVG_NS, 'filter');
-    filter.setAttribute('id', 'mm-grain');
-    filter.innerHTML = `
-      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch"/>
-      <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.06 0"/>
-    `;
-    defs.appendChild(filter);
-    const rect = document.createElementNS(SVG_NS, 'rect');
-    rect.setAttribute('width', W); rect.setAttribute('height', H);
-    rect.setAttribute('filter', 'url(#mm-grain)');
-    rect.setAttribute('fill', 'transparent');
-    rect.dataset.depth = '0.02';
-    _svg.appendChild(rect);
-  }
-
-  function _buildPlacementGrid(W, H, cell = 22) {
-    const cols = Math.ceil(W / cell), rows = Math.ceil(H / cell);
-    const grid = Array.from({ length: cols * rows }, () => []);
-    return {
-      grid, cols, rows, cell,
-      check(x, y, hw, hh) {
-        const cx = Math.floor(x / this.cell);
-        const cy = Math.floor(y / this.cell);
-        for (let dx = -1; dx <= 1; dx++) {
-          for (let dy = -1; dy <= 1; dy++) {
-            const ix = cx + dx, iy = cy + dy;
-            if (ix < 0 || iy < 0 || ix >= this.cols || iy >= this.rows) continue;
-            const bucket = this.grid[iy * this.cols + ix];
-            for (let k = 0; k < bucket.length; k++) {
-              const p = bucket[k];
-              if (Math.abs(x - p.cx) < (hw + p.hw) && Math.abs(y - p.cy) < (hh + p.hh)) return true;
-            }
-          }
-        }
-        return false;
-      },
-      push(x, y, hw, hh) {
-        const ix = Math.max(0, Math.min(this.cols - 1, Math.floor(x / this.cell)));
-        const iy = Math.max(0, Math.min(this.rows - 1, Math.floor(y / this.cell)));
-        this.grid[iy * this.cols + ix].push({ cx: x, cy: y, hw, hh });
-      }
-    };
   }
 
   return { open, close };

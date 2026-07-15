@@ -650,6 +650,29 @@
 
 ---
 
+### MindMap — CPU-оптимизации (задание 3(1))
+
+**Файлы:** `mindmap.js`, `mindmap.css`
+
+**Изменения (8 оптимизаций):**
+1. **Starfield** — количество DOT-ов сокращено в 2 раза (9000→18000 divisor). ~47→24 DOT-а.
+2. **Graph physics** — итерации 90/120→50/80 + early skip при dist > 300px. ~40-60% main-thread.
+3. **Parallax** — skip элементов с depth < 0.25. ~60% style writes.
+4. **Blur** — CSS-классы `mm-blur-soft/mid/hard` вместо inline `style.filter`. 3 квантованных уровня.
+5. **SVG Mask** — удалён mask для graph-рёбер. Links рисуются ДО circles. -30 SVG nodes + GPU regen.
+6. **backdrop-filter** — blur 20px→12px, saturate 140%→120%.
+7. **Proximity reveal** — CSS-only `.mindmap-panel:hover .mindmap-controls` вместо JS mousemove.
+8. **Collision detection** — spatial hash (O(n) avg) вместо O(n²) `placed.some()`.
+
+**Пропущено (опасные):**
+- #5 Render diffing — слишком большой рефакторинг, ломает структуру
+- #6 Event delegation — затрагивает 4 места, высокий риск регрессий
+
+**Коммиты:**
+- `pending` — mindmap performance optimizations
+
+---
+
 ## Следующий шаг
 
 1. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
