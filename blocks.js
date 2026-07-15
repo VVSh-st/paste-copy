@@ -737,7 +737,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = disabled ? '✕' : (orderNum != null ? '#' + orderNum : '—');
         badge.title = disabled
           ? 'Блок скрыт из превью (нажми чтобы включить)'
-          : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть)' : 'Пустой — в превью не войдёт';
+          : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть / зажми — marker готовности)' : 'Пустой — в превью не войдёт';
       } else if (b.type === 'snippets') {
         const en = (b.items || []).filter(i => i.enabled).length;
         badge.textContent = en + '/' + (b.items || []).length;
@@ -758,7 +758,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         badge.textContent = disabled ? '✕' : (orderNum != null ? '#' + orderNum : '—');
         badge.title = disabled
           ? 'Блок скрыт из превью (нажми чтобы включить)'
-          : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть)' : 'Пустой — в превью не войдёт';
+          : orderNum != null ? 'Блок #' + orderNum + ' в превью (нажми чтобы скрыть / зажми — marker готовности)' : 'Пустой — в превью не войдёт';
       }
     }
     updateBadge();
