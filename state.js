@@ -19,6 +19,7 @@ const State = (() => {
     previewHeaders:  true,
     currentLineHighlight: false,
     currentLineColor:     'rgba(79,142,247,0.18)',
+    hintsEnabled:         false,
     spellCheck:           true,
     blockHeights:    {},
 
@@ -44,7 +45,7 @@ const State = (() => {
         noCode:         true,
         noLists:        true,
         noVars:         true,
-        matrixEffectMs: 3500,
+        matrixEffectMs: 2000,
       },
 
       bro: {

@@ -890,9 +890,9 @@ window.LLMCore = (() => {
       _set('llm-prf-provider', profile.provider ?? 'lmstudio');
       _set('llm-prf-endpoint', profile.endpoint?.trim() || prov.baseUrl);
       _set('llm-prf-apikey', _Storage?.loadLLMKey?.(id) ?? '');
-      _set('llm-prf-maxtok', profile.maxTokens ?? 2000);
-      _set('llm-prf-timeout', profile.timeout ?? 30);
-      _set('llm-prf-retries', profile.retries ?? 2);
+      _set('llm-prf-maxtok', profile.maxTokens ?? 10000);
+      _set('llm-prf-timeout', profile.timeout ?? 10);
+      _set('llm-prf-retries', profile.retries ?? 3);
       _set('llm-prf-thinking', profile.thinkingMode ?? 'auto');
       _setCheck('llm-prf-stream', profile.streaming ?? true);
       _setCheck('llm-prf-cache', profile.useCache ?? true);
@@ -980,9 +980,9 @@ window.LLMCore = (() => {
         endpoint: _get('llm-prf-endpoint').trim() || (PROVIDERS[providerId]?.baseUrl ?? ''),
         model: document.getElementById('llm-prf-model')?.value ?? '',
         temperature: parseFloat(document.getElementById('llm-prf-temp')?.value ?? 0.7),
-        maxTokens: parseInt(_get('llm-prf-maxtok'), 10) || 2000,
-        timeout: parseInt(_get('llm-prf-timeout'), 10) || 30,
-        retries: parseInt(_get('llm-prf-retries'), 10) ?? 2,
+        maxTokens: parseInt(_get('llm-prf-maxtok'), 10) || 10000,
+        timeout: parseInt(_get('llm-prf-timeout'), 10) || 10,
+        retries: parseInt(_get('llm-prf-retries'), 10) ?? 3,
         thinkingMode: _get('llm-prf-thinking') || 'auto',
         streaming: _getCheck('llm-prf-stream'), useCache: _getCheck('llm-prf-cache'),
       };
@@ -1762,7 +1762,7 @@ tags.push({
       document.getElementById('llm-prf-provider')?.addEventListener('change', e => { const ep = document.getElementById('llm-prf-endpoint'); if (ep && _isDefaultEndpoint(ep.value)) ep.value = _providerBaseUrl(e.target.value); if (_selectedProfileId) { _modelsCache.delete(_selectedProfileId); _modelsMeta.delete(_selectedProfileId); } });
       document.getElementById('llm-prf-endpoint')?.addEventListener('change', () => { if (_selectedProfileId) { _modelsCache.delete(_selectedProfileId); _modelsMeta.delete(_selectedProfileId); } });
       document.getElementById('llm-prf-model')?.addEventListener('change', e => { e.target.title = e.target.selectedOptions?.[0]?.title || e.target.value || ''; });
-      document.getElementById('llm-prf-add')?.addEventListener('click', () => { const lay = _State.getLayout(); const profiles = [...(lay?.llm?.profiles ?? [])]; const id = _uid(); profiles.push({ id, name: 'Новый профиль', provider: 'lmstudio', endpoint: PROVIDERS.lmstudio.baseUrl, model: '', temperature: 0.7, maxTokens: 2000, timeout: 30, retries: 2, thinkingMode: 'auto', streaming: true, useCache: true }); _selectedProfileId = id; _State.setLayout({ llm: { ...(lay?.llm ?? {}), profiles, activeProfileId: id } }); _renderProfileList(); });
+      document.getElementById('llm-prf-add')?.addEventListener('click', () => { const lay = _State.getLayout(); const profiles = [...(lay?.llm?.profiles ?? [])]; const id = _uid(); profiles.push({ id, name: 'Новый профиль', provider: 'lmstudio', endpoint: PROVIDERS.lmstudio.baseUrl, model: '', temperature: 0.7, maxTokens: 10000, timeout: 10, retries: 3, thinkingMode: 'auto', streaming: true, useCache: true }); _selectedProfileId = id; _State.setLayout({ llm: { ...(lay?.llm ?? {}), profiles, activeProfileId: id } }); _renderProfileList(); });
       document.getElementById('llm-prf-del')?.addEventListener('click', e => { if (!_selectedProfileId || !_armDangerButton(e.currentTarget, '✕')) return; const lay = _State.getLayout(); const profiles = (lay?.llm?.profiles ?? []).filter(p => p.id !== _selectedProfileId); const activeProfileId = lay?.llm?.activeProfileId === _selectedProfileId ? (profiles[0]?.id ?? null) : lay?.llm?.activeProfileId; _Storage?.removeLLMKey?.(_selectedProfileId); _modelsCache.delete(_selectedProfileId); _modelsMeta.delete(_selectedProfileId); _selectedProfileId = activeProfileId; _State.setLayout({ llm: { ...(lay?.llm ?? {}), profiles, activeProfileId } }); _renderProfileList(); });
       document.getElementById('llm-prf-activate')?.addEventListener('click', () => {
         if (!_selectedProfileId) return;

@@ -375,7 +375,7 @@ const Anchors = (() => {
   const MARKER_KEY = 'anchor-markers-enabled';
   const MARKER_BG_KEY = 'anchor-bg-enabled';
   const MARKER_COLOR_KEY = 'anchor-marker-color';
-  const DEFAULT_MARKER_COLOR = '#4f8ef7';
+  const DEFAULT_MARKER_COLOR = '#158e2d';
 
   function _sanitizeMarkerColor(value) {
     const color = String(value || '').trim();
