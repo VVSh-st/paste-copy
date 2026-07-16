@@ -621,27 +621,40 @@ const QRPanel = (() => {
     });
   }
 
+  /* ── clear preview state ──────────────────────────────── */
+  function _clearPreview() {
+    _previewText = '';
+    _previewSource = '';
+    _pages = [];
+    _currentPage = 0;
+    _renderPreview();
+  }
+
   /* ── rebuild preview (for settings changes) ────────────── */
   async function _rebuildCurrentPreview() {
     if (!_previewText || !_previewText.trim()) {
-      _pages = [];
-      _currentPage = 0;
-      _renderPreview();
+      _clearPreview();
       return;
     }
     const id = ++_generationId;
     _panel?.classList.add('qr-panel-loading');
     try {
       const pages = await _splitText(_previewText);
-      if (id !== _generationId) return;
+      if (!_isOpen || id !== _generationId) return;
       _pages = pages;
       _currentPage = 0;
       _qrCache.clear();
       _renderPreview();
     } catch (err) {
+      if (id !== _generationId || !_isOpen) return;
+      _pages = [];
+      _currentPage = 0;
+      _renderPreview();
       _showToast(err.message || 'Не удалось подготовить QR-код');
     } finally {
-      _panel?.classList.remove('qr-panel-loading');
+      if (id === _generationId) {
+        _panel?.classList.remove('qr-panel-loading');
+      }
     }
   }
 
@@ -649,9 +662,7 @@ const QRPanel = (() => {
     const genId = ++_generationId;
     const { text, source } = _getText();
     if (!text || !text.trim()) {
-      _pages = [];
-      _currentPage = 0;
-      _renderPreview();
+      _clearPreview();
       return;
     }
     if (text === _lastText && _ta?.selectionStart === _lastSelStart && _ta?.selectionEnd === _lastSelEnd) return;
@@ -1624,6 +1635,7 @@ const QRPanel = (() => {
       // But switch to new block if clicked on different textarea
       const newTa = e.target.closest?.('.block')?.querySelector('textarea.block-textarea');
       if (newTa && newTa !== _ta) {
+        ++_generationId;
         _ta = newTa;
         _lastText = '\x00';
         _scheduleUpdate();
@@ -1643,6 +1655,7 @@ const QRPanel = (() => {
       }
     }
     if (newTa === _ta) return;
+    ++_generationId;
     _ta = newTa;
     _lastText = '\x00';
     _scheduleUpdate();
