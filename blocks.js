@@ -419,6 +419,10 @@ const Blocks = (() => {
     applyLayout();
     updateGlobalWordCount();
 
+    // sync headers-hidden icon state
+    const _headersOff = State.getLayout().previewHeaders === false;
+    document.querySelectorAll('.block-icon').forEach(el => el.classList.toggle('headers-hidden', _headersOff));
+
     for (const { ta, blockId, subIdx } of _pendingTaScrolls) {
       const savedTop = _taScrollMap.get(blockId + ':' + subIdx);
       if (savedTop != null && ta.isConnected) ta.scrollTop = savedTop;
@@ -646,12 +650,34 @@ const Blocks = (() => {
     const icon = document.createElement('span');
     icon.className = 'block-icon';
     icon.innerHTML = getBlockSvgIcon(b.type);
+    icon.title = 'Длинное нажатие — скрыть заголовок в превью';
     if (b.type === 'sticky') {
       const dot = document.createElement('span');
       dot.className = 'block-icon-badge';
       dot.innerHTML = '<svg viewBox="0 0 16 16" fill="none" width="10" height="10"><circle cx="8" cy="8" r="7" fill="#e05577" opacity=".85"/><path d="M5 5l6 6M11 5l-6 6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>';
       dot.title = 'Не попадёт в превью';
       icon.appendChild(dot);
+    }
+    // long-press: toggle previewHeaders
+    {
+      let _lpTimer = null;
+      let _lpStarted = false;
+      icon.addEventListener('pointerdown', () => {
+        _lpStarted = true;
+        _lpTimer = setTimeout(() => {
+          if (!_lpStarted) return;
+          const lay = State.getLayout();
+          const next = lay.previewHeaders === false;
+          State.setLayout({ previewHeaders: next });
+          document.querySelectorAll('.block-icon').forEach(el => el.classList.toggle('headers-hidden', !next));
+          const cb = document.getElementById('opt-headers');
+          if (cb) cb.checked = next;
+        }, 400);
+      });
+      const _lpStop = () => { _lpStarted = false; clearTimeout(_lpTimer); };
+      icon.addEventListener('pointerup', _lpStop);
+      icon.addEventListener('pointercancel', _lpStop);
+      icon.addEventListener('pointerleave', _lpStop);
     }
 
     // --- title input ---

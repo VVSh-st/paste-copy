@@ -582,8 +582,10 @@ body {
 .block-handle:hover { color: var(--text1); }
 .block-handle:active { cursor: grabbing; }
 
-.block-icon { width: 18px; text-align: center; flex-shrink: 0; }
-.block-icon svg { width: 14px; height: 14px; stroke: var(--text2); fill: none; }
+.block-icon { width: 18px; text-align: center; flex-shrink: 0; cursor: pointer; transition: filter .15s ease; }
+.block-icon svg { width: 14px; height: 14px; stroke: var(--text2); fill: none; transition: stroke .15s ease; }
+.block-icon.headers-hidden { filter: drop-shadow(0 0 4px rgba(79,142,247,.45)); }
+.block-icon.headers-hidden svg { stroke: #4f8ef7; }
 .block-emoji-icon { font-size: 14px; line-height: 1; }
 
 .block-title {
