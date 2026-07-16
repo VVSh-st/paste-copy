@@ -41,6 +41,11 @@ const QRPanel = (() => {
   let _pickerSat = 0;
   let _pickerVal = 0;
 
+  /* history */
+  const HISTORY_KEY = 'qr-history';
+  const HISTORY_MAX = 20;
+  let _history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+
   /* ── constants ─────────────────────────────────────────── */
   const PANEL_DEFAULT_W = 360;
   const PANEL_DEFAULT_H = 480;
@@ -363,16 +368,26 @@ const QRPanel = (() => {
     return { encode };
   })();
 
-  /* ── deflate (uses pako if available, else raw) ────────── */
-  function _deflate(bytes) {
-    if (typeof pako !== 'undefined') return pako.deflate(bytes);
-    // Fallback: store block (no compression)
-    const out = new Uint8Array(bytes.length + 5);
-    out[0] = 0x78; out[1] = 0x01; // CMF, FLG
-    out[2] = 1; // BFINAL
-    out[3] = bytes.length & 0xff;
-    out[4] = (bytes.length >> 8) & 0xff;
-    out.set(bytes, 5);
+  /* ── deflate (CompressionStream API) ───────────────────── */
+  const _hasCompression = typeof CompressionStream !== 'undefined';
+
+  async function _deflate(text) {
+    if (!_hasCompression) return new TextEncoder().encode(text);
+    const cs = new CompressionStream('deflate-raw');
+    const writer = cs.writable.getWriter();
+    writer.write(new TextEncoder().encode(text));
+    writer.close();
+    const reader = cs.readable.getReader();
+    const chunks = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+    const out = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const c of chunks) { out.set(c, offset); offset += c.length; }
     return out;
   }
 
@@ -404,39 +419,40 @@ const QRPanel = (() => {
   }
 
   /* ── QR generation + split ─────────────────────────────── */
-  function _splitText(text) {
-    const useCompress = _compress && typeof pako !== 'undefined';
+  async function _splitText(text) {
+    const useCompress = _compress && _hasCompression;
     let bytes;
     if (useCompress) {
-      bytes = _deflate(new TextEncoder().encode(text));
+      bytes = await _deflate(text);
     } else {
       bytes = new TextEncoder().encode(text);
     }
 
-    if (bytes.length <= MAX_QR_BYTES) {
-      return [{ bytes, text, compressed: useCompress }];
+    const headerSize = 4; // version(1) + page(1) + total(1) + flags(1)
+
+    if (bytes.length + headerSize <= MAX_QR_BYTES) {
+      const header = new Uint8Array([1, 0, 1, useCompress ? 1 : 0]);
+      const full = new Uint8Array(header.length + bytes.length);
+      full.set(header);
+      full.set(bytes, header.length);
+      return [{ bytes: full, text, compressed: useCompress, page: 0, total: 1 }];
     }
 
-    // Split into pages
-    const headerSize = 4; // version(1) + page(1) + total(1) + flags(1)
     const chunkSize = MAX_QR_BYTES - headerSize;
-    const pages = [];
+    const rawPages = [];
     for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.slice(i, i + chunkSize);
-      const pageNum = pages.length;
-      pages.push({ bytes: chunk, text: text.substring(i, Math.min(i + chunkSize, text.length)), compressed: useCompress, header: true });
+      rawPages.push(bytes.slice(i, i + chunkSize));
     }
-    // Add headers
-    return pages.map((p, idx) => {
-      const header = new Uint8Array([1, idx, pages.length, useCompress ? 1 : 0]);
-      const full = new Uint8Array(header.length + p.bytes.length);
+    return rawPages.map((chunk, idx) => {
+      const header = new Uint8Array([1, idx, rawPages.length, useCompress ? 1 : 0]);
+      const full = new Uint8Array(header.length + chunk.length);
       full.set(header);
-      full.set(p.bytes, header.length);
-      return { bytes: full, text: p.text, compressed: p.compressed, header: true, page: idx, total: pages.length };
+      full.set(chunk, header.length);
+      return { bytes: full, text: '', compressed: useCompress, page: idx, total: rawPages.length };
     });
   }
 
-  function _generateQR() {
+  async function _generateQR() {
     const { text, source } = _getText();
     if (!text || !text.trim()) {
       _pages = [];
@@ -449,9 +465,67 @@ const QRPanel = (() => {
     _lastSelStart = _ta?.selectionStart ?? -1;
     _lastSelEnd = _ta?.selectionEnd ?? -1;
 
-    _pages = _splitText(text);
+    _pages = await _splitText(text);
     _currentPage = 0;
     _renderPreview();
+    _addToHistory(text, source);
+  }
+
+  /* ── history ───────────────────────────────────────────── */
+  function _addToHistory(text, source) {
+    if (!text || !text.trim()) return;
+    const entry = {
+      text: text.substring(0, 500),    // store truncated for localStorage
+      fullLength: text.length,
+      source,
+      ts: Date.now(),
+    };
+    // Deduplicate by text
+    _history = _history.filter(h => h.text !== entry.text);
+    _history.unshift(entry);
+    if (_history.length > HISTORY_MAX) _history.length = HISTORY_MAX;
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(_history));
+    _renderHistory();
+  }
+
+  function _renderHistory() {
+    const list = _panel?.querySelector('.qr-history-list');
+    if (!list) return;
+    list.textContent = '';
+    if (!_history.length) {
+      const empty = document.createElement('div');
+      empty.className = 'qr-history-empty';
+      empty.textContent = 'Пока нет записей';
+      list.appendChild(empty);
+      return;
+    }
+    for (const entry of _history) {
+      const item = document.createElement('div');
+      item.className = 'qr-history-item';
+      const preview = document.createElement('span');
+      preview.className = 'qr-history-preview';
+      preview.textContent = entry.text.substring(0, 80) + (entry.fullLength > 80 ? '...' : '');
+      const meta = document.createElement('span');
+      meta.className = 'qr-history-meta';
+      const date = new Date(entry.ts);
+      meta.textContent = `${entry.fullLength} симв. · ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+      item.append(preview, meta);
+      item.onclick = () => {
+        // Restore this text into current QR
+        _pages = [];
+        _currentPage = 0;
+        const bytes = new TextEncoder().encode(entry.text);
+        const header = new Uint8Array([1, 0, 1, 0]);
+        const full = new Uint8Array(header.length + bytes.length);
+        full.set(header);
+        full.set(bytes, header.length);
+        _pages = [{ bytes: full, text: entry.text, compressed: false, page: 0, total: 1 }];
+        _lastText = entry.text;
+        _renderPreview();
+        _switchTab('preview');
+      };
+      list.appendChild(item);
+    }
   }
 
   /* ── canvas rendering ──────────────────────────────────── */
@@ -615,6 +689,7 @@ const QRPanel = (() => {
       { id: 'preview', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="3" height="3" rx="0.5"/></svg>', title: 'Просмотр' },
       { id: 'style', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/><path d="M8 3v10M3 8h10"/></svg>', title: 'Стиль' },
       { id: 'export', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 12h10"/></svg>', title: 'Экспорт' },
+      { id: 'history', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.5l2.5 1.5"/></svg>', title: 'История' },
     ];
     for (const def of tabDefs) {
       const btn = document.createElement('button');
@@ -812,6 +887,31 @@ const QRPanel = (() => {
     exportPane.appendChild(opts);
 
     content.appendChild(exportPane);
+
+    // ── History pane ──
+    const historyPane = document.createElement('div');
+    historyPane.className = 'qr-tab-pane' + (_activeTab === 'history' ? ' active' : '');
+    historyPane.dataset.tab = 'history';
+
+    const historyHeader = document.createElement('div');
+    historyHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;';
+    const historyLabel = document.createElement('span');
+    historyLabel.className = 'qr-section-label';
+    historyLabel.textContent = 'История';
+    const historyClear = document.createElement('button');
+    historyClear.type = 'button';
+    historyClear.className = 'qr-export-btn';
+    historyClear.style.cssText = 'padding:4px 8px;font-size:11px;';
+    historyClear.textContent = 'Очистить';
+    historyClear.onclick = () => { _history = []; localStorage.removeItem(HISTORY_KEY); _renderHistory(); };
+    historyHeader.append(historyLabel, historyClear);
+    historyPane.appendChild(historyHeader);
+
+    const historyList = document.createElement('div');
+    historyList.className = 'qr-history-list';
+    historyPane.appendChild(historyList);
+
+    content.appendChild(historyPane);
     p.appendChild(content);
 
     // Resize handle
@@ -824,6 +924,10 @@ const QRPanel = (() => {
     _panel = p;
     _panel._resizeHandle = resizeHandle;
     _panel._header = header;
+
+    // Attach drag/resize start listeners
+    header.addEventListener('mousedown', _onDragStart);
+    resizeHandle.addEventListener('mousedown', _onResizeStart);
 
     document.body.appendChild(p);
     _clampPanelToViewport();
@@ -1420,6 +1524,7 @@ const QRPanel = (() => {
     _lastSelStart = -1;
     _lastSelEnd = -1;
     _generateQR();
+    _renderHistory();
     _attachListeners();
   }
 
