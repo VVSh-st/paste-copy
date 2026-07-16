@@ -5,6 +5,18 @@
 const QRPanel = (() => {
   'use strict';
 
+  /* ── helpers ────────────────────────────────────────────── */
+  function _readJSON(key, fallback) {
+    try { const raw = localStorage.getItem(key); return raw === null ? fallback : JSON.parse(raw); }
+    catch { localStorage.removeItem(key); return fallback; }
+  }
+  function _storageGet(key, fallback) {
+    try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+  }
+  function _storageSet(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* quota or private mode */ }
+  }
+
   /* ── state ─────────────────────────────────────────────── */
   let _panel = null;
   let _isOpen = false;
@@ -15,16 +27,19 @@ const QRPanel = (() => {
   let _lastText = '\x00';
   let _lastSelStart = -1;
   let _lastSelEnd = -1;
+  let _generationId = 0;          // prevents stale async results
 
-  /* settings (persisted) */
-  let _style = localStorage.getItem('qr-style') || 'classic';
-  let _moduleSize = parseInt(localStorage.getItem('qr-module-size'), 10) || 6;
-  let _fg = localStorage.getItem('qr-fg') || '#000000';
-  let _bg = localStorage.getItem('qr-bg') || '#FFFFFF';
-  let _ec = localStorage.getItem('qr-ec') || 'L';
-  let _compress = localStorage.getItem('qr-compress') !== 'false';
-  let _padding = localStorage.getItem('qr-padding') !== 'false';
-  let _activeTab = localStorage.getItem('qr-panel-tab') || 'preview';
+  /* settings (persisted, validated) */
+  const VALID_STYLES = ['classic', 'dotted', 'rounded', 'diamond'];
+  const VALID_EC = ['L', 'M', 'Q', 'H'];
+  let _style = VALID_STYLES.includes(_storageGet('qr-style')) ? _storageGet('qr-style') : 'classic';
+  let _moduleSize = Math.max(4, Math.min(12, parseInt(_storageGet('qr-module-size', '6'), 10))) || 6;
+  let _fg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-fg')) ? _storageGet('qr-fg') : '#000000';
+  let _bg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-bg')) ? _storageGet('qr-bg') : '#FFFFFF';
+  let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'L';
+  let _compress = _storageGet('qr-compress') !== 'false';
+  let _padding = _storageGet('qr-padding') !== 'false';
+  let _activeTab = _storageGet('qr-panel-tab') || 'preview';
 
   /* drag state */
   let _dragging = false;
@@ -44,7 +59,8 @@ const QRPanel = (() => {
   /* history */
   const HISTORY_KEY = 'qr-history';
   const HISTORY_MAX = 20;
-  let _history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  let _history = [];
+  { const stored = _readJSON(HISTORY_KEY, []); _history = Array.isArray(stored) ? stored : []; }
 
   /* ── constants ─────────────────────────────────────────── */
   const PANEL_DEFAULT_W = 360;
@@ -420,10 +436,15 @@ const QRPanel = (() => {
 
   /* ── QR generation + split ─────────────────────────────── */
   async function _splitText(text) {
-    const useCompress = _compress && _hasCompression;
+    let useCompress = _compress && _hasCompression;
     let bytes;
     if (useCompress) {
-      bytes = await _deflate(text);
+      try {
+        bytes = await _deflate(text);
+      } catch {
+        useCompress = false;
+        bytes = new TextEncoder().encode(text);
+      }
     } else {
       bytes = new TextEncoder().encode(text);
     }
@@ -453,6 +474,7 @@ const QRPanel = (() => {
   }
 
   async function _generateQR() {
+    const genId = ++_generationId;
     const { text, source } = _getText();
     if (!text || !text.trim()) {
       _pages = [];
@@ -465,7 +487,9 @@ const QRPanel = (() => {
     _lastSelStart = _ta?.selectionStart ?? -1;
     _lastSelEnd = _ta?.selectionEnd ?? -1;
 
-    _pages = await _splitText(text);
+    const pages = await _splitText(text);
+    if (genId !== _generationId) return; // stale — discard
+    _pages = pages;
     _currentPage = 0;
     _renderPreview();
     _addToHistory(text, source);
@@ -475,16 +499,15 @@ const QRPanel = (() => {
   function _addToHistory(text, source) {
     if (!text || !text.trim()) return;
     const entry = {
-      text: text.substring(0, 500),    // store truncated for localStorage
-      fullLength: text.length,
+      text,                              // store full text
       source,
       ts: Date.now(),
     };
-    // Deduplicate by text
+    // Deduplicate by exact text
     _history = _history.filter(h => h.text !== entry.text);
     _history.unshift(entry);
     if (_history.length > HISTORY_MAX) _history.length = HISTORY_MAX;
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(_history));
+    try { _storageSet(HISTORY_KEY, JSON.stringify(_history)); } catch { /* quota */ }
     _renderHistory();
   }
 
@@ -504,23 +527,20 @@ const QRPanel = (() => {
       item.className = 'qr-history-item';
       const preview = document.createElement('span');
       preview.className = 'qr-history-preview';
-      preview.textContent = entry.text.substring(0, 80) + (entry.fullLength > 80 ? '...' : '');
+      const len = entry.text.length;
+      preview.textContent = entry.text.substring(0, 80) + (len > 80 ? '...' : '');
       const meta = document.createElement('span');
       meta.className = 'qr-history-meta';
       const date = new Date(entry.ts);
-      meta.textContent = `${entry.fullLength} симв. · ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+      meta.textContent = `${len} симв. · ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
       item.append(preview, meta);
-      item.onclick = () => {
-        // Restore this text into current QR
-        _pages = [];
+      item.onclick = async () => {
+        const pages = await _splitText(entry.text);
+        _pages = pages;
         _currentPage = 0;
-        const bytes = new TextEncoder().encode(entry.text);
-        const header = new Uint8Array([1, 0, 1, 0]);
-        const full = new Uint8Array(header.length + bytes.length);
-        full.set(header);
-        full.set(bytes, header.length);
-        _pages = [{ bytes: full, text: entry.text, compressed: false, page: 0, total: 1 }];
         _lastText = entry.text;
+        _lastSelStart = -1;
+        _lastSelEnd = -1;
         _renderPreview();
         _switchTab('preview');
       };
@@ -562,7 +582,7 @@ const QRPanel = (() => {
     }
 
     const modSize = _moduleSize;
-    const quiet = 4; // quiet zone
+    const quiet = _padding ? 4 : 0; // quiet zone
     const totalSize = (qr.size + quiet * 2) * modSize;
     canvas.width = totalSize;
     canvas.height = totalSize;
@@ -677,6 +697,7 @@ const QRPanel = (() => {
     closeBtn.type = 'button';
     closeBtn.className = 'qr-close-btn';
     closeBtn.title = 'Закрыть';
+    closeBtn.setAttribute('aria-label', 'Закрыть панель QR-кода');
     closeBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>';
     closeBtn.onclick = () => close();
     header.append(title, stats, closeBtn);
@@ -685,6 +706,7 @@ const QRPanel = (() => {
     // Tabs
     const tabs = document.createElement('div');
     tabs.className = 'qr-tabs';
+    tabs.setAttribute('role', 'tablist');
     const tabDefs = [
       { id: 'preview', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="3" height="3" rx="0.5"/></svg>', title: 'Просмотр' },
       { id: 'style', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/><path d="M8 3v10M3 8h10"/></svg>', title: 'Стиль' },
@@ -697,6 +719,9 @@ const QRPanel = (() => {
       btn.className = 'qr-tab' + (def.id === _activeTab ? ' active' : '');
       btn.dataset.tab = def.id;
       btn.title = def.title;
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-label', def.title);
+      btn.setAttribute('aria-selected', def.id === _activeTab ? 'true' : 'false');
       btn.innerHTML = def.icon;
       btn.onclick = () => _switchTab(def.id);
       tabs.appendChild(btn);
@@ -778,7 +803,7 @@ const QRPanel = (() => {
       btn.append(icon, name);
       btn.onclick = () => {
         _style = s.id;
-        localStorage.setItem('qr-style', s.id);
+        _storageSet('qr-style', s.id);
         styleGrid.querySelectorAll('.qr-style-btn').forEach(b => b.classList.toggle('active', b.dataset.style === s.id));
         _renderPreview();
       };
@@ -801,7 +826,7 @@ const QRPanel = (() => {
     sliderVal.textContent = _moduleSize + ' px';
     slider.oninput = () => {
       _moduleSize = parseInt(slider.value, 10);
-      localStorage.setItem('qr-module-size', String(_moduleSize));
+      _storageSet('qr-module-size', String(_moduleSize));
       sliderVal.textContent = _moduleSize + ' px';
       _renderPreview();
     };
@@ -837,7 +862,7 @@ const QRPanel = (() => {
       btn.textContent = `${ec.label} ${ec.desc}`;
       btn.onclick = () => {
         _ec = ec.id;
-        localStorage.setItem('qr-ec', ec.id);
+        _storageSet('qr-ec', ec.id);
         ecGroup.querySelectorAll('.qr-ec-btn').forEach(b => b.classList.toggle('active', b.dataset.ec === ec.id));
         _renderPreview();
       };
@@ -875,12 +900,13 @@ const QRPanel = (() => {
 
     const compressToggle = _buildToggle('Deflate-сжатие', _compress, v => {
       _compress = v;
-      localStorage.setItem('qr-compress', String(v));
+      _storageSet('qr-compress', String(v));
+      _lastText = '\x00'; // invalidate cache
       _scheduleUpdate();
     });
     const paddingToggle = _buildToggle('Padding 4px', _padding, v => {
       _padding = v;
-      localStorage.setItem('qr-padding', String(v));
+      _storageSet('qr-padding', String(v));
       _renderPreview();
     });
     opts.append(compressToggle, paddingToggle);
@@ -903,7 +929,7 @@ const QRPanel = (() => {
     historyClear.className = 'qr-export-btn';
     historyClear.style.cssText = 'padding:4px 8px;font-size:11px;';
     historyClear.textContent = 'Очистить';
-    historyClear.onclick = () => { _history = []; localStorage.removeItem(HISTORY_KEY); _renderHistory(); };
+    historyClear.onclick = () => { _history = []; try { localStorage.removeItem(HISTORY_KEY); } catch {} _renderHistory(); };
     historyHeader.append(historyLabel, historyClear);
     historyPane.appendChild(historyHeader);
 
@@ -970,7 +996,7 @@ const QRPanel = (() => {
       e.stopPropagation();
       if (target === 'fg') _fg = defaultColor;
       else _bg = defaultColor;
-      localStorage.setItem(`qr-${target}`, target === 'fg' ? _fg : _bg);
+      _storageSet(`qr-${target}`, target === 'fg' ? _fg : _bg);
       swatch.style.background = target === 'fg' ? _fg : _bg;
       hex.textContent = target === 'fg' ? _fg : _bg;
       _renderPreview();
@@ -1188,7 +1214,7 @@ const QRPanel = (() => {
   function _applyPickerColor(hex) {
     if (_pickerTarget === 'fg') _fg = hex;
     else _bg = hex;
-    localStorage.setItem(`qr-${_pickerTarget}`, hex);
+    _storageSet(`qr-${_pickerTarget}`, hex);
 
     const swatch = _panel?.querySelector(`.qr-color-swatch-btn[data-target="${_pickerTarget}"]`);
     const hexEl = document.getElementById(`qr-color-hex-${_pickerTarget}`);
@@ -1283,8 +1309,12 @@ const QRPanel = (() => {
   /* ── tabs ──────────────────────────────────────────────── */
   function _switchTab(tabId) {
     _activeTab = tabId;
-    localStorage.setItem('qr-panel-tab', tabId);
-    _panel?.querySelectorAll('.qr-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+    _storageSet('qr-panel-tab', tabId);
+    _panel?.querySelectorAll('.qr-tab').forEach(t => {
+      const active = t.dataset.tab === tabId;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
     _panel?.querySelectorAll('.qr-tab-pane').forEach(p => p.classList.toggle('active', p.dataset.tab === tabId));
   }
 
@@ -1305,7 +1335,7 @@ const QRPanel = (() => {
     if (!_dragging) return;
     _dragging = false;
     document.body.style.userSelect = '';
-    localStorage.setItem('qr-panel-pos', JSON.stringify({ left: _panel.offsetLeft, top: _panel.offsetTop }));
+    _storageSet('qr-panel-pos', JSON.stringify({ left: _panel.offsetLeft, top: _panel.offsetTop }));
   }
 
   /* ── resize ────────────────────────────────────────────── */
@@ -1330,7 +1360,7 @@ const QRPanel = (() => {
     if (!_resizing) return;
     _resizing = false;
     document.body.style.userSelect = '';
-    localStorage.setItem('qr-panel-size', JSON.stringify({ w: _panel.offsetWidth, h: _panel.offsetHeight }));
+    _storageSet('qr-panel-size', JSON.stringify({ w: _panel.offsetWidth, h: _panel.offsetHeight }));
   }
 
   function _clampPanelToViewport() {
