@@ -112,9 +112,13 @@ const QRPanel = (() => {
 
     function polyMul(a, b) {
       const r = new Uint8Array(a.length + b.length - 1);
-      for (let i = 0; i < a.length; i++)
-        for (let j = 0; j < b.length; j++)
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] === 0) continue;
+        for (let j = 0; j < b.length; j++) {
+          if (b[j] === 0) continue;
           r[i + j] ^= EXP[(LOG[a[i]] + LOG[b[j]]) % 255];
+        }
+      }
       return r;
     }
 
@@ -502,11 +506,27 @@ const QRPanel = (() => {
       if (!bestMatrix) return null;
       for (let r = 0; r < size; r++) matrix[r] = bestMatrix[r];
 
-      return { matrix, size };
+      return { matrix, size, reserved };
     }
 
-    return { encode };
+    function getMaxDataBytes(ecLevel) {
+      const ordinal = EC_ORDINAL[ecLevel] ?? 0;
+      const version = 40;
+      const dataCW = TOTAL_CODEWORDS[version] - ECC_CODEWORDS_PER_BLOCK[ordinal][version] * NUM_ECC_BLOCKS[ordinal][version];
+      const countBits = 16;
+      return Math.floor((dataCW * 8 - 4 - countBits) / 8);
+    }
+
+    return { encode, getMaxDataBytes };
   })();
+
+  /* ── QR encode cache ───────────────────────────────────── */
+  const _qrCache = new Map();
+  function _getEncodedQR(page) {
+    const key = `${_ec}:${page.bytes.length}:${page.bytes[0] || 0}`;
+    if (!_qrCache.has(key)) _qrCache.set(key, _QR.encode(page.bytes, _ec));
+    return _qrCache.get(key);
+  }
 
   /* ── deflate (CompressionStream API) ───────────────────── */
   const _hasCompression = typeof CompressionStream !== 'undefined';
@@ -574,8 +594,9 @@ const QRPanel = (() => {
     }
 
     const headerSize = 4; // version(1) + page(1) + total(1) + flags(1)
+    const qrCapacity = _QR.getMaxDataBytes(_ec);
 
-    if (bytes.length + headerSize <= MAX_QR_BYTES) {
+    if (bytes.length + headerSize <= qrCapacity) {
       const header = new Uint8Array([1, 0, 1, useCompress ? 1 : 0]);
       const full = new Uint8Array(header.length + bytes.length);
       full.set(header);
@@ -583,10 +604,13 @@ const QRPanel = (() => {
       return [{ bytes: full, text, compressed: useCompress, page: 0, total: 1 }];
     }
 
-    const chunkSize = MAX_QR_BYTES - headerSize;
+    const chunkSize = qrCapacity - headerSize;
     const rawPages = [];
     for (let i = 0; i < bytes.length; i += chunkSize) {
       rawPages.push(bytes.slice(i, i + chunkSize));
+    }
+    if (rawPages.length > 255) {
+      throw new Error('Текст слишком длинный для QR-кода');
     }
     return rawPages.map((chunk, idx) => {
       const header = new Uint8Array([1, idx, rawPages.length, useCompress ? 1 : 0]);
@@ -611,7 +635,13 @@ const QRPanel = (() => {
     _lastSelStart = _ta?.selectionStart ?? -1;
     _lastSelEnd = _ta?.selectionEnd ?? -1;
 
-    const pages = await _splitText(text);
+    let pages;
+    try {
+      pages = await _splitText(text);
+    } catch (err) {
+      _showToast(err.message || 'Не удалось подготовить QR-код');
+      return;
+    }
     if (genId !== _generationId) return; // stale — discard
     _pages = pages;
     _currentPage = 0;
@@ -661,7 +691,15 @@ const QRPanel = (() => {
       meta.textContent = `${len} симв. · ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
       item.append(preview, meta);
       item.onclick = async () => {
-        const pages = await _splitText(entry.text);
+        const id = ++_generationId;
+        let pages;
+        try {
+          pages = await _splitText(entry.text);
+        } catch (err) {
+          _showToast(err.message || 'Не удалось подготовить QR-код');
+          return;
+        }
+        if (id !== _generationId) return;
         _pages = pages;
         _currentPage = 0;
         _previewText = entry.text;
@@ -701,7 +739,7 @@ const QRPanel = (() => {
     }
 
     const page = _pages[_currentPage];
-    const qr = _QR.encode(page.bytes, _ec);
+    const qr = _getEncodedQR(page);
     if (!qr) {
       canvas.width = 1;
       canvas.height = 1;
@@ -719,20 +757,19 @@ const QRPanel = (() => {
     ctx.fillStyle = _bg;
     ctx.fillRect(0, 0, totalSize, totalSize);
 
-    // Draw modules — finder patterns always use classic style
+    // Draw modules — function modules use classic style, data modules use selected style
     ctx.fillStyle = _fg;
     for (let r = 0; r < qr.size; r++) {
       for (let c = 0; c < qr.size; c++) {
         if (!qr.matrix[r][c]) continue;
         const x = (c + quiet) * modSize;
         const y = (r + quiet) * modSize;
-        const isFinder = (r < 7 && c < 7) || (r < 7 && c >= qr.size - 7) || (r >= qr.size - 7 && c < 7);
-        _drawModule(ctx, x, y, modSize, isFinder ? 'classic' : _style);
+        _drawModule(ctx, x, y, modSize, qr.reserved[r][c] ? 'classic' : _style);
       }
     }
 
     // Update UI
-    if (pageEl) pageEl.textContent = _pages.length > 1 ? `${_currentPage + 1} / ${_pages.length}` : '1 / 1';
+    if (pageEl) pageEl.textContent = _pages.length > 1 ? `Стр. ${_currentPage + 1} из ${_pages.length}` : '1 / 1';
     if (navPrev) navPrev.disabled = _currentPage <= 0;
     if (navNext) navNext.disabled = _currentPage >= _pages.length - 1;
 
@@ -751,7 +788,7 @@ const QRPanel = (() => {
       if (page.compressed) badges.push('deflate');
       badges.push(`v1-${_ec}`);
       badges.push(`${page.bytes.length} байт`);
-      if (_pages.length > 1) badges.push(`${_currentPage + 1}/${_pages.length}`);
+      if (_pages.length > 1) badges.push(`${_currentPage + 1} из ${_pages.length}`);
       for (const b of badges) {
         const el = document.createElement('span');
         el.className = 'qr-info-badge';
@@ -1006,6 +1043,8 @@ const QRPanel = (() => {
         _ec = ec.id;
         _storageSet('qr-ec', ec.id);
         ecGroup.querySelectorAll('.qr-ec-btn').forEach(b => b.classList.toggle('active', b.dataset.ec === ec.id));
+        _qrCache.clear();
+        _lastText = '\x00'; // invalidate generation cache
         _renderPreview();
       };
       ecGroup.appendChild(btn);
@@ -1665,7 +1704,7 @@ const QRPanel = (() => {
       link.click();
     } else if (format === 'svg') {
       const page = _pages[_currentPage];
-      const qr = _QR.encode(page.bytes, _ec);
+      const qr = _getEncodedQR(page);
       if (!qr) return;
       const modSize = _moduleSize;
       const quiet = _padding ? 4 : 0;
@@ -1677,8 +1716,7 @@ const QRPanel = (() => {
           if (!qr.matrix[r][c]) continue;
           const x = (c + quiet) * modSize;
           const y = (r + quiet) * modSize;
-          const isFinder = (r < 7 && c < 7) || (r < 7 && c >= qr.size - 7) || (r >= qr.size - 7 && c < 7);
-          const style = isFinder ? 'classic' : _style;
+          const style = qr.reserved[r][c] ? 'classic' : _style;
           if (style === 'dotted') {
             svg += `<circle cx="${x + modSize / 2}" cy="${y + modSize / 2}" r="${modSize / 2}" fill="${_fg}"/>`;
           } else if (style === 'rounded') {
