@@ -43,7 +43,7 @@ const QRPanel = (() => {
   let _moduleSize = Math.max(4, Math.min(12, parseInt(_storageGet('qr-module-size', '6'), 10))) || 6;
   let _fg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-fg')) ? _storageGet('qr-fg') : '#000000';
   let _bg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-bg')) ? _storageGet('qr-bg') : '#FFFFFF';
-  let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'L';
+  let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'H';
   let _effectiveEc = _ec; // actual EC used (may differ from _ec when auto-downgrading)
   let _compress = _storageGet('qr-compress') !== 'false';
   let _padding = _storageGet('qr-padding') !== 'false';
@@ -858,9 +858,8 @@ const QRPanel = (() => {
     if (infoRow) {
       infoRow.textContent = '';
       const badges = [];
-      if (page.compressed) badges.push('deflate');
+      if (page.compressed) badges.push('сжато');
       badges.push(`v1-${_effectiveEc}`);
-      if (_effectiveEc !== _ec) badges.push(`авто вместо ${_ec}`);
       badges.push(`${page.bytes.length} байт`);
       if (_pages.length > 1) badges.push(`${_currentPage + 1} из ${_pages.length}`);
       for (const b of badges) {
