@@ -4031,6 +4031,7 @@ const AutoPoet = (() => {
 
       const TRANSLATE_CHAT_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.className = 'llm-chat-msg-translate';
       btn.innerHTML = TRANSLATE_CHAT_SVG;
       btn.title = 'Перевести RU↔EN';
