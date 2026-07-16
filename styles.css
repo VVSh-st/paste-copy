@@ -7113,7 +7113,7 @@ body.help-open {
   gap: 10px;
 }
 .qr-tab-pane { display: none; flex-direction: column; gap: 10px; }
-.qr-tab-pane.active { display: flex; }
+.qr-tab-pane.active { display: flex; flex: 1; min-height: 0; }
 
 /* ── Preview tab ─────────────────────────── */
 .qr-source-label {
@@ -7514,7 +7514,8 @@ body.help-open {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 300px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 .qr-history-empty {
