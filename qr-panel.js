@@ -7,8 +7,13 @@ const QRPanel = (() => {
 
   /* ── helpers ────────────────────────────────────────────── */
   function _readJSON(key, fallback) {
-    try { const raw = localStorage.getItem(key); return raw === null ? fallback : JSON.parse(raw); }
-    catch { localStorage.removeItem(key); return fallback; }
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch {
+      try { localStorage.removeItem(key); } catch {}
+      return fallback;
+    }
   }
   function _storageGet(key, fallback) {
     try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -28,6 +33,8 @@ const QRPanel = (() => {
   let _lastSelStart = -1;
   let _lastSelEnd = -1;
   let _generationId = 0;          // prevents stale async results
+  let _previewText = '';          // text shown in current QR preview
+  let _previewSource = '';        // source label for current QR preview
 
   /* settings (persisted, validated) */
   const VALID_STYLES = ['classic', 'dotted', 'rounded', 'diamond'];
@@ -81,7 +88,10 @@ const QRPanel = (() => {
   const _QR = (() => {
     // QR code mode indicators
     const MODE_BYTE = 1 << 2;
-    const EC_LEVELS = { L: 1, M: 0, Q: 3, H: 2 };
+    // EC ordinal for table lookup (L=0,M=1,Q=2,H=3)
+    const EC_ORDINAL = { L: 0, M: 1, Q: 2, H: 3 };
+    // EC format bits for FORMAT_INFO (L=1,M=0,Q=3,H=2)
+    const EC_FORMAT_BITS = { L: 1, M: 0, Q: 3, H: 2 };
 
     // GF(256) operations for Reed-Solomon
     const EXP = new Uint8Array(256);
@@ -108,14 +118,20 @@ const QRPanel = (() => {
       return r;
     }
 
-    function polyMod(deg, generator) {
-      const r = new Uint8Array(deg);
-      for (let i = 0; i < generator.length; i++) {
-        const coef = r[0] ^ generator[i];
-        r.copyWithin(0, 1);
-        if (coef) for (let j = 1; j < r.length; j++) r[j] ^= EXP[(LOG[coef] + LOG[generator[j]]) % 255];
+    function polyMod(data, generator) {
+      const ecSize = generator.length - 1;
+      const remainder = new Uint8Array(ecSize);
+      for (const value of data) {
+        const factor = value ^ remainder[0];
+        remainder.copyWithin(0, 1);
+        remainder[ecSize - 1] = 0;
+        for (let i = 0; i < ecSize; i++) {
+          if (factor && generator[i + 1]) {
+            remainder[i] ^= EXP[(LOG[factor] + LOG[generator[i + 1]]) % 255];
+          }
+        }
       }
-      return r;
+      return remainder;
     }
 
     function generatorPoly(nsym) {
@@ -130,29 +146,19 @@ const QRPanel = (() => {
       0,26,44,70,100,134,172,196,242,292,346,404,466,532,581,655,733,815,901,991,
       1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532,3706
     ];
-    const EC_CODEWORDS_PER_BLOCK = [
-      0,[7,10,15,20],[10,16,26,36],[15,26,18,26],[20,18,26,30],
-      [26,24,18,22],[18,16,22,28],[20,18,26,28],[24,22,26,26],
-      [30,22,24,30],[18,26,28,24],[20,30,28,28],[24,22,30,28],
-      [26,22,28,30],[30,24,30,24],[22,24,30,30],[24,28,28,30],
-      [28,28,30,28],[30,28,30,30],[28,28,30,30],[28,28,28,30],
-      [30,28,30,30],[30,28,30,30],[30,28,30,30],[30,28,30,30],
-      [30,28,30,30],[30,28,30,30],[30,28,30,30],[30,28,30,30],
-      [30,28,30,30],[30,28,30,30],[30,28,30,30],[30,28,30,30],
-      [30,28,30,30],[30,28,30,30],[30,28,30,30],[30,28,30,30],
-      [30,28,30,30],[30,28,30,30],[30,28,30,30],[30,28,30,30]
+    // ECC codewords per block — indexed by [ordinal][version], ordinals: L=0,M=1,Q=2,H=3
+    const ECC_CODEWORDS_PER_BLOCK = [
+      [-1, 7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],  // L
+      [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26,26,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28],  // M
+      [-1,13,22,18,26,18,24,18,22,20,24,28,26,24,20,30,24,28,28,26,30,28,30,30,30,30,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],  // Q
+      [-1,17,28,22,16,22,28,26,26,24,28,24,28,22,24,24,30,28,28,26,28,30,24,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30],  // H
     ];
+    // Number of ECC blocks — indexed by [ordinal][version]
     const NUM_ECC_BLOCKS = [
-      0,[1,1,1,1],[1,1,1,2],[1,1,2,2],[1,1,4,4],
-      [1,1,4,4],[2,1,4,6],[2,1,5,8],[1,5,5,8],
-      [1,5,5,8],[1,1,8,4],[2,1,8,4],[2,1,8,6],
-      [1,5,8,8],[1,3,8,10],[1,3,8,10],[1,3,11,12],
-      [2,2,11,12],[2,3,11,14],[2,4,13,14],[2,4,13,16],
-      [2,4,14,16],[2,5,14,18],[2,5,15,18],[2,7,16,20],
-      [2,7,16,20],[2,7,18,22],[2,8,18,22],[2,8,19,24],
-      [2,9,20,24],[2,9,21,26],[2,10,22,26],[2,12,22,28],
-      [2,12,24,28],[2,12,24,30],[2,12,24,30],[2,13,24,32],
-      [2,14,24,32],[2,15,24,34],[2,16,24,34],[2,17,24,36]
+      [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9,10,12,12,12,13,14,15,16,17,18,19,19,20,21,22,24,25],  // L
+      [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9,10,10,11,13,14,16,17,17,18,20,21,23,25,26,28,29,31,33,35,37,38,40,43,45,47,49],  // M
+      [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8,10,12,16,12,17,16,18,21,20,23,23,25,27,29,34,34,35,38,40,43,45,48,51,53,56,59,62,65,68],  // Q
+      [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8,11,11,16,16,18,16,19,21,25,25,25,34,30,32,35,37,40,42,45,48,51,54,57,60,63,66,70,74,77,81],  // H
     ];
     const ALIGN_POS = [
       0,[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],
@@ -168,11 +174,12 @@ const QRPanel = (() => {
     ];
 
     function getVersion(dataLen, ecLevel) {
-      const ecIdx = EC_LEVELS[ecLevel];
+      const ordinal = EC_ORDINAL[ecLevel];
       for (let v = 1; v <= 40; v++) {
-        const dataCW = TOTAL_CODEWORDS[v] - EC_CODEWORDS_PER_BLOCK[v][ecIdx] * NUM_ECC_BLOCKS[v][ecIdx];
-        // byte mode: 4 bits version header + 8 bits per char + 8 bits terminator (max)
-        const maxBytes = Math.floor((dataCW * 8 - 4 - 8) / 8);
+        const dataCW = TOTAL_CODEWORDS[v] - ECC_CODEWORDS_PER_BLOCK[ordinal][v] * NUM_ECC_BLOCKS[ordinal][v];
+        // byte mode: 4 bits mode + 8/16 bits count + data + terminator
+        const countBits = v <= 9 ? 8 : 16;
+        const maxBytes = Math.floor((dataCW * 8 - 4 - countBits) / 8);
         if (dataLen <= maxBytes) return v;
       }
       return -1;
@@ -291,12 +298,12 @@ const QRPanel = (() => {
 
     function encode(data, ecLevel) {
       initGF();
-      const ecIdx = EC_LEVELS[ecLevel];
+      const ordinal = EC_ORDINAL[ecLevel];
       const version = getVersion(data.length, ecLevel);
       if (version < 1) return null;
       const size = version * 4 + 17;
-      const numBlocks = NUM_ECC_BLOCKS[version][ecIdx];
-      const ecCW = EC_CODEWORDS_PER_BLOCK[version][ecIdx];
+      const numBlocks = NUM_ECC_BLOCKS[ordinal][version];
+      const ecCW = ECC_CODEWORDS_PER_BLOCK[ordinal][version];
       const totalCW = TOTAL_CODEWORDS[version];
       const dataCW = totalCW - ecCW * numBlocks;
       const gen = generatorPoly(ecCW);
@@ -345,7 +352,7 @@ const QRPanel = (() => {
         const block = dataCodewords.slice(offset, offset + blockSizes[i]);
         offset += blockSizes[i];
         dataBlocks.push(block);
-        const ec = polyMod(blockSizes[i], gen);
+        const ec = polyMod(block, gen);
         ecBlocks.push(Array.from(ec));
       }
 
@@ -483,7 +490,7 @@ const QRPanel = (() => {
       for (let candidateMaskIdx = 0; candidateMaskIdx < masks.length; candidateMaskIdx++) {
         const candidate = cloneMatrix(matrix);
         applyMask(candidate, reserved, masks[candidateMaskIdx]);
-        placeFormatInfo(candidate, FORMAT_INFO[ecIdx * 8 + candidateMaskIdx]);
+        placeFormatInfo(candidate, FORMAT_INFO[EC_FORMAT_BITS[ecLevel] * 8 + candidateMaskIdx]);
         const score = calculatePenalty(candidate);
         if (score < bestScore) {
           bestScore = score;
@@ -608,6 +615,8 @@ const QRPanel = (() => {
     if (genId !== _generationId) return; // stale — discard
     _pages = pages;
     _currentPage = 0;
+    _previewText = text;
+    _previewSource = source;
     _renderPreview();
     _addToHistory(text, source);
   }
@@ -655,6 +664,8 @@ const QRPanel = (() => {
         const pages = await _splitText(entry.text);
         _pages = pages;
         _currentPage = 0;
+        _previewText = entry.text;
+        _previewSource = entry.source || 'history';
         _lastText = entry.text;
         _lastSelStart = -1;
         _lastSelEnd = -1;
@@ -708,14 +719,15 @@ const QRPanel = (() => {
     ctx.fillStyle = _bg;
     ctx.fillRect(0, 0, totalSize, totalSize);
 
-    // Draw modules
+    // Draw modules — finder patterns always use classic style
     ctx.fillStyle = _fg;
     for (let r = 0; r < qr.size; r++) {
       for (let c = 0; c < qr.size; c++) {
         if (!qr.matrix[r][c]) continue;
         const x = (c + quiet) * modSize;
         const y = (r + quiet) * modSize;
-        _drawModule(ctx, x, y, modSize, _style);
+        const isFinder = (r < 7 && c < 7) || (r < 7 && c >= qr.size - 7) || (r >= qr.size - 7 && c < 7);
+        _drawModule(ctx, x, y, modSize, isFinder ? 'classic' : _style);
       }
     }
 
@@ -724,22 +736,28 @@ const QRPanel = (() => {
     if (navPrev) navPrev.disabled = _currentPage <= 0;
     if (navNext) navNext.disabled = _currentPage >= _pages.length - 1;
 
-    const { text, source } = _getText();
-    if (statsEl) statsEl.textContent = `${text.length} символов · ${_pages.length} стр.`;
+    if (statsEl) statsEl.textContent = `${_previewText.length} символов · ${_pages.length} стр.`;
     if (sourceEl) {
-      if (source === 'selection') sourceEl.textContent = 'Выделенный текст';
+      if (_previewSource === 'selection') sourceEl.textContent = 'Выделенный текст';
+      else if (_previewSource === 'history') sourceEl.textContent = 'Из истории';
       else {
         const title = _getBlockTitle();
         sourceEl.textContent = title ? `Блок: ${title}` : 'Весь блок';
       }
     }
     if (infoRow) {
+      infoRow.textContent = '';
       const badges = [];
       if (page.compressed) badges.push('deflate');
       badges.push(`v1-${_ec}`);
       badges.push(`${page.bytes.length} байт`);
       if (_pages.length > 1) badges.push(`${_currentPage + 1}/${_pages.length}`);
-      infoRow.innerHTML = badges.map(b => `<span class="qr-info-badge">${b}</span>`).join('');
+      for (const b of badges) {
+        const el = document.createElement('span');
+        el.className = 'qr-info-badge';
+        el.textContent = b;
+        infoRow.appendChild(el);
+      }
     }
   }
 
@@ -1659,12 +1677,14 @@ const QRPanel = (() => {
           if (!qr.matrix[r][c]) continue;
           const x = (c + quiet) * modSize;
           const y = (r + quiet) * modSize;
-          if (_style === 'dotted') {
+          const isFinder = (r < 7 && c < 7) || (r < 7 && c >= qr.size - 7) || (r >= qr.size - 7 && c < 7);
+          const style = isFinder ? 'classic' : _style;
+          if (style === 'dotted') {
             svg += `<circle cx="${x + modSize / 2}" cy="${y + modSize / 2}" r="${modSize / 2}" fill="${_fg}"/>`;
-          } else if (_style === 'rounded') {
+          } else if (style === 'rounded') {
             const rad = modSize * 0.3;
             svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" rx="${rad}" fill="${_fg}"/>`;
-          } else if (_style === 'diamond') {
+          } else if (style === 'diamond') {
             const cx = x + modSize / 2, cy = y + modSize / 2;
             const s = modSize / 2.8;
             svg += `<rect x="${cx - s}" y="${cy - s}" width="${s * 2}" height="${s * 2}" fill="${_fg}" transform="rotate(45 ${cx} ${cy})"/>`;
