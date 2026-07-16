@@ -523,7 +523,7 @@ const QRPanel = (() => {
   /* ── QR encode cache ───────────────────────────────────── */
   const _qrCache = new Map();
   function _getEncodedQR(page) {
-    const key = `${_ec}:${page.bytes.length}:${page.bytes[0] || 0}`;
+    const key = `${_ec}:${Array.from(page.bytes).join(',')}`;
     if (!_qrCache.has(key)) _qrCache.set(key, _QR.encode(page.bytes, _ec));
     return _qrCache.get(key);
   }
@@ -621,7 +621,31 @@ const QRPanel = (() => {
     });
   }
 
-  async function _generateQR() {
+  /* ── rebuild preview (for settings changes) ────────────── */
+  async function _rebuildCurrentPreview() {
+    if (!_previewText || !_previewText.trim()) {
+      _pages = [];
+      _currentPage = 0;
+      _renderPreview();
+      return;
+    }
+    const id = ++_generationId;
+    _panel?.classList.add('qr-panel-loading');
+    try {
+      const pages = await _splitText(_previewText);
+      if (id !== _generationId) return;
+      _pages = pages;
+      _currentPage = 0;
+      _qrCache.clear();
+      _renderPreview();
+    } catch (err) {
+      _showToast(err.message || 'Не удалось подготовить QR-код');
+    } finally {
+      _panel?.classList.remove('qr-panel-loading');
+    }
+  }
+
+  async function _generateQR({ addHistory = true } = {}) {
     const genId = ++_generationId;
     const { text, source } = _getText();
     if (!text || !text.trim()) {
@@ -631,24 +655,29 @@ const QRPanel = (() => {
       return;
     }
     if (text === _lastText && _ta?.selectionStart === _lastSelStart && _ta?.selectionEnd === _lastSelEnd) return;
-    _lastText = text;
-    _lastSelStart = _ta?.selectionStart ?? -1;
-    _lastSelEnd = _ta?.selectionEnd ?? -1;
 
+    _panel?.classList.add('qr-panel-loading');
     let pages;
     try {
       pages = await _splitText(text);
     } catch (err) {
+      _lastText = '\x00'; // invalidate cache on error
       _showToast(err.message || 'Не удалось подготовить QR-код');
+      _panel?.classList.remove('qr-panel-loading');
       return;
     }
-    if (genId !== _generationId) return; // stale — discard
+    _panel?.classList.remove('qr-panel-loading');
+    if (!_isOpen || genId !== _generationId) return; // stale or closed
+    _lastText = text;
+    _lastSelStart = _ta?.selectionStart ?? -1;
+    _lastSelEnd = _ta?.selectionEnd ?? -1;
     _pages = pages;
     _currentPage = 0;
     _previewText = text;
     _previewSource = source;
+    _qrCache.clear();
     _renderPreview();
-    _addToHistory(text, source);
+    if (addHistory) _addToHistory(text, source);
   }
 
   /* ── history ───────────────────────────────────────────── */
@@ -703,7 +732,7 @@ const QRPanel = (() => {
         _pages = pages;
         _currentPage = 0;
         _previewText = entry.text;
-        _previewSource = entry.source || 'history';
+        _previewSource = 'history';
         _lastText = entry.text;
         _lastSelStart = -1;
         _lastSelEnd = -1;
@@ -1043,9 +1072,7 @@ const QRPanel = (() => {
         _ec = ec.id;
         _storageSet('qr-ec', ec.id);
         ecGroup.querySelectorAll('.qr-ec-btn').forEach(b => b.classList.toggle('active', b.dataset.ec === ec.id));
-        _qrCache.clear();
-        _lastText = '\x00'; // invalidate generation cache
-        _renderPreview();
+        _rebuildCurrentPreview();
       };
       ecGroup.appendChild(btn);
     }
@@ -1082,8 +1109,7 @@ const QRPanel = (() => {
     const compressToggle = _buildToggle('Deflate-сжатие', _compress, v => {
       _compress = v;
       _storageSet('qr-compress', String(v));
-      _lastText = '\x00'; // invalidate cache
-      _scheduleUpdate();
+      _rebuildCurrentPreview();
     });
     const paddingToggle = _buildToggle('Padding 4px', _padding, v => {
       _padding = v;
@@ -1770,6 +1796,7 @@ const QRPanel = (() => {
   }
 
   function close() {
+    ++_generationId; // invalidate any pending async generation
     if (_panel) _panel.style.display = 'none';
     _isOpen = false;
     _closeColorPicker();

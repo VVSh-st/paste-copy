@@ -7561,3 +7561,18 @@ body.help-open {
   padding: 6px 8px;
   margin-top: 4px;
 }
+
+/* ── Loading state ──────────────────────────── */
+.qr-panel-loading .qr-canvas-wrap {
+  opacity: 0.5;
+  position: relative;
+}
+.qr-panel-loading .qr-canvas-wrap::after {
+  content: 'Обновление...';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text3, #888);
+  font-size: 12px;
+}
