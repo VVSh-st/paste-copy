@@ -608,7 +608,6 @@ const QRPanel = (() => {
       }
       ecToUse = EC_ORDER[i]; // fallback: lowest EC that was tried
     }
-    _effectiveEc = ecToUse;
 
     const qrCapacity = _QR.getMaxDataBytes(ecToUse);
 
@@ -617,7 +616,7 @@ const QRPanel = (() => {
       const full = new Uint8Array(header.length + bytes.length);
       full.set(header);
       full.set(bytes, header.length);
-      return [{ bytes: full, text, compressed: useCompress, page: 0, total: 1 }];
+      return { pages: [{ bytes: full, text, compressed: useCompress, page: 0, total: 1 }], effectiveEc: ecToUse };
     }
 
     const chunkSize = qrCapacity - headerSize;
@@ -628,13 +627,16 @@ const QRPanel = (() => {
     if (rawPages.length > 255) {
       throw new Error('Текст слишком длинный для QR-кода');
     }
-    return rawPages.map((chunk, idx) => {
-      const header = new Uint8Array([1, idx, rawPages.length, useCompress ? 1 : 0]);
-      const full = new Uint8Array(header.length + chunk.length);
-      full.set(header);
-      full.set(chunk, header.length);
-      return { bytes: full, text: '', compressed: useCompress, page: idx, total: rawPages.length };
-    });
+    return {
+      pages: rawPages.map((chunk, idx) => {
+        const header = new Uint8Array([1, idx, rawPages.length, useCompress ? 1 : 0]);
+        const full = new Uint8Array(header.length + chunk.length);
+        full.set(header);
+        full.set(chunk, header.length);
+        return { bytes: full, text: '', compressed: useCompress, page: idx, total: rawPages.length };
+      }),
+      effectiveEc: ecToUse,
+    };
   }
 
   /* ── clear preview state ──────────────────────────────── */
@@ -657,9 +659,10 @@ const QRPanel = (() => {
     const id = ++_generationId;
     _panel?.classList.add('qr-panel-loading');
     try {
-      const pages = await _splitText(_previewText);
+      const result = await _splitText(_previewText);
       if (!_isOpen || id !== _generationId) return;
-      _pages = pages;
+      _effectiveEc = result.effectiveEc;
+      _pages = result.pages;
       _currentPage = 0;
       _qrCache.clear();
       _renderPreview();
@@ -668,7 +671,9 @@ const QRPanel = (() => {
       if (id !== _generationId || !_isOpen) return;
       _pages = [];
       _currentPage = 0;
+      _effectiveEc = _ec;
       _renderPreview();
+      _updateEcNote();
       _showToast(err.message || 'Не удалось подготовить QR-код');
     } finally {
       if (id === _generationId) {
@@ -687,14 +692,15 @@ const QRPanel = (() => {
     if (text === _lastText && _ta?.selectionStart === _lastSelStart && _ta?.selectionEnd === _lastSelEnd) return;
 
     _panel?.classList.add('qr-panel-loading');
-    let pages;
+    let result;
     try {
-      pages = await _splitText(text);
+      result = await _splitText(text);
     } catch (err) {
       if (!_isOpen || genId !== _generationId) return;
       _lastText = '\x00';
       _clearPreview();
       _showToast(err.message || 'Не удалось подготовить QR-код');
+      return;
     } finally {
       if (genId === _generationId) {
         _panel?.classList.remove('qr-panel-loading');
@@ -704,7 +710,8 @@ const QRPanel = (() => {
     _lastText = text;
     _lastSelStart = _ta?.selectionStart ?? -1;
     _lastSelEnd = _ta?.selectionEnd ?? -1;
-    _pages = pages;
+    _effectiveEc = result.effectiveEc;
+    _pages = result.pages;
     _currentPage = 0;
     _previewText = text;
     _previewSource = source;
@@ -755,16 +762,17 @@ const QRPanel = (() => {
       item.append(preview, meta);
       item.onclick = async () => {
         const id = ++_generationId;
-        let pages;
+        let result;
         try {
-          pages = await _splitText(entry.text);
+          result = await _splitText(entry.text);
         } catch (err) {
           if (!_isOpen || id !== _generationId) return;
           _showToast(err.message || 'Не удалось подготовить QR-код');
           return;
         }
         if (id !== _generationId) return;
-        _pages = pages;
+        _effectiveEc = result.effectiveEc;
+        _pages = result.pages;
         _currentPage = 0;
         _previewText = entry.text;
         _previewSource = 'history';
@@ -851,7 +859,8 @@ const QRPanel = (() => {
       infoRow.textContent = '';
       const badges = [];
       if (page.compressed) badges.push('deflate');
-      badges.push(`v1-${_ec}`);
+      badges.push(`v1-${_effectiveEc}`);
+      if (_effectiveEc !== _ec) badges.push(`авто вместо ${_ec}`);
       badges.push(`${page.bytes.length} байт`);
       if (_pages.length > 1) badges.push(`${_currentPage + 1} из ${_pages.length}`);
       for (const b of badges) {
@@ -1836,6 +1845,7 @@ const QRPanel = (() => {
 
   /* ── public API ────────────────────────────────────────── */
   function open(ta) {
+    ++_generationId;
     _ta = ta;
     _buildPanel();
     _panel.style.display = 'flex';
