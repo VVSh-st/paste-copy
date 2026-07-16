@@ -2954,6 +2954,16 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       WordCount.setupButton(wcBtn, ta);
       footer.appendChild(wcBtn);
     }
+    // ── QR Panel button (после Word Count) ──────────────────
+    if (typeof QRPanel !== 'undefined') {
+      const qrBtn = document.createElement('button');
+      qrBtn.type = 'button';
+      qrBtn.className = 'font-ctrl-btn qr-panel-btn';
+      qrBtn.title = 'QR-код выделенного текста';
+      qrBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="2" y="2" width="5" height="5" rx="0.8"/><rect x="9" y="2" width="5" height="5" rx="0.8"/><rect x="2" y="9" width="5" height="5" rx="0.8"/><rect x="9" y="9" width="3" height="3" rx="0.5"/><line x1="12.5" y1="12.5" x2="14" y2="14"/></svg>';
+      QRPanel.setupButton(qrBtn, ta);
+      footer.appendChild(qrBtn);
+    }
     footer.appendChild(scrollControls);
     body.appendChild(footer);
     body.appendChild(translateDropdown);
