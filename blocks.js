@@ -3311,8 +3311,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const btn2 = document.createElement('button');
         btn2.type = 'button';
         btn2.innerHTML = '<span class="snip-icon">' + escHtml(item.icon || '💬') + '</span>'
-                       + '<span class="snip-label">' + escHtml(item.label) + '</span>'
-                       + (item.global ? '<span class="snip-cloud" title="Глобальный сниппет">☁</span>' : '');
+                       + '<span class="snip-label">' + escHtml(item.label) + '</span>';
         btn2.title  = item.value;
         btn2.onclick = e => {
           e.stopPropagation();
