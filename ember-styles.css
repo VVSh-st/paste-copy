@@ -418,6 +418,11 @@
   pointer-events: none;
   overflow: visible;
   z-index: 10;
+  /* Следуем за позицией ядра угля — landed-частицы
+     остаются «на поверхности» при любом движении.
+     GPU-composited: нулевая нагрузка на CPU. */
+  transform: translate(var(--shiftX, 0px), var(--shiftY, 0px))
+             translateZ(var(--depthZ, 0px));
 }
 
 .ember-ash {

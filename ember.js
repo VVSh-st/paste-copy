@@ -3598,6 +3598,12 @@ const Ember = (() => {
       setVar(root, '--glowBlur', (5 + heatBoost * 2).toFixed(2) + 'px');
       setVar(root, '--glowScale', (1 + heatBoost * 0.1).toFixed(3));
       setVar(root, '--ringOpacity', clamp(intensity * 0.6 + 0.4, 0, 1).toFixed(3));
+
+      //安全保障: сброс позиции для particle layer во время egg
+      setVar(root, '--shiftX', '0px');
+      setVar(root, '--shiftY', '0px');
+      setVar(root, '--depthZ', '0px');
+
       updateCrackLayers(now, crackGlow);
       setStyle(coreEl, 'filter', 'brightness(var(--brightness))');
 
