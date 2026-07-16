@@ -6,6 +6,15 @@
 - Работай в ponytail-режиме: сначала самый короткий рабочий путь, без абстракций на будущее.
 - Если задача не требует кода, не делай код.
 
+## Devibify (UI-аудит и дизайн)
+
+При UI-задачах (аудит интерфейса, фиксы accessibility, рефакторинг компонентов, добавление фич с UI) загружай Devibify через `read`:
+- Основной файл: `Skill/skills/devibify/SKILL.md`
+- Справочники по необходимости из `Skill/skills/devibify/references/`
+- Сканер: `Skill/skills/devibify/scripts/scan-ui-smells.py`
+
+Devibify НЕ в available_skills — вызов через `skill` невозможен. Используй `read` вручную.
+
 ## Рабочий цикл
 
 1. Сначала читай `HANDOFF.md` и точные файлы, которые затрагивает задача.
