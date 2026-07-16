@@ -3227,7 +3227,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
   }
 
   document.addEventListener('click',   e => { if (_slashPalette && !_slashPalette.contains(e.target)) _closeSlashPalette(); });
-  document.addEventListener('close-all-palettes', () => { if (_slashPalette) _closeSlashPalette(); });
+  document.addEventListener('close-all-palettes', () => {
+    if (_slashPalette) _closeSlashPalette();
+    const dd = document.getElementById('snippet-dropdown');
+    if (dd && dd.style.display !== 'none') dd.style.display = 'none';
+  });
   document.addEventListener('keydown',  e => {
     if (!_slashPalette) return;
     const rows = [..._slashPalette.querySelectorAll('.dropdown-item')];
