@@ -672,13 +672,16 @@ const QRPanel = (() => {
     try {
       pages = await _splitText(text);
     } catch (err) {
-      _lastText = '\x00'; // invalidate cache on error
+      if (!_isOpen || genId !== _generationId) return;
+      _lastText = '\x00';
+      _clearPreview();
       _showToast(err.message || 'Не удалось подготовить QR-код');
-      _panel?.classList.remove('qr-panel-loading');
-      return;
+    } finally {
+      if (genId === _generationId) {
+        _panel?.classList.remove('qr-panel-loading');
+      }
     }
-    _panel?.classList.remove('qr-panel-loading');
-    if (!_isOpen || genId !== _generationId) return; // stale or closed
+    if (!_isOpen || genId !== _generationId) return;
     _lastText = text;
     _lastSelStart = _ta?.selectionStart ?? -1;
     _lastSelEnd = _ta?.selectionEnd ?? -1;
@@ -736,6 +739,7 @@ const QRPanel = (() => {
         try {
           pages = await _splitText(entry.text);
         } catch (err) {
+          if (!_isOpen || id !== _generationId) return;
           _showToast(err.message || 'Не удалось подготовить QR-код');
           return;
         }
@@ -1293,9 +1297,11 @@ const QRPanel = (() => {
     pipette.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13 2l1 1-2 2-1-1-8 8-2 1 1-2 8-8-1-1z"/></svg>';
     pipette.onclick = async () => {
       if (!window.EyeDropper) { _showToast('Пипетка не поддерживается в этом браузере'); return; }
+      const target = _pickerTarget;
       try {
         const dropper = new EyeDropper();
         const result = await dropper.open();
+        if (!_isOpen || !_pickerOpen || _pickerTarget !== target) return;
         _applyPickerColor(result.sRGBHex);
         hexInput.value = result.sRGBHex;
       } catch (_) {}
@@ -1431,6 +1437,7 @@ const QRPanel = (() => {
   }
 
   function _applyPickerColor(hex) {
+    if (_pickerTarget !== 'fg' && _pickerTarget !== 'bg') return;
     if (_pickerTarget === 'fg') _fg = hex;
     else _bg = hex;
     _storageSet(`qr-${_pickerTarget}`, hex);
