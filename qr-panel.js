@@ -178,6 +178,109 @@ const QRPanel = (() => {
       return -1;
     }
 
+    /* ── mask helpers ──────────────────────────────────────── */
+    function cloneMatrix(matrix) {
+      return matrix.map(row => new Uint8Array(row));
+    }
+
+    function applyMask(matrix, reserved, maskFn) {
+      const size = matrix.length;
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (!reserved[r][c] && maskFn(r, c)) {
+            matrix[r][c] ^= 1;
+          }
+        }
+      }
+    }
+
+    function placeFormatInfo(matrix, formatBits) {
+      const size = matrix.length;
+      for (let i = 0; i < 15; i++) {
+        const bit = (formatBits >> i) & 1;
+        const row = i < 6 ? i : i < 8 ? i + 1 : size - 15 + i;
+        matrix[row][8] = bit;
+      }
+      for (let i = 0; i < 15; i++) {
+        const bit = (formatBits >> i) & 1;
+        const col = i < 8 ? size - i - 1 : i === 8 ? 7 : 15 - i - 1;
+        matrix[8][col] = bit;
+      }
+    }
+
+    const FORMAT_INFO = [
+      0x5412,0x5125,0x5E7C,0x5B4B,0x45F9,0x40CE,0x4F97,0x4AA0,
+      0x77C4,0x72F3,0x7DAA,0x789D,0x662F,0x6318,0x6C41,0x6976,
+      0x1689,0x13BE,0x1CE7,0x19D0,0x0762,0x0255,0x0D0C,0x083B,
+      0x355F,0x3068,0x3F31,0x3A06,0x24B4,0x2183,0x2EDA,0x2BED
+    ];
+
+    function penaltyN1(matrix) {
+      const size = matrix.length;
+      let score = 0;
+      function scoreLine(get) {
+        let runColor = get(0), runLength = 1;
+        for (let i = 1; i < size; i++) {
+          const color = get(i);
+          if (color === runColor) { runLength++; }
+          else {
+            if (runLength >= 5) score += 3 + runLength - 5;
+            runColor = color; runLength = 1;
+          }
+        }
+        if (runLength >= 5) score += 3 + runLength - 5;
+      }
+      for (let r = 0; r < size; r++) scoreLine(c => matrix[r][c]);
+      for (let c = 0; c < size; c++) scoreLine(r => matrix[r][c]);
+      return score;
+    }
+
+    function penaltyN2(matrix) {
+      const size = matrix.length;
+      let score = 0;
+      for (let r = 0; r < size - 1; r++) {
+        for (let c = 0; c < size - 1; c++) {
+          const v = matrix[r][c];
+          if (matrix[r][c+1] === v && matrix[r+1][c] === v && matrix[r+1][c+1] === v) score += 3;
+        }
+      }
+      return score;
+    }
+
+    function penaltyN3(matrix) {
+      const size = matrix.length;
+      let score = 0;
+      const left = [1,0,1,1,1,0,1,0,0,0,0];
+      const right = [0,0,0,0,1,0,1,1,1,0,1];
+      function matches(get, start, pat) {
+        for (let i = 0; i < pat.length; i++) if (get(start + i) !== pat[i]) return false;
+        return true;
+      }
+      function scoreLine(get) {
+        for (let s = 0; s <= size - 11; s++) {
+          if (matches(get, s, left)) score += 40;
+          if (matches(get, s, right)) score += 40;
+        }
+      }
+      for (let r = 0; r < size; r++) scoreLine(i => matrix[r][i]);
+      for (let c = 0; c < size; c++) scoreLine(i => matrix[i][c]);
+      return score;
+    }
+
+    function penaltyN4(matrix) {
+      const size = matrix.length;
+      const total = size * size;
+      let dark = 0;
+      for (let r = 0; r < size; r++)
+        for (let c = 0; c < size; c++) if (matrix[r][c]) dark++;
+      const percent = dark * 100 / total;
+      return Math.floor(Math.abs(percent - 50) / 5) * 10;
+    }
+
+    function calculatePenalty(matrix) {
+      return penaltyN1(matrix) + penaltyN2(matrix) + penaltyN3(matrix) + penaltyN4(matrix);
+    }
+
     function encode(data, ecLevel) {
       initGF();
       const ecIdx = EC_LEVELS[ecLevel];
@@ -348,7 +451,7 @@ const QRPanel = (() => {
         col -= 2;
       }
 
-      // Apply mask (mask 0 for simplicity — could try all 8 and pick best)
+      // Select best mask per QR spec (penalty N1-N4)
       const masks = [
         (r, c) => (r + c) % 2 === 0,
         (r, c) => r % 2 === 0,
@@ -357,30 +460,27 @@ const QRPanel = (() => {
         (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
         (r, c) => (r * c) % 2 + (r * c) % 3 === 0,
         (r, c) => ((r * c) % 2 + (r * c) % 3) % 2 === 0,
-        (r, c) => ((r + c) % 2 + (r * c) % 3) % 2 === 0
+        (r, c) => ((r + c) % 2 + (r * c) % 3) % 2 === 0,
       ];
-      const maskIdx = 0;
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          if (!reserved[r][c] && masks[maskIdx](r, c)) {
-            matrix[r][c] ^= 1;
-          }
+
+      let bestMaskIdx = 0;
+      let bestScore = Infinity;
+      let bestMatrix = null;
+
+      for (let candidateMaskIdx = 0; candidateMaskIdx < masks.length; candidateMaskIdx++) {
+        const candidate = cloneMatrix(matrix);
+        applyMask(candidate, reserved, masks[candidateMaskIdx]);
+        placeFormatInfo(candidate, FORMAT_INFO[ecIdx * 8 + candidateMaskIdx]);
+        const score = calculatePenalty(candidate);
+        if (score < bestScore) {
+          bestScore = score;
+          bestMaskIdx = candidateMaskIdx;
+          bestMatrix = candidate;
         }
       }
 
-      // Format info
-      const formatInfo = [
-        0x5412,0x5125,0x5E7C,0x5B4B,0x45F9,0x40CE,0x4F97,0x4AA0,
-        0x77C4,0x72F3,0x7DAA,0x789D,0x662F,0x6318,0x6C41,0x6976,
-        0x1689,0x13BE,0x1CE7,0x19D0,0x0762,0x0255,0x0D0C,0x083B,
-        0x355F,0x3068,0x3F31,0x3A06,0x24B4,0x2183,0x2EDA,0x2BED
-      ];
-      const fi = formatInfo[ecIdx * 8 + maskIdx];
-      for (let i = 0; i < 6; i++) matrix[8][i] = (fi >> (14 - i)) & 1;
-      matrix[8][7] = (fi >> 8) & 1;
-      matrix[8][8] = (fi >> 7) & 1;
-      matrix[7][8] = (fi >> 6) & 1;
-      for (let i = 0; i < 6; i++) matrix[5 - i][8] = (fi >> i) & 1;
+      if (!bestMatrix) return null;
+      for (let r = 0; r < size; r++) matrix[r] = bestMatrix[r];
 
       return { matrix, size };
     }
