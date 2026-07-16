@@ -859,7 +859,7 @@ const QRPanel = (() => {
       infoRow.textContent = '';
       const badges = [];
       if (page.compressed) badges.push('сжато');
-      badges.push(`v1-${_effectiveEc}`);
+      badges.push(`${_effectiveEc}`);
       badges.push(`${page.bytes.length} байт`);
       if (_pages.length > 1) badges.push(`${_currentPage + 1} из ${_pages.length}`);
       for (const b of badges) {
@@ -1155,7 +1155,7 @@ const QRPanel = (() => {
       _storageSet('qr-compress', String(v));
       _rebuildCurrentPreview();
     });
-    const paddingToggle = _buildToggle('Padding 4px', _padding, v => {
+    const paddingToggle = _buildToggle('Тихая зона 4м', _padding, v => {
       _padding = v;
       _storageSet('qr-padding', String(v));
       _renderPreview();
