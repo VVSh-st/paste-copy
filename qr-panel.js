@@ -44,6 +44,7 @@ const QRPanel = (() => {
   let _fg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-fg')) ? _storageGet('qr-fg') : '#000000';
   let _bg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-bg')) ? _storageGet('qr-bg') : '#FFFFFF';
   let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'L';
+  let _effectiveEc = _ec; // actual EC used (may differ from _ec when auto-downgrading)
   let _compress = _storageGet('qr-compress') !== 'false';
   let _padding = _storageGet('qr-padding') !== 'false';
   const VALID_TABS = ['preview', 'style', 'export', 'history'];
@@ -523,8 +524,8 @@ const QRPanel = (() => {
   /* ── QR encode cache ───────────────────────────────────── */
   const _qrCache = new Map();
   function _getEncodedQR(page) {
-    const key = `${_ec}:${Array.from(page.bytes).join(',')}`;
-    if (!_qrCache.has(key)) _qrCache.set(key, _QR.encode(page.bytes, _ec));
+    const key = `${_effectiveEc}:${Array.from(page.bytes).join(',')}`;
+    if (!_qrCache.has(key)) _qrCache.set(key, _QR.encode(page.bytes, _effectiveEc));
     return _qrCache.get(key);
   }
 
@@ -594,7 +595,22 @@ const QRPanel = (() => {
     }
 
     const headerSize = 4; // version(1) + page(1) + total(1) + flags(1)
-    const qrCapacity = _QR.getMaxDataBytes(_ec);
+
+    // Auto-downgrade EC: find highest EC that fits the data
+    const EC_ORDER = ['H', 'Q', 'M', 'L'];
+    const ecStart = EC_ORDER.indexOf(_ec);
+    let ecToUse = _ec;
+    for (let i = ecStart; i < EC_ORDER.length; i++) {
+      const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
+      if (bytes.length + headerSize <= cap) {
+        ecToUse = EC_ORDER[i];
+        break;
+      }
+      ecToUse = EC_ORDER[i]; // fallback: lowest EC that was tried
+    }
+    _effectiveEc = ecToUse;
+
+    const qrCapacity = _QR.getMaxDataBytes(ecToUse);
 
     if (bytes.length + headerSize <= qrCapacity) {
       const header = new Uint8Array([1, 0, 1, useCompress ? 1 : 0]);
@@ -627,7 +643,9 @@ const QRPanel = (() => {
     _previewSource = '';
     _pages = [];
     _currentPage = 0;
+    _effectiveEc = _ec;
     _renderPreview();
+    _updateEcNote();
   }
 
   /* ── rebuild preview (for settings changes) ────────────── */
@@ -645,6 +663,7 @@ const QRPanel = (() => {
       _currentPage = 0;
       _qrCache.clear();
       _renderPreview();
+      _updateEcNote();
     } catch (err) {
       if (id !== _generationId || !_isOpen) return;
       _pages = [];
@@ -691,6 +710,7 @@ const QRPanel = (() => {
     _previewSource = source;
     _qrCache.clear();
     _renderPreview();
+    _updateEcNote();
     if (addHistory) _addToHistory(text, source);
   }
 
@@ -752,6 +772,7 @@ const QRPanel = (() => {
         _lastSelStart = -1;
         _lastSelEnd = -1;
         _renderPreview();
+        _updateEcNote();
         _switchTab('preview');
       };
       list.appendChild(item);
@@ -1094,6 +1115,7 @@ const QRPanel = (() => {
     const ecNote = document.createElement('span');
     ecNote.className = 'qr-ec-note';
     ecNote.textContent = 'авто';
+    _panel._ecNote = ecNote;
     stylePane.append(ecGroup, ecNote);
 
     content.appendChild(stylePane);
@@ -1546,6 +1568,18 @@ const QRPanel = (() => {
       el.style.display = 'block';
     } else {
       el.style.display = 'none';
+    }
+  }
+
+  function _updateEcNote() {
+    const el = _panel?._ecNote;
+    if (!el) return;
+    if (_effectiveEc !== _ec) {
+      el.textContent = `${_effectiveEc} (авто)`;
+      el.style.color = 'var(--accent, #4f8ef7)';
+    } else {
+      el.textContent = 'авто';
+      el.style.color = '';
     }
   }
 
