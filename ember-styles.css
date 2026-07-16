@@ -145,6 +145,7 @@
   position: relative;
   width: 20px;
   height: 20px;
+  contain: layout paint;
   border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%;
   background:
     radial-gradient(circle at calc(50% + var(--lightX, 0%)) calc(38% + var(--lightY, 0%)),

@@ -119,6 +119,7 @@ body {
   background: var(--bg1); padding: 7px 12px;
   display: flex; gap: 4px; align-items: center;
   border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
+  min-height: 48px; contain: layout style;
 }
 .tb-btn {
   background: var(--surface); color: var(--text1); border: 1px solid var(--border);
@@ -500,6 +501,7 @@ body {
 #workspace {
   flex: 1; display: flex; gap: 0; padding: 10px;
   overflow: hidden; align-items: stretch; min-height: 120px;
+  contain: layout style;
 }
 .column {
   display: flex; flex-direction: column; gap: 8px;
