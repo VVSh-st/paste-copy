@@ -39,7 +39,8 @@ const QRPanel = (() => {
   let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'L';
   let _compress = _storageGet('qr-compress') !== 'false';
   let _padding = _storageGet('qr-padding') !== 'false';
-  let _activeTab = _storageGet('qr-panel-tab') || 'preview';
+  const VALID_TABS = ['preview', 'style', 'export', 'history'];
+  let _activeTab = VALID_TABS.includes(_storageGet('qr-panel-tab')) ? _storageGet('qr-panel-tab') : 'preview';
 
   /* drag state */
   let _dragging = false;
@@ -60,7 +61,10 @@ const QRPanel = (() => {
   const HISTORY_KEY = 'qr-history';
   const HISTORY_MAX = 20;
   let _history = [];
-  { const stored = _readJSON(HISTORY_KEY, []); _history = Array.isArray(stored) ? stored : []; }
+  { const stored = _readJSON(HISTORY_KEY, []);
+    _history = Array.isArray(stored)
+      ? stored.filter(e => e && typeof e === 'object' && typeof e.text === 'string' && typeof e.ts === 'number').slice(0, HISTORY_MAX)
+      : []; }
 
   /* ── constants ─────────────────────────────────────────── */
   const PANEL_DEFAULT_W = 360;
@@ -124,7 +128,7 @@ const QRPanel = (() => {
     // Version info
     const TOTAL_CODEWORDS = [
       0,26,44,70,100,134,172,196,242,292,346,404,466,532,581,655,733,815,901,991,
-      1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532
+      1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532,3706
     ];
     const EC_CODEWORDS_PER_BLOCK = [
       0,[7,10,15,20],[10,16,26,36],[15,26,18,26],[20,18,26,30],
@@ -670,13 +674,13 @@ const QRPanel = (() => {
     p.setAttribute('aria-label', 'QR-код');
 
     // Restore position/size
-    const savedPos = JSON.parse(localStorage.getItem('qr-panel-pos') || 'null');
-    const savedSize = JSON.parse(localStorage.getItem('qr-panel-size') || 'null');
-    const w = savedSize?.w || PANEL_DEFAULT_W;
-    const h = savedSize?.h || PANEL_DEFAULT_H;
+    const savedPos = _readJSON('qr-panel-pos', null);
+    const savedSize = _readJSON('qr-panel-size', null);
+    const w = Number.isFinite(savedSize?.w) ? Math.max(PANEL_MIN_W, Math.min(500, savedSize.w)) : PANEL_DEFAULT_W;
+    const h = Number.isFinite(savedSize?.h) ? Math.max(PANEL_MIN_H, Math.min(700, savedSize.h)) : PANEL_DEFAULT_H;
     p.style.width = w + 'px';
     p.style.height = h + 'px';
-    if (savedPos) {
+    if (Number.isFinite(savedPos?.left) && Number.isFinite(savedPos?.top)) {
       p.style.left = savedPos.left + 'px';
       p.style.top = savedPos.top + 'px';
     } else {
@@ -1469,18 +1473,22 @@ const QRPanel = (() => {
   }
 
   /* ── export helpers ────────────────────────────────────── */
-  function _copyToClipboard() {
+  async function _copyToClipboard() {
     const canvas = _panel?.querySelector('.qr-canvas');
     if (!canvas || !_pages.length) return;
-    canvas.toBlob(blob => {
-      if (!blob) return;
+    if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+      _showToast('Копирование изображений не поддерживается');
+      return;
+    }
+    try {
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('No blob');
       const item = new ClipboardItem({ 'image/png': blob });
-      navigator.clipboard.write([item]).then(() => {
-        _showToast('QR скопирован в буфер обмена');
-      }).catch(() => {
-        _showToast('Не удалось скопировать');
-      });
-    });
+      await navigator.clipboard.write([item]);
+      _showToast('QR скопирован в буфер обмена');
+    } catch {
+      _showToast('Не удалось скопировать');
+    }
   }
 
   function _download(format) {
@@ -1497,7 +1505,7 @@ const QRPanel = (() => {
       const qr = _QR.encode(page.bytes, _ec);
       if (!qr) return;
       const modSize = _moduleSize;
-      const quiet = 4;
+      const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
       let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${totalSize}" height="${totalSize}">`;
       svg += `<rect width="${totalSize}" height="${totalSize}" fill="${_bg}"/>`;

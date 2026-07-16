@@ -7123,17 +7123,20 @@ body.help-open {
   padding: 2px 0;
 }
 .qr-canvas-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   background: var(--bg1, #16161e);
   border-radius: 8px;
   padding: 12px;
   min-height: 160px;
+  overflow: auto;
+  min-height: 0;
 }
 .qr-canvas {
   image-rendering: pixelated;
   max-width: 100%;
+  max-height: 100%;
+  width: auto;
   height: auto;
   border-radius: 4px;
 }
