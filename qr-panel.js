@@ -859,7 +859,8 @@ const QRPanel = (() => {
       infoRow.textContent = '';
       const badges = [];
       if (page.compressed) badges.push('Сжатие вкл.');
-      badges.push(`${_effectiveEc}`);
+      const ecPct = { H: '30', Q: '25', M: '15', L: '7' };
+      badges.push(`К.о. +${ecPct[_effectiveEc] || '?'}%`);
       badges.push(`${page.bytes.length} байт`);
       if (_pages.length > 1) badges.push(`${_currentPage + 1} из ${_pages.length}`);
       for (const b of badges) {
