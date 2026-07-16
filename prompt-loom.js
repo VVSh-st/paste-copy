@@ -2336,8 +2336,6 @@
       .pl-palette.slash-palette {
         z-index: var(--z-prompt-loom-palette);
         width: min(248px, calc(100vw - 16px));
-        max-height: min(282px, calc(100vh - 18px));
-        overflow: hidden;
         padding: 5px;
         animation: plDrop .12s cubic-bezier(.16,1,.3,1);
       }
@@ -2351,7 +2349,7 @@
         font: 11px/1.2 inherit;
       }
       .pl-pal-search:focus { border-color: rgba(79,142,247,.55); box-shadow: 0 0 0 2px rgba(79,142,247,.14); }
-      .pl-pal-list { display: flex; flex-direction: column; gap: 1px; max-height: min(242px, calc(100vh - 58px)); overflow: auto; }
+      .pl-pal-list { display: flex; flex-direction: column; gap: 1px; }
       .pl-pal-list .dropdown-item { flex: 0 0 auto; }
       .pl-pal-empty { padding: 9px 8px; color: var(--text3); font-size: 11px; text-align: center; }
       .pl-pal-item.pl-pal-item.slash-item {
