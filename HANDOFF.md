@@ -739,6 +739,158 @@
 
 ---
 
+### Prompt Loom + Slash palette — полная высота списка
+
+**Проблема:** palette "Последние фрагменты" (✂ кнопка) и slash palette (`\` в тексте) имели `max-height` и `overflow: auto/y` — список обрезался, появлялся скроллбар.
+
+**Причина:** ограничения задавались в двух местах:
+1. `styles.css` — базовый класс `.slash-palette` (`max-height: 232px`, `overflow-y: auto`)
+2. `prompt-loom.js` — inline `<style>` для `.pl-palette.slash-palette` (`max-height: 282px`, `overflow: hidden`) и `.pl-pal-list` (`max-height: 242px`, `overflow: auto`)
+
+**Решение:**
+- `styles.css` — убраны `max-height` и `overflow-y` у `.slash-palette`
+- `prompt-loom.js` — убраны `max-height` и `overflow` у `.pl-palette.slash-palette` и `.pl-pal-list`
+
+Viewport clamping в JS (`positionPalette`) при необходимости переворачивает палитру над кареткой.
+
+**Коммиты:**
+- `544b91b` — первая попытка (только prompt-loom.js, не сработало)
+- `571b3fd` — revert
+- `f1ac228` — styles.css (частично сработало)
+- `1244035` — оба файла, финальный фикс
+
+**Файлы:** `prompt-loom.js`, `styles.css`
+
+---
+
+---
+
+### Palette mutual exclusion (сессия 2026-07-16)
+
+**Проблема:** Prompt Loom palette, slash palette и snippet-dropdown могли быть открыты одновременно.
+
+**Причина:** `close-all-palettes` событие dispatch'илось, но не все модули его слушали. Snippet-dropdown вообще не слушал это событие.
+
+**Решение:**
+1. `prompt-loom.js` — добавлен `close-all-palettes` listener: `if (palette) closePalette()`
+2. `prompt-loom.js` — `openQuickFor()` диспатчит `close-all-palettes` перед открытием PL palette
+3. `prompt-loom.js` — `handleBackslashTrigger()` диспатчит `close-all-palettes` при открытии PL palette
+4. `blocks.js` — `close-all-palettes` listener закрывает `#snippet-dropdown`
+
+**Коммиты:**
+- `d4d284a` — fix: close the other palette when one opens (slash ↔ Prompt Loom mutual exclusion)
+- `8ccab33` — fix: also close slash palette when Prompt Loom opens via backslash trigger
+- `b707a01` — fix: close snippet-dropdown when Prompt Loom palette opens (listen to close-all-palettes)
+
+**Файлы:** `prompt-loom.js`, `blocks.js`
+
+---
+
+### Prompt Loom — search input не закрывает palette
+
+**Баг:** при попытке ввести текст в поисковое поле palette закрывалось.
+
+**Причина:** `handleBackslashTrigger` вызывался на каждый `input` событие, включая ввод в search input palette. `inlineSession.el !== searchInput` → `closePalette()`.
+
+**Фикс:** добавлена проверка `if (palette?.contains(el)) return;` в `handleBackslashTrigger`.
+
+**Коммит:** `405c890`
+
+**Файл:** `prompt-loom.js`
+
+---
+
+### Snippet dropdown — удалена иконка облака
+
+**Изменение:** убрана иконка ☁ (`<span class="snip-cloud">`) из dropdown snippet menu.
+
+**Коммит:** `81305e2`
+
+**Файл:** `blocks.js`
+
+---
+
+### Long-press иконки блока — toggle заголовков в превью
+
+**Функционал:** долгий клик (400ms) по иконке блока переключает `previewHeaders` в layout state.
+
+**Реализация:**
+1. Long-press хендлер на `.block-icon` — 400ms timeout
+2. При long-press: переключает `State.getLayout().previewHeaders`
+3. Визуал: `.block-icon.headers-hidden` — синяя иконка (`#4f8ef7`) + мягкая тень `drop-shadow`
+4. Синхронизация: при рендере блоков иконки синхронизируются с состоянием
+5. Чекбокс "Заголовки блоков" перенесён из "Превью" в "Настройки → LLM → Разное → Общее"
+
+**Коммит:** `0020b77`
+
+**Файлы:** `blocks.js`, `styles.css`, `index.html`
+
+---
+
+### Help — секция "Эмодзи-пикер"
+
+**Добавлена карточка** в справку (после "Автодополнение"):
+- `:` + название → выпадающий список
+- Навигация ↑↓, принятие Tab/Enter
+- `::` — приклеивается к слову без пробела
+- Ссылка на настройки (LLM → Разное → Общее)
+
+**Коммит:** `b2b2690`
+
+**Файл:** `help.js`
+
+---
+
+### Ember particles — landed-частицы следуют за ядром
+
+**Баг:** при движении угля (dashed ring, peek, wiggle) landed-пылинки оставались на месте — визуально «прилипли к стеклу».
+
+**Решение:**
+1. CSS: `.ember-particles` получил `transform: translate(var(--shiftX), var(--shiftY)) translateZ(var(--depthZ))` — GPU-composited, нулевая CPU-нагрузка
+2. JS: в egg-фазе сброс `--shiftX`/`--shiftY`/`--depthZ` в `0px` — пылинки не «улетают» во время пасхалки
+
+**Коммит:** `36b86aa`
+
+**Файлы:** `ember-styles.css`, `ember.js`
+
+---
+
+### Chat translate button — фикс кликабельности
+
+**Баг:** кнопка перевода в мини-чате не реагировала на клики.
+
+**Решения:**
+1. `z-index: 1` на `.llm-chat-msg-translate` — кнопка гарантированно поверх текста
+2. `btn.type = 'button'` — исключает случайную отправку формы
+
+**Коммит:** `0097fd0`
+
+**Файлы:** `styles.css`, `llm-features.js`
+
+---
+
+### Lighthouse — accessibility и CLS исправления
+
+**Результаты Lighthouse:**
+- Performance: 55/100, Best Practices: 95/100
+- CLS: 1.547 (13 сдвигов)
+
+**Исправления:**
+1. `#ember-slot` — добавлен `inert` вместо `aria-hidden` (решает фокусируемые потомки)
+2. `.block-title` — добавлен `aria-label="Заголовок блока"` на все inputs
+3. `#toolbar` — `min-height: 48px` + `contain: layout style` (фикс высоты, нет wrap-сдвигов)
+4. `#workspace` — `contain: layout style` (изоляция от динамических блоков)
+5. `.ember-core` — `contain: layout` ( Ember не влияет на layout, но `paint` обрезает свечение → убрано)
+
+**Коммиты:**
+- `618f4af` — fix: add inert to ember-slot and aria-label to block-title inputs (Lighthouse a11y)
+- `d8d053f` — fix: reduce CLS — contain layout on toolbar/workspace/ember-core, min-height toolbar
+- `7c1e824` — fix: remove contain:paint from ember-core to preserve glow effect
+
+**Файлы:** `index.html`, `blocks.js`, `styles.css`, `ember-styles.css`
+
+---
+
 ## Следующий шаг
 
 1. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
