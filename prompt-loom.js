@@ -614,7 +614,6 @@
       if (palette.contains(e.target) || e.target?.closest?.('[data-prompt-loom-trigger]')) return;
       closePalette();
     });
-    document.addEventListener('close-all-palettes', () => { if (palette) closePalette(); });
 
     document.addEventListener('mousemove', e => {
       const btn = document.getElementById('prompt-loom-toggle');
@@ -1090,10 +1089,7 @@
 
   function handleBackslashTrigger(el) {
     if (Date.now() < suppressTriggerUntil) return;
-    if (inlineSession?.el && inlineSession.el !== el) {
-      if (palette?.contains(el)) return;
-      closePalette();
-    }
+    if (inlineSession?.el && inlineSession.el !== el) closePalette();
     const value = getEditableValue(el);
     const pos = getSelectionStart(el);
     if (pos == null) return;
@@ -1134,57 +1130,54 @@
 
   function renderPalette() {
     if (!inlineSession) return;
+    if (!palette) {
+      palette = document.createElement('div');
+      palette.className = 'pl-palette slash-palette';
+      palette.setAttribute('role', 'listbox');
+      palette.setAttribute('aria-label', 'Последние фрагменты Prompt Loom');
+      paletteOutsideClickBlockedUntil = Date.now() + 80;
+      document.body.appendChild(palette);
+    } else {
+      paletteOutsideClickBlockedUntil = Date.now() + 30;
+    }
 
     const totalPages = Math.max(1, Math.ceil(inlineSession.items.length / PAGE_SIZE));
     inlineSession.page = Math.max(0, Math.min(totalPages - 1, inlineSession.page));
     const pageItems = inlineSession.items.slice(inlineSession.page * PAGE_SIZE, inlineSession.page * PAGE_SIZE + PAGE_SIZE);
     const showSearch = inlineSession.mode === 'direct';
 
-    if (!palette) {
-      closeAllMenus?.();
-      palette = document.createElement('div');
-      palette.className = 'pl-palette slash-palette ui-menu';
-      palette.setAttribute('role', 'listbox');
-      palette.setAttribute('aria-label', 'Последние фрагменты Prompt Loom');
-      paletteOutsideClickBlockedUntil = Date.now() + 80;
-      document.body.appendChild(palette);
+    palette.innerHTML = `
+      ${showSearch ? '<div class="pl-pal-search-wrap"><input class="pl-pal-search" type="search" placeholder="искать в истории…" autocomplete="off" aria-label="Поиск по истории"></div>' : ''}
+      <div class="pl-pal-list"></div>
+      <div class="pl-pal-foot">
+        <button type="button" data-pl-page="prev" title="Предыдущие" aria-label="Предыдущие">${iconChevronLeft()}</button>
+        <span>${getPaletteFootText(totalPages)}</span>
+        <button type="button" data-pl-page="next" title="Следующие" aria-label="Следующие">${iconChevronRight()}</button>
+      </div>
+    `;
 
-      palette.innerHTML = `
-        ${showSearch ? '<div class="pl-pal-search-wrap"><input class="pl-pal-search" type="search" placeholder="искать в истории…" autocomplete="off" aria-label="Поиск по истории"></div>' : ''}
-        <div class="pl-pal-list"></div>
-        <div class="pl-pal-foot">
-          <button type="button" data-pl-page="prev" title="Предыдущие" aria-label="Предыдущие">${iconChevronLeft()}</button>
-          <span class="pl-pal-foot-text"></span>
-          <button type="button" data-pl-page="next" title="Следующие" aria-label="Следующие">${iconChevronRight()}</button>
-        </div>
-      `;
-
-      const searchInput = palette.querySelector('.pl-pal-search');
-      if (searchInput) {
-        searchInput.value = inlineSession.query || '';
-        searchInput.addEventListener('input', () => {
-          inlineSession.query = searchInput.value;
-          refreshPaletteItems(true);
-        });
-        searchInput.addEventListener('keydown', e => {
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            palette.querySelector('.pl-pal-item.focused')?.focus?.();
-          }
-        });
-        requestAnimationFrame(() => {
-          if (palette && inlineSession?.mode === 'direct') {
-            searchInput.focus();
-            searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
-          }
-        });
-      }
-    } else {
-      paletteOutsideClickBlockedUntil = Date.now() + 30;
+    const searchInput = palette.querySelector('.pl-pal-search');
+    if (searchInput) {
+      searchInput.value = inlineSession.query || '';
+      searchInput.addEventListener('input', () => {
+        inlineSession.query = searchInput.value;
+        refreshPaletteItems(true);
+      });
+      searchInput.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          palette.querySelector('.pl-pal-item.focused')?.focus?.();
+        }
+      });
+      requestAnimationFrame(() => {
+        if (palette && inlineSession?.mode === 'direct') {
+          searchInput.focus();
+          searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+        }
+      });
     }
 
     const list = palette.querySelector('.pl-pal-list');
-    list.innerHTML = '';
     if (!pageItems.length) {
       const empty = document.createElement('div');
       empty.className = 'pl-pal-empty';
@@ -1221,26 +1214,18 @@
       list.appendChild(row);
     });
 
-    const footText = palette.querySelector('.pl-pal-foot-text');
-    if (footText) footText.textContent = getPaletteFootText(totalPages);
-
-    if (!palette._paginationBound) {
-      palette._paginationBound = true;
-      palette.querySelector('[data-pl-page="prev"]').addEventListener('mousedown', e => {
-        e.preventDefault();
-        const tp = Math.max(1, Math.ceil(inlineSession.items.length / PAGE_SIZE));
-        inlineSession.page = (inlineSession.page - 1 + tp) % tp;
-        paletteWrapHold = '';
-        renderPalette();
-      });
-      palette.querySelector('[data-pl-page="next"]').addEventListener('mousedown', e => {
-        e.preventDefault();
-        const tp = Math.max(1, Math.ceil(inlineSession.items.length / PAGE_SIZE));
-        inlineSession.page = (inlineSession.page + 1) % tp;
-        paletteWrapHold = '';
-        renderPalette();
-      });
-    }
+    palette.querySelector('[data-pl-page="prev"]').addEventListener('mousedown', e => {
+      e.preventDefault();
+      inlineSession.page = (inlineSession.page - 1 + totalPages) % totalPages;
+      paletteWrapHold = '';
+      renderPalette();
+    });
+    palette.querySelector('[data-pl-page="next"]').addEventListener('mousedown', e => {
+      e.preventDefault();
+      inlineSession.page = (inlineSession.page + 1) % totalPages;
+      paletteWrapHold = '';
+      renderPalette();
+    });
 
     positionPalette();
   }
@@ -2351,6 +2336,8 @@
       .pl-palette.slash-palette {
         z-index: var(--z-prompt-loom-palette);
         width: min(248px, calc(100vw - 16px));
+        max-height: min(282px, calc(100vh - 18px));
+        overflow: hidden;
         padding: 5px;
         animation: plDrop .12s cubic-bezier(.16,1,.3,1);
       }
@@ -2364,7 +2351,7 @@
         font: 11px/1.2 inherit;
       }
       .pl-pal-search:focus { border-color: rgba(79,142,247,.55); box-shadow: 0 0 0 2px rgba(79,142,247,.14); }
-      .pl-pal-list { display: flex; flex-direction: column; gap: 1px; }
+      .pl-pal-list { display: flex; flex-direction: column; gap: 1px; max-height: min(242px, calc(100vh - 58px)); overflow: auto; }
       .pl-pal-list .dropdown-item { flex: 0 0 auto; }
       .pl-pal-empty { padding: 9px 8px; color: var(--text3); font-size: 11px; text-align: center; }
       .pl-pal-item.pl-pal-item.slash-item {
