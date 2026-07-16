@@ -1091,6 +1091,7 @@
   function handleBackslashTrigger(el) {
     if (Date.now() < suppressTriggerUntil) return;
     if (inlineSession?.el && inlineSession.el !== el) closePalette();
+    document.dispatchEvent(new Event('close-all-palettes'));
     const value = getEditableValue(el);
     const pos = getSelectionStart(el);
     if (pos == null) return;
