@@ -1115,7 +1115,6 @@ const QRPanel = (() => {
     const ecNote = document.createElement('span');
     ecNote.className = 'qr-ec-note';
     ecNote.textContent = 'авто';
-    _panel._ecNote = ecNote;
     stylePane.append(ecGroup, ecNote);
 
     content.appendChild(stylePane);
@@ -1194,6 +1193,7 @@ const QRPanel = (() => {
     _panel = p;
     _panel._resizeHandle = resizeHandle;
     _panel._header = header;
+    _panel._ecNote = ecNote;
 
     // Attach drag/resize start listeners
     header.addEventListener('mousedown', _onDragStart);
