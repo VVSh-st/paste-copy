@@ -196,15 +196,23 @@ const QRPanel = (() => {
 
     function placeFormatInfo(matrix, formatBits) {
       const size = matrix.length;
-      for (let i = 0; i < 15; i++) {
-        const bit = (formatBits >> i) & 1;
-        const row = i < 6 ? i : i < 8 ? i + 1 : size - 15 + i;
-        matrix[row][8] = bit;
+      const bit = i => (formatBits >> i) & 1;
+
+      // First copy: around upper-left finder pattern
+      for (let i = 0; i < 6; i++) {
+        matrix[8][i] = bit(14 - i);
+        matrix[5 - i][8] = bit(i);
       }
-      for (let i = 0; i < 15; i++) {
-        const bit = (formatBits >> i) & 1;
-        const col = i < 8 ? size - i - 1 : i === 8 ? 7 : 15 - i - 1;
-        matrix[8][col] = bit;
+      matrix[8][7] = bit(8);
+      matrix[8][8] = bit(7);
+      matrix[7][8] = bit(6);
+
+      // Second copy: lower-left and upper-right areas
+      for (let i = 0; i < 7; i++) {
+        matrix[size - 1 - i][8] = bit(i);
+      }
+      for (let i = 7; i < 15; i++) {
+        matrix[8][size - 15 + i] = bit(i);
       }
     }
 
@@ -407,16 +415,21 @@ const QRPanel = (() => {
       reserved[size - 8][8] = 1;
 
       // Reserve format info areas
-      for (let i = 0; i < 15; i++) {
-        if (i < 6) reserved[8][i] = 1;
-        else if (i < 8) reserved[8][i + 1] = 1;
-        else if (i < 9) reserved[8][i + 1] = 1;
-        else reserved[8][14 - i + 9] = 1;
+      // First copy: around upper-left finder
+      for (let i = 0; i < 6; i++) {
+        reserved[8][i] = 1;
+        reserved[5 - i][8] = 1;
       }
-      for (let i = 0; i < 15; i++) {
-        if (i < 8) reserved[size - 1 - i][8] = 1;
-        else if (i < 9) reserved[14 - i + 7][8] = 1;
-        else reserved[14 - i + 7][8] = 1;
+      reserved[8][7] = 1;
+      reserved[8][8] = 1;
+      reserved[7][8] = 1;
+      // Second copy: lower-left (7 modules)
+      for (let i = 0; i < 7; i++) {
+        reserved[size - 1 - i][8] = 1;
+      }
+      // Second copy: upper-right (8 modules)
+      for (let i = 7; i < 15; i++) {
+        reserved[8][size - 15 + i] = 1;
       }
       // Reserve version areas
       if (version >= 7) {
@@ -943,6 +956,13 @@ const QRPanel = (() => {
     const bgRow = _buildColorRow('Фон', 'bg', _bg, '#FFFFFF');
     stylePane.append(fgRow, bgRow);
 
+    // Contrast warning
+    const contrastWarn = document.createElement('div');
+    contrastWarn.className = 'qr-contrast-warn';
+    contrastWarn.id = 'qr-contrast-warn';
+    stylePane.appendChild(contrastWarn);
+    _updateContrastWarning();
+
     // Color picker popup
     const pickerPopup = _buildColorPicker();
     stylePane.appendChild(pickerPopup);
@@ -1104,6 +1124,7 @@ const QRPanel = (() => {
       swatch.style.background = target === 'fg' ? _fg : _bg;
       hex.textContent = target === 'fg' ? _fg : _bg;
       _renderPreview();
+      _updateContrastWarning();
     };
     row.append(lbl, swatch, hex, reset);
     return row;
@@ -1329,6 +1350,7 @@ const QRPanel = (() => {
     if (hexInput) hexInput.value = hex;
 
     _renderPreview();
+    _updateContrastWarning();
   }
 
   function _hsvToHex(h, s, v) {
@@ -1401,6 +1423,29 @@ const QRPanel = (() => {
 
     popup.classList.add('open');
     _pickerOpen = true;
+  }
+
+  /* ── contrast warning ──────────────────────────────────── */
+  function _contrastRatio(fg, bg) {
+    const luminance = hex => {
+      const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+      const linear = rgb.map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+    };
+    const a = luminance(fg), b = luminance(bg);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }
+
+  function _updateContrastWarning() {
+    const el = document.getElementById('qr-contrast-warn');
+    if (!el) return;
+    const ratio = _contrastRatio(_fg, _bg);
+    if (ratio < 3) {
+      el.textContent = `Низкий контраст (${ratio.toFixed(1)}:1) — QR может не сканироваться`;
+      el.style.display = 'block';
+    } else {
+      el.style.display = 'none';
+    }
   }
 
   function _closeColorPicker() {
