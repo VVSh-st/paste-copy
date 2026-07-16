@@ -614,6 +614,7 @@
       if (palette.contains(e.target) || e.target?.closest?.('[data-prompt-loom-trigger]')) return;
       closePalette();
     });
+    document.addEventListener('close-all-palettes', () => { if (palette) closePalette(); });
 
     document.addEventListener('mousemove', e => {
       const btn = document.getElementById('prompt-loom-toggle');
@@ -1409,6 +1410,7 @@
     }
 
     target.focus();
+    document.dispatchEvent(new Event('close-all-palettes'));
     paletteWrapHold = '';
     inlineSession = {
       el: target,
