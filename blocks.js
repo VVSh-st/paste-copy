@@ -685,6 +685,7 @@ const Blocks = (() => {
     title.className  = 'block-title block-title-wide';
     title.value      = b.title;
     title.spellcheck = false;
+    title.setAttribute('aria-label', 'Заголовок блока');
     title.onclick    = e => e.stopPropagation();
     title.oninput = () => State.updateLive(() => { b.title = title.value; });
     title.onblur  = () => { State.snapshot(); _stopMarquee(title); };
