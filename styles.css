@@ -1136,6 +1136,11 @@ textarea.block-textarea:focus {
   backdrop-filter: blur(14px);
   animation: dropIn 0.15s cubic-bezier(.16,1,.3,1);
 }
+.pl-palette.slash-palette {
+  max-height: none;
+  overflow: visible;
+  overflow-y: visible;
+}
 .slash-section-label,
 .slash-icon,
 .slash-main,
