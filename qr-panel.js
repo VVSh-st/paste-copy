@@ -848,7 +848,7 @@ const QRPanel = (() => {
 
     if (statsEl) statsEl.textContent = `${_previewText.length} символов · ${_pages.length} стр.`;
     if (sourceEl) {
-      if (_previewSource === 'selection') sourceEl.textContent = 'Выделенный текст';
+      if (_previewSource === 'selection') sourceEl.textContent = `Выделено: ${_previewText.length} симв.`;
       else if (_previewSource === 'history') sourceEl.textContent = 'Из истории';
       else {
         const title = _getBlockTitle();
@@ -858,7 +858,7 @@ const QRPanel = (() => {
     if (infoRow) {
       infoRow.textContent = '';
       const badges = [];
-      if (page.compressed) badges.push('сжато');
+      if (page.compressed) badges.push('Сжатие вкл.');
       badges.push(`${_effectiveEc}`);
       badges.push(`${page.bytes.length} байт`);
       if (_pages.length > 1) badges.push(`${_currentPage + 1} из ${_pages.length}`);
