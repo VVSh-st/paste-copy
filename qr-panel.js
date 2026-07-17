@@ -37,7 +37,7 @@ const QRPanel = (() => {
   let _previewSource = '';        // source label for current QR preview
 
   /* settings (persisted, validated) */
-  const VALID_STYLES = ['classic', 'dotted', 'rounded', 'diamond'];
+  const VALID_STYLES = ['classic', 'dotted', 'rounded', 'cross'];
   const VALID_EC = ['L', 'M', 'Q', 'H'];
   let _style = VALID_STYLES.includes(_storageGet('qr-style')) ? _storageGet('qr-style') : 'classic';
   let _moduleSize = Math.max(4, Math.min(12, parseInt(_storageGet('qr-module-size', '6'), 10))) || 6;
@@ -522,12 +522,16 @@ const QRPanel = (() => {
 
   /* ── QR encode cache ───────────────────────────────────── */
   const _qrCache = new Map();
+  const QR_CACHE_LIMIT = 50;
   function _getEncodedQR(page) {
     const key = `${_effectiveEc}:${Array.from(page.bytes).join(',')}`;
     if (!_qrCache.has(key)) {
       const qr = _QR.encode(page.bytes, _effectiveEc);
       if (!qr) return null;
       _qrCache.set(key, qr);
+      while (_qrCache.size > QR_CACHE_LIMIT) {
+        _qrCache.delete(_qrCache.keys().next().value);
+      }
     }
     return _qrCache.get(key);
   }
@@ -894,13 +898,18 @@ const QRPanel = (() => {
         ctx.arcTo(x, y, x + r, y, r);
         ctx.fill();
         break;
-      case 'diamond':
-        ctx.save();
-        ctx.translate(x + size / 2, y + size / 2);
-        ctx.rotate(Math.PI / 4);
-        const s = size / 2.8;
-        ctx.fillRect(-s, -s, s * 2, s * 2);
-        ctx.restore();
+      case 'cross':
+        const arm = size * 0.35;
+        const thickness = size * 0.2;
+        ctx.beginPath();
+        ctx.moveTo(x + size / 2, y + size / 2 - arm);
+        ctx.lineTo(x + size / 2, y + size / 2 + arm);
+        ctx.moveTo(x + size / 2 - arm, y + size / 2);
+        ctx.lineTo(x + size / 2 + arm, y + size / 2);
+        ctx.lineWidth = thickness;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = _fg;
+        ctx.stroke();
         break;
       default: // classic
         ctx.fillRect(x, y, size, size);
@@ -1033,7 +1042,7 @@ const QRPanel = (() => {
       { id: 'classic', name: 'Классический' },
       { id: 'dotted', name: 'Точечный' },
       { id: 'rounded', name: 'Скруглённый' },
-      { id: 'diamond', name: 'Ромбы' },
+      { id: 'cross', name: 'Крестики' },
     ];
     for (const s of styles) {
       const btn = document.createElement('button');
@@ -1093,6 +1102,30 @@ const QRPanel = (() => {
     stylePane.appendChild(contrastWarn);
     _updateContrastWarning();
 
+    // Invert colors button
+    const invertBtn = document.createElement('button');
+    invertBtn.type = 'button';
+    invertBtn.className = 'qr-export-btn';
+    invertBtn.textContent = 'Инвертировать цвета';
+    invertBtn.onclick = () => {
+      const temp = _fg;
+      _fg = _bg;
+      _bg = temp;
+      _storageSet('qr-fg', _fg);
+      _storageSet('qr-bg', _bg);
+      const fgSwatch = _panel?.querySelector('.qr-color-swatch-btn[data-target="fg"]');
+      const bgSwatch = _panel?.querySelector('.qr-color-swatch-btn[data-target="bg"]');
+      const fgHex = document.getElementById('qr-color-hex-fg');
+      const bgHex = document.getElementById('qr-color-hex-bg');
+      if (fgSwatch) fgSwatch.style.background = _fg;
+      if (bgSwatch) bgSwatch.style.background = _bg;
+      if (fgHex) fgHex.textContent = _fg;
+      if (bgHex) bgHex.textContent = _bg;
+      _renderPreview();
+      _updateContrastWarning();
+    };
+    stylePane.appendChild(invertBtn);
+
     // Color picker popup
     const pickerPopup = _buildColorPicker();
     stylePane.appendChild(pickerPopup);
@@ -1138,6 +1171,8 @@ const QRPanel = (() => {
       { label: 'Копировать в буфер', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/></svg>', action: _copyToClipboard },
       { label: 'Скачать PNG', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 12h10"/></svg>', action: () => _download('png') },
       { label: 'Скачать SVG', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 12h10"/></svg>', action: () => _download('svg') },
+      { label: 'Скачать все PNG', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 12h10"/></svg>', action: () => _downloadAll('png') },
+      { label: 'Скачать все SVG', icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 12h10"/></svg>', action: () => _downloadAll('svg') },
     ];
     for (const def of exportBtns) {
       const btn = document.createElement('button');
@@ -1731,9 +1766,14 @@ const QRPanel = (() => {
   }
 
   function _onKeydown(e) {
-    if (e.key === 'Escape' && _isOpen) {
+    if (!_isOpen) return;
+    if (e.key === 'Escape') {
       e.preventDefault();
       close();
+    } else if (e.key === 'ArrowLeft' && _pages.length > 1) {
+      if (_currentPage > 0) { _currentPage--; _renderPreview(); }
+    } else if (e.key === 'ArrowRight' && _pages.length > 1) {
+      if (_currentPage < _pages.length - 1) { _currentPage++; _renderPreview(); }
     }
   }
 
@@ -1818,10 +1858,11 @@ const QRPanel = (() => {
           } else if (style === 'rounded') {
             const rad = modSize * 0.3;
             svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" rx="${rad}" fill="${_fg}"/>`;
-          } else if (style === 'diamond') {
+          } else if (style === 'cross') {
             const cx = x + modSize / 2, cy = y + modSize / 2;
-            const s = modSize / 2.8;
-            svg += `<rect x="${cx - s}" y="${cy - s}" width="${s * 2}" height="${s * 2}" fill="${_fg}" transform="rotate(45 ${cx} ${cy})"/>`;
+            const arm = modSize * 0.35;
+            const thickness = modSize * 0.2;
+            svg += `<path d="M${cx},${cy - arm}V${cy + arm}M${cx - arm},${cy}H${cx + arm}" stroke="${_fg}" stroke-width="${thickness}" stroke-linecap="round"/>`;
           } else {
             svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" fill="${_fg}"/>`;
           }
@@ -1835,6 +1876,104 @@ const QRPanel = (() => {
       link.click();
       URL.revokeObjectURL(link.href);
     }
+  }
+
+  function _downloadAll(format) {
+    if (!_pages.length) { _showToast('Нет QR-кодов для экспорта'); return; }
+    if (_pages.length === 1) { _download(format); return; }
+    let downloaded = 0;
+    const total = _pages.length;
+    for (let i = 0; i < total; i++) {
+      const page = _pages[i];
+      const qr = _getEncodedQR(page);
+      if (!qr) continue;
+      if (format === 'png') {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const modSize = _moduleSize;
+        const quiet = _padding ? 4 : 0;
+        const totalSize = (qr.size + quiet * 2) * modSize;
+        canvas.width = totalSize;
+        canvas.height = totalSize;
+        ctx.fillStyle = _bg;
+        ctx.fillRect(0, 0, totalSize, totalSize);
+        for (let r = 0; r < qr.size; r++) {
+          for (let c = 0; c < qr.size; c++) {
+            if (!qr.matrix[r][c]) continue;
+            const x = (c + quiet) * modSize;
+            const y = (r + quiet) * modSize;
+            const style = qr.reserved[r][c] ? 'classic' : _style;
+            if (style === 'dotted') {
+              ctx.fillStyle = _fg;
+              ctx.beginPath();
+              ctx.arc(x + modSize / 2, y + modSize / 2, modSize / 2, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (style === 'rounded') {
+              ctx.fillStyle = _fg;
+              const rad = modSize * 0.3;
+              ctx.beginPath();
+              ctx.roundRect(x, y, modSize, modSize, rad);
+              ctx.fill();
+            } else if (style === 'cross') {
+              const arm = modSize * 0.35;
+              const thickness = modSize * 0.2;
+              ctx.beginPath();
+              ctx.moveTo(x + modSize / 2, y + modSize / 2 - arm);
+              ctx.lineTo(x + modSize / 2, y + modSize / 2 + arm);
+              ctx.moveTo(x + modSize / 2 - arm, y + modSize / 2);
+              ctx.lineTo(x + modSize / 2 + arm, y + modSize / 2);
+              ctx.lineWidth = thickness;
+              ctx.lineCap = 'round';
+              ctx.strokeStyle = _fg;
+              ctx.stroke();
+            } else {
+              ctx.fillStyle = _fg;
+              ctx.fillRect(x, y, modSize, modSize);
+            }
+          }
+        }
+        const link = document.createElement('a');
+        link.download = `qr-page-${i + 1}-of-${total}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      } else if (format === 'svg') {
+        const modSize = _moduleSize;
+        const quiet = _padding ? 4 : 0;
+        const totalSize = (qr.size + quiet * 2) * modSize;
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${totalSize}" height="${totalSize}">`;
+        svg += `<rect width="${totalSize}" height="${totalSize}" fill="${_bg}"/>`;
+        for (let r = 0; r < qr.size; r++) {
+          for (let c = 0; c < qr.size; c++) {
+            if (!qr.matrix[r][c]) continue;
+            const x = (c + quiet) * modSize;
+            const y = (r + quiet) * modSize;
+            const style = qr.reserved[r][c] ? 'classic' : _style;
+            if (style === 'dotted') {
+              svg += `<circle cx="${x + modSize / 2}" cy="${y + modSize / 2}" r="${modSize / 2}" fill="${_fg}"/>`;
+            } else if (style === 'rounded') {
+              const rad = modSize * 0.3;
+              svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" rx="${rad}" fill="${_fg}"/>`;
+            } else if (style === 'cross') {
+              const cx = x + modSize / 2, cy = y + modSize / 2;
+              const arm = modSize * 0.35;
+              const thickness = modSize * 0.2;
+              svg += `<path d="M${cx},${cy - arm}V${cy + arm}M${cx - arm},${cy}H${cx + arm}" stroke="${_fg}" stroke-width="${thickness}" stroke-linecap="round"/>`;
+            } else {
+              svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" fill="${_fg}"/>`;
+            }
+          }
+        }
+        svg += '</svg>';
+        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const link = document.createElement('a');
+        link.download = `qr-page-${i + 1}-of-${total}.svg`;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+      downloaded++;
+    }
+    _showToast(`Скачано ${downloaded} из ${total} страниц`);
   }
 
   function _showToast(msg) {
