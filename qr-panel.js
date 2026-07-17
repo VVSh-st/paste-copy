@@ -835,12 +835,18 @@ const QRPanel = (() => {
     const fitModSize = Math.max(4, Math.min(12, Math.floor(avail / (qr.size + quiet * 2))));
     const modSize = fitModSize;
     const totalSize = (qr.size + quiet * 2) * modSize;
+
+    // Caption height
+    const captionText = _caption.trim();
+    const fontSize = captionText ? Math.max(10, Math.min(16, modSize * 1.8)) : 0;
+    const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
+
     canvas.width = totalSize;
-    canvas.height = totalSize;
+    canvas.height = totalSize + captionHeight;
 
     // Background
     ctx.fillStyle = _bg;
-    ctx.fillRect(0, 0, totalSize, totalSize);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw modules — function modules use classic style, data modules use selected style
     ctx.fillStyle = _fg;
@@ -854,15 +860,12 @@ const QRPanel = (() => {
     }
 
     // Caption below QR
-    if (_caption.trim()) {
-      const fontSize = Math.max(10, Math.min(16, modSize * 1.8));
+    if (captionText) {
       ctx.font = `${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
       ctx.fillStyle = _fg;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      const textY = totalSize + Math.floor(modSize * 0.8);
-      ctx.fillText(_caption.trim(), totalSize / 2, textY);
-      canvas.height = textY + fontSize + Math.floor(modSize * 0.5);
+      ctx.fillText(captionText, totalSize / 2, totalSize + Math.floor(modSize * 0.8));
     }
 
     // Update UI
