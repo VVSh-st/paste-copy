@@ -849,7 +849,16 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 5. **Search index caching** — `cardEl.dataset.helpSearchText` строится один раз, переиспользуется. Убирает `textContent` чтение на каждый keystroke.
 6. **`isReady` только при наличии элементов** — `init()` и `ensureReady()` ставят `isReady = Boolean(button && overlay)`. При позднем toolbar `openHelp()` повторно попытается создать кнопку.
 
-**Коммит:** `9d85d18` (аудит 2(4)), `1a8cba6` (аудит 2(5))
+**Коммит:** `9d85d18` (аудит 2(4)), `1a8cba6` (аудит 2(5)), `2267db4` (аудит 2(6))
+
+### Help — аудит (задание 2(6))
+
+**Файл:** `help.js`
+
+**Исправленные баги:**
+1. **`markCopied` терял original text** — повторное копирование сохраняло "Скопировано ✓" как исходный текст. Фикс: `button._copyOriginalText` сохраняется при первом вызове, очищается после восстановления.
+2. **`help-advanced` появлялся после фильтра** — `<section>` одновременно карточка и секция. В цикле скрытия секций `querySelectorAll` не включал саму секцию как карточку → `cards.length === 0` → `section.hidden = false`. Фикс: `section.matches('[data-help-card]')` → skip.
+3. **`ensureReady` не проверял элементы повторно** — если toolbar удалялся и пересоздавался, `isReady` оставался `true`. Фикс: проверяет `hasButton && hasOverlay` перед early return.
 
 ### Help — аудит (задание 2(5))
 
