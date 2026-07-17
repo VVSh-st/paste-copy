@@ -825,8 +825,14 @@ const QRPanel = (() => {
       return;
     }
 
-    const modSize = _moduleSize;
-    const quiet = _padding ? 4 : 0; // quiet zone
+    // Auto-fit: calculate module size that fills the wrapper without scrollbar
+    const wrap = _panel?.querySelector('.qr-canvas-wrap');
+    const availW = wrap ? wrap.clientWidth - 24 : 300; // minus padding
+    const availH = wrap ? wrap.clientHeight - 24 : 300;
+    const avail = Math.min(availW, availH);
+    const quiet = _padding ? 4 : 0;
+    const fitModSize = Math.max(4, Math.min(12, Math.floor(avail / (qr.size + quiet * 2))));
+    const modSize = fitModSize;
     const totalSize = (qr.size + quiet * 2) * modSize;
     canvas.width = totalSize;
     canvas.height = totalSize;

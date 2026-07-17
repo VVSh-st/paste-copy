@@ -7129,7 +7129,7 @@ body.help-open {
   border-radius: 8px;
   padding: 12px;
   min-height: 160px;
-  overflow: auto;
+  overflow: hidden;
   min-height: 0;
 }
 .qr-canvas {
