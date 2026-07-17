@@ -382,6 +382,16 @@ body {
   50%      { transform: scale(1.12); filter: drop-shadow(0 0 12px rgba(180,220,255,0.7)) drop-shadow(0 3px 4px rgba(0,0,0,0.6)); }
 }
 
+/* ── Предупреждение: последние 10 секунд обратного отсчёта ── */
+.timer-urgent {
+  color: rgba(255, 120, 100, 0.85) !important;
+  animation: urgentBreathe 1.5s ease-in-out infinite;
+}
+@keyframes urgentBreathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.72; }
+}
+
 /* ── Мягкое свечение рамки при активном таймере ── */
 #btn-timer.timer-active {
   box-shadow:

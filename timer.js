@@ -506,6 +506,7 @@ const SquareTimer = (() => {
     _pausedElapsed = 0;
     _clearDigitAnimation();
     _clearCornerGlow();
+    valueEl?.classList.remove('timer-urgent');
   }
 
   function _clearDigitAnimation() {
@@ -590,6 +591,7 @@ const SquareTimer = (() => {
       const display = rem < 60 ? rem : Math.ceil(rem / 60);
       const overallProgress = 1 - rem / (targetMinutes * 60);
       _updateDisplay(display, overallProgress, 'ccw', rem <= 5);
+      valueEl?.classList.toggle('timer-urgent', rem <= 10 && rem > 0);
     }
     rafId = requestAnimationFrame(_tickRAF);
   }
