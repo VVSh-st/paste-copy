@@ -1702,10 +1702,20 @@
       <div id="preview-bar">
 
         <div class="preview-brand">
-          <svg class="preview-logo" viewBox="0 0 52 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:24px;height:18px">
-            <path fill="var(--accent,#8DB7FF)" fill-rule="evenodd" d="M8 8H34A6 6 0 0 1 40 14V18A4 4 0 0 1 36 22H22A4 4 0 0 0 18 26V32H44V36H14A6 6 0 0 1 8 30Z"/>
-          </svg>
-          <div class="preview-logo-glow"></div>
+          <div class="preview-logo" aria-hidden="true">
+            <svg class="preview-logo-svg" viewBox="0 0 52 40" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <clipPath id="logo-clip">
+                  <path d="M8 8H34A6 6 0 0 1 40 14V18A4 4 0 0 1 36 22H22A4 4 0 0 0 18 26V32H44V36H14A6 6 0 0 1 8 30Z"/>
+                </clipPath>
+              </defs>
+              <path class="preview-logo-path" fill="#7887A1" fill-rule="evenodd" d="M8 8H34A6 6 0 0 1 40 14V18A4 4 0 0 1 36 22H22A4 4 0 0 0 18 26V32H44V36H14A6 6 0 0 1 8 30Z"/>
+              <rect class="preview-logo-flow" clip-path="url(#logo-clip)" x="-52" y="0" width="52" height="40" fill="white" opacity="0"/>
+            </svg>
+            <div class="preview-logo-sweep"></div>
+            <div class="preview-logo-reflection"></div>
+          </div>
+          <div class="preview-logo-panel-glow"></div>
           <span class="preview-title">Превью</span>
         </div>
 

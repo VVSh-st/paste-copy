@@ -1123,64 +1123,130 @@ const Preview = (() => {
     _setupStructScroll();
   }
 
-  /* ── Preview logo proximity light ── */
+  /* ── Preview Logo v4: Light sweep, one-shot ── */
   (() => {
     const brand = document.querySelector('.preview-brand');
     const logo = brand?.querySelector('.preview-logo');
-    const glow = brand?.querySelector('.preview-logo-glow');
-    if (!brand || !logo || !glow) return;
+    const sweep = logo?.querySelector('.preview-logo-sweep');
+    const reflection = logo?.querySelector('.preview-logo-reflection');
+    const flowRect = logo?.querySelector('.preview-logo-flow');
+    const panelGlow = brand?.querySelector('.preview-logo-panel-glow');
+    if (!brand || !logo || !sweep || !reflection || !flowRect || !panelGlow) return;
 
-    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    let tx = 0, ty = 0, glowOpacity = 0;
-    let rafId = null;
+    const ENTER_R = 140;
+    const EXIT_R = 220;
+    const SWEEP_MS = 200;
+    const FLOW_DELAY_MS = 40;
+    const FLOW_MS = 220;
+
     let mouseX = -999, mouseY = -999;
+    let armed = true;
+    let animating = false;
+    let animStartTs = 0;
+    let rafId = null;
+    let lastTs = 0;
 
-    function tick() {
-      const rect = logo.getBoundingClientRect();
-      const cx = clamp(mouseX - rect.left, 14, rect.width + 10);
-      const cy = clamp(mouseY - rect.top, -8, rect.height * 0.55);
+    function rect() { return logo.getBoundingClientRect(); }
 
-      const dx = mouseX - (rect.left + rect.width / 2);
-      const dy = mouseY - (rect.top + rect.height / 2);
-      const dist = Math.hypot(dx, dy);
-      const inRange = dist < 100;
-      const targetOpacity = inRange ? clamp(1 - dist / 100, 0, 0.9) : 0;
+    function startAnimation(ts) {
+      if (animating) return;
+      animating = true;
+      animStartTs = ts;
+      lastTs = ts;
 
-      // Spring interpolation (~50ms lag)
-      tx += (cx - tx) * 0.15;
-      ty += (cy - ty) * 0.15;
-      glowOpacity += (targetOpacity - glowOpacity) * (inRange ? 0.18 : 0.08);
+      reflection.style.opacity = '1';
+      panelGlow.style.opacity = '1';
+      rafId = requestAnimationFrame(tick);
+    }
 
-      glow.style.transform = `translate(${tx - rect.width / 2 - 6}px, ${ty - rect.height / 2 - 6}px)`;
-      glow.style.opacity = glowOpacity;
+    function tick(ts) {
+      if (!lastTs) lastTs = ts;
+      const dt = ts - lastTs;
+      lastTs = ts;
+      const elapsed = ts - animStartTs;
 
-      // Inner cutout shift (max 2px, delayed via CSS transition)
-      const path = logo.querySelector('path');
-      if (path) {
-        const shiftX = clamp((cx - rect.width / 2) * 0.04, -2, 2);
-        path.style.transform = `translateX(${shiftX}px)`;
-        path.style.transition = 'transform 0.08s ease-out';
+      /* Sweep: clip-path reveal from top-right to bottom-left */
+      if (elapsed <= SWEEP_MS) {
+        const p = elapsed / SWEEP_MS;
+        const reveal = p * 140;
+        sweep.style.opacity = '1';
+        sweep.style.clipPath = `polygon(${100 - reveal}% 0%, 100% 0%, 100% ${reveal}%, ${100 - reveal}% 100%, 0% 100%, 0% ${100 - reveal}%)`;
+      } else {
+        sweep.style.opacity = '0';
+        sweep.style.clipPath = 'polygon(0 0, 0 0, 0 100%, 0 100%)';
       }
 
-      if (glowOpacity > 0.005 || inRange) {
-        rafId = requestAnimationFrame(tick);
+      /* Reflection: fade in with sweep, hold briefly, fade out */
+      if (elapsed <= SWEEP_MS) {
+        reflection.style.opacity = String(Math.min(elapsed / 40, 1) * 0.07);
+      } else if (elapsed <= SWEEP_MS + 100) {
+        reflection.style.opacity = '0.07';
+      } else if (elapsed <= SWEEP_MS + 250) {
+        const fadeP = (elapsed - SWEEP_MS - 100) / 150;
+        reflection.style.opacity = String(0.07 * (1 - fadeP));
       } else {
+        reflection.style.opacity = '0';
+      }
+
+      /* Internal flow: starts after FLOW_DELAY_MS, sweeps through cutout */
+      const flowElapsed = elapsed - FLOW_DELAY_MS;
+      if (flowElapsed >= 0 && flowElapsed <= FLOW_MS) {
+        const fp = flowElapsed / FLOW_MS;
+        const sweepX = -52 + 104 * fp;
+        flowRect.setAttribute('x', sweepX);
+        flowRect.setAttribute('opacity', String(Math.sin(fp * Math.PI) * 0.1));
+      } else if (flowElapsed > FLOW_MS) {
+        flowRect.setAttribute('opacity', '0');
+      }
+
+      /* Panel glow: fade in with sweep, fade out after */
+      if (elapsed <= SWEEP_MS) {
+        panelGlow.style.opacity = String(Math.min(elapsed / 60, 1) * 0.035);
+      } else if (elapsed <= SWEEP_MS + 300) {
+        const gFade = (elapsed - SWEEP_MS) / 300;
+        panelGlow.style.opacity = String(0.035 * (1 - gFade));
+      } else {
+        panelGlow.style.opacity = '0';
+      }
+
+      /* Done */
+      if (elapsed > SWEEP_MS + 300) {
+        animating = false;
+        sweep.style.opacity = '0';
+        reflection.style.opacity = '0';
+        flowRect.setAttribute('opacity', '0');
+        panelGlow.style.opacity = '0';
         rafId = null;
-        glow.style.opacity = 0;
-        if (path) path.style.transform = '';
+        return;
+      }
+
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function checkProximity() {
+      const r = rect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dist = Math.hypot(mouseX - cx, mouseY - cy);
+
+      if (armed && dist <= ENTER_R) {
+        armed = false;
+        const ts = performance.now();
+        startAnimation(ts);
+      } else if (!armed && dist > EXIT_R) {
+        armed = true;
       }
     }
 
     brand.addEventListener('mousemove', e => {
       mouseX = e.clientX;
       mouseY = e.clientY;
-      if (!rafId) rafId = requestAnimationFrame(tick);
+      checkProximity();
     });
 
     brand.addEventListener('mouseleave', () => {
       mouseX = -999;
       mouseY = -999;
-      // Let tick fade out naturally
     });
   })();
 
