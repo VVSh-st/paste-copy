@@ -711,6 +711,8 @@
     const opened = overlay && !overlay.hidden;
 
     if (event.key === 'F2') {
+      const tag = event.target?.tagName;
+      if (event.target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       event.preventDefault();
       event.stopPropagation();
       opened ? closeHelp() : openHelp();
@@ -752,7 +754,7 @@
 
     const overlay = document.getElementById(HELP_OVERLAY_ID);
     const button = document.getElementById(HELP_BUTTON_ID);
-    if (!overlay) return;
+    if (!overlay || !overlay.hidden) return;
 
     lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     overlay.hidden = false;
@@ -806,13 +808,19 @@
 
     $all('[data-help-card]', overlay).forEach(cardEl => {
       const category = cardEl.dataset.helpCategory || '';
-      const haystack = `${cardEl.dataset.helpTags || ''} ${cardEl.textContent || ''}`.toLowerCase();
+      const haystack = (cardEl.dataset.helpSearchText ||
+        (cardEl.dataset.helpSearchText = `${cardEl.dataset.helpTags || ''} ${cardEl.textContent || ''}`.toLowerCase()));
       const byFilter = filter === 'all' || category === filter;
       const byQuery = !query || haystack.includes(query);
       const visible = byFilter && byQuery;
 
       cardEl.hidden = !visible;
       if (visible) visibleCount += 1;
+    });
+
+    $all('.help-section', overlay).forEach(section => {
+      const cards = $all('[data-help-card]', section);
+      section.hidden = cards.length > 0 && cards.every(cardEl => cardEl.hidden);
     });
 
     const empty = $('.help-empty', overlay);
@@ -827,7 +835,10 @@
       if (navigator.clipboard?.writeText && window._clipboardApiEnabled !== false) {
         await navigator.clipboard.writeText(code);
       } else {
-        fallbackCopy(code);
+        if (!fallbackCopy(code)) {
+          toast('Не удалось скопировать пример', 'error');
+          return;
+        }
       }
 
       const original = button.textContent;
@@ -840,22 +851,28 @@
       toast('Пример скопирован ✓', 'success');
     } catch (error) {
       console.warn('HelpCenter copy failed:', error);
-      fallbackCopy(code);
-      toast('Скопировано через fallback ✓', 'success');
+      if (fallbackCopy(code)) {
+        toast('Скопировано через fallback ✓', 'success');
+      } else {
+        toast('Не удалось скопировать пример', 'error');
+      }
     }
   }
 
   function fallbackCopy(text) {
     const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.setAttribute('readonly', '');
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    textarea.style.top = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand('copy');
-    textarea.remove();
+    try {
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      return document.execCommand('copy') === true;
+    } finally {
+      textarea.remove();
+    }
   }
 
   function ensureReady() {
@@ -864,7 +881,7 @@
     createHelpOverlay();
     bindEvents();
     setFilter('all');
-    isReady = true;
+    isReady = Boolean(document.getElementById(HELP_BUTTON_ID) && document.getElementById(HELP_OVERLAY_ID));
   }
 
   function init() {
@@ -872,7 +889,7 @@
     createHelpOverlay();
     bindEvents();
     setFilter('all');
-    isReady = true;
+    isReady = Boolean(document.getElementById(HELP_BUTTON_ID) && document.getElementById(HELP_OVERLAY_ID));
   }
 
   if (document.readyState === 'loading') {
