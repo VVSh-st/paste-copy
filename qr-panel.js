@@ -47,6 +47,7 @@ const QRPanel = (() => {
   let _effectiveEc = _ec; // actual EC used (may differ from _ec when auto-downgrading)
   let _compress = _storageGet('qr-compress') !== 'false';
   let _padding = _storageGet('qr-padding') !== 'false';
+  let _caption = _storageGet('qr-caption') || '';
   const VALID_TABS = ['preview', 'style', 'export', 'history'];
   let _activeTab = VALID_TABS.includes(_storageGet('qr-panel-tab')) ? _storageGet('qr-panel-tab') : 'preview';
 
@@ -852,6 +853,18 @@ const QRPanel = (() => {
       }
     }
 
+    // Caption below QR
+    if (_caption.trim()) {
+      const fontSize = Math.max(10, Math.min(16, modSize * 1.8));
+      ctx.font = `${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
+      ctx.fillStyle = _fg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const textY = totalSize + Math.floor(modSize * 0.8);
+      ctx.fillText(_caption.trim(), totalSize / 2, textY);
+      canvas.height = textY + fontSize + Math.floor(modSize * 0.5);
+    }
+
     // Update UI
     if (pageEl) pageEl.textContent = _pages.length > 1 ? `Стр. ${_currentPage + 1} из ${_pages.length}` : '1 / 1';
     if (navPrev) navPrev.disabled = _currentPage <= 0;
@@ -1204,6 +1217,22 @@ const QRPanel = (() => {
       _renderPreview();
     });
     opts.append(compressToggle, paddingToggle);
+
+    // Caption input
+    const captionRow = document.createElement('div');
+    captionRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px;';
+    const captionLabel = document.createElement('span');
+    captionLabel.style.cssText = 'font-size:11px;color:var(--text3,#888);white-space:nowrap;';
+    captionLabel.textContent = 'Подпись:';
+    const captionInput = document.createElement('input');
+    captionInput.type = 'text';
+    captionInput.value = _caption;
+    captionInput.placeholder = 'текст под QR';
+    captionInput.style.cssText = 'flex:1;min-width:0;background:var(--bg0);border:1px solid var(--border);color:var(--text0);border-radius:4px;padding:3px 6px;font-size:11px;font-family:inherit;';
+    captionInput.oninput = () => { _caption = captionInput.value; _storageSet('qr-caption', _caption); _renderPreview(); };
+    captionRow.append(captionLabel, captionInput);
+    opts.appendChild(captionRow);
+
     exportPane.appendChild(opts);
 
     content.appendChild(exportPane);
@@ -1851,8 +1880,12 @@ const QRPanel = (() => {
       const modSize = _moduleSize;
       const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
-      let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${totalSize}" height="${totalSize}">`;
-      svg += `<rect width="${totalSize}" height="${totalSize}" fill="${_bg}"/>`;
+      const fontSize = Math.max(10, Math.min(16, modSize * 1.8));
+      const captionText = _caption.trim();
+      const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
+      const svgH = totalSize + captionHeight;
+      let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${svgH}" width="${totalSize}" height="${svgH}">`;
+      svg += `<rect width="${totalSize}" height="${svgH}" fill="${_bg}"/>`;
       for (let r = 0; r < qr.size; r++) {
         for (let c = 0; c < qr.size; c++) {
           if (!qr.matrix[r][c]) continue;
@@ -1873,6 +1906,9 @@ const QRPanel = (() => {
             svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" fill="${_fg}"/>`;
           }
         }
+      }
+      if (captionText) {
+        svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-size="${fontSize}" fill="${_fg}">${captionText.replace(/</g, '&lt;')}</text>`;
       }
       svg += '</svg>';
       const blob = new Blob([svg], { type: 'image/svg+xml' });
@@ -1938,6 +1974,17 @@ const QRPanel = (() => {
             }
           }
         }
+        // Caption
+        if (_caption.trim()) {
+          const fontSize = Math.max(10, Math.min(16, modSize * 1.8));
+          ctx.font = `${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
+          ctx.fillStyle = _fg;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          const textY = totalSize + Math.floor(modSize * 0.8);
+          ctx.fillText(_caption.trim(), totalSize / 2, textY);
+          canvas.height = textY + fontSize + Math.floor(modSize * 0.5);
+        }
         const link = document.createElement('a');
         link.download = `qr-page-${i + 1}-of-${total}.png`;
         link.href = canvas.toDataURL('image/png');
@@ -1946,8 +1993,12 @@ const QRPanel = (() => {
         const modSize = _moduleSize;
         const quiet = _padding ? 4 : 0;
         const totalSize = (qr.size + quiet * 2) * modSize;
-        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${totalSize}" width="${totalSize}" height="${totalSize}">`;
-        svg += `<rect width="${totalSize}" height="${totalSize}" fill="${_bg}"/>`;
+        const fontSize = Math.max(10, Math.min(16, modSize * 1.8));
+        const captionText = _caption.trim();
+        const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
+        const svgH = totalSize + captionHeight;
+        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${svgH}" width="${totalSize}" height="${svgH}">`;
+        svg += `<rect width="${totalSize}" height="${svgH}" fill="${_bg}"/>`;
         for (let r = 0; r < qr.size; r++) {
           for (let c = 0; c < qr.size; c++) {
             if (!qr.matrix[r][c]) continue;
@@ -1968,6 +2019,9 @@ const QRPanel = (() => {
               svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" fill="${_fg}"/>`;
             }
           }
+        }
+        if (captionText) {
+          svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-size="${fontSize}" fill="${_fg}">${captionText.replace(/</g, '&lt;')}</text>`;
         }
         svg += '</svg>';
         const blob = new Blob([svg], { type: 'image/svg+xml' });
