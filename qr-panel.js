@@ -50,6 +50,7 @@ const QRPanel = (() => {
   let _compress = _storageGet('qr-compress') !== 'false';
   let _padding = _storageGet('qr-padding') !== 'false';
   let _caption = _storageGet('qr-caption') || '';
+  let _autoEc = _storageGet('qr-auto-ec') !== 'false';
   let _lastModSize = 6; // last auto-fit modSize from preview, used in export
   let _lastCaptionFontSize = 16; // last computed caption fontSize for export
   const VALID_TABS = ['preview', 'style', 'export', 'history'];
@@ -611,17 +612,20 @@ const QRPanel = (() => {
 
     const headerSize = 4; // version(1) + page(1) + total(1) + flags(1)
 
-    // Auto-downgrade EC: find highest EC that fits the data
+    // EC selection
     const EC_ORDER = ['H', 'Q', 'M', 'L'];
     const ecStart = Math.max(0, EC_ORDER.indexOf(_ec));
     let ecToUse = EC_ORDER[ecStart];
-    for (let i = ecStart; i < EC_ORDER.length; i++) {
-      const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
-      if (bytes.length + headerSize <= cap) {
-        ecToUse = EC_ORDER[i];
-        break;
+    if (_autoEc) {
+      // Auto-downgrade: find highest EC that fits the data
+      for (let i = ecStart; i < EC_ORDER.length; i++) {
+        const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
+        if (bytes.length + headerSize <= cap) {
+          ecToUse = EC_ORDER[i];
+          break;
+        }
+        ecToUse = EC_ORDER[i]; // fallback: lowest EC that was tried
       }
-      ecToUse = EC_ORDER[i]; // fallback: lowest EC that was tried
     }
 
     const qrCapacity = _QR.getMaxDataBytes(ecToUse);
@@ -1192,6 +1196,14 @@ const QRPanel = (() => {
     ecNote.className = 'qr-ec-note';
     ecNote.textContent = 'авто';
     stylePane.append(ecGroup, ecNote);
+
+    // Auto EC toggle
+    const autoEcToggle = _buildToggle('Авто-коррекция (понижение при переполнении)', _autoEc, v => {
+      _autoEc = v;
+      _storageSet('qr-auto-ec', String(v));
+      _rebuildCurrentPreview();
+    });
+    stylePane.appendChild(autoEcToggle);
 
     content.appendChild(stylePane);
 
