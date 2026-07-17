@@ -821,6 +821,7 @@
     });
 
     $all('.help-section', overlay).forEach(section => {
+      if (section.matches('[data-help-card]')) return;
       const cards = $all('[data-help-card]', section);
       section.hidden = cards.length > 0 && cards.every(cardEl => cardEl.hidden);
     });
@@ -830,13 +831,16 @@
   }
 
   function markCopied(button) {
-    const original = button.textContent;
+    if (!button._copyOriginalText) {
+      button._copyOriginalText = button.textContent;
+    }
     button.textContent = 'Скопировано ✓';
     button.classList.add('copied');
     clearTimeout(button._copyTimer);
     button._copyTimer = setTimeout(() => {
-      button.textContent = original;
+      button.textContent = button._copyOriginalText;
       button.classList.remove('copied');
+      button._copyOriginalText = null;
     }, 1100);
   }
 
@@ -894,7 +898,10 @@
   }
 
   function ensureReady() {
-    if (isReady) return;
+    const hasButton = Boolean(document.getElementById(HELP_BUTTON_ID));
+    const hasOverlay = Boolean(document.getElementById(HELP_OVERLAY_ID));
+    if (isReady && hasButton && hasOverlay) return;
+
     createHelpButton();
     createHelpOverlay();
     bindEvents();
