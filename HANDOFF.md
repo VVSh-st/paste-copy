@@ -835,6 +835,24 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ---
 
+### Help — аудит (задание 2(4))
+
+**Файл:** `help.js`
+
+**Исправленные баги:**
+1. **`openHelp()` терял `lastFocus`** — повторное открытие перезаписывало `lastFocus` значением из справки (search input). При закрытии фокус возвращался не в редактор. Фикс: `if (!overlay.hidden) return` в начале `openHelp()`.
+2. **`fallbackCopy()` врал об успехе** — `document.execCommand('copy')` результат игнорировался, всегда показывал "Скопировано ✓". Фикс: `fallbackCopy()` возвращает boolean, `copyExample()` проверяет и показывает error toast при отказе.
+3. **Заголовки пустых секций видны после фильтра** — при фильтре "Хоткеи" заголовки не-хоткейных секций оставались видимыми. Фикс: после фильтра скрываются `.help-section` без видимых карточек.
+4. **`F2` перехватывался в текстовых полях** — capture-фаза на document, без проверки target. Фикс: skip F2 в INPUT/TEXTAREA/SELECT/contentEditable.
+
+**Улучшения:**
+5. **Search index caching** — `cardEl.dataset.helpSearchText` строится один раз, переиспользуется. Убирает `textContent` чтение на каждый keystroke.
+6. **`isReady` только при наличии элементов** — `init()` и `ensureReady()` ставят `isReady = Boolean(button && overlay)`. При позднем toolbar `openHelp()` повторно попытается создать кнопку.
+
+**Коммит:** `9d85d18`
+
+---
+
 ### Help — секция "Эмодзи-пикер"
 
 **Добавлена карточка** в справку (после "Автодополнение"):
