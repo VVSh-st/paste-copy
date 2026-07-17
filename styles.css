@@ -1567,6 +1567,13 @@ textarea.block-textarea:focus {
   padding: 7px 14px; user-select: none; flex-shrink: 0; flex-wrap: wrap; gap: 8px;
   background: rgba(255,255,255,0.015);
 }
+.preview-logo {
+  flex-shrink: 0;
+  margin-right: -2px;
+  opacity: 0.85;
+  transition: opacity var(--trans);
+}
+.preview-bar:hover .preview-logo { opacity: 1; }
 .preview-title {
   font-weight: 700; letter-spacing: 1.5px; font-size: 10.5px;
   color: var(--text2); text-transform: uppercase;
