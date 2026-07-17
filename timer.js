@@ -64,6 +64,10 @@ const SquareTimer = (() => {
   // Performance.now() start for rAF loop (avoids Date.now() per frame)
   let _runStartPerf = null;
 
+  // Pause state
+  let _pausedAt = null;
+  let _pausedElapsed = 0;
+
   // Pointerleave reference
   let _onPointerLeave = null;
 
@@ -339,6 +343,10 @@ const SquareTimer = (() => {
     if (_gestureCancelled) { _gestureCancelled = false; return; }
     if (pulseIntervalId) { resetToIdle(); return; }
     if (_longPressFired) { _longPressFired = false; return; }
+    if (mode === 'up' || mode === 'down') {
+      if (_pausedAt !== null) resumeTimer(); else pauseTimer();
+      return;
+    }
     if (mode === null) startCountUp();
   }
 
@@ -482,6 +490,8 @@ const SquareTimer = (() => {
     _cornerGlowActive = false;
     _wasWarm = false;
     _runStartPerf = null;
+    _pausedAt = null;
+    _pausedElapsed = 0;
     if (_digitAnimationTimer) { clearTimeout(_digitAnimationTimer); _digitAnimationTimer = null; }
   }
 
@@ -490,8 +500,31 @@ const SquareTimer = (() => {
     _longPressFired = false; _pointerDownPos = null;
     mode = null; startTs = null; targetMinutes = null; _prevMin = null;
     _resetRenderState();
-    btn.classList.remove('timer-pressed', 'timer-long-pressed');
+    btn.classList.remove('timer-pressed', 'timer-long-pressed', 'timer-paused');
     saveState(); setIdleVisual();
+  }
+
+  function pauseTimer() {
+    if (mode === null || _pausedAt !== null) return;
+    _pausedAt = Date.now();
+    _pausedElapsed = _pausedAt - startTs;
+    stopTick();
+    _hideArc();
+    valueEl.classList.add('timer-value-dim');
+    btn.classList.add('timer-paused');
+    saveState();
+  }
+
+  function resumeTimer() {
+    if (mode === null || _pausedAt === null) return;
+    startTs = Date.now() - _pausedElapsed;
+    _runStartPerf = performance.now() - _pausedElapsed;
+    _pausedAt = null;
+    _lastDir = null;
+    btn.classList.remove('timer-paused');
+    valueEl.classList.remove('timer-value-dim');
+    saveState();
+    startTick();
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -716,7 +749,9 @@ const SquareTimer = (() => {
 
   function saveState() {
     if (mode === null) { safeSet(STORAGE_KEY, ''); return; }
-    safeSet(STORAGE_KEY, JSON.stringify({ mode, startTs, targetMinutes }));
+    const data = { mode, startTs, targetMinutes };
+    if (_pausedAt !== null) { data.pausedElapsed = _pausedElapsed; }
+    safeSet(STORAGE_KEY, JSON.stringify(data));
   }
 
   function restoreState() {
@@ -730,13 +765,29 @@ const SquareTimer = (() => {
       if (s.mode === 'down' && (typeof s.targetMinutes !== 'number' || s.targetMinutes < 1 || s.targetMinutes > 99)) {
         safeSet(STORAGE_KEY, ''); setIdleVisual(); return;
       }
-      const elapsed = (Date.now() - s.startTs) / 1000;
-      if (s.mode === 'up' && Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
-      if (s.mode === 'down' && s.targetMinutes * 60 - Math.floor(elapsed) <= 0) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
+      const wasPaused = typeof s.pausedElapsed === 'number';
+      if (!wasPaused) {
+        const elapsed = (Date.now() - s.startTs) / 1000;
+        if (s.mode === 'up' && Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
+        if (s.mode === 'down' && s.targetMinutes * 60 - Math.floor(elapsed) <= 0) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
+      }
       mode = s.mode; startTs = s.startTs; targetMinutes = s.targetMinutes; _prevMin = null;
-      _runStartPerf = performance.now() - elapsed * 1000;
       btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
-      arcSvg.style.display = 'block'; startTick();
+      arcSvg.style.display = 'block';
+      if (wasPaused) {
+        _pausedElapsed = s.pausedElapsed;
+        _pausedAt = Date.now();
+        _hideArc();
+        valueEl.classList.add('timer-value-dim');
+        btn.classList.add('timer-paused');
+        const rem = s.mode === 'down' ? s.targetMinutes * 60 - Math.floor(_pausedElapsed / 1000) : Math.floor(_pausedElapsed / 1000 / 60);
+        valueEl.textContent = s.mode === 'down' ? (rem < 60 ? rem : Math.ceil(rem / 60)) : Math.min(99, Math.floor(_pausedElapsed / 1000 / 60));
+        saveState();
+      } else {
+        const elapsed = (Date.now() - s.startTs) / 1000;
+        _runStartPerf = performance.now() - elapsed * 1000;
+        startTick();
+      }
       if (!_audioCtx) try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); _audioCtx.resume().catch(() => {}); } catch {}
     } catch (e) { console.warn('[SquareTimer] restore:', e); safeSet(STORAGE_KEY, ''); setIdleVisual(); }
   }
