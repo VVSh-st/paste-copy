@@ -876,7 +876,7 @@ const QRPanel = (() => {
 
     // Caption below QR
     if (captionText) {
-      ctx.font = `600 ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
+      ctx.font = `bold ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
       ctx.fillStyle = _fg;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
@@ -1921,7 +1921,7 @@ const QRPanel = (() => {
         }
       }
       if (captionText) {
-        svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="600" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
+        svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
       }
       svg += '</svg>';
       const blob = new Blob([svg], { type: 'image/svg+xml' });
@@ -1990,7 +1990,7 @@ const QRPanel = (() => {
         // Caption
         if (_caption.trim()) {
           const fontSize = _lastCaptionFontSize;
-          ctx.font = `600 ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
+          ctx.font = `bold ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
           ctx.fillStyle = _fg;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
@@ -2034,7 +2034,7 @@ const QRPanel = (() => {
           }
         }
         if (captionText) {
-          svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="600" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
+          svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
         }
         svg += '</svg>';
         const blob = new Blob([svg], { type: 'image/svg+xml' });
