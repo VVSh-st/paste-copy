@@ -510,7 +510,8 @@ const SquareTimer = (() => {
     _pausedElapsed = _pausedAt - startTs;
     stopTick();
     _hideArc();
-    valueEl.classList.add('timer-value-dim');
+    valueEl.textContent = '⏸';
+    valueEl.classList.remove('timer-value-dim');
     btn.classList.add('timer-paused');
     saveState();
   }
@@ -523,6 +524,7 @@ const SquareTimer = (() => {
     _lastDir = null;
     btn.classList.remove('timer-paused');
     valueEl.classList.remove('timer-value-dim');
+    _prevMin = null;
     saveState();
     startTick();
   }
@@ -778,10 +780,8 @@ const SquareTimer = (() => {
         _pausedElapsed = s.pausedElapsed;
         _pausedAt = Date.now();
         _hideArc();
-        valueEl.classList.add('timer-value-dim');
+        valueEl.textContent = '⏸';
         btn.classList.add('timer-paused');
-        const rem = s.mode === 'down' ? s.targetMinutes * 60 - Math.floor(_pausedElapsed / 1000) : Math.floor(_pausedElapsed / 1000 / 60);
-        valueEl.textContent = s.mode === 'down' ? (rem < 60 ? rem : Math.ceil(rem / 60)) : Math.min(99, Math.floor(_pausedElapsed / 1000 / 60));
         saveState();
       } else {
         const elapsed = (Date.now() - s.startTs) / 1000;
