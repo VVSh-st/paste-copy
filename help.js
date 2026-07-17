@@ -791,7 +791,9 @@
     if (!overlay) return;
 
     $all('[data-help-filter]', overlay).forEach(button => {
-      button.classList.toggle('active', button.dataset.helpFilter === filter);
+      const active = button.dataset.helpFilter === filter;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
     });
 
     overlay.dataset.activeFilter = filter;
@@ -827,35 +829,51 @@
     if (empty) empty.hidden = visibleCount > 0;
   }
 
+  function markCopied(button) {
+    const original = button.textContent;
+    button.textContent = 'Скопировано ✓';
+    button.classList.add('copied');
+    clearTimeout(button._copyTimer);
+    button._copyTimer = setTimeout(() => {
+      button.textContent = original;
+      button.classList.remove('copied');
+    }, 1100);
+  }
+
   async function copyExample(button) {
-    const code = button.parentElement?.querySelector('code')?.textContent || '';
-    if (!code.trim()) return;
+    if (button.disabled) return;
+    button.disabled = true;
 
     try {
-      if (navigator.clipboard?.writeText && window._clipboardApiEnabled !== false) {
-        await navigator.clipboard.writeText(code);
-      } else {
-        if (!fallbackCopy(code)) {
-          toast('Не удалось скопировать пример', 'error');
-          return;
+      const code = button.parentElement?.querySelector('code')?.textContent || '';
+      if (!code.trim()) return;
+
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText && window._clipboardApiEnabled !== false) {
+          await navigator.clipboard.writeText(code);
+          copied = true;
+        }
+      } catch (e) {
+        console.warn('HelpCenter clipboard API failed:', e);
+      }
+
+      if (!copied) {
+        try {
+          copied = fallbackCopy(code);
+        } catch (e) {
+          console.warn('HelpCenter fallback copy failed:', e);
         }
       }
 
-      const original = button.textContent;
-      button.textContent = 'Скопировано ✓';
-      button.classList.add('copied');
-      setTimeout(() => {
-        button.textContent = original;
-        button.classList.remove('copied');
-      }, 1100);
-      toast('Пример скопирован ✓', 'success');
-    } catch (error) {
-      console.warn('HelpCenter copy failed:', error);
-      if (fallbackCopy(code)) {
-        toast('Скопировано через fallback ✓', 'success');
+      if (copied) {
+        markCopied(button);
+        toast('Пример скопирован ✓', 'success');
       } else {
         toast('Не удалось скопировать пример', 'error');
       }
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -884,12 +902,26 @@
     isReady = Boolean(document.getElementById(HELP_BUTTON_ID) && document.getElementById(HELP_OVERLAY_ID));
   }
 
+  function watchForLateToolbar() {
+    if (document.getElementById(HELP_BUTTON_ID)) return;
+
+    const observer = new MutationObserver(() => {
+      createHelpButton();
+      if (document.getElementById(HELP_BUTTON_ID)) {
+        observer.disconnect();
+        isReady = Boolean(document.getElementById(HELP_OVERLAY_ID));
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
   function init() {
     createHelpButton();
     createHelpOverlay();
     bindEvents();
     setFilter('all');
     isReady = Boolean(document.getElementById(HELP_BUTTON_ID) && document.getElementById(HELP_OVERLAY_ID));
+    if (!isReady) watchForLateToolbar();
   }
 
   if (document.readyState === 'loading') {
