@@ -849,7 +849,22 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 5. **Search index caching** — `cardEl.dataset.helpSearchText` строится один раз, переиспользуется. Убирает `textContent` чтение на каждый keystroke.
 6. **`isReady` только при наличии элементов** — `init()` и `ensureReady()` ставят `isReady = Boolean(button && overlay)`. При позднем toolbar `openHelp()` повторно попытается создать кнопку.
 
-**Коммит:** `9d85d18`
+**Коммит:** `9d85d18` (аудит 2(4)), `1a8cba6` (аудит 2(5))
+
+### Help — аудит (задание 2(5))
+
+**Файл:** `help.js`
+
+**Исправленные баги:**
+1. **Double-click гонка копирования** — два быстрых клика создавали два таймера восстановления, кнопка застревала в "Скопировано ✓". Фикс: `button.disabled` во время async + `markCopied()` с `clearTimeout(button._copyTimer)`.
+2. **Поздний toolbar без auto-retry** — `isReady=false` при отсутствии toolbar, но повторной попытки не было. Фикс: `watchForLateToolbar()` — MutationObserver на body, отключается после создания кнопки.
+3. **fallback в catch незащищён** — `fallbackCopy(code)` мог выбросить исключение из `copyExample()`. Фикс: отдельный try/catch для clipboard и для fallback.
+4. **fallback не показывал "Скопировано" на кнопке** — визуал отличался от clipboard пути. Фикс: `markCopied()` вызывается при любом успешном копировании.
+5. **`aria-pressed` на фильтрах** — синхронизация с active state для скринридеров.
+
+**Улучшения:**
+- `markCopied()` — единая функция для визуального "Скопировано ✓" с clearTimeout
+- `copyExample()` — полная переработка: disabled guard, отдельные try/catch для clipboard/fallback, markCopied для обеих веток
 
 ---
 
