@@ -667,7 +667,7 @@ const QRPanel = (() => {
     _effectiveEc = _ec;
     _qrCache.clear();
     _renderPreview();
-    _updateEcNote();
+
   }
 
   /* ── apply split result ──────────────────────────────── */
@@ -679,7 +679,7 @@ const QRPanel = (() => {
     _previewSource = source;
     _qrCache.clear();
     _renderPreview();
-    _updateEcNote();
+
   }
 
   /* ── export guard ────────────────────────────────────── */
@@ -1192,18 +1192,18 @@ const QRPanel = (() => {
       };
       ecGroup.appendChild(btn);
     }
-    const ecNote = document.createElement('span');
-    ecNote.className = 'qr-ec-note';
-    ecNote.textContent = 'авто';
-    stylePane.append(ecGroup, ecNote);
+    stylePane.appendChild(ecGroup);
 
-    // Auto EC toggle
-    const autoEcToggle = _buildToggle('Авто-коррекция (понижение при переполнении)', _autoEc, v => {
+    // Auto EC correction — separate section
+    const autoEcLabel = document.createElement('div');
+    autoEcLabel.className = 'qr-section-label';
+    autoEcLabel.textContent = 'Авто-понижение EC';
+    const autoEcToggle = _buildToggle('Понижать при переполнении', _autoEc, v => {
       _autoEc = v;
       _storageSet('qr-auto-ec', String(v));
       _rebuildCurrentPreview();
     });
-    stylePane.appendChild(autoEcToggle);
+    stylePane.append(autoEcLabel, autoEcToggle);
 
     content.appendChild(stylePane);
 
@@ -1299,7 +1299,6 @@ const QRPanel = (() => {
     _panel = p;
     _panel._resizeHandle = resizeHandle;
     _panel._header = header;
-    _panel._ecNote = ecNote;
 
     // Attach drag/resize start listeners
     header.addEventListener('mousedown', _onDragStart);
@@ -1678,18 +1677,6 @@ const QRPanel = (() => {
       el.style.display = 'block';
     } else {
       el.style.display = 'none';
-    }
-  }
-
-  function _updateEcNote() {
-    const el = _panel?._ecNote;
-    if (!el) return;
-    if (_effectiveEc !== _ec) {
-      el.textContent = `${_effectiveEc} (авто)`;
-      el.style.color = 'var(--accent, #4f8ef7)';
-    } else {
-      el.textContent = 'авто';
-      el.style.color = '';
     }
   }
 
