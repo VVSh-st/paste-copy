@@ -525,7 +525,11 @@ const QRPanel = (() => {
   const _qrCache = new Map();
   function _getEncodedQR(page) {
     const key = `${_effectiveEc}:${Array.from(page.bytes).join(',')}`;
-    if (!_qrCache.has(key)) _qrCache.set(key, _QR.encode(page.bytes, _effectiveEc));
+    if (!_qrCache.has(key)) {
+      const qr = _QR.encode(page.bytes, _effectiveEc);
+      if (!qr) return null;
+      _qrCache.set(key, qr);
+    }
     return _qrCache.get(key);
   }
 
@@ -646,6 +650,19 @@ const QRPanel = (() => {
     _pages = [];
     _currentPage = 0;
     _effectiveEc = _ec;
+    _qrCache.clear();
+    _renderPreview();
+    _updateEcNote();
+  }
+
+  /* ── apply split result ──────────────────────────────── */
+  function _applySplitResult(result, text, source) {
+    _effectiveEc = result.effectiveEc;
+    _pages = result.pages;
+    _currentPage = 0;
+    _previewText = text;
+    _previewSource = source;
+    _qrCache.clear();
     _renderPreview();
     _updateEcNote();
   }
@@ -661,19 +678,10 @@ const QRPanel = (() => {
     try {
       const result = await _splitText(_previewText);
       if (!_isOpen || id !== _generationId) return;
-      _effectiveEc = result.effectiveEc;
-      _pages = result.pages;
-      _currentPage = 0;
-      _qrCache.clear();
-      _renderPreview();
-      _updateEcNote();
+      _applySplitResult(result, _previewText, _previewSource);
     } catch (err) {
       if (id !== _generationId || !_isOpen) return;
-      _pages = [];
-      _currentPage = 0;
-      _effectiveEc = _ec;
-      _renderPreview();
-      _updateEcNote();
+      _clearPreview();
       _showToast(err.message || 'Не удалось подготовить QR-код');
     } finally {
       if (id === _generationId) {
@@ -710,14 +718,7 @@ const QRPanel = (() => {
     _lastText = text;
     _lastSelStart = _ta?.selectionStart ?? -1;
     _lastSelEnd = _ta?.selectionEnd ?? -1;
-    _effectiveEc = result.effectiveEc;
-    _pages = result.pages;
-    _currentPage = 0;
-    _previewText = text;
-    _previewSource = source;
-    _qrCache.clear();
-    _renderPreview();
-    _updateEcNote();
+    _applySplitResult(result, text, source);
     if (addHistory) _addToHistory(text, source);
   }
 
@@ -770,17 +771,11 @@ const QRPanel = (() => {
           _showToast(err.message || 'Не удалось подготовить QR-код');
           return;
         }
-        if (id !== _generationId) return;
-        _effectiveEc = result.effectiveEc;
-        _pages = result.pages;
-        _currentPage = 0;
-        _previewText = entry.text;
-        _previewSource = 'history';
+        if (id !== _generationId) { _lastText = '\x00'; return; }
+        _applySplitResult(result, entry.text, 'history');
         _lastText = entry.text;
         _lastSelStart = -1;
         _lastSelEnd = -1;
-        _renderPreview();
-        _updateEcNote();
         _switchTab('preview');
       };
       list.appendChild(item);
@@ -816,7 +811,7 @@ const QRPanel = (() => {
     if (!qr) {
       canvas.width = 1;
       canvas.height = 1;
-      if (statsEl) statsEl.textContent = 'Ошибка: данные слишком велики';
+      if (statsEl) statsEl.textContent = 'Текст не помещается в QR-код';
       return;
     }
 
