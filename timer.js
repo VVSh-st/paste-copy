@@ -22,7 +22,6 @@ const SquareTimer = (() => {
   const MOVE_THRESHOLD = 10;
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
-  const WARM_START_SEC = 55;
   const MIN_VISIBLE_PROGRESS = 0.003;
 
   let _initialized = false;
@@ -60,9 +59,6 @@ const SquareTimer = (() => {
 
   // Digit animation timer (cancel previous to avoid race on fast changes)
   let _digitAnimationTimer = null;
-
-  // Performance.now() start for rAF loop (avoids Date.now() per frame)
-  let _runStartPerf = null;
 
   // Pause state
   let _pausedAt = null;
@@ -268,6 +264,7 @@ const SquareTimer = (() => {
 
   function destroy() {
     stopTick(); stopPulse(); clearLongPress();
+    _clearDigitAnimation();
     _pointerDownPos = null; _prevMin = null;
     _longPressFired = false;
     _initialized = false;
@@ -464,7 +461,7 @@ const SquareTimer = (() => {
   }
 
   function startCountUp() {
-    mode = 'up'; startTs = Date.now(); _runStartPerf = performance.now();
+    mode = 'up'; startTs = Date.now();
     targetMinutes = null; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     arcSvg.style.display = 'block';
@@ -473,7 +470,7 @@ const SquareTimer = (() => {
   }
 
   function startCountDown(m) {
-    mode = 'down'; startTs = Date.now(); _runStartPerf = performance.now();
+    mode = 'down'; startTs = Date.now();
     targetMinutes = m; _prevMin = null;
     btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
     closeInlineInput(); arcSvg.style.display = 'block';
@@ -487,12 +484,18 @@ const SquareTimer = (() => {
     _lastHeadIdx = -1;
     _lastHLen = -1;
     _nextCornerIdx = 0;
-    _cornerGlowActive = false;
-    _wasWarm = false;
-    _runStartPerf = null;
     _pausedAt = null;
     _pausedElapsed = 0;
-    if (_digitAnimationTimer) { clearTimeout(_digitAnimationTimer); _digitAnimationTimer = null; }
+    _clearDigitAnimation();
+  }
+
+  function _clearDigitAnimation() {
+    if (_digitAnimationTimer !== null) {
+      clearTimeout(_digitAnimationTimer);
+      _digitAnimationTimer = null;
+    }
+    valueEl?.classList.remove('timer-digit-enter');
+    valueEl?.parentNode?.querySelectorAll('.timer-digit-old').forEach(el => el.remove());
   }
 
   function resetToIdle() {
@@ -510,8 +513,6 @@ const SquareTimer = (() => {
     _pausedElapsed = _pausedAt - startTs;
     stopTick();
     _hideArc();
-    valueEl.textContent = '⏸';
-    valueEl.classList.remove('timer-value-dim');
     btn.classList.add('timer-paused');
     saveState();
   }
@@ -519,12 +520,10 @@ const SquareTimer = (() => {
   function resumeTimer() {
     if (mode === null || _pausedAt === null) return;
     startTs = Date.now() - _pausedElapsed;
-    _runStartPerf = performance.now() - _pausedElapsed;
     _pausedAt = null;
     _lastDir = null;
-    btn.classList.remove('timer-paused');
-    valueEl.classList.remove('timer-value-dim');
     _prevMin = null;
+    btn.classList.remove('timer-paused');
     saveState();
     startTick();
   }
@@ -537,19 +536,19 @@ const SquareTimer = (() => {
   function stopTick()  { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } }
 
   function _tickRAF(ts) {
-    if (_runStartPerf == null || mode === null) { rafId = null; return; }
+    if (mode === null) { rafId = null; return; }
     if (ts - _lastTs < 33) { rafId = requestAnimationFrame(_tickRAF); return; }
     _lastTs = ts;
-    const elapsed = (ts - _runStartPerf) / 1000;
+    const elapsed = (Date.now() - startTs) / 1000;
 
     if (mode === 'up') {
       const min = Math.floor(elapsed / 60);
       if (min >= 99) {
-        _updateDisplay(99, 1, 'cw');
+        _updateDisplay(99, 1, 'cw', false);
         onLimitReached();
         return;
       }
-      _updateDisplay(min, (elapsed % 60) / 60, 'cw');
+      _updateDisplay(min, (elapsed % 60) / 60, 'cw', false);
     } else {
       const rem = targetMinutes * 60 - Math.floor(elapsed);
       if (rem <= 0) {
@@ -559,7 +558,7 @@ const SquareTimer = (() => {
       }
       const display = rem < 60 ? rem : Math.ceil(rem / 60);
       const overallProgress = 1 - rem / (targetMinutes * 60);
-      _updateDisplay(display, overallProgress, 'ccw');
+      _updateDisplay(display, overallProgress, 'ccw', rem <= 5);
     }
     rafId = requestAnimationFrame(_tickRAF);
   }
@@ -603,7 +602,7 @@ const SquareTimer = (() => {
   }
 
   function _startAutoCountdown() {
-    mode = 'down'; startTs = Date.now(); _runStartPerf = performance.now();
+    mode = 'down'; startTs = Date.now();
     targetMinutes = 99; _prevMin = null;
     arcSvg.style.display = 'block';
     saveState(); startTick();
@@ -613,7 +612,7 @@ const SquareTimer = (() => {
      DISPLAY (stacking animation)
      ════════════════════════════════════════════════════════════════ */
 
-  function _updateDisplay(minutes, progress, dir) {
+  function _updateDisplay(minutes, progress, dir, warm = false) {
     if (valueEl.style.display !== 'flex') valueEl.style.display = 'flex';
     if (valueEl.classList.contains('timer-value-dim')) valueEl.classList.remove('timer-value-dim');
 
@@ -643,13 +642,13 @@ const SquareTimer = (() => {
     _prevMin = minutes;
 
     _applyArc(progress, dir);
+    _setWarmGlow(warm);
   }
 
   /* ── цветовая температура (мягкая тень) ── */
 
-  function _applyWarmGlow(progress) {
+  function _setWarmGlow(warm) {
     if (_isBackground) return;
-    const warm = progress >= (WARM_START_SEC / 60);
     if (warm !== _wasWarm) {
       btn.classList.toggle('timer-warm', warm);
       _wasWarm = warm;
@@ -707,18 +706,15 @@ const SquareTimer = (() => {
     }
 
     _checkCornerGlow(headPos, P);
-    _applyWarmGlow(progress);
   }
 
   function _hideArc() {
     if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.opacity = ''; }
     if (arcHeadSeg) arcHeadSeg.style.display = 'none';
     if (arcHeadDot) arcHeadDot.style.display = 'none';
-    if (_cornerGlowActive) {
-      btn.classList.remove('timer-corner-glow');
-      _cornerGlowActive = false;
-    }
-    if (_wasWarm) { btn.classList.remove('timer-warm'); _wasWarm = false; }
+    btn.classList.remove('timer-corner-glow', 'timer-warm');
+    _cornerGlowActive = false;
+    _wasWarm = false;
   }
 
   /* ── idle ── */
@@ -767,7 +763,13 @@ const SquareTimer = (() => {
       if (s.mode === 'down' && (typeof s.targetMinutes !== 'number' || s.targetMinutes < 1 || s.targetMinutes > 99)) {
         safeSet(STORAGE_KEY, ''); setIdleVisual(); return;
       }
-      const wasPaused = typeof s.pausedElapsed === 'number';
+      const rawPaused = s.pausedElapsed;
+      const wasPaused =
+        Number.isFinite(rawPaused) && rawPaused >= 0 &&
+        rawPaused < (s.mode === 'up' ? 99 * 60 * 1000 : s.targetMinutes * 60 * 1000);
+      if (!wasPaused && typeof rawPaused !== 'undefined') {
+        safeSet(STORAGE_KEY, ''); setIdleVisual(); return;
+      }
       if (!wasPaused) {
         const elapsed = (Date.now() - s.startTs) / 1000;
         if (s.mode === 'up' && Math.floor(elapsed / 60) >= 99) { safeSet(STORAGE_KEY, ''); setIdleVisual(); return; }
@@ -777,15 +779,12 @@ const SquareTimer = (() => {
       btn.classList.remove('timer-idle'); btn.classList.add('timer-active');
       arcSvg.style.display = 'block';
       if (wasPaused) {
-        _pausedElapsed = s.pausedElapsed;
+        _pausedElapsed = rawPaused;
         _pausedAt = Date.now();
         _hideArc();
-        valueEl.textContent = '⏸';
         btn.classList.add('timer-paused');
         saveState();
       } else {
-        const elapsed = (Date.now() - s.startTs) / 1000;
-        _runStartPerf = performance.now() - elapsed * 1000;
         startTick();
       }
       if (!_audioCtx) try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); _audioCtx.resume().catch(() => {}); } catch {}

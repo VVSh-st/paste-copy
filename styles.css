@@ -241,8 +241,16 @@ body {
     inset 0 0 8px rgba(120,140,160,0.08),
     inset 0 0 2px rgba(120,140,160,0.12);
 }
-#btn-timer.timer-paused .timer-value-dim {
-  opacity: 0.55;
+#btn-timer.timer-paused::after {
+  content: "Ⅱ";
+  position: absolute;
+  right: 5px;
+  top: 4px;
+  font-size: 9px;
+  opacity: 0.75;
+}
+#btn-timer.timer-paused .timer-value {
+  opacity: 0.72;
 }
 
 /* ── Цифра: металлический градиент + deep shadow ── */
