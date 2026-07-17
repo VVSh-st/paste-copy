@@ -838,7 +838,7 @@ const QRPanel = (() => {
 
     // Caption height
     const captionText = _caption.trim();
-    const fontSize = 13;
+    const fontSize = 18;
     const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
 
     canvas.width = totalSize;
@@ -1883,7 +1883,7 @@ const QRPanel = (() => {
       const modSize = _moduleSize;
       const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
-      const fontSize = 13;
+      const fontSize = 18;
       const captionText = _caption.trim();
       const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
       const svgH = totalSize + captionHeight;
@@ -1979,7 +1979,7 @@ const QRPanel = (() => {
         }
         // Caption
         if (_caption.trim()) {
-          const fontSize = 13;
+          const fontSize = 18;
           ctx.font = `${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
           ctx.fillStyle = _fg;
           ctx.textAlign = 'center';
@@ -1996,7 +1996,7 @@ const QRPanel = (() => {
         const modSize = _moduleSize;
         const quiet = _padding ? 4 : 0;
         const totalSize = (qr.size + quiet * 2) * modSize;
-        const fontSize = 13;
+        const fontSize = 18;
         const captionText = _caption.trim();
         const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
         const svgH = totalSize + captionHeight;
