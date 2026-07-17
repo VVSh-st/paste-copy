@@ -203,7 +203,7 @@
 | `prompt-loom.js` | `renderPalette` — DOM-diff (не пересоздаёт search input); `close-all-palettes` listener; `closePalette` export; фикс `handleBackslashTrigger` |
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
-| `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only; **Аудит итерации 1-4:** AudioContext reuse (один на цикл, user-gesture init); `_cachePoints` аналитический (0 layout вместо 800); `_tickRAF` safety (`rafId=null`); `closeInlineInput` comma→if/else; inline-input фидбэк (shake+red); ResizeObserver debounce (`_resizeRaf`); cssText cache (`_cachedDigitCssText/Sig/Font`); `_applyArc` hot path оптимизация (display/r только при смене dir, `_lastHeadIdx` guard, убран strokeDashoffset='0'); AudioContext.resume().catch(); `restoreState` AudioContext init; `_updateDisplay` guards; `void offsetWidth` убран; `setIdleVisual` дубли убраны; `parentNode.style.position` вынесен в init |
+| `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only; **Аудит итерации 1-4:** AudioContext reuse (один на цикл, user-gesture init); `_cachePoints` аналитический (0 layout вместо 800); `_tickRAF` safety (`rafId=null`); `closeInlineInput` comma→if/else; inline-input фидбэк (shake+red); ResizeObserver debounce (`_resizeRaf`); cssText cache (`_cachedDigitCssText/Sig/Font`); `_applyArc` hot path оптимизация (display/r только при смене dir, `_lastHeadIdx` guard, убран strokeDashoffset='0'); AudioContext.resume().catch(); `restoreState` AudioContext init; `_updateDisplay` guards; `void offsetWidth` убран; `setIdleVisual` дубли убраны; `parentNode.style.position` вынесен в init; **Аудит задание 2:** `_resetRenderState()` — единый сброс arc/render state; `resetToIdle()` + `onLimitReached()` вызывают `_resetRenderState()` (фикс кометы после сброса); countdown warm glow — `overallProgress = 1-rem/duration` вместо `(elapsed%60)/60`; `_tickRAF` через `performance.now()` вместо `Date.now()`; `_digitAnimationTimer` cancel prev setTimeout; удалён `_firedCorners` |
 | `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate (со спавном частиц внутри), `POSE_BUF`/`resetPose()`, particle throttle 30fps, `setVarApprox`, `deferBurst`, `mouseMovedSinceLastFrame`, `updateMood` в `requestIdleCallback`, `passive: true`; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry, fallback timeout, `_idleCallbackId` cleanup; `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing `breathCore/Glow/Crust/Ash`; `_throttleTimer` fix; crack color-shift `mixRgb()`; anomaly sparks 380-720px; micro-flicker idle; landed ash particles; dying tab guard; idleLevel throttle УДАЛЁН (убивал визуал); **Аудит R1:** `ringImpulse`/`cursorLean` обнуляются в reduce-motion; tooltip debounce 800мс; `startEgg` guard; `--reveal-delay` через `setVar`/`removeVar`; **Аудит R2:** `deferBurst` рекурсия, `updateCrackLayers` через `setVar`, `notifyEdit` tooltip fix, reduceMotion glint reset, `peek.state` reset в idle, mousemove throttle-lock; **Egg rewrite (4(5)-4(10)):** 12-фазный орбитальный сценарий, orbit中心=raw caret (не clamped), tilt к caret в фазах 4-8, старт от ember (0,0), landing point от реального caret, `_baseApproachAngle`, `realCaretX/Y`, `_landX/_landY` clamped к viewport, minDist guard 150px, viewport clamp, reduceMotion early-return, ПКМ-тест включён |
 | `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode); **Аудит:** segment transition `background-color` → `opacity`; `will-change: transform` на `.ember-core` |
 | `styles.css` | `capturePulse` infinite → 1; `prefers-reduced-motion` для capturePulse; `.timer-input-error` + `@keyframes timerInputShake` |
@@ -229,6 +229,10 @@
 - **Timer AudioContext**: переиспользование одного `_audioCtx` на весь жизненный цикл. Создаётся при первом `pointerdown` (user-gesture для iOS). `restoreState` создаёт при восстановлении активного таймера. `.catch()` на `resume()` для Safari.
 - **Timer cssText cache**: `_cachedDigitCssText/Sig/Font` — один `getComputedStyle` за жизнь темы. Инвалидация при смене classList или font.
 - **Timer ResizeObserver debounce**: `_resizeRaf` через `requestAnimationFrame` — инвалидация кэшей раз за кадр вместо 60 раз/сек.
+- **Timer `_resetRenderState()`**: единая функция сброса `_lastDir`, `_pts`, `_lastHeadIdx`, `_lastHLen`, `_nextCornerIdx`, `_cornerGlowActive`, `_wasWarm`, `_runStartPerf`, `_digitAnimationTimer`. Вызывается из `resetToIdle()` и `onLimitReached()`. Фикс: после сброса комета снова появляется при повторном запуске того же режима.
+- **Timer countdown warm glow**: `overallProgress = 1 - rem / (targetMinutes * 60)` вместо `(elapsed % 60) / 60`. Glow включается только в последние 5 секунд countdown, а не на каждой 55-й секунде каждой минуты.
+- **Timer `performance.now()`**: `_runStartPerf` в `startCountUp/Down/restoreState`, elapsed = `(ts - _runStartPerf) / 1000` в `_tickRAF`. Монотонные часы без аллокаций.
+- **Timer digit animation race**: `_digitAnimationTimer` — `clearTimeout` предыдущего callback перед каждым новым `setTimeout` (400мс). Предотвращает обрыв stacking-анимации при быстрой смене цифр.
 - **Text Linter perf**: `many-commas` заменён на split by sentence + comma count — O(n) вместо экспоненциального regex.
 - **Mini-chat geometry**: `_savedWin` хранит позицию/размер, обновляется при drag/resize end и beforeunload. Восстанавливается в `_open()`.
 - **Ember idle gate**: пропускает тяжёлые вычисления (commitPose, updateWind, etc.) но **всегда спавнит частицы** (ash/spark/shootingSpark) и вызывает `updateParticles`. Спавн внутри idle gate перед `return`.
@@ -1013,3 +1017,28 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 2. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
 3. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
 4. ~~Протестировать QR-панель~~ — все аудиты (1-13) пройдены
+
+### Timer — аудит по заданию 2 (комета дуга, warm glow, perf, digit race)
+
+**Файл:** `timer.js`
+
+**Исправленные баги:**
+
+1. **Комета не появляется после сброса** (основной баг) — `resetToIdle()` и `onLimitReached()` не сбрасывали `_lastDir`, `_pts`, `_lastHeadIdx`, `_lastHLen`, `_nextCornerIdx`. При повторном запуске того же режима `_applyArc()` считал что направление уже установлено, SVG-элементы оставались `display: none`. Фикс: `_resetRenderState()` centralizes all arc/render resets.
+
+2. **Warm glow каждые 55-60 секунд каждой минуты** — `(elapsed % 60) / 60` это прогресс текущей минуты, а не общего countdown. Glow включался на каждой 55-й секунде каждой минуты. Фикс: `overallProgress = 1 - rem / (targetMinutes * 60)` — glow только в последние 5 секунд.
+
+3. **Цифровая анимация race condition** — `setTimeout` для удаления `timer-digit-old` мог выполниться после начала следующей анимации и оборвать `timer-digit-enter`. Фикс: `_digitAnimationTimer` + `clearTimeout` перед каждым новым `setTimeout`.
+
+4. **`Date.now()` в каждом кадре** — `_tickRAF` вызывал `Date.now()` ~60 раз/сек. Фикс: `_runStartPerf = performance.now()` в `startCountUp/Down/restoreState`, elapsed вычисляется как `(ts - _runStartPerf) / 1000`.
+
+**Улучшения:**
+5. **`_resetRenderState()`** — единая функция для сброса `_lastDir`, `_pts`, `_lastHeadIdx`, `_lastHLen`, `_nextCornerIdx`, `_cornerGlowActive`, `_wasWarm`, `_runStartPerf`, `_digitAnimationTimer`.
+6. **Удалён неиспользуемый `_firedCorners`** (Set, объявлен но нигде не использовался).
+
+**Не применено (аргументы):**
+- **AudioContext без user-gesture** — предложение по `_ensureAudioContext()`. AudioContext уже создаётся при первом `pointerdown` (user-gesture). В `restoreState` создаётся только для активного таймера. Браузер может оставить suspended, но `resume().catch()` обрабатывается. Низкий приоритет.
+- **Пауза/возобновление** — новая фича, не баг-фикс. Отложена.
+- **`_hideArc()` очистка inline-стилей** — `strokeDasharray`/`strokeDashoffset` обновляются каждый кадр в `_applyArc()`, stale-значения не сохраняются. Не нужен дублирующий сброс.
+
+**Коммит:** `558de15`
