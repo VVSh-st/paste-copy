@@ -891,8 +891,125 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ---
 
+### QR Panel — генератор QR-кодов
+
+**Добавлен** новый модуль `qr-panel.js` (~2100 строк).
+
+**Функционал:**
+- Динамический QR для выделенного текста / всего блока (как Word Count)
+- Встроенный QR-генератор (версии 1-40, EC L/M/Q/H)
+- **EC по умолчанию: H (30%)** с авто-понижением до M/Q/L (toggle вкл/выкл)
+- 4 стиля точек: classic, dotted, rounded, cross (крестики)
+- Кастомный HSV color picker: hue ring + SB square (градиенты) + hex input + EyeDropper pipette + 9 быстрых свотчей
+- **Инвертирование цветов** — кнопка в секции Цвет
+- Мульти-страничный split с deflate-сжатием (CompressionStream API)
+- Навигация ◀ стр. / стр. ▶ + **стрелки клавиатуры** (←/→)
+- **История** — последние 20 генераций, клик восстанавливает QR
+- Панель: drag (header), resize (handle), позиция/размер запоминаются
+- Закрытие: ПКМ вне панели = закрыть + подавить контекстное меню. ЛКМ = не закрывать
+- Вкладки: Просмотр / Стиль / Экспорт
+- **Подпись под QR** — поле ввода в export pane, рендерится в preview и экспорт (PNG/SVG)
+- Экспорт: копировать в буфер, скачать PNG, скачать SVG, **скачать все PNG/SVG** (batch)
+- **Тихая зона 4м** (quiet zone) — toggle
+- **Авто-подбор модуля** — QR вписывается без скроллбара
+- Все настройки сохраняются в localStorage
+
+**UI бейджи (preview):**
+- `Сжатие вкл.` — если включено deflate-сжатие
+- `К.о. +30%` / `+25%` / `+15%` / `+7%` — фактический EC
+- `N байт` — размер данных на страницу
+- `X из Y` — номер страницы (при мульти-страничности)
+- Источник: `Выделено: N симв.` / `Блок: название` / `Весь блок` / `Из истории`
+
+**Стиль "Крестики" (cross):**
+- Две линии `moveTo`/`lineTo` с `lineCap: round`, `lineWidth: size * 0.2`
+- SVG: `<path d="M...V...M...H..." stroke-linecap="round"/>`
+
+**Batch export:**
+- Кнопки "Скачать все PNG" / "Скачать все SVG"
+- Файлы: `qr-page-1-of-3.png`, `qr-page-2-of-3.png` и т.д.
+
+**Caption (подпись):**
+- Поле ввода в export pane, сохраняется в `localStorage`
+- Шрифт: bold 18px, масштабируется пропорционально canvas (`16 / max(scaleFactor, 0.3)`)
+- XML escaping через `_escapeXml()` (полный набор: `& < > " '`)
+
+**Архитектура:**
+- `_splitText()` возвращает `{ pages, effectiveEc }` — атомарно
+- `_applySplitResult()` — общий хелпер для `_rebuildCurrentPreview`, `_generateQR`, history
+- `_clearPreview()` — очистка всего состояния + `_qrCache`
+- `_hasValidCurrentPage()` — guard перед экспортом
+- `_lastModSize` / `_lastCaptionFontSize` — preview и export совпадают
+- `_autoEc` toggle — авто-понижение EC вкл/выкл
+- `_qrCache` ограничен до 50 (LRU)
+- `generatorPoly` кэширует RS полиномы (`_polyCache`)
+- `_updateSBSquare` — два градиента вместо 19600 пикселей
+- `DEBOUNCE_INPUT` (300мс) для ввода, `DEBOUNCE_SEL` (150мс) для остального
+- Стрелки ←/→ для навигации по страницам
+
+**Коммиты:**
+- `80d9779` — feat: add QR panel
+- `a6d3259` — fix: drag/resize, CompressionStream, history
+- `fb2b25a` — fix: audit #1 (safe localStorage, async safety, a11y, padding)
+- `6f97861` — fix: audit #2 (version 40, panel safety, clipboard, history validation)
+- `fd0a549` — feat: QR mask selection (penalty N1-N4 per ISO/IEC 18004)
+- `94d8152` — fix: placeFormatInfo bit order, format info reservation, contrast warning
+- `c7a266a` — fix: polyMod, ECC tables (qrcodegen), EC_LEVELS, finder patterns, history preview
+- `ef82779` — fix: polyMul zero, EC capacity, reserved matrix, history race, QR cache
+- `dd58791` — fix: cache key, EC rebuild, history source, close invalidation, loading state
+- `d1d5a47` — fix: audit #7 — _clearPreview, stale rebuild guard, textarea generation
+- `66ce4df` — fix: audit #8 — _generateQR generation guard, EyeDropper race, history catch
+- `9ef68c5` — feat: EC auto-downgrade, effectiveEc from _splitText
+- `09a57c3` — fix: audit #9 — _splitText returns {pages, effectiveEc}, catch return, open() invalidation
+- `678e794` — fix: default EC=H, deflate → сжато
+- `082ccf7` — fix: remove v1- from badge, тихая зона
+- `e5a9594` — fix: show selected char count, Сжатие вкл.
+- `2717368` — fix: EC badge shows correction percentage (К.о. +30%)
+- `c93c6e6` — fix: audit #10 — _applySplitResult helper, don't cache null, history cache clear
+- `c88a3a8` — fix: audit #11 — export guard, SB square gradients, unused constants, EC validation, SVG toast
+- `7cab52f` — fix: audit #12 — diamond→cross, batch export, invert colors, cache limit, arrow nav
+- `0f90035` — fix: auto-fit module size, overflow hidden
+- `521e76b` — feat: caption text below QR in preview and export (PNG/SVG)
+- `5179f7b` — fix: set canvas height BEFORE drawing (caption broke preview)
+- `efb0b09` — fix: caption font 18px to compensate CSS scale-down
+- `6c39899` — fix: caption font weight 600
+- `8187898` — fix: audit #13 — RS poly cache, _escapeXml, export uses auto-fit modSize, _readJSON null
+- `3c74949` — fix: caption font scales inversely with canvas
+- `a36c351` — feat: auto EC correction toggle
+- `267a45a` — fix: remove L (авто) label, auto EC toggle in separate section
+- `2912420` — fix: caption font bold (700)
+- `221c6f3` — fix: QR panel explicit Segoe UI font
+
+**Файлы:** `qr-panel.js` (новый, ~2100 строк), `blocks.js`, `index.html`, `styles.css`
+
+**Аудиты (задание 7-13):**
+- задание (7).txt: `_clearPreview()`, stale rebuild guard, textarea generation, error on canvas
+- задание (8).txt: _generateQR generation guard, EyeDropper race, _applyPickerColor guard, history catch
+- задание (9).txt: _splitText returns {pages, effectiveEc}, catch return, preview shows effective EC, open() invalidation
+- задание (10).txt: _applySplitResult helper, don't cache null, history cache clear, stale _lastText, error message
+- задание (11).txt: export guard, SB square gradients, unused constants, EC validation, SVG toast, DEBOUNCE_INPUT
+- задание (12).txt: diamond→cross, batch export, invert colors, cache limit, arrow nav
+- задание (13).txt: RS poly cache, _escapeXml, export uses auto-fit modSize, _readJSON null
+
+---
+
+### Toolbar — dropdown меню провалились
+
+**Баг:** выпадающие меню в шапке (Добавить блок, Шаблоны) не работали.
+
+**Причина:** `contain: layout style` на `#toolbar` (из Lighthouse CLS-фикса) создавал новый stacking context — dropdown-меню被困 внутри toolbar, z-index не работал за его пределами.
+
+**Фикс:** удалён `contain: layout style` с `#toolbar`.
+
+**Коммит:** `cb24a32`
+
+**Файл:** `styles.css`
+
+---
+
 ## Следующий шаг
 
 1. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
 2. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
 3. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
+4. ~~Протестировать QR-панель~~ — все аудиты (1-13) пройдены
