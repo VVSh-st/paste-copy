@@ -1064,17 +1064,20 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 3. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
 4. ~~Протестировать QR-панель~~ — все аудиты (1-13) пройдены
 
-### Preview — логотип Paste/Copy
+### Preview — логотип Paste/Copy + QR-кнопка
 
-**Файл:** `index.html`, `styles.css`
+**Файлы:** `index.html`, `styles.css`, `app.js`
 
-**Добавлен SVG-логотип** (20x23px) в шапку превью перед словом "Превью":
-- Стилизованная скобка/clipboard с тремя текстовыми линиями
-- Использует `var(--accent)` для адаптации к теме
-- Плавное изменение opacity при hover
-- `aria-hidden="true"` для accessibility
+**Логотип (20x23px):** SVG clipboard с тремя текстовыми линиями, `var(--accent)`, opacity hover.
+**间距:** логотип + "Превью" обёрнуты в `.preview-brand` (`gap: 6px`).
 
-**Коммит:** `6806b2b`
+**QR-кнопка** (`#prev-qr`) в шапке превью передdivider:
+- SVG-иконка QR-кода
+- При клике: `QRPanel.open(_previewProxy)` — proxy с getter `value → Preview.getText()`
+- Обновляется автоматически при каждом вызове QR-генерации (getter читает актуальный текст)
+- Работает как на текстовых блоках: весь preview текст → QR
+
+**Коммиты:** `6806b2b` (логотип), `ef338dc` (QR-кнопка +间距)
 
 ### Timer — аудит по заданию 2 (комета дуга, warm glow, perf, digit race)
 
