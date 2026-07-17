@@ -1077,7 +1077,17 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - Обновляется автоматически при каждом вызове QR-генерации (getter читает актуальный текст)
 - Работает как на текстовых блоках: весь preview текст → QR
 
-**Коммиты:** `6806b2b` (логотип), `ef338dc` (QR-кнопка +间距), `5591ab8` (QR badges fix)
+**Коммиты:** `6806b2b` (логотип), `ef338dc` (QR-кнопка +间距), `5591ab8` (QR badges fix), `03700f2` (QR state race fix)
+
+### QR — fix stale badges on source switch
+
+**Файл:** `qr-panel.js`
+
+**Баг:** при переключении QR между текстовым блоком и превью (без закрытия панели) бейджи показывали данные предыдущего источника (452 байт вместо 376).
+
+**Причина:** `_lastText = text` устанавливался ДО `_applySplitResult()`. Если `_onSelectionChange` срабатывал во время `await _splitText()`, он видел `_lastText === text` и делал early return. `_pages` и `_effectiveEc` оставались от предыдущего источника.
+
+**Фикс:** `_applySplitResult()` теперь вызывается ПЕРЕД `_lastText = text`. Параллельные генерации во время async видят старый `_lastText` и продолжают выполнение.
 
 ### Preview — QR-кнопка +间距 + бейджи
 
