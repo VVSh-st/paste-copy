@@ -79,7 +79,6 @@ const QRPanel = (() => {
   const PANEL_DEFAULT_H = 480;
   const PANEL_MIN_W = 300;
   const PANEL_MIN_H = 400;
-  const MAX_QR_BYTES = 2953;      // version 40, EC=L
   const DEBOUNCE_SEL = 150;
   const DEBOUNCE_INPUT = 300;
 
@@ -602,8 +601,8 @@ const QRPanel = (() => {
 
     // Auto-downgrade EC: find highest EC that fits the data
     const EC_ORDER = ['H', 'Q', 'M', 'L'];
-    const ecStart = EC_ORDER.indexOf(_ec);
-    let ecToUse = _ec;
+    const ecStart = Math.max(0, EC_ORDER.indexOf(_ec));
+    let ecToUse = EC_ORDER[ecStart];
     for (let i = ecStart; i < EC_ORDER.length; i++) {
       const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
       if (bytes.length + headerSize <= cap) {
@@ -665,6 +664,13 @@ const QRPanel = (() => {
     _qrCache.clear();
     _renderPreview();
     _updateEcNote();
+  }
+
+  /* ── export guard ────────────────────────────────────── */
+  function _hasValidCurrentPage() {
+    if (!_pages.length) return false;
+    const page = _pages[_currentPage];
+    return !!_getEncodedQR(page);
   }
 
   /* ── rebuild preview (for settings changes) ────────────── */
@@ -1433,14 +1439,18 @@ const QRPanel = (() => {
   function _updateSBSquare(canvas, hue) {
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const s = x / w;
-        const v = 1 - y / h;
-        ctx.fillStyle = _hsvToHex(hue, s, v);
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
+    // Horizontal: white → hue color
+    const gradH = ctx.createLinearGradient(0, 0, w, 0);
+    gradH.addColorStop(0, '#ffffff');
+    gradH.addColorStop(1, `hsl(${hue}, 100%, 50%)`);
+    ctx.fillStyle = gradH;
+    ctx.fillRect(0, 0, w, h);
+    // Vertical: transparent → black
+    const gradV = ctx.createLinearGradient(0, 0, 0, h);
+    gradV.addColorStop(0, 'rgba(0,0,0,0)');
+    gradV.addColorStop(1, '#000000');
+    ctx.fillStyle = gradV;
+    ctx.fillRect(0, 0, w, h);
   }
 
   function _updatePickerCursors(hueCursor, sbCursor, hueArea, sbArea) {
@@ -1717,7 +1727,7 @@ const QRPanel = (() => {
 
   function _onInput(e) {
     if (!_isOpen || !_ta || e.target !== _ta) return;
-    _scheduleUpdate();
+    _scheduleUpdate(true);
   }
 
   function _onKeydown(e) {
@@ -1727,9 +1737,9 @@ const QRPanel = (() => {
     }
   }
 
-  function _scheduleUpdate() {
+  function _scheduleUpdate(isInput = false) {
     clearTimeout(_updateTimer);
-    _updateTimer = setTimeout(_generateQR, DEBOUNCE_SEL);
+    _updateTimer = setTimeout(_generateQR, isInput ? DEBOUNCE_INPUT : DEBOUNCE_SEL);
   }
 
   function _attachListeners() {
@@ -1760,8 +1770,9 @@ const QRPanel = (() => {
 
   /* ── export helpers ────────────────────────────────────── */
   async function _copyToClipboard() {
+    if (!_hasValidCurrentPage()) { _showToast('Нет QR-кода для копирования'); return; }
     const canvas = _panel?.querySelector('.qr-canvas');
-    if (!canvas || !_pages.length) return;
+    if (!canvas) return;
     if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
       _showToast('Копирование изображений не поддерживается');
       return;
@@ -1778,8 +1789,9 @@ const QRPanel = (() => {
   }
 
   function _download(format) {
+    if (!_hasValidCurrentPage()) { _showToast('Нет QR-кода для экспорта'); return; }
     const canvas = _panel?.querySelector('.qr-canvas');
-    if (!canvas || !_pages.length) return;
+    if (!canvas) return;
 
     if (format === 'png') {
       const link = document.createElement('a');
@@ -1789,7 +1801,7 @@ const QRPanel = (() => {
     } else if (format === 'svg') {
       const page = _pages[_currentPage];
       const qr = _getEncodedQR(page);
-      if (!qr) return;
+      if (!qr) { _showToast('Нет QR-кода для экспорта'); return; }
       const modSize = _moduleSize;
       const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
