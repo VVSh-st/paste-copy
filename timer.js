@@ -717,16 +717,8 @@ const SquareTimer = (() => {
     const headPos = visualProgress * P;
 
     // Paint properties — no reflow, safe to update every frame
-    if (dir === 'ccw') {
-      // CCW countdown: use dashoffset to shift visible portion to END of path.
-      // As headPos decreases, gap grows from START → visually depletes CCW,
-      // matching the comet's backward movement along the CCW path.
-      arcTail.style.strokeDasharray = headPos + ' ' + P;
-      arcTail.style.strokeDashoffset = headPos;
-    } else {
-      arcTail.style.strokeDasharray = headPos + ' ' + P;
-      arcTail.style.strokeDashoffset = '';
-    }
+    arcTail.style.strokeDasharray = headPos + ' ' + P;
+    arcTail.style.strokeDashoffset = '';
 
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
 
@@ -740,9 +732,8 @@ const SquareTimer = (() => {
     // Head at depleting edge: visible from (headPos - hLen) to headPos
     arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
-    // Comet dot at depleting edge of the arc
-    const cometProgress = dir === 'ccw' ? 1 - visualProgress : visualProgress;
-    const idx = Math.min(_pts.N, Math.floor(cometProgress * _pts.N));
+    // Comet dot at the END of the visible arc (depleting edge)
+    const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
     if (_lastHeadIdx !== idx) {
       const pt = _pts.pts[idx];
       arcHeadDot.setAttribute('cx', pt.x);
