@@ -1064,6 +1064,18 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 3. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
 4. ~~Протестировать QR-панель~~ — все аудиты (1-13) пройдены
 
+### Preview — логотип Paste/Copy
+
+**Файл:** `index.html`, `styles.css`
+
+**Добавлен SVG-логотип** (20x23px) в шапку превью перед словом "Превью":
+- Стилизованная скобка/clipboard с тремя текстовыми линиями
+- Использует `var(--accent)` для адаптации к теме
+- Плавное изменение opacity при hover
+- `aria-hidden="true"` для accessibility
+
+**Коммит:** `6806b2b`
+
 ### Timer — аудит по заданию 2 (комета дуга, warm glow, perf, digit race)
 
 **Файл:** `timer.js`
