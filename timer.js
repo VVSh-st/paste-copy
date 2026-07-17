@@ -243,8 +243,6 @@ const SquareTimer = (() => {
     btn         = document.getElementById('btn-timer');
     if (!btn) return;
 
-    _initialized = true;
-
     _onPointerLeave = e => { if (e.pointerType !== 'mouse') onPointerCancel(e); };
     arcSvg      = btn.querySelector('.timer-arc');
     arcTail     = btn.querySelector('.timer-arc-tail');
@@ -252,6 +250,14 @@ const SquareTimer = (() => {
     arcHeadDot  = btn.querySelector('.timer-arc-head-dot');
     valueEl     = btn.querySelector('.timer-value');
     inputEl     = btn.querySelector('.timer-input');
+
+    if (!arcSvg || !arcTail || !arcHeadSeg || !arcHeadDot || !valueEl) {
+      console.warn('[SquareTimer] Required timer elements are missing');
+      btn = null;
+      return;
+    }
+
+    _initialized = true;
     if (valueEl?.parentNode) valueEl.parentNode.style.position = 'relative';
 
     _resizeObserver = new ResizeObserver(_invalidateCaches);
@@ -526,6 +532,7 @@ const SquareTimer = (() => {
     mode = null; startTs = null; targetMinutes = null; _prevMin = null;
     _resetRenderState();
     btn.classList.remove('timer-pressed', 'timer-long-pressed', 'timer-paused');
+    btn.removeAttribute('aria-label');
     saveState(); setIdleVisual();
   }
 
@@ -536,6 +543,7 @@ const SquareTimer = (() => {
     stopTick();
     _hideArc();
     btn.classList.add('timer-paused');
+    btn.setAttribute('aria-label', 'Таймер на паузе');
     saveState();
   }
 
@@ -546,6 +554,7 @@ const SquareTimer = (() => {
     _lastDir = null;
     _prevMin = null;
     btn.classList.remove('timer-paused');
+    btn.removeAttribute('aria-label');
     saveState();
     startTick();
   }
@@ -805,6 +814,7 @@ const SquareTimer = (() => {
         _pausedAt = Date.now();
         _hideArc();
         btn.classList.add('timer-paused');
+        btn.setAttribute('aria-label', 'Таймер на паузе');
         saveState();
       } else {
         startTick();
@@ -814,17 +824,31 @@ const SquareTimer = (() => {
   }
 
   function getState() {
+    const isPulsing = pulseIntervalId !== null;
+    const isPaused = _pausedAt !== null;
+    const isRunning = mode !== null && !isPaused && !isPulsing;
+
     return {
       mode,
-      running: mode !== null && _pausedAt === null,
-      paused: _pausedAt !== null,
+      running: isRunning,
+      paused: isPaused,
       targetMinutes,
-      elapsedMs: mode === null ? 0 : Math.max(0, Date.now() - startTs),
-      pulse: pulseIntervalId !== null
+      elapsedMs: mode === null || startTs === null
+        ? 0
+        : isPaused
+          ? _pausedElapsed
+          : Math.max(0, Date.now() - startTs),
+      pulse: isPulsing
     };
   }
 
-  return { init, destroy, getState };
+  function reset() {
+    if (mode === null && !pulseIntervalId) return false;
+    resetToIdle();
+    return true;
+  }
+
+  return { init, destroy, getState, reset };
 })();
 
 if (document.readyState === 'loading') {
