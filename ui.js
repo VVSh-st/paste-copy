@@ -1180,26 +1180,26 @@ const Preview = (() => {
     }
 
     function applyState(p) {
-      /* Material: brightness 1→1.18, contrast 1→1.08, saturate 1→1.10 */
-      const b = 1 + p * 0.18;
-      const c = 1 + p * 0.08;
-      const s = 1 + p * 0.10;
+      /* Material: brightness 1→1.23, contrast 1→1.10, saturate 1→1.13 */
+      const b = 1 + p * 0.23;
+      const c = 1 + p * 0.10;
+      const s = 1 + p * 0.13;
       svgPath.style.filter = `brightness(${b}) contrast(${c}) saturate(${s})`;
 
-      /* Reflection opacity: 0→0.08 */
-      reflection.style.opacity = String(p * 0.08);
+      /* Reflection opacity: 0→0.10 */
+      reflection.style.opacity = String(p * 0.10);
 
       /* Inner cut edge brightening — subtle stroke glow via drop-shadow */
       if (p > 0.01) {
-        const e = p * 0.12;
+        const e = p * 0.16;
         svgPath.style.filter += ` drop-shadow(0 0 1px rgba(255,255,255,${e}))`;
       }
 
-      /* Grain: 1.5%→3% */
-      grain.style.opacity = String(0.015 + p * 0.015);
+      /* Grain: 2%→4% */
+      grain.style.opacity = String(0.02 + p * 0.02);
 
-      /* Panel glow: 0→0.02 */
-      panelGlow.style.opacity = String(p * 0.02);
+      /* Panel glow: 0→0.03 */
+      panelGlow.style.opacity = String(p * 0.03);
     }
 
     brand.addEventListener('mousemove', e => {
