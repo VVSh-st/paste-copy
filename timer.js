@@ -737,12 +737,8 @@ const SquareTimer = (() => {
     }
 
     // Update segment POSITION whenever head moves (always, full animation)
-    if (dir === 'ccw') {
-      // Head at depleting edge: visible from (headPos - hLen) to headPos
-      arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
-    } else {
-      arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
-    }
+    // Head at depleting edge: visible from (headPos - hLen) to headPos
+    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
     // Comet dot at depleting edge of the arc
     const cometProgress = dir === 'ccw' ? 1 - visualProgress : visualProgress;
