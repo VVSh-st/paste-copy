@@ -51,6 +51,7 @@ const QRPanel = (() => {
   let _padding = _storageGet('qr-padding') !== 'false';
   let _caption = _storageGet('qr-caption') || '';
   let _lastModSize = 6; // last auto-fit modSize from preview, used in export
+  let _lastCaptionFontSize = 16; // last computed caption fontSize for export
   const VALID_TABS = ['preview', 'style', 'export', 'history'];
   let _activeTab = VALID_TABS.includes(_storageGet('qr-panel-tab')) ? _storageGet('qr-panel-tab') : 'preview';
 
@@ -843,9 +844,12 @@ const QRPanel = (() => {
     _lastModSize = modSize;
     const totalSize = (qr.size + quiet * 2) * modSize;
 
-    // Caption height
+    // Caption height — font scales with canvas so it looks the same after CSS scale-down
     const captionText = _caption.trim();
-    const fontSize = 18;
+    const displayFontSize = 16; // desired size on screen
+    const scaleFactor = avail / totalSize;
+    const fontSize = captionText ? Math.round(displayFontSize / Math.max(scaleFactor, 0.3)) : 0;
+    _lastCaptionFontSize = fontSize;
     const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
 
     canvas.width = totalSize;
@@ -1890,7 +1894,7 @@ const QRPanel = (() => {
       const modSize = _lastModSize;
       const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
-      const fontSize = 18;
+      const fontSize = _lastCaptionFontSize;
       const captionText = _caption.trim();
       const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
       const svgH = totalSize + captionHeight;
@@ -1986,7 +1990,7 @@ const QRPanel = (() => {
         }
         // Caption
         if (_caption.trim()) {
-          const fontSize = 18;
+          const fontSize = _lastCaptionFontSize;
           ctx.font = `600 ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
           ctx.fillStyle = _fg;
           ctx.textAlign = 'center';
@@ -2003,7 +2007,7 @@ const QRPanel = (() => {
         const modSize = _lastModSize;
         const quiet = _padding ? 4 : 0;
         const totalSize = (qr.size + quiet * 2) * modSize;
-        const fontSize = 18;
+        const fontSize = _lastCaptionFontSize;
         const captionText = _caption.trim();
         const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
         const svgH = totalSize + captionHeight;
