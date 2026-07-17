@@ -9,7 +9,9 @@ const QRPanel = (() => {
   function _readJSON(key, fallback) {
     try {
       const raw = localStorage.getItem(key);
-      return raw === null ? fallback : JSON.parse(raw);
+      if (raw === null) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed === null ? fallback : parsed;
     } catch {
       try { localStorage.removeItem(key); } catch {}
       return fallback;
@@ -48,6 +50,7 @@ const QRPanel = (() => {
   let _compress = _storageGet('qr-compress') !== 'false';
   let _padding = _storageGet('qr-padding') !== 'false';
   let _caption = _storageGet('qr-caption') || '';
+  let _lastModSize = 6; // last auto-fit modSize from preview, used in export
   const VALID_TABS = ['preview', 'style', 'export', 'history'];
   let _activeTab = VALID_TABS.includes(_storageGet('qr-panel-tab')) ? _storageGet('qr-panel-tab') : 'preview';
 
@@ -139,10 +142,13 @@ const QRPanel = (() => {
       return remainder;
     }
 
+    const _polyCache = new Map();
     function generatorPoly(nsym) {
+      if (_polyCache.has(nsym)) return _polyCache.get(nsym);
       let g = new Uint8Array([1]);
       for (let i = 0; i < nsym; i++)
         g = polyMul(g, new Uint8Array([1, EXP[i]]));
+      _polyCache.set(nsym, g);
       return g;
     }
 
@@ -834,6 +840,7 @@ const QRPanel = (() => {
     const quiet = _padding ? 4 : 0;
     const fitModSize = Math.max(4, Math.min(12, Math.floor(avail / (qr.size + quiet * 2))));
     const modSize = fitModSize;
+    _lastModSize = modSize;
     const totalSize = (qr.size + quiet * 2) * modSize;
 
     // Caption height
@@ -1880,7 +1887,7 @@ const QRPanel = (() => {
       const page = _pages[_currentPage];
       const qr = _getEncodedQR(page);
       if (!qr) { _showToast('Нет QR-кода для экспорта'); return; }
-      const modSize = _moduleSize;
+      const modSize = _lastModSize;
       const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
       const fontSize = 18;
@@ -1911,7 +1918,7 @@ const QRPanel = (() => {
         }
       }
       if (captionText) {
-        svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="600" font-size="${fontSize}" fill="${_fg}">${captionText.replace(/</g, '&lt;')}</text>`;
+        svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="600" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
       }
       svg += '</svg>';
       const blob = new Blob([svg], { type: 'image/svg+xml' });
@@ -1935,7 +1942,7 @@ const QRPanel = (() => {
       if (format === 'png') {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        const modSize = _moduleSize;
+        const modSize = _lastModSize;
         const quiet = _padding ? 4 : 0;
         const totalSize = (qr.size + quiet * 2) * modSize;
         canvas.width = totalSize;
@@ -1993,7 +2000,7 @@ const QRPanel = (() => {
         link.href = canvas.toDataURL('image/png');
         link.click();
       } else if (format === 'svg') {
-        const modSize = _moduleSize;
+        const modSize = _lastModSize;
         const quiet = _padding ? 4 : 0;
         const totalSize = (qr.size + quiet * 2) * modSize;
         const fontSize = 18;
@@ -2024,7 +2031,7 @@ const QRPanel = (() => {
           }
         }
         if (captionText) {
-          svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="600" font-size="${fontSize}" fill="${_fg}">${captionText.replace(/</g, '&lt;')}</text>`;
+          svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="600" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
         }
         svg += '</svg>';
         const blob = new Blob([svg], { type: 'image/svg+xml' });
@@ -2037,6 +2044,10 @@ const QRPanel = (() => {
       downloaded++;
     }
     _showToast(`Скачано ${downloaded} из ${total} страниц`);
+  }
+
+  function _escapeXml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
   }
 
   function _showToast(msg) {
