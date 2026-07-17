@@ -1575,6 +1575,7 @@ textarea.block-textarea:focus {
   position: relative;
   width: 44px; height: 36px;
   flex-shrink: 0;
+  margin-top: -6px;
   filter: drop-shadow(0 1px rgba(255,255,255,0.02)) drop-shadow(0 -1px rgba(0,0,0,0.18));
   overflow: hidden;
 }
