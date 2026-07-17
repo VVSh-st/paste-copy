@@ -1569,11 +1569,28 @@ textarea.block-textarea:focus {
 }
 .preview-brand {
   display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  position: relative;
 }
 .preview-logo {
   flex-shrink: 0;
-  opacity: 0.85;
-  transition: opacity var(--trans);
+  position: relative;
+  transition: filter 0.3s ease;
+}
+.preview-logo-glow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    rgba(255,255,255,0.16) 0%,
+    rgba(255,255,255,0.08) 30%,
+    rgba(255,255,255,0.03) 55%,
+    rgba(255,255,255,0) 75%
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  will-change: transform, opacity;
 }
 .preview-bar:hover .preview-logo { opacity: 1; }
 .preview-title {

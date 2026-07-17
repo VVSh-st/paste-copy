@@ -299,7 +299,12 @@ const Preview = (() => {
 
   // Читаем mdMode из State каждый раз в render() — устраняет баг
   // когда IIFE инициализировался до State.load() и значение оставалось false
-  const getMdMode = () => State.getLayout().previewMarkdown === true;
+  // previewMarkdown: true|'md'|'md-hl' = MD; false|'text' = text
+  const getMdMode = () => {
+    const v = State.getLayout().previewMarkdown;
+    return v === true || v === 'md' || v === 'md-hl';
+  };
+  const getMdHighlight = () => State.getLayout().previewMarkdown === 'md-hl';
 
   const _enc = new TextEncoder();
   function _byteLen(s) { return _enc.encode(s).length; }
@@ -447,8 +452,15 @@ const Preview = (() => {
   }
 
   function _syncPanelButtons() {
-    document.getElementById('prev-md')
-      ?.classList.toggle('active-btn', getMdMode());
+    const mdBtn = document.getElementById('prev-md');
+    if (mdBtn) {
+      const v = State.getLayout().previewMarkdown;
+      const isHl = v === 'md-hl';
+      const isMd = getMdMode();
+      mdBtn.classList.toggle('active-btn', isMd);
+      mdBtn.textContent = isHl ? 'MD*' : 'MD';
+      mdBtn.title = isHl ? 'MD + подсветка кода → Text' : isMd ? 'Markdown → MD + подсветка' : 'Text → Markdown';
+    }
     document.getElementById('prev-wrap')
       ?.classList.toggle('active-btn', State.getLayout().previewWrap === false);
   }
@@ -510,6 +522,12 @@ const Preview = (() => {
           if (typeof marked !== 'undefined') {
             const safe = t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             mdEl.innerHTML = _sanitizeMarkdownHtml(marked.parse(_fixUnclosedBackticks(safe)));
+            if (getMdHighlight() && typeof hljs !== 'undefined') {
+              mdEl.querySelectorAll('pre code').forEach(block => {
+                delete block.dataset.highlighted;
+                hljs.highlightElement(block);
+              });
+            }
           } else {
             mdEl.textContent = t;
           }
@@ -617,9 +635,13 @@ const Preview = (() => {
   }
 
   function toggleMarkdown() {
-    const next = !getMdMode();
+    const cur = State.getLayout().previewMarkdown;
+    let next;
+    if (!cur || cur === false || cur === 'text') next = 'md';
+    else if (cur === true || cur === 'md') next = 'md-hl';
+    else next = 'text';
     State.setLayout({ previewMarkdown: next });
-    window.Intelligence?.track?.('preview.markdown.toggle', { enabled: next });
+    window.Intelligence?.track?.('preview.markdown.toggle', { mode: next });
     _safeSave();
     render();
   }
@@ -1100,6 +1122,67 @@ const Preview = (() => {
     _buildMenu();
     _setupStructScroll();
   }
+
+  /* ── Preview logo proximity light ── */
+  (() => {
+    const brand = document.querySelector('.preview-brand');
+    const logo = brand?.querySelector('.preview-logo');
+    const glow = brand?.querySelector('.preview-logo-glow');
+    if (!brand || !logo || !glow) return;
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    let tx = 0, ty = 0, glowOpacity = 0;
+    let rafId = null;
+    let mouseX = -999, mouseY = -999;
+
+    function tick() {
+      const rect = logo.getBoundingClientRect();
+      const cx = clamp(mouseX - rect.left, 14, rect.width + 10);
+      const cy = clamp(mouseY - rect.top, -8, rect.height * 0.55);
+
+      const dx = mouseX - (rect.left + rect.width / 2);
+      const dy = mouseY - (rect.top + rect.height / 2);
+      const dist = Math.hypot(dx, dy);
+      const inRange = dist < 100;
+      const targetOpacity = inRange ? clamp(1 - dist / 100, 0, 0.9) : 0;
+
+      // Spring interpolation (~50ms lag)
+      tx += (cx - tx) * 0.15;
+      ty += (cy - ty) * 0.15;
+      glowOpacity += (targetOpacity - glowOpacity) * (inRange ? 0.18 : 0.08);
+
+      glow.style.transform = `translate(${tx - rect.width / 2 - 6}px, ${ty - rect.height / 2 - 6}px)`;
+      glow.style.opacity = glowOpacity;
+
+      // Inner cutout shift (max 2px, delayed via CSS transition)
+      const path = logo.querySelector('path');
+      if (path) {
+        const shiftX = clamp((cx - rect.width / 2) * 0.04, -2, 2);
+        path.style.transform = `translateX(${shiftX}px)`;
+        path.style.transition = 'transform 0.08s ease-out';
+      }
+
+      if (glowOpacity > 0.005 || inRange) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        rafId = null;
+        glow.style.opacity = 0;
+        if (path) path.style.transform = '';
+      }
+    }
+
+    brand.addEventListener('mousemove', e => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    });
+
+    brand.addEventListener('mouseleave', () => {
+      mouseX = -999;
+      mouseY = -999;
+      // Let tick fade out naturally
+    });
+  })();
 
   _initStructMenu();
   _initPreviewClickToBlock();
