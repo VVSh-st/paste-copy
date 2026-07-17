@@ -589,7 +589,7 @@ const SquareTimer = (() => {
         return;
       }
       const display = rem < 60 ? rem : Math.ceil(rem / 60);
-      const overallProgress = 1 - rem / (targetMinutes * 60);
+      const overallProgress = (targetMinutes * 60 - elapsed) / (targetMinutes * 60);
       _updateDisplay(display, overallProgress, 'ccw', rem <= 5);
       valueEl?.classList.toggle('timer-urgent', rem <= 10 && rem > 0);
     }
