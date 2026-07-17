@@ -1702,26 +1702,10 @@
       <div id="preview-bar">
 
         <div class="preview-brand">
-          <div class="preview-logo" aria-hidden="true">
-            <svg class="preview-logo-svg" viewBox="0 0 52 40" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <clipPath id="logo-clip">
-                  <path d="M8 8H34A6 6 0 0 1 40 14V18A4 4 0 0 1 36 22H22A4 4 0 0 0 18 26V32H44V36H14A6 6 0 0 1 8 30Z"/>
-                </clipPath>
-              </defs>
-              <path class="preview-logo-path" fill="var(--accent,#8DB7FF)" fill-rule="evenodd" d="M8 8H34A6 6 0 0 1 40 14V18A4 4 0 0 1 36 22H22A4 4 0 0 0 18 26V32H44V36H14A6 6 0 0 1 8 30Z"/>
-              <rect class="preview-logo-flow" clip-path="url(#logo-clip)" x="-52" y="0" width="52" height="40" fill="url(#flowGrad)" opacity="0"/>
-              <defs>
-                <linearGradient id="flowGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stop-color="white" stop-opacity="0"/>
-                  <stop offset="40%" stop-color="white" stop-opacity="0.25"/>
-                  <stop offset="60%" stop-color="white" stop-opacity="0.25"/>
-                  <stop offset="100%" stop-color="white" stop-opacity="0"/>
-                </linearGradient>
-              </defs>
-            </svg>
-            <div class="preview-logo-light"></div>
-          </div>
+          <svg class="preview-logo" viewBox="0 0 52 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:24px;height:18px">
+            <path fill="var(--accent,#8DB7FF)" fill-rule="evenodd" d="M8 8H34A6 6 0 0 1 40 14V18A4 4 0 0 1 36 22H22A4 4 0 0 0 18 26V32H44V36H14A6 6 0 0 1 8 30Z"/>
+          </svg>
+          <div class="preview-logo-glow"></div>
           <span class="preview-title">Превью</span>
         </div>
 
