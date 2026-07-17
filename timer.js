@@ -60,6 +60,9 @@ const SquareTimer = (() => {
   // Digit animation timer (cancel previous to avoid race on fast changes)
   let _digitAnimationTimer = null;
 
+  // Corner glow timer
+  let _cornerGlowTimer = null;
+
   // Pause state
   let _pausedAt = null;
   let _pausedElapsed = 0;
@@ -109,6 +112,9 @@ const SquareTimer = (() => {
   }
 
   function _ensurePaths() {
+    if (_pathCW !== null && _pathCCW !== null && _cachedPtsCW !== null && _cachedPtsCCW !== null) {
+      return true;
+    }
     if (_radius == null) _readRadius();
     if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
     if (_pathCW == null) {
@@ -211,9 +217,11 @@ const SquareTimer = (() => {
       if (headPos >= targetPos - threshold && headPos <= targetPos + threshold) {
         _cornerGlowActive = true;
         btn.classList.add('timer-corner-glow');
-        setTimeout(() => {
+        if (_cornerGlowTimer !== null) clearTimeout(_cornerGlowTimer);
+        _cornerGlowTimer = setTimeout(() => {
           btn.classList.remove('timer-corner-glow');
           _cornerGlowActive = false;
+          _cornerGlowTimer = null;
         }, 500);
         _nextCornerIdx++;
       }
@@ -265,9 +273,13 @@ const SquareTimer = (() => {
   function destroy() {
     stopTick(); stopPulse(); clearLongPress();
     _clearDigitAnimation();
+    _clearCornerGlow();
     _pointerDownPos = null; _prevMin = null;
     _longPressFired = false;
     _initialized = false;
+    mode = null; startTs = null; targetMinutes = null;
+    _pausedAt = null; _pausedElapsed = 0;
+    _lastDir = null; _pts = null;
     _lastHeadIdx = -1;
     _lastHLen = -1;
     _nextCornerIdx = 0;
@@ -301,7 +313,7 @@ const SquareTimer = (() => {
       return;
     }
 
-    if (mode !== null && !pulseIntervalId) {
+    if (mode !== null && _pausedAt === null && !pulseIntervalId) {
       startTick();
     }
   }
@@ -487,6 +499,7 @@ const SquareTimer = (() => {
     _pausedAt = null;
     _pausedElapsed = 0;
     _clearDigitAnimation();
+    _clearCornerGlow();
   }
 
   function _clearDigitAnimation() {
@@ -496,6 +509,15 @@ const SquareTimer = (() => {
     }
     valueEl?.classList.remove('timer-digit-enter');
     valueEl?.parentNode?.querySelectorAll('.timer-digit-old').forEach(el => el.remove());
+  }
+
+  function _clearCornerGlow() {
+    if (_cornerGlowTimer !== null) {
+      clearTimeout(_cornerGlowTimer);
+      _cornerGlowTimer = null;
+    }
+    btn?.classList.remove('timer-corner-glow');
+    _cornerGlowActive = false;
   }
 
   function resetToIdle() {
@@ -536,7 +558,7 @@ const SquareTimer = (() => {
   function stopTick()  { if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; } }
 
   function _tickRAF(ts) {
-    if (mode === null) { rafId = null; return; }
+    if (mode === null || _pausedAt !== null) { rafId = null; return; }
     if (ts - _lastTs < 33) { rafId = requestAnimationFrame(_tickRAF); return; }
     _lastTs = ts;
     const elapsed = (Date.now() - startTs) / 1000;
@@ -712,8 +734,8 @@ const SquareTimer = (() => {
     if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.opacity = ''; }
     if (arcHeadSeg) arcHeadSeg.style.display = 'none';
     if (arcHeadDot) arcHeadDot.style.display = 'none';
-    btn.classList.remove('timer-corner-glow', 'timer-warm');
-    _cornerGlowActive = false;
+    _clearCornerGlow();
+    btn.classList.remove('timer-warm');
     _wasWarm = false;
   }
 
@@ -757,7 +779,7 @@ const SquareTimer = (() => {
       const raw = Storage._get(STORAGE_KEY);
       if (!raw) { setIdleVisual(); return; }
       const s = JSON.parse(raw);
-      if (!s || (s.mode !== 'up' && s.mode !== 'down') || typeof s.startTs !== 'number' || s.startTs <= 0) {
+      if (!s || (s.mode !== 'up' && s.mode !== 'down') || !Number.isFinite(s.startTs) || s.startTs <= 0) {
         safeSet(STORAGE_KEY, ''); setIdleVisual(); return;
       }
       if (s.mode === 'down' && (typeof s.targetMinutes !== 'number' || s.targetMinutes < 1 || s.targetMinutes > 99)) {
@@ -791,7 +813,18 @@ const SquareTimer = (() => {
     } catch (e) { console.warn('[SquareTimer] restore:', e); safeSet(STORAGE_KEY, ''); setIdleVisual(); }
   }
 
-  return { init, destroy };
+  function getState() {
+    return {
+      mode,
+      running: mode !== null && _pausedAt === null,
+      paused: _pausedAt !== null,
+      targetMinutes,
+      elapsedMs: mode === null ? 0 : Math.max(0, Date.now() - startTs),
+      pulse: pulseIntervalId !== null
+    };
+  }
+
+  return { init, destroy, getState };
 })();
 
 if (document.readyState === 'loading') {
