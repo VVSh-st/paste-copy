@@ -737,10 +737,10 @@ const QRPanel = (() => {
       }
     }
     if (!_isOpen || genId !== _generationId) return;
-    _applySplitResult(result, text, source);
     _lastText = text;
     _lastSelStart = _ta?.selectionStart ?? -1;
     _lastSelEnd = _ta?.selectionEnd ?? -1;
+    _applySplitResult(result, text, source);
     if (addHistory) _addToHistory(text, source);
   }
 
@@ -2080,6 +2080,19 @@ const QRPanel = (() => {
     _generateQR();
     _renderHistory();
     _attachListeners();
+
+    // Fallback: ensure info badges render even if _renderPreview ran before DOM was ready
+    requestAnimationFrame(() => {
+      if (_isOpen && _panel && !_panel.querySelector('.qr-info-row')) {
+        const nav = _panel.querySelector('.qr-nav');
+        if (nav) {
+          const infoRow = document.createElement('div');
+          infoRow.className = 'qr-info-row';
+          nav.after(infoRow);
+          if (_pages.length) _renderPreview();
+        }
+      }
+    });
   }
 
   function close() {
