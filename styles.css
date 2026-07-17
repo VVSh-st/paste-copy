@@ -1567,9 +1567,11 @@ textarea.block-textarea:focus {
   padding: 7px 14px; user-select: none; flex-shrink: 0; flex-wrap: wrap; gap: 8px;
   background: rgba(255,255,255,0.015);
 }
+.preview-brand {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
 .preview-logo {
   flex-shrink: 0;
-  margin-right: -2px;
   opacity: 0.85;
   transition: opacity var(--trans);
 }

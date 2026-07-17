@@ -563,6 +563,15 @@
   onClick('prev-md',       () => Preview.toggleMarkdown());
   onClick('prev-toggle',   () => Preview.toggleCollapse());
 
+  if (typeof QRPanel !== 'undefined') {
+    const _previewProxy = {
+      get value() { return Preview.getText?.() ?? ''; },
+      selectionStart: 0,
+      selectionEnd: 0,
+    };
+    onClick('prev-qr', () => QRPanel.open(_previewProxy));
+  }
+
   onEvent('preview-bar', 'dblclick', e => {
     if (e.target.closest('button, .preview-controls')) return;
     Preview.toggleCollapse();
