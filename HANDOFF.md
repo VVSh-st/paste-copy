@@ -1090,7 +1090,18 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 **间距间距:** логотип + "Превью" обёрнуты в `.preview-brand` (`gap: 6px`)
 
-### Preview — QR-кнопка +间距 + бейджи
+### Preview — proximity light на логотипе
+
+**Файлы:** `index.html`, `styles.css`, `ui.js`
+
+**Proximity light effect:**
+- SVG-логотип (52x40 viewBox) с radial gradient overlay (`.preview-logo-glow`)
+- `mix-blend-mode: screen` — мягкий блик следует за курсором
+- Spring-lag ~50ms (interpolation 0.15) — ощущение массы
+- Центр градиента ограничен: `cx` 14→width+10, `cy` -8→55% height — никогда снизу/слева
+- Opacity от расстояния: 0→0.9 в радиусе 100px, плавное затухание 250ms при уходе
+- Внутренний SVG path сдвигается max 2px в сторону курсора (CSS transition 80ms)
+- rAF loop: работает только пока glow > 0.005 или курсор в радиусе
 
 **Файлы:** `index.html`, `styles.css`, `app.js`, `qr-panel.js`
 
