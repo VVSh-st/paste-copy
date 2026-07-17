@@ -1123,65 +1123,167 @@ const Preview = (() => {
     _setupStructScroll();
   }
 
-  /* ── Preview logo proximity light ── */
+  /* ── Preview Logo v3: Premium micro interaction ── */
   (() => {
     const brand = document.querySelector('.preview-brand');
     const logo = brand?.querySelector('.preview-logo');
-    const glow = brand?.querySelector('.preview-logo-glow');
-    if (!brand || !logo || !glow) return;
+    const light = logo?.querySelector('.preview-logo-light');
+    const svgPath = logo?.querySelector('.preview-logo-path');
+    const flowRect = logo?.querySelector('.preview-logo-flow');
+    if (!brand || !logo || !light || !svgPath || !flowRect) return;
 
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    let tx = 0, ty = 0, glowOpacity = 0;
-    let rafId = null;
+
+    /* ── Spring physics ── */
+    class Spring {
+      constructor(value = 0, stiffness = 170, damping = 20, mass = 0.9) {
+        this.pos = value; this.vel = 0;
+        this.target = value; this.stiffness = stiffness;
+        this.damping = damping; this.mass = mass;
+      }
+      setTarget(t) { this.target = t; }
+      step(dt) {
+        const s = Math.min(dt, 0.064) / 1000;
+        const f = -this.stiffness * (this.pos - this.target);
+        const d = -this.damping * this.vel;
+        this.vel += ((f + d) / this.mass) * s;
+        this.pos += this.vel * s;
+      }
+      settled() { return Math.abs(this.vel) < 0.002 && Math.abs(this.pos - this.target) < 0.005; }
+      reset(v) { this.pos = v; this.vel = 0; this.target = v; }
+    }
+
+    /* ── State ── */
+    const RANGE = 180;
     let mouseX = -999, mouseY = -999;
+    let inRange = false, wasInRange = false;
+    let lastTs = 0;
+    let rafId = null;
+    let flowPlayed = false;
+    let flowStartTs = 0;
+    let leaveStartTs = 0;
+    let leaving = false;
+    let idlePhase = Math.random() * Math.PI * 2;
 
-    function tick() {
-      const rect = logo.getBoundingClientRect();
-      const cx = clamp(mouseX - rect.left, 14, rect.width + 10);
-      const cy = clamp(mouseY - rect.top, -8, rect.height * 0.55);
+    const lightX = new Spring(0, 170, 20, 0.9);
+    const lightY = new Spring(0, 170, 20, 0.9);
+    const lightOpacity = new Spring(0, 160, 18, 0.9);
+    const morphShiftX = new Spring(0, 180, 22, 0.9);
+    const morphShiftY = new Spring(0, 160, 20, 0.9);
 
-      const dx = mouseX - (rect.left + rect.width / 2);
-      const dy = mouseY - (rect.top + rect.height / 2);
+    const rect = () => logo.getBoundingClientRect();
+
+    function tick(ts) {
+      if (!lastTs) lastTs = ts;
+      const dt = ts - lastTs;
+      lastTs = ts;
+
+      const r = rect();
+      const cx = r.width / 2;
+      const cy = r.height / 2;
+      const dx = mouseX - (r.left + cx);
+      const dy = mouseY - (r.top + cy);
       const dist = Math.hypot(dx, dy);
-      const inRange = dist < 100;
-      const targetOpacity = inRange ? clamp(1 - dist / 100, 0, 0.9) : 0;
 
-      // Spring interpolation (~50ms lag)
-      tx += (cx - tx) * 0.15;
-      ty += (cy - ty) * 0.15;
-      glowOpacity += (targetOpacity - glowOpacity) * (inRange ? 0.18 : 0.08);
+      const prevInRange = inRange;
+      inRange = dist <= RANGE && mouseY > 0;
 
-      glow.style.transform = `translate(${tx - rect.width / 2 - 6}px, ${ty - rect.height / 2 - 6}px)`;
-      glow.style.opacity = glowOpacity;
+      /* Smoothstep: progress 1 at center → 0 at RANGE */
+      const progress = inRange
+        ? 1 - (3 * (dist / RANGE) ** 2) - 2 * (dist / RANGE) ** 3
+        : 0;
 
-      // Inner cutout shift (max 2px, delayed via CSS transition)
-      const path = logo.querySelector('path');
-      if (path) {
-        const shiftX = clamp((cx - rect.width / 2) * 0.04, -2, 2);
-        path.style.transform = `translateX(${shiftX}px)`;
-        path.style.transition = 'transform 0.08s ease-out';
+      if (inRange && !prevInRange) {
+        leaving = false;
+        if (!flowPlayed) { flowStartTs = ts; flowPlayed = true; }
+      }
+      if (!inRange && prevInRange) {
+        leaving = true;
+        leaveStartTs = ts;
       }
 
-      if (glowOpacity > 0.005 || inRange) {
+      /* Light position — clamped: never bottom, never bottom-left */
+      const rawLX = clamp(mouseX - r.left, 0, r.width);
+      const rawLY = clamp(mouseY - r.top, 0, r.height * 0.6);
+
+      lightX.setTarget(rawLX);
+      lightY.setTarget(rawLY);
+      lightOpacity.setTarget(progress * 0.85);
+      morphShiftX.setTarget(inRange ? clamp(dx * 0.005, -1.2, 1.2) : 0);
+      morphShiftY.setTarget(inRange ? clamp(dy * 0.003, -0.8, 0.8) : 0);
+
+      lightX.step(dt); lightY.step(dt);
+      lightOpacity.step(dt);
+      morphShiftX.step(dt); morphShiftY.step(dt);
+
+      /* Apply light */
+      light.style.transform = `translate(${lightX.pos - 55}px, ${lightY.pos - 55}px)`;
+      light.style.opacity = lightOpacity.pos;
+
+      /* Apply micro morph */
+      svgPath.style.transform = `translate(${morphShiftX.pos}px, ${morphShiftY.pos}px)`;
+      logo.classList.toggle('animating', inRange);
+
+      /* Internal flow wave — one-shot 350ms sweep through cutout */
+      if (flowPlayed && flowStartTs > 0) {
+        const ft = ts - flowStartTs;
+        if (ft >= 0 && ft <= 350) {
+          const p = ft / 350;
+          const sweepX = -52 + (104 + 52) * p;
+          flowRect.setAttribute('x', sweepX);
+          flowRect.setAttribute('opacity', String(Math.sin(p * Math.PI) * 0.7));
+        } else if (ft > 350) {
+          flowRect.setAttribute('opacity', '0');
+        }
+      }
+
+      /* Idle breathing — 0.2px amplitude, 5.5s period */
+      if (!inRange && !leaving) {
+        const bAmt = Math.sin(ts / 5500 * Math.PI * 2 + idlePhase) * 0.2;
+        logo.style.transform = `translateY(${bAmt}px)`;
+      }
+
+      /* Exit cascade: wave → light → form */
+      if (leaving) {
+        const lt = ts - leaveStartTs;
+        if (lt > 80) {
+          flowPlayed = false;
+          flowRect.setAttribute('opacity', '0');
+        }
+        if (lightOpacity.settled() && morphShiftX.settled() && morphShiftY.settled()) {
+          leaving = false;
+          logo.style.transform = '';
+          rafId = null;
+          return;
+        }
+      }
+
+      const alive = inRange || leaving || lightOpacity.pos > 0.003 || !morphShiftX.settled() || !morphShiftY.settled();
+      if (alive) {
         rafId = requestAnimationFrame(tick);
       } else {
+        light.style.opacity = 0;
+        svgPath.style.transform = '';
+        logo.style.transform = '';
+        logo.classList.remove('animating');
         rafId = null;
-        glow.style.opacity = 0;
-        if (path) path.style.transform = '';
       }
     }
 
     brand.addEventListener('mousemove', e => {
       mouseX = e.clientX;
       mouseY = e.clientY;
-      if (!rafId) rafId = requestAnimationFrame(tick);
+      if (!rafId) { lastTs = 0; rafId = requestAnimationFrame(tick); }
     });
 
     brand.addEventListener('mouseleave', () => {
       mouseX = -999;
       mouseY = -999;
-      // Let tick fade out naturally
+      /* tick fades out naturally via leaving state */
     });
+
+    /* Start idle breathing immediately */
+    rafId = requestAnimationFrame(tick);
   })();
 
   _initStructMenu();
