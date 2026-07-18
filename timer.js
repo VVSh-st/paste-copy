@@ -117,66 +117,24 @@ const SquareTimer = (() => {
     if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
     if (_pathCW == null) {
       _pathCW = _buildPath('cw');
-      _cachedPtsCW = _cachePoints('cw');
+      _cachedPtsCW = _cachePoints(_pathCW);
     }
     if (_pathCCW == null) {
       _pathCCW = _buildPath('ccw');
-      _cachedPtsCCW = _cachePoints('ccw');
+      _cachedPtsCCW = _cachePoints(_pathCCW);
     }
     return true;
   }
-  function _cachePoints(dir) {
-    const w = btn.offsetWidth, h = btn.offsetHeight;
-    const r = Math.min(_radius, w / 2, h / 2);
+  function _cachePoints(dStr) {
+    const tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    tmp.setAttribute('d', dStr);
+    arcSvg.appendChild(tmp);
+    const len = tmp.getTotalLength();
     const N = 400;
-
-    const segs = dir === 'cw' ? [
-      { type: 'line', x0: w/2, y0: 0, x1: w-r, y1: 0 },
-      { type: 'arc', cx: w-r, cy: r, r, a0: -Math.PI/2, a1: 0 },
-      { type: 'line', x0: w, y0: r, x1: w, y1: h-r },
-      { type: 'arc', cx: w-r, cy: h-r, r, a0: 0, a1: Math.PI/2 },
-      { type: 'line', x0: w-r, y0: h, x1: r, y1: h },
-      { type: 'arc', cx: r, cy: h-r, r, a0: Math.PI/2, a1: Math.PI },
-      { type: 'line', x0: 0, y0: h-r, x1: 0, y1: r },
-      { type: 'arc', cx: r, cy: r, r, a0: Math.PI, a1: Math.PI*1.5 },
-      { type: 'line', x0: r, y0: 0, x1: w/2, y1: 0 },
-    ] : [
-      { type: 'line', x0: w/2, y0: 0, x1: r, y1: 0 },
-      { type: 'arc', cx: r, cy: r, r, a0: -Math.PI/2, a1: -Math.PI },
-      { type: 'line', x0: 0, y0: r, x1: 0, y1: h-r },
-      { type: 'arc', cx: r, cy: h-r, r, a0: Math.PI, a1: Math.PI/2 },
-      { type: 'line', x0: r, y0: h, x1: w-r, y1: h },
-      { type: 'arc', cx: w-r, cy: h-r, r, a0: Math.PI/2, a1: 0 },
-      { type: 'line', x0: w, y0: h-r, x1: w, y1: r },
-      { type: 'arc', cx: w-r, cy: r, r, a0: 0, a1: -Math.PI/2 },
-      { type: 'line', x0: w-r, y0: 0, x1: w/2, y1: 0 },
-    ];
-
-    const segLens = segs.map(s => {
-      if (s.type === 'line') return Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
-      return s.r * Math.abs(s.a1 - s.a0);
-    });
-    let totalLen = 0;
-    for (const l of segLens) totalLen += l;
-
-    const cum = [0];
-    for (const l of segLens) cum.push(cum[cum.length - 1] + l);
-
     const pts = new Array(N + 1);
-    for (let i = 0; i <= N; i++) {
-      const d = (i / N) * totalLen;
-      let si = 0;
-      while (si < segLens.length - 1 && cum[si + 1] <= d) si++;
-      const t = segLens[si] > 0 ? (d - cum[si]) / segLens[si] : 0;
-      const s = segs[si];
-      if (s.type === 'line') {
-        pts[i] = { x: s.x0 + (s.x1 - s.x0) * t, y: s.y0 + (s.y1 - s.y0) * t };
-      } else {
-        const a = s.a0 + (s.a1 - s.a0) * t;
-        pts[i] = { x: s.cx + s.r * Math.cos(a), y: s.cy + s.r * Math.sin(a) };
-      }
-    }
-    return { len: totalLen, pts, N };
+    for (let i = 0; i <= N; i++) pts[i] = tmp.getPointAtLength(len * i / N);
+    arcSvg.removeChild(tmp);
+    return { len, pts, N };
   }
 
   function _invalidateCaches() {
