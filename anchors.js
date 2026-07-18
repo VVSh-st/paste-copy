@@ -119,7 +119,7 @@ const Anchors = (() => {
     if (!allAnchors.length) { Toast.show('Нет якорей', 'info'); return; }
     const count = allAnchors.length;
     _navIdx = -1;
-    State.update(() => {
+    State.updateLive(() => {
       for (const tab of State.getAll()) {
         tab.anchors = [];
       }
@@ -140,7 +140,7 @@ const Anchors = (() => {
     const count = toRemove.length;
     _navIdx = -1;
     const removeIds = new Set(toRemove.map(a => a.id));
-    State.update(() => { tab.anchors = anchors.filter(a => !removeIds.has(a.id)); });
+    State.updateLive(() => { tab.anchors = anchors.filter(a => !removeIds.has(a.id)); });
     Toast.show(`Удалено ${count} якорей с вкладки блока ✓`, 'success');
     document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
     Blocks.refreshAllAnchorCounts();
