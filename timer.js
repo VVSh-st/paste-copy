@@ -55,6 +55,8 @@ const SquareTimer = (() => {
   let _lastTs = 0;
   let _lastHeadIdx = -1;
   let _lastHLen = -1;
+  let _lastSegOffset = NaN;
+  let _hLenLocked = false;
   let _nextCornerIdx = 0;
 
   // Digit animation timer (cancel previous to avoid race on fast changes)
@@ -194,6 +196,8 @@ const SquareTimer = (() => {
       _lastDir = null;
       _lastHeadIdx = -1;
       _lastHLen = -1;
+      _lastSegOffset = NaN;
+      _hLenLocked = false;
       _nextCornerIdx = 0;
     });
   }
@@ -207,7 +211,7 @@ const SquareTimer = (() => {
   function _checkCornerGlow(headPos, P) {
     if (_cornerGlowActive) return;
 
-    const threshold = P * 0.008;
+    const threshold = P * 0.02;
 
     // Check only the next expected corner
     if (_nextCornerIdx < _CORNER_POSITIONS.length) {
@@ -342,6 +346,7 @@ const SquareTimer = (() => {
       _longPressFired = true;
       btn.classList.remove('timer-pressed');
       btn.classList.add('timer-long-pressed');
+      if (navigator.vibrate) navigator.vibrate(10);
       openInlineInput();
     }, LONG_PRESS_MS);
   }
@@ -601,6 +606,7 @@ const SquareTimer = (() => {
     _hideArc();
     _flashEffect();
     _liquidMorph();
+    if (navigator.vibrate) navigator.vibrate([60, 50, 60, 50, 120]);
     if (window.Ember?.notifyEdit) Ember.notifyEdit();
     startPulse();
   }
@@ -705,6 +711,8 @@ const SquareTimer = (() => {
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
       _lastHeadIdx = -1;
       _lastHLen = -1;
+      _lastSegOffset = NaN;
+      _hLenLocked = false;
       arcTail.style.display = '';
       arcHeadSeg.style.display = '';
       arcHeadDot.style.display = '';
@@ -722,14 +730,21 @@ const SquareTimer = (() => {
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
 
     // Update segment LENGTH only while it grows (0 → HEAD_FRAC)
-    if (Math.abs(hLen - _lastHLen) > 0.01) {
-      arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
-      _lastHLen = hLen;
+    // Once hLen reaches max, lock it — no more style writes needed
+    if (!_hLenLocked) {
+      if (Math.abs(hLen - _lastHLen) > 0.01) {
+        arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
+        _lastHLen = hLen;
+      }
+      if (hLen >= P * HEAD_FRAC - 0.01) _hLenLocked = true;
     }
 
-    // Update segment POSITION whenever head moves (always, full animation)
-    // Head at depleting edge: visible from (headPos - hLen) to headPos
-    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
+    // Update segment POSITION — cache to skip writes when offset unchanged
+    const segOffset = -(headPos - hLen);
+    if (Math.abs(segOffset - _lastSegOffset) > 0.01) {
+      arcHeadSeg.style.strokeDashoffset = segOffset;
+      _lastSegOffset = segOffset;
+    }
 
     // Comet dot at the END of the visible arc (depleting edge)
     const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
