@@ -55,6 +55,17 @@ const SquareTimer = (() => {
   let _lastTs = 0;
   let _nextCornerIdx = 0;
 
+  // Arc frame cache (safe: reset on wrap/dir change/reset)
+  let _lastProgress = null;
+  let _lastHeadSegDasharray = null;
+  let _arcStaticsApplied = false;
+
+  function _resetArcFrameCache() {
+    _lastProgress = null;
+    _lastHeadSegDasharray = null;
+    _arcStaticsApplied = false;
+  }
+
   // Digit animation timer (cancel previous to avoid race on fast changes)
   let _digitAnimationTimer = null;
 
@@ -149,6 +160,7 @@ const SquareTimer = (() => {
       _pts = null;
       _lastDir = null;
       _nextCornerIdx = 0;
+      _resetArcFrameCache();
     });
   }
 
@@ -241,6 +253,7 @@ const SquareTimer = (() => {
     _pausedAt = null; _pausedElapsed = 0;
     _lastDir = null; _pts = null;
     _nextCornerIdx = 0;
+    _resetArcFrameCache();
     _resizeObserver?.disconnect();
     _resizeObserver = null;
     if (_resizeRaf) { cancelAnimationFrame(_resizeRaf); _resizeRaf = null; }
@@ -453,6 +466,7 @@ const SquareTimer = (() => {
     _lastDir = null;
     _pts = null;
     _nextCornerIdx = 0;
+    _resetArcFrameCache();
     _pausedAt = null;
     _pausedElapsed = 0;
     _clearDigitAnimation();
@@ -505,6 +519,7 @@ const SquareTimer = (() => {
     _pausedAt = null;
     _lastDir = null;
     _prevMin = null;
+    _resetArcFrameCache();
     btn.classList.remove('timer-paused');
     btn.removeAttribute('aria-label');
     saveState();
@@ -655,30 +670,49 @@ const SquareTimer = (() => {
       arcTail.style.opacity = '0.55';
       _lastDir = dir;
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
+      _resetArcFrameCache();
     }
 
     const P = _pts.len;
     const visualProgress = Math.max(progress, MIN_VISIBLE_PROGRESS);
+
+    // Detect per-minute wrap (0.999 → 0.000)
+    if (_lastProgress !== null && progress < _lastProgress) {
+      _resetArcFrameCache();
+    }
+    _lastProgress = progress;
+
     const headPos = visualProgress * P;
 
-    // Хвост
-    arcTail.style.display = '';
-    arcTail.style.strokeDasharray  = headPos + ' ' + P;
-    arcTail.style.strokeDashoffset = '0';
+    // Static writes — once per arc session
+    if (!_arcStaticsApplied) {
+      arcTail.style.display = '';
+      arcHeadSeg.style.display = '';
+      arcHeadDot.style.display = '';
+      arcTail.style.strokeDashoffset = '0';
+      arcHeadDot.setAttribute('r', '2');
+      _arcStaticsApplied = true;
+    }
 
-    // Головной сегмент
+    // Tail — every frame (grows with progress)
+    arcTail.style.strokeDasharray = headPos + ' ' + P;
+
+    // Head segment — cache dasharray (changes only first ~6s)
     const hLen = Math.min(headPos, P * HEAD_FRAC);
-    arcHeadSeg.style.display = '';
-    arcHeadSeg.style.strokeDasharray  = hLen + ' ' + P;
+    const headSegDasharray = hLen + ' ' + P;
+    if (headSegDasharray !== _lastHeadSegDasharray) {
+      arcHeadSeg.style.strokeDasharray = headSegDasharray;
+      _lastHeadSegDasharray = headSegDasharray;
+    }
+
+    // Head segment offset — every frame
     arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
-    // Точка-голова
+    // Comet dot — every frame (no idx cache to avoid stepping)
     const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
     const pt = _pts.pts[idx];
-    arcHeadDot.style.display = '';
     arcHeadDot.setAttribute('cx', pt.x);
     arcHeadDot.setAttribute('cy', pt.y);
-    arcHeadDot.setAttribute('r', '2');
 
     _checkCornerGlow(headPos, P);
   }
@@ -687,6 +721,7 @@ const SquareTimer = (() => {
     if (arcTail)    { arcTail.style.display = 'none'; arcTail.style.opacity = ''; }
     if (arcHeadSeg) arcHeadSeg.style.display = 'none';
     if (arcHeadDot) arcHeadDot.style.display = 'none';
+    _resetArcFrameCache();
     _clearCornerGlow();
     btn.classList.remove('timer-warm');
     _wasWarm = false;
