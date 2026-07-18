@@ -597,6 +597,27 @@ const QRPanel = (() => {
 
   /* ── QR generation + split ─────────────────────────────── */
   async function _splitText(text) {
+    const rawBytes = new TextEncoder().encode(text);
+
+    const EC_ORDER = ['H', 'Q', 'M', 'L'];
+    const ecStart = Math.max(0, EC_ORDER.indexOf(_ec));
+
+    // ── Plain-text path: raw UTF-8, no header, no compression ──
+    // Phone scanners can read this directly as readable text.
+    let plainEc = EC_ORDER[ecStart];
+    if (_autoEc) {
+      for (let i = ecStart; i < EC_ORDER.length; i++) {
+        const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
+        if (rawBytes.length <= cap) { plainEc = EC_ORDER[i]; break; }
+        plainEc = EC_ORDER[i];
+      }
+    }
+    const plainCap = _QR.getMaxDataBytes(plainEc);
+    if (rawBytes.length <= plainCap) {
+      return { pages: [{ bytes: rawBytes, text, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: plainEc };
+    }
+
+    // ── Protocol path: header + optional compression + pagination ──
     let useCompress = _compress && _hasCompression;
     let bytes;
     if (useCompress) {
@@ -604,27 +625,24 @@ const QRPanel = (() => {
         bytes = await _deflate(text);
       } catch {
         useCompress = false;
-        bytes = new TextEncoder().encode(text);
+        bytes = rawBytes;
       }
     } else {
-      bytes = new TextEncoder().encode(text);
+      bytes = rawBytes;
     }
 
     const headerSize = 4; // version(1) + page(1) + total(1) + flags(1)
 
-    // EC selection
-    const EC_ORDER = ['H', 'Q', 'M', 'L'];
-    const ecStart = Math.max(0, EC_ORDER.indexOf(_ec));
+    // EC selection for protocol mode
     let ecToUse = EC_ORDER[ecStart];
     if (_autoEc) {
-      // Auto-downgrade: find highest EC that fits the data
       for (let i = ecStart; i < EC_ORDER.length; i++) {
         const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
         if (bytes.length + headerSize <= cap) {
           ecToUse = EC_ORDER[i];
           break;
         }
-        ecToUse = EC_ORDER[i]; // fallback: lowest EC that was tried
+        ecToUse = EC_ORDER[i];
       }
     }
 
