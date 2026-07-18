@@ -7242,6 +7242,16 @@ body.help-open {
 .qr-nav-btn:hover { background: rgba(255,255,255,0.12); }
 .qr-nav-btn:disabled { opacity: 0.3; cursor: default; }
 .qr-page-info { font-size: 12px; color: var(--text3, #888); min-width: 50px; text-align: center; }
+.qr-tech-limit {
+  font-size: 9px;
+  color: var(--text3, #666);
+  text-align: center;
+  padding: 2px 0 4px;
+  font-style: italic;
+  opacity: 0.7;
+  cursor: help;
+}
+.qr-tech-limit:hover { opacity: 1; }
 .qr-info-row {
   display: flex;
   gap: 6px;

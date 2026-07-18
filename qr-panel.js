@@ -1021,10 +1021,12 @@ const QRPanel = (() => {
     navNext.onclick = () => { if (_currentPage < _pages.length - 1) { _currentPage++; _renderPreview(); } };
     nav.append(navPrev, pageInfo, navNext);
 
-    const infoRow = document.createElement('div');
-    infoRow.className = 'qr-info-row';
+    const techLimit = document.createElement('div');
+    techLimit.className = 'qr-tech-limit';
+    techLimit.title = 'QR-коды со экрана ограничены физическим размером модулей. Камера телефона не различает модули меньше ~2мм. Мы сделали всё возможное: plain-text编码 + EC=L + разбивка по страницам.';
+    techLimit.textContent = 'Я ограничен технологиями моего времени — H. Stark';
 
-    previewPane.append(sourceLabel, canvasWrap, nav, infoRow);
+    previewPane.append(sourceLabel, canvasWrap, nav, techLimit, infoRow);
     content.appendChild(previewPane);
 
     // ── Style pane ──
