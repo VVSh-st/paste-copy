@@ -1854,6 +1854,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       } else if (ta.value) {
         ta.setRangeText('', 0, ta.value.length, 'end');
         ta.dispatchEvent(new Event('input'));
+        ta.focus();
+        ta.setSelectionRange(0, 0);
       }
     });
     const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt', () => {
