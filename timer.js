@@ -292,6 +292,8 @@ const SquareTimer = (() => {
     _lastDir = null; _pts = null;
     _lastHeadIdx = -1;
     _lastHLen = -1;
+    _lastSegOffset = NaN;
+    _hLenLocked = false;
     _nextCornerIdx = 0;
     _resizeObserver?.disconnect();
     _resizeObserver = null;
