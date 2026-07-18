@@ -331,7 +331,8 @@ const Anchors = (() => {
     if (charPos <= 0) return { x: pl, y: pt };
 
     const mirror = _getMirror(ta);
-    mirror.textContent = ta.value;
+    const value = ta.value.substring(0, Math.min(charPos, ta.value.length));
+    mirror.textContent = value;
 
     const walker = document.createTreeWalker(mirror, NodeFilter.SHOW_TEXT);
     let remaining = charPos;
@@ -363,9 +364,10 @@ const Anchors = (() => {
       const mir = mirror.getBoundingClientRect();
       const x = pl + mr.left - mir.left;
       const y = pt + mr.top - mir.top;
-      marker.parentNode.removeChild(marker);
+      if (marker.parentNode) marker.parentNode.removeChild(marker);
       return { x: x, y: y };
     } catch (_) {
+      mirror.querySelectorAll('span').forEach(m => m.remove());
       mirror.textContent = ta.value.substring(0, charPos);
       return { x: pl, y: pt + mirror.scrollHeight };
     }
@@ -375,7 +377,7 @@ const Anchors = (() => {
   const MARKER_KEY = 'anchor-markers-enabled';
   const MARKER_BG_KEY = 'anchor-bg-enabled';
   const MARKER_COLOR_KEY = 'anchor-marker-color';
-  const DEFAULT_MARKER_COLOR = '#158e2d';
+  const DEFAULT_MARKER_COLOR = '#4f8ef7';
 
   function _sanitizeMarkerColor(value) {
     const color = String(value || '').trim();
@@ -435,7 +437,8 @@ const Anchors = (() => {
 
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
-    const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
+    const taCs = getComputedStyle(ta);
+    const taPt = parseFloat(taCs.paddingTop) || 0;
 
     blockAnchors.forEach((anchor, localIdx) => {
       const pos = _measurePos(ta, anchor.start);
