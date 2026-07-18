@@ -39,6 +39,7 @@ const SquareTimer = (() => {
   let _isBackground = false;
 
   let _pathCW = null;
+  let _pathCCW = null;
   let _radius = null;
   let _resizeObserver = null;
   let _resizeRaf = null;
@@ -47,7 +48,7 @@ const SquareTimer = (() => {
   let _cornerGlowActive = false;
 
   // CPU optimization caches
-  let _cachedPtsCW = null;
+  let _cachedPtsCW = null, _cachedPtsCCW = null;
   let _pts = null;
   let _lastDir = null;
   let _wasWarm = false;
@@ -84,44 +85,54 @@ const SquareTimer = (() => {
     _radius = isNaN(v) ? 6 : v;
   }
 
-  function _buildPath() {
+  function _buildPath(dir) {
     const w = btn.offsetWidth;
     const h = btn.offsetHeight;
     const hw = w / 2;
     const r  = Math.min(_radius, w / 2, h / 2);
 
+    const s = dir === 'cw';
+
     return [
       `M ${hw},0`,
-      `L ${w - r},0`,
-      `A ${r},${r},0,0,1 ${w},${r}`,
-      `L ${w},${h - r}`,
-      `A ${r},${r},0,0,1 ${w - r},${h}`,
-      `L ${r},${h}`,
-      `A ${r},${r},0,0,1 0,${h - r}`,
-      `L 0,${r}`,
-      `A ${r},${r},0,0,1 ${r},0`,
+      s ? `L ${w - r},0`            : `L ${r},0`,
+      s ? `A ${r},${r},0,0,1 ${w},${r}`
+        : `A ${r},${r},0,0,0 0,${r}`,
+      s ? `L ${w},${h - r}`         : `L 0,${h - r}`,
+      s ? `A ${r},${r},0,0,1 ${w - r},${h}`
+        : `A ${r},${r},0,0,0 ${r},${h}`,
+      s ? `L ${r},${h}`             : `L ${w - r},${h}`,
+      s ? `A ${r},${r},0,0,1 0,${h - r}`
+        : `A ${r},${r},0,0,0 ${w},${h - r}`,
+      s ? `L 0,${r}`               : `L ${w},${r}`,
+      s ? `A ${r},${r},0,0,1 ${r},0`
+        : `A ${r},${r},0,0,0 ${w - r},0`,
       `Z`
     ].join(' ');
   }
 
   function _ensurePaths() {
-    if (_pathCW !== null && _cachedPtsCW !== null) {
+    if (_pathCW !== null && _pathCCW !== null && _cachedPtsCW !== null && _cachedPtsCCW !== null) {
       return true;
     }
     if (_radius == null) _readRadius();
     if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
     if (_pathCW == null) {
-      _pathCW = _buildPath();
-      _cachedPtsCW = _cachePoints();
+      _pathCW = _buildPath('cw');
+      _cachedPtsCW = _cachePoints('cw');
+    }
+    if (_pathCCW == null) {
+      _pathCCW = _buildPath('ccw');
+      _cachedPtsCCW = _cachePoints('ccw');
     }
     return true;
   }
-  function _cachePoints() {
+  function _cachePoints(dir) {
     const w = btn.offsetWidth, h = btn.offsetHeight;
     const r = Math.min(_radius, w / 2, h / 2);
     const N = 400;
 
-    const segs = [
+    const segs = dir === 'cw' ? [
       { type: 'line', x0: w/2, y0: 0, x1: w-r, y1: 0 },
       { type: 'arc', cx: w-r, cy: r, r, a0: -Math.PI/2, a1: 0 },
       { type: 'line', x0: w, y0: r, x1: w, y1: h-r },
@@ -131,6 +142,16 @@ const SquareTimer = (() => {
       { type: 'line', x0: 0, y0: h-r, x1: 0, y1: r },
       { type: 'arc', cx: r, cy: r, r, a0: Math.PI, a1: Math.PI*1.5 },
       { type: 'line', x0: r, y0: 0, x1: w/2, y1: 0 },
+    ] : [
+      { type: 'line', x0: w/2, y0: 0, x1: r, y1: 0 },
+      { type: 'arc', cx: r, cy: r, r, a0: -Math.PI/2, a1: -Math.PI },
+      { type: 'line', x0: 0, y0: r, x1: 0, y1: h-r },
+      { type: 'arc', cx: r, cy: h-r, r, a0: Math.PI, a1: Math.PI/2 },
+      { type: 'line', x0: r, y0: h, x1: w-r, y1: h },
+      { type: 'arc', cx: w-r, cy: h-r, r, a0: Math.PI/2, a1: 0 },
+      { type: 'line', x0: w, y0: h-r, x1: w, y1: r },
+      { type: 'arc', cx: w-r, cy: r, r, a0: 0, a1: -Math.PI/2 },
+      { type: 'line', x0: w-r, y0: 0, x1: w/2, y1: 0 },
     ];
 
     const segLens = segs.map(s => {
@@ -165,8 +186,10 @@ const SquareTimer = (() => {
     _resizeRaf = requestAnimationFrame(() => {
       _resizeRaf = null;
       _pathCW = null;
+      _pathCCW = null;
       _radius = null;
       _cachedPtsCW = null;
+      _cachedPtsCCW = null;
       _pts = null;
       _lastDir = null;
       _lastHeadIdx = -1;
@@ -566,8 +589,7 @@ const SquareTimer = (() => {
         return;
       }
       const display = rem < 60 ? rem : Math.ceil(rem / 60);
-      const overallProgress = (targetMinutes * 60 - elapsed) / (targetMinutes * 60);
-      _updateDisplay(display, overallProgress, 'ccw', rem <= 5);
+      _updateDisplay(display, (elapsed % 60) / 60, 'ccw', rem <= 5);
       valueEl?.classList.toggle('timer-urgent', rem <= 10 && rem > 0);
     }
     rafId = requestAnimationFrame(_tickRAF);
@@ -674,11 +696,13 @@ const SquareTimer = (() => {
 
     if (_lastDir !== dir) {
       arcSvg.style.display = 'block';
-      arcTail.setAttribute('d', _pathCW);
-      arcHeadSeg.setAttribute('d', _pathCW);
+      const d = dir === 'cw' ? _pathCW : _pathCCW;
+      if (!d) return;
+      arcTail.setAttribute('d', d);
+      arcHeadSeg.setAttribute('d', d);
       arcTail.style.opacity = '0.55';
       _lastDir = dir;
-      _pts = _cachedPtsCW;
+      _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
       _lastHeadIdx = -1;
       _lastHLen = -1;
       arcTail.style.display = '';
