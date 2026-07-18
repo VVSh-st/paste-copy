@@ -20,9 +20,11 @@ const SquareTimer = (() => {
   const STORAGE_KEY = 'paste-copy-timer';
   const LONG_PRESS_MS = 450;
   const MOVE_THRESHOLD = 10;
+  const MOVE_THRESHOLD_SQ = MOVE_THRESHOLD * MOVE_THRESHOLD;
   const PULSE_MAX_DURATION = 180000;
   const HEAD_FRAC = 0.10;
   const MIN_VISIBLE_PROGRESS = 0.003;
+  const COMPLETION_FREQS = [523.25, 659.25, 783.99];
 
   let _initialized = false;
   let btn, arcSvg, arcTail, arcHeadSeg, arcHeadDot, valueEl, inputEl;
@@ -69,6 +71,7 @@ const SquareTimer = (() => {
   // Digit animation timer (cancel previous to avoid race on fast changes)
   let _digitAnimationTimer = null;
   let _oldDigitEl = null;
+  let _pulseUrgentApplied = false;
 
   // Corner glow timer
   let _cornerGlowTimer = null;
@@ -150,8 +153,10 @@ const SquareTimer = (() => {
   }
 
   function _invalidateCaches() {
+    if (!_initialized) return;
     if (_resizeRaf) return;
     _resizeRaf = requestAnimationFrame(() => {
+      if (!_initialized) { _resizeRaf = null; return; }
       _resizeRaf = null;
       _pathCW = null;
       _pathCCW = null;
@@ -171,6 +176,12 @@ const SquareTimer = (() => {
 
   const _CORNER_POSITIONS = [0.25, 0.5, 0.75];
 
+  function _endCornerGlow() {
+    btn.classList.remove('timer-corner-glow');
+    _cornerGlowActive = false;
+    _cornerGlowTimer = null;
+  }
+
   function _checkCornerGlow(headPos, P) {
     if (_cornerGlowActive) return;
 
@@ -185,11 +196,7 @@ const SquareTimer = (() => {
         _cornerGlowActive = true;
         btn.classList.add('timer-corner-glow');
         if (_cornerGlowTimer !== null) clearTimeout(_cornerGlowTimer);
-        _cornerGlowTimer = setTimeout(() => {
-          btn.classList.remove('timer-corner-glow');
-          _cornerGlowActive = false;
-          _cornerGlowTimer = null;
-        }, 500);
+        _cornerGlowTimer = setTimeout(_endCornerGlow, 500);
         _nextCornerIdx++;
       }
     }
@@ -268,6 +275,8 @@ const SquareTimer = (() => {
       btn.removeEventListener('contextmenu',   onContextMenu);
     }
     document.removeEventListener('visibilitychange', _onVisibilityChange);
+    btn = null; arcSvg = null; arcTail = null; arcHeadSeg = null; arcHeadDot = null;
+    valueEl = null; inputEl = null;
   }
 
   /* ════════════════════════════════════════════════════════════════
@@ -336,7 +345,7 @@ const SquareTimer = (() => {
     if (!_pointerDownPos || _longPressFired) return;
     const dx = e.clientX - _pointerDownPos.x;
     const dy = e.clientY - _pointerDownPos.y;
-    if (Math.hypot(dx, dy) > MOVE_THRESHOLD) {
+    if (dx * dx + dy * dy > MOVE_THRESHOLD_SQ) {
       _gestureCancelled = true;
       clearLongPress();
       btn.classList.remove('timer-pressed');
@@ -362,28 +371,34 @@ const SquareTimer = (() => {
      INLINE INPUT
      ════════════════════════════════════════════════════════════════ */
 
+  function _stopInputEvent(ev) { ev.stopPropagation(); }
+
+  function _onInputBlur() {
+    const v = Number.parseInt(inputEl.value, 10);
+    if (Number.isFinite(v) && v >= 1 && v <= 99) {
+      startCountDown(v);
+    } else {
+      inputEl.classList.add('timer-input-error');
+      setTimeout(() => { inputEl.classList.remove('timer-input-error'); closeInlineInput(); }, 400);
+    }
+  }
+
+  function _onInputKeydown(ev) {
+    if (ev.key === 'Enter')  { ev.preventDefault(); inputEl.blur(); }
+    if (ev.key === 'Escape') { ev.preventDefault(); inputEl.value = ''; inputEl.blur(); }
+    ev.stopPropagation();
+  }
+
   function openInlineInput() {
     if (mode !== null) return;
     valueEl.style.display = 'none';
     inputEl.style.display = '';
     inputEl.value = '';
     inputEl.focus();
-    inputEl.onclick = ev => ev.stopPropagation();
-    inputEl.onmousedown = ev => ev.stopPropagation();
-    inputEl.onblur = () => {
-      const v = Number.parseInt(inputEl.value, 10);
-      if (Number.isFinite(v) && v >= 1 && v <= 99) {
-        startCountDown(v);
-      } else {
-        inputEl.classList.add('timer-input-error');
-        setTimeout(() => { inputEl.classList.remove('timer-input-error'); closeInlineInput(); }, 400);
-      }
-    };
-    inputEl.onkeydown = ev => {
-      if (ev.key === 'Enter')  { ev.preventDefault(); inputEl.blur(); }
-      if (ev.key === 'Escape') { ev.preventDefault(); inputEl.value = ''; inputEl.blur(); }
-      ev.stopPropagation();
-    };
+    inputEl.onclick = _stopInputEvent;
+    inputEl.onmousedown = _stopInputEvent;
+    inputEl.onblur = _onInputBlur;
+    inputEl.onkeydown = _onInputKeydown;
   }
 
   function closeInlineInput() {
@@ -408,15 +423,21 @@ const SquareTimer = (() => {
       if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
       const ctx = _audioCtx;
       const t0 = ctx.currentTime;
-      [523.25, 659.25, 783.99].forEach((f, i) => {
-        const o = ctx.createOscillator(), g = ctx.createGain();
-        o.type = 'sine'; o.frequency.value = f;
-        g.gain.setValueAtTime(0, t0 + i * .12);
-        g.gain.linearRampToValueAtTime(.12, t0 + i * .12 + .08);
-        g.gain.exponentialRampToValueAtTime(.001, t0 + i * .12 + .6);
-        o.connect(g); g.connect(ctx.destination);
-        o.start(t0 + i * .12); o.stop(t0 + i * .12 + .7);
-      });
+      for (let i = 0; i < COMPLETION_FREQS.length; i++) {
+        const f = COMPLETION_FREQS[i];
+        const t = t0 + i * 0.12;
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.12, t + 0.08);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.7);
+      }
     } catch (e) { console.warn('[SquareTimer] Sound:', e); }
   }
 
@@ -580,11 +601,13 @@ const SquareTimer = (() => {
   function startPulse() {
     if (pulseIntervalId) return;
     pulseStartTime = Date.now();
+    _pulseUrgentApplied = false;
     btn.classList.add('timer-pulsing');
     valueEl.classList.add('timer-digit-pulse-active');
     pulseIntervalId = setInterval(() => {
       const elapsed = Date.now() - pulseStartTime;
-      if (elapsed >= PULSE_MAX_DURATION - 30000) {
+      if (!_pulseUrgentApplied && elapsed >= PULSE_MAX_DURATION - 30000) {
+        _pulseUrgentApplied = true;
         valueEl.classList.remove('timer-digit-pulse-active');
         valueEl.classList.add('timer-digit-pulse-urgent');
       }
@@ -598,6 +621,7 @@ const SquareTimer = (() => {
   function stopPulse() {
     btn.classList.remove('timer-pulsing');
     valueEl.classList.remove('timer-digit-pulse-active', 'timer-digit-pulse-urgent');
+    _pulseUrgentApplied = false;
     if (pulseIntervalId) { clearInterval(pulseIntervalId); pulseIntervalId = null; }
   }
 
@@ -616,30 +640,33 @@ const SquareTimer = (() => {
     if (valueEl.style.display !== 'flex') valueEl.style.display = 'flex';
     if (valueEl.classList.contains('timer-value-dim')) valueEl.classList.remove('timer-value-dim');
 
-    if (_prevMin !== null && minutes !== _prevMin) {
-      if (_oldDigitEl) { _oldDigitEl.remove(); _oldDigitEl = null; }
+    if (_prevMin !== minutes) {
+      if (_prevMin !== null) {
+        if (_oldDigitEl) { _oldDigitEl.remove(); _oldDigitEl = null; }
 
-      const oldEl = document.createElement('div');
-      oldEl.className = 'timer-digit-old';
-      oldEl.textContent = _prevMin;
+        const oldEl = document.createElement('div');
+        oldEl.className = 'timer-digit-old';
+        oldEl.textContent = _prevMin;
 
-      valueEl.parentNode.appendChild(oldEl);
-      _oldDigitEl = oldEl;
+        valueEl.parentNode.appendChild(oldEl);
+        _oldDigitEl = oldEl;
 
-      valueEl.textContent = minutes;
-      valueEl.classList.add('timer-digit-enter');
-      oldEl.classList.add('timer-digit-old-exit');
+        valueEl.textContent = minutes;
+        valueEl.classList.add('timer-digit-enter');
+        oldEl.classList.add('timer-digit-old-exit');
 
-      if (_digitAnimationTimer) clearTimeout(_digitAnimationTimer);
-      _digitAnimationTimer = setTimeout(() => {
-        if (_oldDigitEl === oldEl) { _oldDigitEl.remove(); _oldDigitEl = null; }
-        valueEl.classList.remove('timer-digit-enter');
-        _digitAnimationTimer = null;
-      }, 400);
-    } else if (+valueEl.textContent !== minutes) {
-      valueEl.textContent = minutes;
+        if (_digitAnimationTimer) clearTimeout(_digitAnimationTimer);
+        _digitAnimationTimer = setTimeout(() => {
+          if (_oldDigitEl === oldEl) { _oldDigitEl.remove(); _oldDigitEl = null; }
+          valueEl.classList.remove('timer-digit-enter');
+          _digitAnimationTimer = null;
+        }, 400);
+      } else {
+        valueEl.textContent = minutes;
+      }
+
+      _prevMin = minutes;
     }
-    _prevMin = minutes;
 
     _applyArc(progress, dir);
     _setWarmGlow(warm);
