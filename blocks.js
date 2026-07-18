@@ -1849,8 +1849,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     });
     const clearBtn    = makeToolBtn(svgIcon('x'),         'Очистить (выделение или вкладку)', () => {
       if (ta.selectionStart !== ta.selectionEnd) {
+        const pos = ta.selectionStart;
         ta.setRangeText('', ta.selectionStart, ta.selectionEnd, 'end');
         ta.dispatchEvent(new Event('input'));
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
       } else if (ta.value) {
         ta.setRangeText('', 0, ta.value.length, 'end');
         ta.dispatchEvent(new Event('input'));
