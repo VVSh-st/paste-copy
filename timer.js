@@ -53,9 +53,6 @@ const SquareTimer = (() => {
   let _lastDir = null;
   let _wasWarm = false;
   let _lastTs = 0;
-  let _lastHeadIdx = -1;
-  let _lastHLen = -1;
-  let _lastSegOffset = NaN;
   let _nextCornerIdx = 0;
 
   // Digit animation timer (cancel previous to avoid race on fast changes)
@@ -193,9 +190,6 @@ const SquareTimer = (() => {
       _cachedPtsCCW = null;
       _pts = null;
       _lastDir = null;
-      _lastHeadIdx = -1;
-      _lastHLen = -1;
-      _lastSegOffset = NaN;
       _nextCornerIdx = 0;
     });
   }
@@ -288,9 +282,6 @@ const SquareTimer = (() => {
     mode = null; startTs = null; targetMinutes = null;
     _pausedAt = null; _pausedElapsed = 0;
     _lastDir = null; _pts = null;
-    _lastHeadIdx = -1;
-    _lastHLen = -1;
-    _lastSegOffset = NaN;
     _nextCornerIdx = 0;
     _resizeObserver?.disconnect();
     _resizeObserver = null;
@@ -503,9 +494,6 @@ const SquareTimer = (() => {
   function _resetRenderState() {
     _lastDir = null;
     _pts = null;
-    _lastHeadIdx = -1;
-    _lastHLen = -1;
-    _lastSegOffset = NaN;
     _nextCornerIdx = 0;
     _pausedAt = null;
     _pausedElapsed = 0;
@@ -709,46 +697,30 @@ const SquareTimer = (() => {
       arcTail.style.opacity = '0.55';
       _lastDir = dir;
       _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
-      _lastHeadIdx = -1;
-      _lastHLen = -1;
-      _lastSegOffset = NaN;
-      arcTail.style.display = '';
-      arcHeadSeg.style.display = '';
-      arcHeadDot.style.display = '';
-      arcHeadDot.setAttribute('r', '2');
     }
 
     const P = _pts.len;
     const visualProgress = Math.max(progress, MIN_VISIBLE_PROGRESS);
     const headPos = visualProgress * P;
 
-    // Paint properties — no reflow, safe to update every frame
-    arcTail.style.strokeDasharray = headPos + ' ' + P;
-    arcTail.style.strokeDashoffset = '';
+    // Хвост
+    arcTail.style.display = '';
+    arcTail.style.strokeDasharray  = headPos + ' ' + P;
+    arcTail.style.strokeDashoffset = '0';
 
-    const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
+    // Головной сегмент
+    const hLen = Math.min(headPos, P * HEAD_FRAC);
+    arcHeadSeg.style.display = '';
+    arcHeadSeg.style.strokeDasharray  = hLen + ' ' + P;
+    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
 
-    // Update segment LENGTH only while it grows (0 → HEAD_FRAC)
-    if (Math.abs(hLen - _lastHLen) > 0.01) {
-      arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
-      _lastHLen = hLen;
-    }
-
-    // Update segment POSITION — cache to skip writes when offset unchanged
-    const segOffset = -(headPos - hLen);
-    if (Math.abs(segOffset - _lastSegOffset) > 0.01) {
-      arcHeadSeg.style.strokeDashoffset = segOffset;
-      _lastSegOffset = segOffset;
-    }
-
-    // Comet dot at the END of the visible arc (depleting edge)
+    // Точка-голова
     const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
-    if (_lastHeadIdx !== idx) {
-      const pt = _pts.pts[idx];
-      arcHeadDot.setAttribute('cx', pt.x);
-      arcHeadDot.setAttribute('cy', pt.y);
-      _lastHeadIdx = idx;
-    }
+    const pt = _pts.pts[idx];
+    arcHeadDot.style.display = '';
+    arcHeadDot.setAttribute('cx', pt.x);
+    arcHeadDot.setAttribute('cy', pt.y);
+    arcHeadDot.setAttribute('r', '2');
 
     _checkCornerGlow(headPos, P);
   }
