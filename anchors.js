@@ -129,6 +129,19 @@ const Anchors = (() => {
     Blocks.refreshAllAnchorCounts();
   }
 
+  function clearTabAnchors() {
+    const tab = State.getActive();
+    if (!tab) return;
+    const anchors = tab.anchors || [];
+    if (!anchors.length) { Toast.show('Нет якорей на вкладке', 'info'); return; }
+    const count = anchors.length;
+    _navIdx = -1;
+    State.update(() => { tab.anchors = []; });
+    Toast.show(`Удалено ${count} якорей с вкладки ✓`, 'success');
+    document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
+    Blocks.refreshAllAnchorCounts();
+  }
+
   function _jumpToAnchor(anchor, _depth) {
     _depth = (_depth || 0) + 1;
     if (_depth > JUMP_RETRY_LIMIT) { Toast.show('Не удалось перейти к якорю', 'error'); return; }
@@ -546,13 +559,13 @@ const Anchors = (() => {
       return () => triggered;
     }
 
-    /* -- left button: click = prev anchor, long press = clear all -- */
+    /* -- left button: click = prev anchor, long press = clear tab anchors -- */
     const leftBtn = document.createElement('button');
     leftBtn.type = 'button';
     leftBtn.className = 'block-tool-btn anchor-btn';
-    leftBtn.title = 'Предыдущий якорь · Длинное нажатие — очистить все';
+    leftBtn.title = 'Предыдущий якорь · Длинное нажатие — очистить якоря вкладки';
     leftBtn.innerHTML = SVG_LEFT;
-    const isLongLeft = _makeLongPress(leftBtn, () => clearAnchors());
+    const isLongLeft = _makeLongPress(leftBtn, () => clearTabAnchors());
     leftBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (isLongLeft()) { e.preventDefault(); return; }
@@ -572,13 +585,13 @@ const Anchors = (() => {
       setAnchor(ta, blockId);
     });
 
-    /* -- right button: click = next anchor, long press = clear all -- */
+    /* -- right button: click = next anchor, long press = clear tab anchors -- */
     const rightBtn = document.createElement('button');
     rightBtn.type = 'button';
     rightBtn.className = 'block-tool-btn anchor-btn';
-    rightBtn.title = 'Следующий якорь · Длинное нажатие — очистить все';
+    rightBtn.title = 'Следующий якорь · Длинное нажатие — очистить якоря вкладки';
     rightBtn.innerHTML = SVG_RIGHT;
-    const isLongRight = _makeLongPress(rightBtn, () => clearAnchors());
+    const isLongRight = _makeLongPress(rightBtn, () => clearTabAnchors());
     rightBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (isLongRight()) { e.preventDefault(); return; }
