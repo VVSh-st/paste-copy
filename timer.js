@@ -39,7 +39,6 @@ const SquareTimer = (() => {
   let _isBackground = false;
 
   let _pathCW = null;
-  let _pathCCW = null;
   let _radius = null;
   let _resizeObserver = null;
   let _resizeRaf = null;
@@ -48,7 +47,7 @@ const SquareTimer = (() => {
   let _cornerGlowActive = false;
 
   // CPU optimization caches
-  let _cachedPtsCW = null, _cachedPtsCCW = null;
+  let _cachedPtsCW = null;
   let _pts = null;
   let _lastDir = null;
   let _wasWarm = false;
@@ -85,54 +84,44 @@ const SquareTimer = (() => {
     _radius = isNaN(v) ? 6 : v;
   }
 
-  function _buildPath(dir) {
+  function _buildPath() {
     const w = btn.offsetWidth;
     const h = btn.offsetHeight;
     const hw = w / 2;
     const r  = Math.min(_radius, w / 2, h / 2);
 
-    const s = dir === 'cw';
-
     return [
       `M ${hw},0`,
-      s ? `L ${w - r},0`            : `L ${r},0`,
-      s ? `A ${r},${r},0,0,1 ${w},${r}`
-        : `A ${r},${r},0,0,0 0,${r}`,
-      s ? `L ${w},${h - r}`         : `L 0,${h - r}`,
-      s ? `A ${r},${r},0,0,1 ${w - r},${h}`
-        : `A ${r},${r},0,0,0 ${r},${h}`,
-      s ? `L ${r},${h}`             : `L ${w - r},${h}`,
-      s ? `A ${r},${r},0,0,1 0,${h - r}`
-        : `A ${r},${r},0,0,0 ${w},${h - r}`,
-      s ? `L 0,${r}`               : `L ${w},${r}`,
-      s ? `A ${r},${r},0,0,1 ${r},0`
-        : `A ${r},${r},0,0,0 ${w - r},0`,
+      `L ${w - r},0`,
+      `A ${r},${r},0,0,1 ${w},${r}`,
+      `L ${w},${h - r}`,
+      `A ${r},${r},0,0,1 ${w - r},${h}`,
+      `L ${r},${h}`,
+      `A ${r},${r},0,0,1 0,${h - r}`,
+      `L 0,${r}`,
+      `A ${r},${r},0,0,1 ${r},0`,
       `Z`
     ].join(' ');
   }
 
   function _ensurePaths() {
-    if (_pathCW !== null && _pathCCW !== null && _cachedPtsCW !== null && _cachedPtsCCW !== null) {
+    if (_pathCW !== null && _cachedPtsCW !== null) {
       return true;
     }
     if (_radius == null) _readRadius();
     if (btn.offsetWidth === 0 || btn.offsetHeight === 0) return false;
     if (_pathCW == null) {
-      _pathCW = _buildPath('cw');
-      _cachedPtsCW = _cachePoints('cw');
-    }
-    if (_pathCCW == null) {
-      _pathCCW = _buildPath('ccw');
-      _cachedPtsCCW = _cachePoints('ccw');
+      _pathCW = _buildPath();
+      _cachedPtsCW = _cachePoints();
     }
     return true;
   }
-  function _cachePoints(dir) {
+  function _cachePoints() {
     const w = btn.offsetWidth, h = btn.offsetHeight;
     const r = Math.min(_radius, w / 2, h / 2);
     const N = 400;
 
-    const segs = dir === 'cw' ? [
+    const segs = [
       { type: 'line', x0: w/2, y0: 0, x1: w-r, y1: 0 },
       { type: 'arc', cx: w-r, cy: r, r, a0: -Math.PI/2, a1: 0 },
       { type: 'line', x0: w, y0: r, x1: w, y1: h-r },
@@ -142,16 +131,6 @@ const SquareTimer = (() => {
       { type: 'line', x0: 0, y0: h-r, x1: 0, y1: r },
       { type: 'arc', cx: r, cy: r, r, a0: Math.PI, a1: Math.PI*1.5 },
       { type: 'line', x0: r, y0: 0, x1: w/2, y1: 0 },
-    ] : [
-      { type: 'line', x0: w/2, y0: 0, x1: r, y1: 0 },
-      { type: 'arc', cx: r, cy: r, r, a0: -Math.PI/2, a1: -Math.PI },
-      { type: 'line', x0: 0, y0: r, x1: 0, y1: h-r },
-      { type: 'arc', cx: r, cy: h-r, r, a0: Math.PI, a1: Math.PI/2 },
-      { type: 'line', x0: r, y0: h, x1: w-r, y1: h },
-      { type: 'arc', cx: w-r, cy: h-r, r, a0: Math.PI/2, a1: 0 },
-      { type: 'line', x0: w, y0: h-r, x1: w, y1: r },
-      { type: 'arc', cx: w-r, cy: r, r, a0: 0, a1: -Math.PI/2 },
-      { type: 'line', x0: w-r, y0: 0, x1: w/2, y1: 0 },
     ];
 
     const segLens = segs.map(s => {
@@ -186,10 +165,8 @@ const SquareTimer = (() => {
     _resizeRaf = requestAnimationFrame(() => {
       _resizeRaf = null;
       _pathCW = null;
-      _pathCCW = null;
       _radius = null;
       _cachedPtsCW = null;
-      _cachedPtsCCW = null;
       _pts = null;
       _lastDir = null;
       _lastHeadIdx = -1;
@@ -697,13 +674,11 @@ const SquareTimer = (() => {
 
     if (_lastDir !== dir) {
       arcSvg.style.display = 'block';
-      const d = dir === 'cw' ? _pathCW : _pathCCW;
-      if (!d) return;
-      arcTail.setAttribute('d', d);
-      arcHeadSeg.setAttribute('d', d);
+      arcTail.setAttribute('d', _pathCW);
+      arcHeadSeg.setAttribute('d', _pathCW);
       arcTail.style.opacity = '0.55';
       _lastDir = dir;
-      _pts = dir === 'cw' ? _cachedPtsCW : _cachedPtsCCW;
+      _pts = _cachedPtsCW;
       _lastHeadIdx = -1;
       _lastHLen = -1;
       arcTail.style.display = '';
@@ -718,39 +693,27 @@ const SquareTimer = (() => {
 
     // Paint properties — no reflow, safe to update every frame
     arcTail.style.strokeDasharray = headPos + ' ' + P;
+    arcTail.style.strokeDashoffset = '';
 
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
-
-    if (dir === 'cw') {
-      // CW: tail from 0→headPos, comet at headPos (moves along path direction)
-      arcTail.style.strokeDashoffset = '';
-      arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
-      const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
-      if (_lastHeadIdx !== idx) {
-        const pt = _pts.pts[idx];
-        arcHeadDot.setAttribute('cx', pt.x);
-        arcHeadDot.setAttribute('cy', pt.y);
-        _lastHeadIdx = idx;
-      }
-    } else {
-      // CCW countdown: tail trails behind comet, comet moves counterclockwise
-      // dashoffset = -headPos → tail shows [0, P-headPos], comet at P-headPos
-      arcTail.style.strokeDashoffset = -headPos;
-      // Head segment: [P-headPos-hLen, P-headPos] — bright edge ends at comet
-      arcHeadSeg.style.strokeDashoffset = P - hLen;
-      const idx = Math.min(_pts.N, Math.floor((1 - visualProgress) * _pts.N));
-      if (_lastHeadIdx !== idx) {
-        const pt = _pts.pts[idx];
-        arcHeadDot.setAttribute('cx', pt.x);
-        arcHeadDot.setAttribute('cy', pt.y);
-        _lastHeadIdx = idx;
-      }
-    }
 
     // Update segment LENGTH only while it grows (0 → HEAD_FRAC)
     if (Math.abs(hLen - _lastHLen) > 0.01) {
       arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
       _lastHLen = hLen;
+    }
+
+    // Update segment POSITION whenever head moves (always, full animation)
+    // Head at depleting edge: visible from (headPos - hLen) to headPos
+    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
+
+    // Comet dot at the END of the visible arc (depleting edge)
+    const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
+    if (_lastHeadIdx !== idx) {
+      const pt = _pts.pts[idx];
+      arcHeadDot.setAttribute('cx', pt.x);
+      arcHeadDot.setAttribute('cy', pt.y);
+      _lastHeadIdx = idx;
     }
 
     _checkCornerGlow(headPos, P);
