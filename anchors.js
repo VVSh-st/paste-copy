@@ -444,21 +444,28 @@ const Anchors = (() => {
       const pos = _measurePos(ta, anchor.start);
       const rawTop = pos.y - scrollY - taPt;
       const wrapH = wrap.clientHeight;
-
-      // Skip markers scrolled out of view
-      if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
-
       const idx = anchors.indexOf(anchor);
+      const inView = rawTop + lineHeight >= 0 && rawTop <= wrapH;
 
       if (settings.lineMarkers) {
-        const mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+        let mTop, stuck = '';
+        if (rawTop + lineHeight < 0) {
+          mTop = 2;
+          stuck = ' anchor-stuck-top';
+        } else if (rawTop > wrapH) {
+          mTop = Math.max(2, wrapH - lineHeight - 2);
+          stuck = ' anchor-stuck-bottom';
+        } else {
+          mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+        }
         const mHeight = Math.max(2, lineHeight - 12);
         const m = _createLineMarker(mTop, mHeight, settings.color);
+        if (stuck) m.className += stuck;
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
         wrap.appendChild(m);
       }
 
-      if (settings.bgHighlight && anchor.start !== anchor.end) {
+      if (inView && settings.bgHighlight && anchor.start !== anchor.end) {
         const endPos = _measurePos(ta, anchor.end);
         const wrapW = wrap.clientWidth || (ta.clientWidth + (parseFloat(taCs.paddingLeft) || 0));
         let selW = Math.max(2, Math.abs(endPos.x - pos.x));
