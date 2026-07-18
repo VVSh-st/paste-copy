@@ -377,7 +377,7 @@ const Anchors = (() => {
   const MARKER_KEY = 'anchor-markers-enabled';
   const MARKER_BG_KEY = 'anchor-bg-enabled';
   const MARKER_COLOR_KEY = 'anchor-marker-color';
-  const DEFAULT_MARKER_COLOR = '#4f8ef7';
+  const DEFAULT_MARKER_COLOR = '#1DD110';
 
   function _sanitizeMarkerColor(value) {
     const color = String(value || '').trim();
@@ -597,18 +597,12 @@ const Anchors = (() => {
     State.onChange(rerender);
     State.onLive(debouncedRerender);
     let _scrollTimer = null;
-    let _scrollFastTimer = null;
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
         if (!bel) return;
-        // Fast path: lightweight reposition on every scroll (no DOM mutation)
-        clearTimeout(_scrollFastTimer);
-        _scrollFastTimer = setTimeout(() => {
-          if (bel.isConnected) _renderMarkersNoGutter(bel, ta);
-        }, 16);
-        // Full render: debounced
+        _renderMarkersNoGutter(bel, ta);
         clearTimeout(_scrollTimer);
         _scrollTimer = setTimeout(() => {
           if (bel.isConnected) _renderMarkers(bel, ta);
