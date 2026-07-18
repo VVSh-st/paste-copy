@@ -485,11 +485,22 @@ const Anchors = (() => {
       if (inView && settings.bgHighlight && anchor.start !== anchor.end) {
         const endPos = _measurePos(ta, anchor.end);
         const wrapW = wrap.clientWidth || (ta.clientWidth + (parseFloat(taCs.paddingLeft) || 0));
-        let selW = Math.max(2, Math.abs(endPos.x - pos.x));
-        const gLeft = Math.min(pos.x, endPos.x);
-        if (gLeft + selW > wrapW) selW = Math.max(2, wrapW - gLeft);
-        const gTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
-        const gHeight = Math.max(2, lineHeight - 9);
+        const rawEndTop = endPos.y - scrollY - taPt;
+        const multiLine = Math.abs(rawEndTop - rawTop) > lineHeight * 0.5;
+        let selW, gTop, gHeight;
+        if (multiLine) {
+          const topLine = Math.min(rawTop, rawEndTop);
+          const bottomLine = Math.max(rawTop, rawEndTop);
+          selW = wrapW;
+          gTop = Math.max(0, topLine + 2);
+          gHeight = Math.max(lineHeight - 9, bottomLine - topLine + lineHeight - 9);
+        } else {
+          selW = Math.max(2, Math.abs(endPos.x - pos.x));
+          gTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+          gHeight = Math.max(2, lineHeight - 9);
+        }
+        const gLeft = multiLine ? 0 : Math.min(pos.x, endPos.x);
+        if (!multiLine && gLeft + selW > wrapW) selW = Math.max(2, wrapW - gLeft);
         const g = document.createElement('div');
         g.className = 'anchor-marker-gutter';
         g.style.cssText = 'position:absolute;height:' + gHeight + 'px;top:' + gTop + 'px;pointer-events:none;z-index:2;background:' + settings.color + '33;border-radius:2px;left:' + gLeft + 'px;width:' + selW + 'px;';
