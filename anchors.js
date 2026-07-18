@@ -466,7 +466,6 @@ const Anchors = (() => {
 
       if (settings.lineMarkers) {
         let mTop, stuck = '';
-        const mHeight = Math.max(2, lineHeight - 12);
         if (rawTop + lineHeight < 0) {
           mTop = 2;
           stuck = ' anchor-stuck-top';
@@ -474,8 +473,9 @@ const Anchors = (() => {
           mTop = Math.max(2, wrapH - lineHeight - 2);
           stuck = ' anchor-stuck-bottom';
         } else {
-          mTop = Math.max(0, rawTop + (lineHeight - mHeight) / 2);
+          mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
         }
+        const mHeight = Math.max(2, lineHeight - 12);
         const m = _createLineMarker(mTop, mHeight, settings.color);
         if (stuck) m.className += stuck;
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
@@ -492,7 +492,7 @@ const Anchors = (() => {
           const topLine = Math.min(rawTop, rawEndTop);
           const bottomLine = Math.max(rawTop, rawEndTop);
           selW = wrapW;
-          gTop = Math.max(0, topLine + 2);
+          gTop = Math.max(0, topLine + 12);
           gHeight = Math.max(lineHeight - 9, bottomLine - topLine + lineHeight - 9);
         } else {
           selW = Math.max(2, Math.abs(endPos.x - pos.x));
@@ -530,7 +530,6 @@ const Anchors = (() => {
       const rawTop = pos.y - scrollY - taPt;
       if (!settings.lineMarkers) return;
       let mTop, stuck = '';
-      const mHeight = Math.max(2, lineHeight - 12);
       if (rawTop + lineHeight < 0) {
         mTop = 2;
         stuck = ' anchor-stuck-top';
@@ -538,8 +537,9 @@ const Anchors = (() => {
         mTop = Math.max(2, wrapH - lineHeight - 2);
         stuck = ' anchor-stuck-bottom';
       } else {
-        mTop = Math.max(0, rawTop + (lineHeight - mHeight) / 2);
+        mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
       }
+      const mHeight = Math.max(2, lineHeight - 12);
       const m = _createLineMarker(mTop, mHeight, settings.color);
       if (stuck) m.className += stuck;
       const idx = anchors.indexOf(anchor);
