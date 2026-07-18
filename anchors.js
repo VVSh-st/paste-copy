@@ -129,15 +129,19 @@ const Anchors = (() => {
     Blocks.refreshAllAnchorCounts();
   }
 
-  function clearTabAnchors() {
+  function clearTabAnchors(blockId) {
     const tab = State.getActive();
     if (!tab) return;
     const anchors = tab.anchors || [];
-    if (!anchors.length) { Toast.show('Нет якорей на вкладке', 'info'); return; }
-    const count = anchors.length;
+    const blk = _findBlockById(tab.blocks || [], blockId);
+    const activeSub = blk ? (blk.activeSubtab ?? null) : null;
+    const toRemove = anchors.filter(a => a.blockId === blockId && (a.subtabIdx == null || a.subtabIdx === activeSub));
+    if (!toRemove.length) { Toast.show('Нет якорей на вкладке блока', 'info'); return; }
+    const count = toRemove.length;
     _navIdx = -1;
-    State.update(() => { tab.anchors = []; });
-    Toast.show(`Удалено ${count} якорей с вкладки ✓`, 'success');
+    const removeIds = new Set(toRemove.map(a => a.id));
+    State.update(() => { tab.anchors = anchors.filter(a => !removeIds.has(a.id)); });
+    Toast.show(`Удалено ${count} якорей с вкладки блока ✓`, 'success');
     document.querySelectorAll('.anchor-marker-line, .anchor-marker-gutter').forEach(m => m.remove());
     Blocks.refreshAllAnchorCounts();
   }
@@ -565,7 +569,7 @@ const Anchors = (() => {
     leftBtn.className = 'block-tool-btn anchor-btn';
     leftBtn.title = 'Предыдущий якорь · Длинное нажатие — очистить якоря вкладки';
     leftBtn.innerHTML = SVG_LEFT;
-    const isLongLeft = _makeLongPress(leftBtn, () => clearTabAnchors());
+    const isLongLeft = _makeLongPress(leftBtn, () => clearTabAnchors(blockId));
     leftBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (isLongLeft()) { e.preventDefault(); return; }
@@ -591,7 +595,7 @@ const Anchors = (() => {
     rightBtn.className = 'block-tool-btn anchor-btn';
     rightBtn.title = 'Следующий якорь · Длинное нажатие — очистить якоря вкладки';
     rightBtn.innerHTML = SVG_RIGHT;
-    const isLongRight = _makeLongPress(rightBtn, () => clearTabAnchors());
+    const isLongRight = _makeLongPress(rightBtn, () => clearTabAnchors(blockId));
     rightBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (isLongRight()) { e.preventDefault(); return; }
