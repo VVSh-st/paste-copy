@@ -1852,7 +1852,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.setRangeText('', ta.selectionStart, ta.selectionEnd, 'end');
         ta.dispatchEvent(new Event('input'));
       } else if (ta.value) {
-        State.update(() => { b.subtabs[b.activeSubtab].value = ''; });
+        ta.value = '';
+        State.updateLive(() => { b.subtabs[b.activeSubtab].value = ''; });
+        autoGrow(ta);
+        updateBlockCounter(ta, b, body);
       }
     });
     const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt', () => {
