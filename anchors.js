@@ -466,6 +466,7 @@ const Anchors = (() => {
 
       if (settings.lineMarkers) {
         let mTop, stuck = '';
+        const mHeight = Math.max(2, lineHeight - 12);
         if (rawTop + lineHeight < 0) {
           mTop = 2;
           stuck = ' anchor-stuck-top';
@@ -473,9 +474,8 @@ const Anchors = (() => {
           mTop = Math.max(2, wrapH - lineHeight - 2);
           stuck = ' anchor-stuck-bottom';
         } else {
-          mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+          mTop = Math.max(0, rawTop + (lineHeight - mHeight) / 2);
         }
-        const mHeight = Math.max(2, lineHeight - 12);
         const m = _createLineMarker(mTop, mHeight, settings.color);
         if (stuck) m.className += stuck;
         m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
@@ -530,6 +530,7 @@ const Anchors = (() => {
       const rawTop = pos.y - scrollY - taPt;
       if (!settings.lineMarkers) return;
       let mTop, stuck = '';
+      const mHeight = Math.max(2, lineHeight - 12);
       if (rawTop + lineHeight < 0) {
         mTop = 2;
         stuck = ' anchor-stuck-top';
@@ -537,9 +538,8 @@ const Anchors = (() => {
         mTop = Math.max(2, wrapH - lineHeight - 2);
         stuck = ' anchor-stuck-bottom';
       } else {
-        mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
+        mTop = Math.max(0, rawTop + (lineHeight - mHeight) / 2);
       }
-      const mHeight = Math.max(2, lineHeight - 12);
       const m = _createLineMarker(mTop, mHeight, settings.color);
       if (stuck) m.className += stuck;
       const idx = anchors.indexOf(anchor);
