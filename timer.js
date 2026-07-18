@@ -56,7 +56,6 @@ const SquareTimer = (() => {
   let _lastHeadIdx = -1;
   let _lastHLen = -1;
   let _lastSegOffset = NaN;
-  let _hLenLocked = false;
   let _nextCornerIdx = 0;
 
   // Digit animation timer (cancel previous to avoid race on fast changes)
@@ -197,7 +196,6 @@ const SquareTimer = (() => {
       _lastHeadIdx = -1;
       _lastHLen = -1;
       _lastSegOffset = NaN;
-      _hLenLocked = false;
       _nextCornerIdx = 0;
     });
   }
@@ -293,7 +291,6 @@ const SquareTimer = (() => {
     _lastHeadIdx = -1;
     _lastHLen = -1;
     _lastSegOffset = NaN;
-    _hLenLocked = false;
     _nextCornerIdx = 0;
     _resizeObserver?.disconnect();
     _resizeObserver = null;
@@ -509,7 +506,6 @@ const SquareTimer = (() => {
     _lastHeadIdx = -1;
     _lastHLen = -1;
     _lastSegOffset = NaN;
-    _hLenLocked = false;
     _nextCornerIdx = 0;
     _pausedAt = null;
     _pausedElapsed = 0;
@@ -716,7 +712,6 @@ const SquareTimer = (() => {
       _lastHeadIdx = -1;
       _lastHLen = -1;
       _lastSegOffset = NaN;
-      _hLenLocked = false;
       arcTail.style.display = '';
       arcHeadSeg.style.display = '';
       arcHeadDot.style.display = '';
@@ -734,13 +729,9 @@ const SquareTimer = (() => {
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
 
     // Update segment LENGTH only while it grows (0 → HEAD_FRAC)
-    // Once hLen reaches max, lock it — no more style writes needed
-    if (!_hLenLocked) {
-      if (Math.abs(hLen - _lastHLen) > 0.01) {
-        arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
-        _lastHLen = hLen;
-      }
-      if (hLen >= P * HEAD_FRAC - 0.01) _hLenLocked = true;
+    if (Math.abs(hLen - _lastHLen) > 0.01) {
+      arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
+      _lastHLen = hLen;
     }
 
     // Update segment POSITION — cache to skip writes when offset unchanged
