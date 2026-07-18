@@ -600,13 +600,13 @@ const Anchors = (() => {
       setAnchor(ta, blockId);
     });
 
-    /* -- right button: click = next anchor, long press = clear tab anchors -- */
+    /* -- right button: click = next anchor, long press = clear all -- */
     const rightBtn = document.createElement('button');
     rightBtn.type = 'button';
     rightBtn.className = 'block-tool-btn anchor-btn';
-    rightBtn.title = 'Следующий якорь · Длинное нажатие — очистить якоря вкладки';
+    rightBtn.title = 'Следующий якорь · Длинное нажатие — очистить все';
     rightBtn.innerHTML = SVG_RIGHT;
-    const isLongRight = _makeLongPress(rightBtn, () => clearTabAnchors(blockId));
+    const isLongRight = _makeLongPress(rightBtn, () => clearAnchors());
     rightBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (isLongRight()) { e.preventDefault(); return; }
