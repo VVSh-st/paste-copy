@@ -2474,6 +2474,10 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     };
 
     function _jumpBlockScroll(toEnd) {
+      if (b.mdPreview) {
+        mdContent.scrollTop = toEnd ? mdContent.scrollHeight : 0;
+        return;
+      }
       const pos = toEnd ? ta.value.length : 0;
       ta.focus({ preventScroll: true });
       ta.setSelectionRange(pos, pos);
