@@ -718,27 +718,38 @@ const SquareTimer = (() => {
 
     // Paint properties — no reflow, safe to update every frame
     arcTail.style.strokeDasharray = headPos + ' ' + P;
-    arcTail.style.strokeDashoffset = '';
 
     const hLen = headPos < P * HEAD_FRAC ? headPos : P * HEAD_FRAC;
+
+    if (dir === 'cw') {
+      // CW: tail from 0→headPos, comet at headPos (moves along path direction)
+      arcTail.style.strokeDashoffset = '';
+      arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
+      const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
+      if (_lastHeadIdx !== idx) {
+        const pt = _pts.pts[idx];
+        arcHeadDot.setAttribute('cx', pt.x);
+        arcHeadDot.setAttribute('cy', pt.y);
+        _lastHeadIdx = idx;
+      }
+    } else {
+      // CCW: tail from (P-headPos)→P, comet at depleting edge (1-visualProgress)
+      // This makes the comet move counterclockwise as progress decreases 1→0
+      arcTail.style.strokeDashoffset = headPos;
+      arcHeadSeg.style.strokeDashoffset = headPos + hLen;
+      const idx = Math.min(_pts.N, Math.floor((1 - visualProgress) * _pts.N));
+      if (_lastHeadIdx !== idx) {
+        const pt = _pts.pts[idx];
+        arcHeadDot.setAttribute('cx', pt.x);
+        arcHeadDot.setAttribute('cy', pt.y);
+        _lastHeadIdx = idx;
+      }
+    }
 
     // Update segment LENGTH only while it grows (0 → HEAD_FRAC)
     if (Math.abs(hLen - _lastHLen) > 0.01) {
       arcHeadSeg.style.strokeDasharray = hLen + ' ' + P;
       _lastHLen = hLen;
-    }
-
-    // Update segment POSITION whenever head moves (always, full animation)
-    // Head at depleting edge: visible from (headPos - hLen) to headPos
-    arcHeadSeg.style.strokeDashoffset = -(headPos - hLen);
-
-    // Comet dot at the END of the visible arc (depleting edge)
-    const idx = Math.min(_pts.N, Math.floor(visualProgress * _pts.N));
-    if (_lastHeadIdx !== idx) {
-      const pt = _pts.pts[idx];
-      arcHeadDot.setAttribute('cx', pt.x);
-      arcHeadDot.setAttribute('cy', pt.y);
-      _lastHeadIdx = idx;
     }
 
     _checkCornerGlow(headPos, P);
