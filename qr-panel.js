@@ -47,7 +47,6 @@ const QRPanel = (() => {
   let _bg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-bg')) ? _storageGet('qr-bg') : '#FFFFFF';
   let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'H';
   let _effectiveEc = _ec; // actual EC used (may differ from _ec when auto-downgrading)
-  let _compress = _storageGet('qr-compress') !== 'false';
   let _padding = _storageGet('qr-padding') !== 'false';
   let _caption = _storageGet('qr-caption') || '';
   let _autoEc = _storageGet('qr-auto-ec') !== 'false';
@@ -526,7 +525,27 @@ const QRPanel = (() => {
       return Math.floor((dataCW * 8 - 4 - countBits) / 8);
     }
 
-    return { encode, getMaxDataBytes };
+    function getMaxDataBytesAtVersion(ecLevel, maxVersion) {
+      const ordinal = EC_ORDINAL[ecLevel] ?? 0;
+      const version = Math.min(40, Math.max(1, maxVersion));
+      const dataCW = TOTAL_CODEWORDS[version] - ECC_CODEWORDS_PER_BLOCK[ordinal][version] * NUM_ECC_BLOCKS[ordinal][version];
+      const countBits = version <= 9 ? 8 : 16;
+      return Math.floor((dataCW * 8 - 4 - countBits) / 8);
+    }
+
+    function getMaxVersionForModuleSize(ecLevel, modSize, availWidth) {
+      const quietModules = _padding ? 8 : 0;
+      const maxModules = Math.floor(availWidth / modSize);
+      const qrModules = maxModules - quietModules;
+      if (qrModules < 21) return 1;
+      const version = Math.min(40, Math.floor((qrModules - 17) / 4));
+      // Verify this version actually fits
+      const size = version * 4 + 17;
+      if ((size + quietModules) * modSize > availWidth) return Math.max(1, version - 1);
+      return version;
+    }
+
+    return { encode, getMaxDataBytes, getMaxDataBytesAtVersion, getMaxVersionForModuleSize };
   })();
 
   /* ── QR encode cache ───────────────────────────────────── */
@@ -543,29 +562,6 @@ const QRPanel = (() => {
       }
     }
     return _qrCache.get(key);
-  }
-
-  /* ── deflate (CompressionStream API) ───────────────────── */
-  const _hasCompression = typeof CompressionStream !== 'undefined';
-
-  async function _deflate(text) {
-    if (!_hasCompression) return new TextEncoder().encode(text);
-    const cs = new CompressionStream('deflate-raw');
-    const writer = cs.writable.getWriter();
-    writer.write(new TextEncoder().encode(text));
-    writer.close();
-    const reader = cs.readable.getReader();
-    const chunks = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-    }
-    const totalLen = chunks.reduce((s, c) => s + c.length, 0);
-    const out = new Uint8Array(totalLen);
-    let offset = 0;
-    for (const c of chunks) { out.set(c, offset); offset += c.length; }
-    return out;
   }
 
   /* ── text helpers ──────────────────────────────────────── */
@@ -599,72 +595,27 @@ const QRPanel = (() => {
   async function _splitText(text) {
     const rawBytes = new TextEncoder().encode(text);
 
-    const EC_ORDER = ['H', 'Q', 'M', 'L'];
-    const ecStart = Math.max(0, EC_ORDER.indexOf(_ec));
-
     // ── Plain-text path: raw UTF-8, no header, no compression ──
     // Phone scanners read this directly. EC=L for max data capacity.
-    const plainCap = _QR.getMaxDataBytes('L');
+    // Limit QR version by module size so modules stay scannable.
+    const estAvailWidth = 430; // panel 500px - padding
+    const maxVer = _QR.getMaxVersionForModuleSize('L', _moduleSize, estAvailWidth);
+    const plainCap = _QR.getMaxDataBytesAtVersion('L', maxVer);
+
     if (rawBytes.length <= plainCap) {
       return { pages: [{ bytes: rawBytes, text, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: 'L' };
     }
 
-    // ── Protocol path: header + optional compression + pagination ──
-    let useCompress = _compress && _hasCompression;
-    let bytes;
-    if (useCompress) {
-      try {
-        bytes = await _deflate(text);
-      } catch {
-        useCompress = false;
-        bytes = rawBytes;
-      }
-    } else {
-      bytes = rawBytes;
-    }
-
-    const headerSize = 4; // version(1) + page(1) + total(1) + flags(1)
-
-    // EC selection for protocol mode
-    let ecToUse = EC_ORDER[ecStart];
-    if (_autoEc) {
-      for (let i = ecStart; i < EC_ORDER.length; i++) {
-        const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
-        if (bytes.length + headerSize <= cap) {
-          ecToUse = EC_ORDER[i];
-          break;
-        }
-        ecToUse = EC_ORDER[i];
-      }
-    }
-
-    const qrCapacity = _QR.getMaxDataBytes(ecToUse);
-
-    if (bytes.length + headerSize <= qrCapacity) {
-      const header = new Uint8Array([1, 0, 1, useCompress ? 1 : 0]);
-      const full = new Uint8Array(header.length + bytes.length);
-      full.set(header);
-      full.set(bytes, header.length);
-      return { pages: [{ bytes: full, text, compressed: useCompress, page: 0, total: 1 }], effectiveEc: ecToUse };
-    }
-
-    const chunkSize = qrCapacity - headerSize;
+    // Split into multiple scannable plain-text pages
     const rawPages = [];
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      rawPages.push(bytes.slice(i, i + chunkSize));
-    }
-    if (rawPages.length > 255) {
-      throw new Error('Текст слишком длинный для QR-кода');
+    for (let i = 0; i < rawBytes.length; i += plainCap) {
+      rawPages.push(rawBytes.slice(i, i + plainCap));
     }
     return {
-      pages: rawPages.map((chunk, idx) => {
-        const header = new Uint8Array([1, idx, rawPages.length, useCompress ? 1 : 0]);
-        const full = new Uint8Array(header.length + chunk.length);
-        full.set(header);
-        full.set(chunk, header.length);
-        return { bytes: full, text: '', compressed: useCompress, page: idx, total: rawPages.length };
-      }),
-      effectiveEc: ecToUse,
+      pages: rawPages.map((chunk, idx) => ({
+        bytes: chunk, text: '', compressed: false, page: idx, total: rawPages.length, plain: true,
+      })),
+      effectiveEc: 'L',
     };
   }
 
@@ -853,7 +804,7 @@ const QRPanel = (() => {
     const availH = wrap ? wrap.clientHeight - 24 : 300;
     const avail = Math.min(availW, availH);
     const quiet = _padding ? 4 : 0;
-    const fitModSize = Math.max(4, Math.min(12, Math.floor(avail / (qr.size + quiet * 2))));
+    const fitModSize = Math.max(_moduleSize, Math.min(12, Math.floor(avail / (qr.size + quiet * 2))));
     const modSize = fitModSize;
     _lastModSize = modSize;
     const totalSize = (qr.size + quiet * 2) * modSize;
@@ -1242,17 +1193,12 @@ const QRPanel = (() => {
     const opts = document.createElement('div');
     opts.className = 'qr-export-opts';
 
-    const compressToggle = _buildToggle('Deflate-сжатие', _compress, v => {
-      _compress = v;
-      _storageSet('qr-compress', String(v));
-      _rebuildCurrentPreview();
-    });
     const paddingToggle = _buildToggle('Тихая зона 4м', _padding, v => {
       _padding = v;
       _storageSet('qr-padding', String(v));
       _renderPreview();
     });
-    opts.append(compressToggle, paddingToggle);
+    opts.append(paddingToggle);
 
     // Caption input
     const captionRow = document.createElement('div');
