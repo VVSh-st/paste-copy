@@ -42,7 +42,7 @@ const QRPanel = (() => {
   const VALID_STYLES = ['classic', 'dotted', 'rounded', 'cross'];
   const VALID_EC = ['L', 'M', 'Q', 'H'];
   let _style = VALID_STYLES.includes(_storageGet('qr-style')) ? _storageGet('qr-style') : 'classic';
-  let _moduleSize = Math.max(4, Math.min(12, parseInt(_storageGet('qr-module-size', '6'), 10))) || 6;
+  let _moduleSize = Math.max(4, Math.min(12, parseInt(_storageGet('qr-module-size', '9'), 10))) || 9;
   let _fg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-fg')) ? _storageGet('qr-fg') : '#000000';
   let _bg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-bg')) ? _storageGet('qr-bg') : '#FFFFFF';
   let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'H';
@@ -1021,9 +1021,12 @@ const QRPanel = (() => {
     navNext.onclick = () => { if (_currentPage < _pages.length - 1) { _currentPage++; _renderPreview(); } };
     nav.append(navPrev, pageInfo, navNext);
 
+    const infoRow = document.createElement('div');
+    infoRow.className = 'qr-info-row';
+
     const techLimit = document.createElement('div');
     techLimit.className = 'qr-tech-limit';
-    techLimit.title = 'QR-коды со экрана ограничены физическим размером модулей. Камера телефона не различает модули меньше ~2мм. Мы сделали всё возможное: plain-text编码 + EC=L + разбивка по страницам.';
+    techLimit.title = 'QR-коды со экрана ограничены физическим размером модулей. Камера телефона не различает модули меньше ~2мм. Мы сделали всё возможное: plain-text encoding + EC=L + разбивка по страницам.';
     techLimit.textContent = 'Я ограничен технологиями моего времени — H. Stark';
 
     previewPane.append(sourceLabel, canvasWrap, nav, techLimit, infoRow);
