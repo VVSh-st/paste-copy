@@ -68,6 +68,7 @@ const SquareTimer = (() => {
 
   // Digit animation timer (cancel previous to avoid race on fast changes)
   let _digitAnimationTimer = null;
+  let _oldDigitEl = null;
 
   // Corner glow timer
   let _cornerGlowTimer = null;
@@ -294,7 +295,7 @@ const SquareTimer = (() => {
      ════════════════════════════════════════════════════════════════ */
 
   function onPointerDown(e) {
-    if (e.button !== 0 || (inputEl && getComputedStyle(inputEl).display !== 'none')) return;
+    if (e.button !== 0 || (inputEl && inputEl.style.display !== 'none' && inputEl.style.display !== '')) return;
     if (!_audioCtx) try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
     btn.setPointerCapture?.(e.pointerId);
     _longPressFired = false;
@@ -479,8 +480,8 @@ const SquareTimer = (() => {
       clearTimeout(_digitAnimationTimer);
       _digitAnimationTimer = null;
     }
+    if (_oldDigitEl) { _oldDigitEl.remove(); _oldDigitEl = null; }
     valueEl?.classList.remove('timer-digit-enter');
-    valueEl?.parentNode?.querySelectorAll('.timer-digit-old').forEach(el => el.remove());
   }
 
   function _clearCornerGlow() {
@@ -616,14 +617,14 @@ const SquareTimer = (() => {
     if (valueEl.classList.contains('timer-value-dim')) valueEl.classList.remove('timer-value-dim');
 
     if (_prevMin !== null && minutes !== _prevMin) {
-      valueEl.parentNode.querySelectorAll('.timer-digit-old').forEach(el => el.remove());
+      if (_oldDigitEl) { _oldDigitEl.remove(); _oldDigitEl = null; }
 
-      // Use CSS class instead of getComputedStyle().cssText
       const oldEl = document.createElement('div');
       oldEl.className = 'timer-digit-old';
       oldEl.textContent = _prevMin;
 
       valueEl.parentNode.appendChild(oldEl);
+      _oldDigitEl = oldEl;
 
       valueEl.textContent = minutes;
       valueEl.classList.add('timer-digit-enter');
@@ -631,7 +632,7 @@ const SquareTimer = (() => {
 
       if (_digitAnimationTimer) clearTimeout(_digitAnimationTimer);
       _digitAnimationTimer = setTimeout(() => {
-        oldEl.remove();
+        if (_oldDigitEl === oldEl) { _oldDigitEl.remove(); _oldDigitEl = null; }
         valueEl.classList.remove('timer-digit-enter');
         _digitAnimationTimer = null;
       }, 400);
@@ -755,14 +756,22 @@ const SquareTimer = (() => {
 
   const safeSet = (k, v) => { try { Storage._set(k, v); } catch (e) { console.warn('[SquareTimer]', e); } };
 
+  let _lastSavedState = null;
+
   function saveState() {
-    if (mode === null) { safeSet(STORAGE_KEY, ''); return; }
-    const data = { mode, startTs, targetMinutes };
-    if (_pausedAt !== null) { data.pausedElapsed = _pausedElapsed; }
-    safeSet(STORAGE_KEY, JSON.stringify(data));
+    let payload = '';
+    if (mode !== null) {
+      const data = { mode, startTs, targetMinutes };
+      if (_pausedAt !== null) data.pausedElapsed = _pausedElapsed;
+      payload = JSON.stringify(data);
+    }
+    if (payload === _lastSavedState) return;
+    _lastSavedState = payload;
+    safeSet(STORAGE_KEY, payload);
   }
 
   function restoreState() {
+    _lastSavedState = null;
     try {
       const raw = Storage._get(STORAGE_KEY);
       if (!raw) { setIdleVisual(); return; }
