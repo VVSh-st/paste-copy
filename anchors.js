@@ -493,13 +493,23 @@ const Anchors = (() => {
       const pos = _measurePos(ta, anchor.start);
       const rawTop = pos.y - scrollY - taPt;
       const wrapH = wrap.clientHeight;
-      if (rawTop + lineHeight < 0 || rawTop > wrapH) return;
-      if (settings.lineMarkers) {
-        const mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
-        const mHeight = Math.max(2, lineHeight - 12);
-        const m = _createLineMarker(mTop, mHeight, settings.color);
-        wrap.appendChild(m);
+      if (!settings.lineMarkers) return;
+      let mTop, stuck = '';
+      if (rawTop + lineHeight < 0) {
+        mTop = 2;
+        stuck = ' anchor-stuck-top';
+      } else if (rawTop > wrapH) {
+        mTop = Math.max(2, wrapH - lineHeight - 2);
+        stuck = ' anchor-stuck-bottom';
+      } else {
+        mTop = Math.max(0, Math.min(rawTop + 12, wrapH - lineHeight));
       }
+      const mHeight = Math.max(2, lineHeight - 12);
+      const m = _createLineMarker(mTop, mHeight, settings.color);
+      if (stuck) m.className += stuck;
+      const idx = anchors.indexOf(anchor);
+      m.title = 'Якорь #' + (idx + 1) + ': ' + (anchor.snippet || '');
+      wrap.appendChild(m);
     });
   }
 
@@ -597,12 +607,16 @@ const Anchors = (() => {
     State.onChange(rerender);
     State.onLive(debouncedRerender);
     let _scrollTimer = null;
+    let _scrollFastTimer = null;
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
         if (!bel) return;
-        _renderMarkersNoGutter(bel, ta);
+        clearTimeout(_scrollFastTimer);
+        _scrollFastTimer = setTimeout(() => {
+          if (bel.isConnected) _renderMarkersNoGutter(bel, ta);
+        }, 16);
         clearTimeout(_scrollTimer);
         _scrollTimer = setTimeout(() => {
           if (bel.isConnected) _renderMarkers(bel, ta);
