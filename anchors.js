@@ -311,7 +311,7 @@ const Anchors = (() => {
   function _getMirror(ta) {
     if (!_mirror) {
       _mirror = document.createElement('div');
-      _mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;word-break:break-all;overflow:hidden;pointer-events:none;z-index:-1;box-sizing:content-box;border:none;padding:0;margin:0;';
+      _mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:pre-wrap;word-wrap:break-word;overflow:hidden;pointer-events:none;z-index:-1;box-sizing:content-box;border:none;padding:0;margin:0;';
       document.body.appendChild(_mirror);
     }
     const cs = getComputedStyle(ta);
