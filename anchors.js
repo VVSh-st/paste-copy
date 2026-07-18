@@ -496,10 +496,10 @@ const Anchors = (() => {
     const lineHeight = _getLineHeight(ta);
     const scrollY = ta.scrollTop;
     const taPt = parseFloat(getComputedStyle(ta).paddingTop) || 0;
+    const wrapH = wrap.clientHeight;
     blockAnchors.forEach(anchor => {
       const pos = _measurePos(ta, anchor.start);
       const rawTop = pos.y - scrollY - taPt;
-      const wrapH = wrap.clientHeight;
       if (!settings.lineMarkers) return;
       let mTop, stuck = '';
       if (rawTop + lineHeight < 0) {
@@ -614,12 +614,17 @@ const Anchors = (() => {
     State.onChange(rerender);
     State.onLive(debouncedRerender);
     let _scrollTimer = null;
+    let _scrollRaf = null;
     document.addEventListener('scroll', e => {
       const ta = e.target;
       if (ta.classList && ta.classList.contains('block-textarea')) {
         const bel = ta.closest('.block[data-id]');
         if (!bel) return;
-        _renderMarkersNoGutter(bel, ta);
+        if (_scrollRaf) return;
+        _scrollRaf = requestAnimationFrame(() => {
+          _scrollRaf = null;
+          if (bel.isConnected) _renderMarkersNoGutter(bel, ta);
+        });
         clearTimeout(_scrollTimer);
         _scrollTimer = setTimeout(() => {
           if (bel.isConnected) _renderMarkers(bel, ta);
