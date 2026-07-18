@@ -603,18 +603,10 @@ const QRPanel = (() => {
     const ecStart = Math.max(0, EC_ORDER.indexOf(_ec));
 
     // ── Plain-text path: raw UTF-8, no header, no compression ──
-    // Phone scanners can read this directly as readable text.
-    let plainEc = EC_ORDER[ecStart];
-    if (_autoEc) {
-      for (let i = ecStart; i < EC_ORDER.length; i++) {
-        const cap = _QR.getMaxDataBytes(EC_ORDER[i]);
-        if (rawBytes.length <= cap) { plainEc = EC_ORDER[i]; break; }
-        plainEc = EC_ORDER[i];
-      }
-    }
-    const plainCap = _QR.getMaxDataBytes(plainEc);
+    // Phone scanners read this directly. EC=L for max data capacity.
+    const plainCap = _QR.getMaxDataBytes('L');
     if (rawBytes.length <= plainCap) {
-      return { pages: [{ bytes: rawBytes, text, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: plainEc };
+      return { pages: [{ bytes: rawBytes, text, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: 'L' };
     }
 
     // ── Protocol path: header + optional compression + pagination ──
