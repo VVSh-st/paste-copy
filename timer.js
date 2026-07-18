@@ -147,7 +147,7 @@ const SquareTimer = (() => {
       { type: 'arc', cx: r, cy: r, r, a0: -Math.PI/2, a1: -Math.PI },
       { type: 'line', x0: 0, y0: r, x1: 0, y1: h-r },
       { type: 'arc', cx: r, cy: h-r, r, a0: Math.PI, a1: Math.PI/2 },
-      { type: 'line', x0: 0, y0: h-r, x1: w-r, y1: h },
+      { type: 'line', x0: r, y0: h, x1: w-r, y1: h },
       { type: 'arc', cx: w-r, cy: h-r, r, a0: Math.PI/2, a1: 0 },
       { type: 'line', x0: w, y0: h-r, x1: w, y1: r },
       { type: 'arc', cx: w-r, cy: r, r, a0: 0, a1: -Math.PI/2 },
