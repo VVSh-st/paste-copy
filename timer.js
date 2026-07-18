@@ -736,8 +736,8 @@ const SquareTimer = (() => {
       // CCW countdown: tail trails behind comet, comet moves counterclockwise
       // dashoffset = -headPos → tail shows [0, P-headPos], comet at P-headPos
       arcTail.style.strokeDashoffset = -headPos;
-      // Head segment at the leading edge: [0, hLen], comet at the end
-      arcHeadSeg.style.strokeDashoffset = hLen - headPos;
+      // Head segment: [P-headPos-hLen, P-headPos] — bright edge ends at comet
+      arcHeadSeg.style.strokeDashoffset = P - hLen;
       const idx = Math.min(_pts.N, Math.floor((1 - visualProgress) * _pts.N));
       if (_lastHeadIdx !== idx) {
         const pt = _pts.pts[idx];
