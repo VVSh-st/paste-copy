@@ -225,6 +225,7 @@
 - **closeAllMenus**: единая точка — закрывает `.ui-menu.open` + dispatches `close-all-palettes`. Palette-модули слушают событие и закрываются через свои close-функции с очисткой состояния.
 - **Timer segments**: 12 line-меток вдоль CW-пути, `viewBox` привязан к размерам кнопки. Сегменты только внутрь (dot product). `_syncSegments` при любом изменении `completedSegments`.
 - **Timer `_cachePoints`**: аналитический расчёт 401 точки по 9 сегментам (4 прямых + 4 дуги + замыкание) для CW и CCW. 0 layout-вызовов вместо 800 (DOM-based). `_lastHeadIdx` guard — `cx/cy` обновляются только при смене индекса. CCW 5-й сегмент исправлен: `(r,h)→(w-r,h)` вместо диагонали `(0,h-r)→(w-r,h)` — комета CCW строго по периметру.
+- **Timer `_applyArc` CCW direction**: видимая дуга CCW сдвинута к концу пути через `strokeDashoffset = headPos`, комета позиционируется по `(1-visualProgress)` — движется против часовой при убывании progress 1→0. CW без изменений.
 - **Timer `_applyArc` hot path**: `display`/`r='2'` ставятся только при смене направления; `strokeDashoffset='0'` убран (никогда не меняется); guard `_lastHeadIdx` для `cx/cy`.
 - **Timer AudioContext**: переиспользование одного `_audioCtx` на весь жизненный цикл. Создаётся при первом `pointerdown` (user-gesture для iOS). `restoreState` создаёт при восстановлении активного таймера. `.catch()` на `resume()` для Safari.
 - **Timer cssText cache**: `_cachedDigitCssText/Sig/Font` — один `getComputedStyle` за жизнь темы. Инвалидация при смене classList или font.
