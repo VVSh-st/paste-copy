@@ -736,7 +736,8 @@ const SquareTimer = (() => {
       // CCW: tail from (P-headPos)→P, comet at depleting edge (1-visualProgress)
       // This makes the comet move counterclockwise as progress decreases 1→0
       arcTail.style.strokeDashoffset = headPos;
-      arcHeadSeg.style.strokeDashoffset = headPos + hLen;
+      // Bright segment: [P-headPos, P-headPos+hLen] — comet at start, trail extends CCW
+      arcHeadSeg.style.strokeDashoffset = hLen - headPos;
       const idx = Math.min(_pts.N, Math.floor((1 - visualProgress) * _pts.N));
       if (_lastHeadIdx !== idx) {
         const pt = _pts.pts[idx];
