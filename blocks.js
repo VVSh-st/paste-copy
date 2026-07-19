@@ -1861,7 +1861,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.setSelectionRange(0, 0);
       }
     });
-    const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt', null);
+    const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt/Долгий клик - придумать название', null);
     const isLongSave = _makeLongPress(saveBtn, () => {
       _showExportNamePopup(saveBtn, ta.value, b.title || 'block');
     });
@@ -4037,23 +4037,20 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const blockEl = document.querySelector(`.block[data-id="${b.id}"]`);
     if (!blockEl) return;
 
-    /* find first blocked subtab */
-    const blockedIdx = b.subtabs.findIndex(s => s.blocked);
-
-    /* mark blocked number */
+    /* mark blocked number — each subtab independently */
     blockEl.querySelectorAll('.block-subtab').forEach(btn => {
       const idx = parseInt(btn.dataset.subtabIdx, 10);
-      btn.classList.toggle('subtab-blocked', idx === blockedIdx);
+      btn.classList.toggle('subtab-blocked', !!b.subtabs[idx]?.blocked);
     });
 
-    /* mark arrow toward blocked */
+    /* mark arrows toward any blocked subtab */
     const arrows = blockEl.querySelectorAll('.subtab-arrow');
     if (arrows.length >= 2) {
       const cur = b.activeSubtab;
-      let dir = 0;
-      if (blockedIdx >= 0 && blockedIdx !== cur) dir = blockedIdx > cur ? 1 : -1;
-      arrows[0].classList.toggle('arrow-blocked', dir === -1);
-      arrows[1].classList.toggle('arrow-blocked', dir === 1);
+      const hasBlockedLeft  = b.subtabs.some((s, i) => s.blocked && i < cur);
+      const hasBlockedRight = b.subtabs.some((s, i) => s.blocked && i > cur);
+      arrows[0].classList.toggle('arrow-blocked', hasBlockedLeft);
+      arrows[1].classList.toggle('arrow-blocked', hasBlockedRight);
     }
   }
 
@@ -4331,7 +4328,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const compressed = await TextSkeletonizer.processAsync(text, 'light');
         const result = await window.LLMCore.request({
           messages: [
-            { role: 'system', content: 'Дай 10 названий (5-10 слов) для этого текста. Каждое название с новой строки. Только названия, без кавычек, нумерации и пояснений.' },
+            { role: 'system', content: 'Дай 10 названий по 4-10 слов в каждом, на выбор по количеству слов, для этого текста. Каждое название с новой строки. Только названия, без кавычек, нумерации и пояснений.' },
             { role: 'user', content: compressed || text.slice(0, 2000) },
           ],
           maxTokens: 200,
@@ -4364,7 +4361,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     input.rows = 3;
     input.className = 'export-name-input';
     input.value = suggestions[0] || fallbackName || 'Без названия';
-    input.maxLength = 120;
+    input.maxLength = 150;
 
     const nav = document.createElement('div');
     nav.className = 'export-name-nav';
