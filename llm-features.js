@@ -4130,7 +4130,7 @@ const AutoPoet = (() => {
       btn.type = 'button';
       btn.className = 'llm-chat-msg-translate';
       btn.innerHTML = TRANSLATE_CHAT_SVG;
-      btn.title = 'Перевести RU↔EN';
+      btn.title = 'Перевести → ' + (Translator.LANG_BY_CODE[Translator.targetLang]?.name || Translator.targetLang);
       btn.addEventListener('click', e => {
         e.stopPropagation();
         if (btn.dataset.translated === '1') {
@@ -4139,26 +4139,25 @@ const AutoPoet = (() => {
             _renderChatMd(span, btn.dataset.original);
             btn.dataset.translated = '0';
             btn.innerHTML = TRANSLATE_CHAT_SVG;
-            btn.title = 'Перевести RU↔EN';
+            btn.title = 'Перевести → ' + (Translator.LANG_BY_CODE[Translator.targetLang]?.name || Translator.targetLang);
           }
           return;
         }
         const span = container.querySelector('.llm-chat-msg-text');
         if (!span) return;
         const srcText = container.dataset.rawText || span.textContent;
-        const lang = Translator.detectLang(srcText);
-        const targetLang = (lang?.code === 'ru') ? 'en' : 'ru';
+        const targetLang = Translator.targetLang;
         const langName = Translator.LANG_BY_CODE[targetLang]?.name || targetLang;
         btn.innerHTML = '⏳';
         btn.title = 'Перевод → ' + langName + '...';
         Translator.translateProtected(srcText, targetLang).then(result => {
-          if (!result || result === srcText) { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести RU↔EN'; return; }
+          if (!result || result === srcText) { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести → ' + langName; return; }
           btn.dataset.original = srcText;
           btn.dataset.translated = '1';
           _renderChatMd(span, result);
           btn.innerHTML = '↩';
           btn.title = 'Вернуть оригинал';
-        }).catch(() => { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести RU↔EN'; });
+        }).catch(() => { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести → ' + langName; });
       });
       container.appendChild(btn);
     }
