@@ -1119,9 +1119,39 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ---
 
+### Export name popup — авто-название для локального экспорта (сессия 2026-07-19)
+
+**Файлы:** `blocks.js`, `app.js`, `styles.css`
+
+**Функционал:**
+- **Простой клик** на кнопку экспорта → мгновенное скачивание с именем `Paste-copy-YYYY-MM-DD-HH-MM`
+- **Долгий клик (400ms)** → popup с 1 editable input (3 строки) + ◀ 2/10 ▶ ✓ ✕
+- Названия генерируются через LLM (TextSkeletonizer light + autotitle prompt) или frequency analysis (fallback)
+
+**Кнопки с long-press:**
+| Кнопка | Простой клик | Долгий клик |
+|--------|-------------|-------------|
+| Сохранить в .txt (блок) | `Paste-copy-TIMESTAMP.txt` | Popup (текст текущей вкладки блока) |
+| Экспорт всех (шапка) | `Paste-copy-TIMESTAMP.json` | Popup (текст всех блоков всех вкладок) |
+| Экспорт вкладки (шапка) | `Paste-copy-TIMESTAMP.json` | Popup (текст всех блоков вкладки) |
+
+**Реализация:**
+- `_makeLongPress(el, onLong)` — long-press хелпер (400ms), дублирован из anchors.js
+- `_sanitizeFileName(name)` — очистка от `/\*?"<>|`, лимит 120 символов
+- `_generateExportName(text)` — LLM: skeletonizer light → `_LLMCore.request()` → 10 названий (5-10 слов)
+- `_generateNamesLocal(text)` — fallback: frequency analysis топ-10 слов → 10 комбинаций (5-8 слов), badge `⚡`
+- `_showExportNamePopup(btn, text, fallbackName, onSave)` — popup: textarea 3 строки + nav (◀ counter ▶ ✓ ✕)
+- `_doExportTxt(text, name)` — скачивание .txt с именем
+- `_doExportJson(data, name)` — скачивание .json с именем (в app.js)
+
+**Коммиты:** `b00bfca`, `32496f5`, `570497a`, `a3eca3b`, `25c3316`, `a290cea`, `4532165`, `b025c27`
+
+---
+
 ## Следующий шаг
 
-1. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
+1. Авто-заголовок блока/вкладки — popup с выбором (см. TODO в конце файла)
+2. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
 2. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
 
 ### Preview — логотип Paste/Copy + QR-кнопка
