@@ -1110,7 +1110,7 @@
     const btn   = $id('prev-toggle');
     if (panel && !panel.classList.contains('collapsed')) {
       panel.classList.add('collapsed');
-      if (btn) btn.textContent = '▲';
+      if (btn) btn.classList.add('collapsed');
     }
   })();
 
