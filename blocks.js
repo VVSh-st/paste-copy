@@ -1868,7 +1868,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     saveBtn.addEventListener('click', e => {
       e.stopPropagation();
       if (isLongSave()) return;
-      _doExportTxt(ta.value, 'Paste-copy-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-'));
+      _doExportTxt(ta.value, b.title || 'block');
     });
 
     const transferBtn = makeToolBtn(svgIcon('transfer'), 'Скопировать текст на следующую вкладку', () => {
