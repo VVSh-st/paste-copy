@@ -934,10 +934,10 @@ window.LLMFeatures = (() => {
         return;
       }
 
-      let result;
+      let llmVariants = [];
       try {
         _showThinking('◕ Генерирую варианты...');
-        result = await _LLMCore.request({
+        const result = await _LLMCore.request({
           messages: [
             { role: 'system', content: _LLMCore.getPrompt('autotitle') + (_LANG_INSTR ?? '') },
             { role: 'user',   content: text },
@@ -946,32 +946,22 @@ window.LLMFeatures = (() => {
           stream: false,
           featureTag: 'autotitle',
         });
+        if (result && typeof result === 'string') llmVariants = _parseVariants(result);
       } catch (e) {
-        if (e.name !== 'AbortError') window.Toast?.show('Ошибка: ' + e.message, 'error');
-        return;
+        if (e.name !== 'AbortError') window.Toast?.show('LLM недоступен, подбираю локально', 'warn');
       } finally { _hideThinking(); }
 
-      if (result == null || typeof result !== 'string') {
-        window.Toast?.show('Пустой ответ модели', 'error');
-        return;
-      }
-
-      _variants = _parseVariants(result);
-
-      if (_variants.length < 10) {
-        const local = _generateLocalNames(text);
-        const existing = new Set(_variants.map(v => v.toLowerCase()));
-        for (const v of local) {
-          if (_variants.length >= 10) break;
-          if (!existing.has(v.toLowerCase())) {
-            _variants.push(v);
-            existing.add(v.toLowerCase());
-          }
-        }
+      const local = _generateLocalNames(text);
+      const seen = new Set();
+      _variants = [];
+      for (const v of [...llmVariants, ...local]) {
+        if (_variants.length >= 10) break;
+        const key = v.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); _variants.push(v); }
       }
 
       if (_variants.length === 0) {
-        window.Toast?.show('Не удалось распарсить варианты', 'error');
+        window.Toast?.show('Нет вариантов', 'error');
         return;
       }
 
@@ -1161,10 +1151,10 @@ window.LLMFeatures = (() => {
         return;
       }
 
-      let result;
+      let llmVariants = [];
       try {
         _showThinking('◕ Генерирую варианты...');
-        result = await _LLMCore.request({
+        const result = await _LLMCore.request({
           messages: [
             { role: 'system', content: _LLMCore.getPrompt('subtab_autotitle') + (_LANG_INSTR ?? '') },
             { role: 'user',   content: text },
@@ -1173,32 +1163,22 @@ window.LLMFeatures = (() => {
           stream: false,
           featureTag: 'subtab_autotitle',
         });
+        if (result && typeof result === 'string') llmVariants = _parseVariants(result);
       } catch (e) {
-        if (e.name !== 'AbortError') window.Toast?.show('Ошибка: ' + e.message, 'error');
-        return;
+        if (e.name !== 'AbortError') window.Toast?.show('LLM недоступен, подбираю локально', 'warn');
       } finally { _hideThinking(); }
 
-      if (result == null || typeof result !== 'string') {
-        window.Toast?.show('Пустой ответ модели', 'error');
-        return;
-      }
-
-      _variants = _parseVariants(result);
-
-      if (_variants.length < 10) {
-        const local = _generateLocalNames(text);
-        const existing = new Set(_variants.map(v => v.toLowerCase()));
-        for (const v of local) {
-          if (_variants.length >= 10) break;
-          if (!existing.has(v.toLowerCase())) {
-            _variants.push(v);
-            existing.add(v.toLowerCase());
-          }
-        }
+      const local = _generateLocalNames(text);
+      const seen = new Set();
+      _variants = [];
+      for (const v of [...llmVariants, ...local]) {
+        if (_variants.length >= 10) break;
+        const key = v.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); _variants.push(v); }
       }
 
       if (_variants.length === 0) {
-        window.Toast?.show('Не удалось распарсить варианты', 'error');
+        window.Toast?.show('Нет вариантов', 'error');
         return;
       }
 
