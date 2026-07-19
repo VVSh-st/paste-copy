@@ -1185,6 +1185,18 @@ window.LLMFeatures = (() => {
 
       _variants = _parseVariants(result);
 
+      if (_variants.length < 10) {
+        const local = _generateLocalNames(text);
+        const existing = new Set(_variants.map(v => v.toLowerCase()));
+        for (const v of local) {
+          if (_variants.length >= 10) break;
+          if (!existing.has(v.toLowerCase())) {
+            _variants.push(v);
+            existing.add(v.toLowerCase());
+          }
+        }
+      }
+
       if (_variants.length === 0) {
         window.Toast?.show('Не удалось распарсить варианты', 'error');
         return;
@@ -1200,6 +1212,29 @@ window.LLMFeatures = (() => {
         .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
         .filter(l => l.length > 0 && l.length <= 80)
         .slice(0, 10);
+    }
+
+    function _generateLocalNames(text) {
+      const stopWords = new Set(['это','как','вот','для','при','изза','или','но','и','в','на','не','что','эти','все','его','ее','их','та','то','тот','так','уже','еще','ещё','нет','да','если','бы','ни','же','ли','а','об','от','до','по','из','за','под','над','между','через','после','перед','около']);
+      const words = text.split(/\s+/)
+        .map(w => w.toLowerCase().replace(/[^а-яёa-z0-9]/g, ''))
+        .filter(w => w.length >= 3 && !stopWords.has(w));
+      const freq = new Map();
+      for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+      const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(e => e[0]);
+      if (top.length < 2) return [];
+      const results = [];
+      const combos = [
+        [0,1,2], [0,1], [0,1,2,3], [0,1,2,3,4],
+        [0,2,1], [0,2], [1,0,2], [0,3,1],
+        [0,1,3], [0,2,3], [0,1,4], [0,3],
+      ];
+      for (const idxs of combos) {
+        if (idxs.every(i => i < top.length)) {
+          results.push(idxs.map(i => top[i]).join(' '));
+        }
+      }
+      return [...new Set(results)].slice(0, 10);
     }
 
     function _showPopup(blockId) {
