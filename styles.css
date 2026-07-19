@@ -1665,7 +1665,7 @@ textarea.block-textarea:focus {
   color: var(--text2); text-transform: uppercase;
   cursor: pointer; user-select: none;
 }
-.preview-controls { display: flex; gap: 3px; align-items: center; justify-content: flex-end; }
+.preview-controls { display: flex; gap: 3px; align-items: center; flex: 1; justify-content: flex-end; }
 .preview-brand { flex: 1; }
 .preview-toggle-wrap {
   flex-shrink: 0;
