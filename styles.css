@@ -1605,9 +1605,10 @@ textarea.block-textarea:focus {
   display: flex; justify-content: space-between; align-items: center;
   padding: 7px 14px; user-select: none; flex-shrink: 0; flex-wrap: wrap; gap: 8px;
   background: rgba(255,255,255,0.015);
+  position: relative;
 }
 .preview-brand {
-  display: flex; align-items: center; gap: 6px; flex: 1;
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
   position: relative;
 }
 .preview-logo {
@@ -1665,16 +1666,17 @@ textarea.block-textarea:focus {
   color: var(--text2); text-transform: uppercase;
   cursor: pointer; user-select: none;
 }
-.preview-controls { display: flex; gap: 3px; align-items: center; flex: 1; justify-content: flex-end; }
+.preview-controls { display: flex; gap: 3px; align-items: center; }
 .preview-brand { flex: 1; }
 .preview-toggle-wrap {
-  flex-shrink: 0;
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   background: var(--surface); color: var(--text1); border: 1px solid var(--border);
   padding: 5px 12px; border-radius: var(--radius-sm); cursor: pointer;
   font-family: inherit; font-size: 11px; font-weight: 500;
   min-width: 75px; min-height: 30px; text-align: center;
   transition: background var(--trans), color var(--trans),
               border-color var(--trans), transform var(--trans-fast);
+  z-index: 1;
 }
 .preview-toggle-wrap:hover { background: var(--surface2); color: var(--text0); border-color: var(--border2); transform: translateY(-1px); }
 .preview-controls button {
