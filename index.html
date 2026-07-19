@@ -1710,7 +1710,7 @@
             <div class="preview-logo-grain"></div>
           </div>
           <div class="preview-logo-panel-glow"></div>
-          <span class="preview-title">Превью</span>
+          <span class="preview-title">Paste\copy</span>
         </div>
 
         <div class="preview-controls" role="toolbar" aria-label="Управление превью">
@@ -1724,16 +1724,6 @@
 
           <button type="button" id="prev-export-all" title="Экспортировать все вкладки в .md" aria-label="Экспорт всех вкладок" style="font-size:11px">⬇ Все</button>
           <button type="button" id="prev-download" title="Скачать .txt"    aria-label="Скачать как текстовый файл">⬇</button>
-
-          <button type="button" id="prev-qr" title="QR-код превью" aria-label="Создать QR-код из превью">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px">
-              <rect x="2" y="2" width="7" height="7" rx="1"/><rect x="11" y="2" width="7" height="7" rx="1"/><rect x="2" y="11" width="7" height="7" rx="1"/>
-              <rect x="4" y="4" width="3" height="3" fill="currentColor" stroke="none"/><rect x="13" y="4" width="3" height="3" fill="currentColor" stroke="none"/><rect x="4" y="13" width="3" height="3" fill="currentColor" stroke="none"/>
-              <rect x="12" y="12" width="2" height="2" fill="currentColor" stroke="none"/><rect x="15" y="12" width="2" height="2" fill="currentColor" stroke="none"/><rect x="12" y="15" width="2" height="2" fill="currentColor" stroke="none"/><rect x="15" y="15" width="2" height="2" fill="currentColor" stroke="none"/>
-            </svg>
-          </button>
-
-          <span class="tb-divider" aria-hidden="true"></span>
 
           <button type="button" id="prev-font-dec" title="Меньше шрифт"    aria-label="Уменьшить шрифт">A−</button>
 
@@ -1757,10 +1747,11 @@
 
           <!-- ── end LLM preview actions ─────────────────────────────────-->
 
-          <span class="tb-divider" aria-hidden="true"></span>
+        </div>
 
-          <button type="button" id="prev-toggle"   title="Свернуть/развернуть" aria-label="Свернуть превью">▲</button>
-
+        <div class="preview-center-toggle">
+          <span class="preview-toggle-label">превью</span>
+          <button type="button" id="prev-toggle" class="preview-toggle-btn" title="Свернуть/развернуть" aria-label="Свернуть превью">▲</button>
         </div>
 
         <div class="preview-meta">

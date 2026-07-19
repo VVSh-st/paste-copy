@@ -1601,10 +1601,12 @@ textarea.block-textarea:focus {
 #preview-panel.collapsed { height: 42px !important; }
 #preview-panel.collapsed #preview-content,
 #preview-panel.collapsed #smart-suggestions-strip { display: none; }
+#preview-panel.collapsed .preview-toggle-label { display: none; }
 #preview-bar {
   display: flex; justify-content: space-between; align-items: center;
   padding: 7px 14px; user-select: none; flex-shrink: 0; flex-wrap: wrap; gap: 8px;
   background: rgba(255,255,255,0.015);
+  position: relative;
 }
 .preview-brand {
   display: flex; align-items: center; gap: 6px; flex-shrink: 0;
@@ -1665,6 +1667,23 @@ textarea.block-textarea:focus {
   color: var(--text2); text-transform: uppercase;
   cursor: pointer; user-select: none;
 }
+.preview-center-toggle {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  flex-shrink: 0; z-index: 1;
+}
+.preview-toggle-label {
+  font-size: 9px; color: var(--text3); letter-spacing: .5px; text-transform: lowercase;
+  line-height: 1;
+}
+.preview-toggle-btn {
+  width: 75px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; background: var(--surface); color: var(--text1); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); cursor: pointer;
+  font-family: inherit; font-size: 11px; font-weight: 500;
+  transition: background .15s, color .15s, border-color .15s, transform .15s;
+}
+.preview-toggle-btn:hover { background: var(--surface2); color: var(--text0); border-color: var(--border2); transform: translateY(-1px); }
 .preview-controls { display: flex; gap: 3px; align-items: center; }
 .preview-controls button {
   background: var(--surface); color: var(--text1); border: 1px solid var(--border);
