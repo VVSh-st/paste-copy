@@ -149,6 +149,7 @@ body {
 }
 .tb-btn-icon-only { padding: 7px 9px; min-width: 36px; justify-content: center; }
 .tb-divider { width: 1px; height: 22px; background: var(--border2); margin: 0 4px; flex-shrink: 0; border-radius: 99px; }
+.tb-divider.ml-auto { margin-left: auto; }
 .spacer { flex: 1; }
 .hint { color: var(--text3); font-size: 11px; white-space: nowrap; padding: 0 4px; }
 
@@ -1606,7 +1607,7 @@ textarea.block-textarea:focus {
   display: flex; justify-content: space-between; align-items: center;
   padding: 7px 14px; user-select: none; flex-shrink: 0; flex-wrap: wrap; gap: 8px;
   background: rgba(255,255,255,0.015);
-  position: relative;
+}
 }
 .preview-brand {
   display: flex; align-items: center; gap: 6px; flex-shrink: 0;
@@ -1679,7 +1680,6 @@ textarea.block-textarea:focus {
 .preview-controls button:hover { background: var(--surface2); color: var(--text0); border-color: var(--border2); transform: translateY(-1px); }
 .preview-controls button.active-btn { background: rgba(79,142,247,0.12); color: var(--accent); border-color: rgba(79,142,247,0.28); }
 .preview-toggle-wrap {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   min-width: 75px; min-height: 30px; text-align: center;
   padding: 5px 14px; font-size: 11px; font-weight: 600;
   letter-spacing: 0.5px;
@@ -1687,7 +1687,6 @@ textarea.block-textarea:focus {
   border: 1px solid rgba(79,142,247,0.25);
   background: rgba(79,142,247,0.06);
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
-  z-index: 1;
 }
 .preview-toggle-wrap:hover {
   background: rgba(79,142,247,0.1);
