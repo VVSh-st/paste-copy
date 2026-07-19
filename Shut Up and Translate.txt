@@ -2,7 +2,7 @@
 // @name         Shut Up and Translate - Заткнись и переведи
 // @name:ru      Заткнись и переведи - Shut Up and Translate
 // @namespace    https://docs.scriptcat.org/
-// @version      3.4
+// @version      3.5
 // @description  Shut Up and Translate - RU translation. Google→MS→Tencent→legacy fallback. CJK. Slang tooltips. Unit conversion. BroadcastChannel cache. Alt+A.
 // @description:ru Shut Up and Translate - перевод на русский. Google→MS→Tencent→запасной. CJK. Подсказки сленга. Конвертация единиц. Кэш BroadcastChannel. Alt+A.
 // @icon         data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129'/%3E%3C/svg%3E
@@ -2005,6 +2005,8 @@ const Tr = {
           if (!this.act || this.restoring) { this.rollbackFrom(repStart); return; }
           this.applyResult(inf, pack);
         }
+        // Yield после каждого элемента для incremental apply (видимые показываются по мере получения)
+        if (isPriority && j % 3 === 0 && navigator.scheduling?.isInputPending?.()) await yieldToMain();
       }
     }
   },
