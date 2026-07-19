@@ -969,6 +969,7 @@ body {
   color: var(--text0); border-radius: 4px;
   padding: 4px 8px; font-size: 12px; font-family: inherit;
   outline: none; resize: none; line-height: 1.4;
+  min-height: 3.6em; max-height: 7.2em; overflow-y: auto;
 }
 .export-name-input:focus { border-color: var(--accent); }
 .export-name-nav {

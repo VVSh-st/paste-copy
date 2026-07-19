@@ -4415,6 +4415,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     function updateNav() {
       counter.textContent = `${current + 1}/${suggestions.length}`;
       input.value = suggestions[current] || '';
+      autoResize();
     }
 
     prevBtn.onclick = () => { current = (current - 1 + suggestions.length) % suggestions.length; updateNav(); };
@@ -4445,8 +4446,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       });
     }, 0);
 
+    function autoResize() {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, parseFloat(getComputedStyle(input).maxHeight)) + 'px';
+    }
+    input.addEventListener('input', autoResize);
+
     input.focus();
     input.select();
+    autoResize();
 
     // Async LLM replacement
     _generateExportName(text).then(llmSuggestions => {
