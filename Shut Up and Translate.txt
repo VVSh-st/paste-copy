@@ -33,7 +33,7 @@ const CONFIG = {
   MAX_CACHE_SIZE: 5000,              // [100–50000] записей в кэше
   MAX_REPS: 2500,                    // [100–20000] операций rollback
   INTERSECTION_MARGIN: '2500px',       // увеличено для предзагрузки перевода до появления на экране
-  CHUNK_DELAY: 8,                    // [0–1000]  мс между батчами
+  CHUNK_DELAY: 12,                   // [0–1000]  мс между батчами
   PRIORITY_BATCH_SIZE: 15,            // для видимых элементов
   PREFETCH_BATCH_SIZE: 60,            // для prefetch
   ZERO_WIDTH_CLEAN: true,
@@ -1276,6 +1276,82 @@ const API = {
 
     finishFails(rem);
     return out;
+  },
+
+  async translateVisible(texts, to) {
+    const out = new Array(texts.length).fill(null);
+    const todo = [], idx = [];
+    texts.forEach((t, i) => {
+      const n = norm(t);
+      if (Cache.isFailed(n, to)) return;
+      const c = Cache.get(n, to);
+      if (c !== undefined) out[i] = c;
+      else { todo.push(n); idx.push(i); }
+    });
+    if (!todo.length) return out;
+
+    const rem = todo.map((t, i) => ({ t, i }));
+    const accept = (src, tr) => {
+      if (!tr || !tr.trim()) return false;
+      if (tr === src && !containsCJK(src) && !containsForeignScript(src)) return false;
+      if (looksUntranslated(src, tr)) return false;
+      return true;
+    };
+
+    const promises = [];
+    if (!this.gOpen()) {
+      promises.push(
+        withTimeout(this.g2(rem.map(x => x.t), to), CONFIG.GOOGLE_TIMEOUT_MS)
+          .then(r => ({ engine: 'g', results: r }))
+          .catch(() => ({ engine: 'g', results: null }))
+      );
+    }
+    if (!this.msOpen()) {
+      promises.push(
+        this.ms(rem.map(x => x.t), to)
+          .then(r => ({ engine: 'ms', results: r }))
+          .catch(() => ({ engine: 'ms', results: null }))
+      );
+    }
+    if (!promises.length) {
+      promises.push(
+        this.leg(rem.map(x => x.t), to)
+          .then(r => ({ engine: 'leg', results: r }))
+          .catch(() => ({ engine: 'leg', results: null }))
+      );
+    }
+
+    const result = await Promise.any(promises).catch(() => null);
+
+    if (result?.results) {
+      const ok = result.results.some(v => v);
+      if (ok) {
+        if (result.engine === 'g') this.gOk(); else this.msOk();
+        for (let j = 0; j < rem.length; j++) {
+          const tr = result.results[j];
+          if (accept(rem[j].t, tr)) {
+            Cache.set(rem[j].t, tr, to);
+            out[idx[rem[j].i]] = tr;
+          }
+        }
+      }
+    }
+
+    const still = rem.filter(x => out[idx[x.i]] === undefined);
+    if (still.length && still.length <= 20) {
+      try {
+        const l = await this.leg(still.map(x => x.t), to);
+        for (let j = 0; j < still.length; j++) {
+          const tr = l[j];
+          if (accept(still[j].t, tr)) {
+            Cache.set(still[j].t, tr, to);
+            out[idx[still[j].i]] = tr;
+          }
+        }
+      } catch {}
+    }
+
+    return out;
   }
 };
 
@@ -1848,22 +1924,29 @@ const Tr = {
   async chunk(infos) {
     if (!this.act || this.restoring) return;
 
-    // Разделяем на видимые (qHigh) и prefetch (qLow)
+    // Разделяем на видимые (qHigh) и prefetch (qLow), с дедупликацией
+    const visibleSet = new Set();
     const visible = [], preload = [];
     for (const inf of infos) {
       const el = inf.n?.parentElement || inf.e;
-      (el && this.qHigh.has(el) ? visible : preload).push(inf);
+      if (el && this.qHigh.has(el)) {
+        visible.push(inf);
+        visibleSet.add(inf._n);
+      } else {
+        preload.push(inf);
+      }
     }
+    const preloadFiltered = preload.filter(inf => !visibleSet.has(inf._n));
 
     const promises = [];
     if (visible.length) {
       promises.push(this._translateBatch(visible, true));
     }
-    if (preload.length) {
+    if (preloadFiltered.length) {
       // Небольшая задержка перед prefetch, чтобы видимые ушли первыми
       promises.push(
         new Promise(r => setTimeout(r, 30)).then(() =>
-          this._translateBatch(preload, false)
+          this._translateBatch(preloadFiltered, false)
         )
       );
     }
@@ -1892,7 +1975,7 @@ const Tr = {
 
     const batchSize = isPriority
       ? Math.min(CONFIG.PRIORITY_BATCH_SIZE, u.length)
-      : AdaptiveBatch.size;
+      : Math.min(CONFIG.PREFETCH_BATCH_SIZE, AdaptiveBatch.size);
 
     for (let i = 0; i < u.length; i += batchSize) {
       if (!this.act || this.restoring) return;
@@ -1903,7 +1986,9 @@ const Tr = {
       const slice = u.slice(i, i + batchSize);
       let res;
       try {
-        res = await API.translate(slice.map(o => m.get(o).send), CONFIG.TARGET_LANG);
+        res = isPriority
+          ? await API.translateVisible(slice.map(o => m.get(o).send), CONFIG.TARGET_LANG)
+          : await API.translate(slice.map(o => m.get(o).send), CONFIG.TARGET_LANG);
       } catch (e) {
         console.error('[SUAT] translate error', e); continue;
       }
@@ -1929,6 +2014,9 @@ const Tr = {
 
   setupScrollPrefetch() {
     let ticking = false;
+    let lastScanY = 0;
+    const SCAN_STEP = 1500;
+
     const onScroll = () => {
       if (ticking) return;
       ticking = true;
@@ -1937,8 +2025,11 @@ const Tr = {
         if (!this.act || this.restoring) return;
 
         const scrollY = window.scrollY;
+        if (Math.abs(scrollY - lastScanY) < SCAN_STEP) { ticking = false; return; }
+        lastScanY = scrollY;
+
         const viewH = window.innerHeight;
-        const top = scrollY;
+        const top = scrollY - 500;
         const bottom = scrollY + viewH + 3000;
 
         const candidates = [];
@@ -1946,49 +2037,29 @@ const Tr = {
           acceptNode: n => {
             const p = n.parentElement;
             if (!p || skipEl(p) || Ignore.matches(p)) return NodeFilter.FILTER_REJECT;
+            if (this.own.has(n)) return NodeFilter.FILTER_REJECT;
             if (!need(n.textContent)) return NodeFilter.FILTER_REJECT;
             const rect = p.getBoundingClientRect();
-            if (rect.top > top && rect.top < bottom) {
-              return NodeFilter.FILTER_ACCEPT;
-            }
-            return NodeFilter.FILTER_REJECT;
+            return (rect.top > top && rect.top < bottom)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
           }
         });
 
         let n;
         while ((n = walker.nextNode())) {
-          if (this.seen.has(n) || this.own.has(n)) continue;
-          candidates.push(n);
-        }
-
-        if (!candidates.length) return;
-
-        let cacheHits = 0;
-        for (const node of candidates) {
-          const o = norm(node.textContent);
+          const o = norm(n.textContent);
           const cached = Cache.get(o, CONFIG.TARGET_LANG);
           if (cached !== undefined) {
-            const inf = { n: node, t: node.textContent, _n: o };
-            this.applyResult(inf, { tr: cached, unitMeta: null, src: o });
-            cacheHits++;
+            this.applyResult({ n, t: n.textContent, _n: o }, { tr: cached, unitMeta: null, src: o });
+            this.own.add(n);
+            continue;
           }
+          const el = n.parentElement;
+          if (el) this.qLow.add(el);
         }
 
-        const uncached = candidates.filter(n => {
-          const o = norm(n.textContent);
-          return Cache.get(o, CONFIG.TARGET_LANG) === undefined;
-        });
-
-        if (uncached.length) {
-          for (const node of uncached) {
-            const el = node.parentElement;
-            if (el) {
-              this.qLow.add(el);
-              this._obsRemove(el);
-            }
-          }
-          if (!this.proc) this.run();
-        }
+        if (this.qLow.size && !this.proc) this.run();
       });
     };
 
@@ -2012,6 +2083,7 @@ const Tr = {
       if (cached !== undefined) {
         const inf = { n: n, t: n.textContent, _n: o };
         this.applyResult(inf, { tr: cached, unitMeta: null, src: o });
+        this.own.add(n);
         count++;
       }
     }
@@ -2118,6 +2190,7 @@ async function boot() {
   ));
   await UI.init();
   Tr.init();
+  Promise.allSettled([GoogleAuth.get(), API.msAuth()]).catch(() => {});
 
   let start = false;
   if (CONFIG.REMEMBER_SITE_STATE) {
