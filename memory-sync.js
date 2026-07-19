@@ -172,6 +172,9 @@
     if (!requestCountStartedAt || t - requestCountStartedAt > REQUEST_WINDOW_MS) {
       requestCountStartedAt = t;
       requestCount = 0;
+      settings.requestCountStartedAt = requestCountStartedAt;
+      settings.requestCount = 0;
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
     }
 
     const gapLeft = Math.max(0, MIN_REQUEST_GAP_MS - (t - Number(settings.lastRequestAt || 0)));
@@ -198,6 +201,9 @@
     if (!requestCountStartedAt || t - requestCountStartedAt > REQUEST_WINDOW_MS) {
       requestCountStartedAt = t;
       requestCount = 0;
+      settings.requestCountStartedAt = requestCountStartedAt;
+      settings.requestCount = 0;
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
     }
 
     const remaining = Math.max(0, MAX_REQUESTS_PER_WINDOW - requestCount);
@@ -287,8 +293,8 @@
 
       return parsed;
     } catch (err) {
+      rollbackRequestCount();
       if (err?.name === 'AbortError') {
-        rollbackRequestCount();
         throw new Error('Таймаут запроса (15 с)');
       }
       throw err;
