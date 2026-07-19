@@ -168,8 +168,12 @@
     const t = now();
     let requestCountStartedAt = Number(settings.requestCountStartedAt || 0);
     let requestCount = Number(settings.requestCount || 0);
+    const windowAge = requestCountStartedAt ? t - requestCountStartedAt : Infinity;
 
-    if (!requestCountStartedAt || t - requestCountStartedAt > REQUEST_WINDOW_MS) {
+    console.log('[MemorySync] canStartRequest: count=' + requestCount + '/' + MAX_REQUESTS_PER_WINDOW + ' windowAge=' + Math.round(windowAge / 1000) + 's windowMs=' + REQUEST_WINDOW_MS / 1000 + 's');
+
+    if (!requestCountStartedAt || windowAge > REQUEST_WINDOW_MS) {
+      console.log('[MemorySync] window expired — resetting count to 0');
       requestCountStartedAt = t;
       requestCount = 0;
       settings.requestCountStartedAt = requestCountStartedAt;
@@ -181,9 +185,10 @@
     if (gapLeft > 0) return { ok: false, retryAfterMs: gapLeft, reason: 'request_gap' };
 
     if (requestCount >= MAX_REQUESTS_PER_WINDOW) {
+      console.log('[MemorySync] BUDGET EXHAUSTED — retry in ' + Math.round((REQUEST_WINDOW_MS - windowAge) / 1000) + 's');
       return {
         ok: false,
-        retryAfterMs: Math.max(30_000, REQUEST_WINDOW_MS - (t - requestCountStartedAt)),
+        retryAfterMs: Math.max(30_000, REQUEST_WINDOW_MS - windowAge),
         reason: 'local_request_budget'
       };
     }
@@ -231,6 +236,7 @@
     settings.lastRequestAt = t;
     settings.requestCountStartedAt = requestCountStartedAt;
     settings.requestCount = requestCount + 1;
+    console.log('[MemorySync] noteRequestStarted: count=' + settings.requestCount + '/' + MAX_REQUESTS_PER_WINDOW);
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (err) {
@@ -240,7 +246,9 @@
   }
 
   function rollbackRequestCount() {
+    const prev = settings.requestCount;
     settings.requestCount = Math.max(0, Number(settings.requestCount || 0) - 1);
+    console.log('[MemorySync] rollbackRequestCount: ' + prev + ' → ' + settings.requestCount);
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (err) {
@@ -293,6 +301,7 @@
 
       return parsed;
     } catch (err) {
+      console.log('[MemorySync] request FAILED: ' + (err?.status || err?.name || 'unknown') + ' — rolling back');
       rollbackRequestCount();
       if (err?.name === 'AbortError') {
         throw new Error('Таймаут запроса (15 с)');
