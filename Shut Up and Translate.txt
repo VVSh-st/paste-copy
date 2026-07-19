@@ -1337,7 +1337,7 @@ const API = {
       }
     }
 
-    const still = rem.filter(x => out[idx[x.i]] === undefined);
+    const still = rem.filter(x => out[idx[x.i]] == null);
     if (still.length && still.length <= 20) {
       try {
         const l = await this.leg(still.map(x => x.t), to);
