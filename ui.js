@@ -651,7 +651,7 @@ const Preview = (() => {
     const wasCollapsed = panel.classList.contains('collapsed');
     panel.classList.toggle('collapsed');
     const btn = document.getElementById('prev-toggle');
-    if (btn) btn.textContent = panel.classList.contains('collapsed') ? '▲ превью' : '▼ превью';
+    if (btn) btn.classList.toggle('collapsed', panel.classList.contains('collapsed'));
     if (wasCollapsed && typeof Ember !== 'undefined') Ember.onPreviewOpen();
   }
 
@@ -1113,7 +1113,7 @@ const Preview = (() => {
       }
       panel.classList.add('collapsed');
       const btn = document.getElementById('prev-toggle');
-      if (btn) btn.textContent = '▲ превью';
+      if (btn) btn.classList.add('collapsed');
     }, false);
   }
 
