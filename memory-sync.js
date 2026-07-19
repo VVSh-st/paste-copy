@@ -886,18 +886,22 @@
     if (!settings.enabled || !settings.autoPull || !isConnected()) return;
 
     const elapsed = settings.lastAutoPullAt ? now() - settings.lastAutoPullAt : Infinity;
-    const delay = elapsed >= AUTO_PULL_MIN_INTERVAL_MS
+    let delay = elapsed >= AUTO_PULL_MIN_INTERVAL_MS
       ? 5_000
       : AUTO_PULL_MIN_INTERVAL_MS - elapsed;
 
     autoPullTimer = setTimeout(async () => {
+      let result;
       try {
-        await pull({ reason: 'auto-pull', silent: true });
+        result = await pull({ reason: 'auto-pull', silent: true });
       } catch (_) {
         // pull() сам пишет lastError
-      } finally {
-        scheduleAutoPullCheck();
       }
+      if (result?.reason === 'local_request_budget' && result?.retryAfterMs) {
+        delay = result.retryAfterMs + 5_000;
+        console.log('[MemorySync] auto-pull budget exhausted — rescheduling in ' + Math.round(delay / 1000) + 's');
+      }
+      scheduleAutoPullCheck();
     }, delay);
   }
 
