@@ -1313,6 +1313,13 @@ const API = {
           .catch(() => ({ engine: 'ms', results: null }))
       );
     }
+    if (!this.tcOpen()) {
+      promises.push(
+        this.tencent(rem.map(x => x.t), to)
+          .then(r => ({ engine: 'tc', results: r }))
+          .catch(() => ({ engine: 'tc', results: null }))
+      );
+    }
     if (!promises.length) {
       promises.push(
         this.leg(rem.map(x => x.t), to)
@@ -1326,7 +1333,9 @@ const API = {
     if (result?.results) {
       const ok = result.results.some(v => v);
       if (ok) {
-        if (result.engine === 'g') this.gOk(); else this.msOk();
+        if (result.engine === 'g') this.gOk();
+        else if (result.engine === 'ms') this.msOk();
+        else if (result.engine === 'tc') this.tcOk();
         for (let j = 0; j < rem.length; j++) {
           const tr = result.results[j];
           if (accept(rem[j].t, tr)) {
