@@ -930,7 +930,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - CLS: 1.547 (13 сдвигов)
 
 **Исправления:**
-1. `#ember-slot` — добавлен `inert` вместо `aria-hidden` (решает фокусируемые потомки)
+1. `#ember-slot` — был добавлен `inert` (Lighthouse a11y), но он блокировал все взаимодействие с Ember → **откатен** (`7fab625`). `aria-hidden="true"` достаточен.
 2. `.block-title` — добавлен `aria-label="Заголовок блока"` на все inputs
 3. `#toolbar` — `min-height: 48px` + `contain: layout style` (фикс высоты, нет wrap-сдвигов)
 4. `#workspace` — `contain: layout style` (изоляция от динамических блоков)
@@ -940,6 +940,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `618f4af` — fix: add inert to ember-slot and aria-label to block-title inputs (Lighthouse a11y)
 - `d8d053f` — fix: reduce CLS — contain layout on toolbar/workspace/ember-core, min-height toolbar
 - `7c1e824` — fix: remove contain:paint from ember-core to preserve glow effect
+- `7fab625` — fix: remove inert from ember-slot (blocked all click/hover/tooltip interaction)
 
 **Файлы:** `index.html`, `blocks.js`, `styles.css`, `ember-styles.css`
 
@@ -1061,12 +1062,67 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ---
 
+### QR Panel — plain text + module size + phone scanning (сессия 2026-07-18)
+
+**Файл:** `qr-panel.js`
+
+**Изменения:**
+1. **Plain text by default** — убран бинарный заголовок `[version, page, total, flags]` и deflate-сжатие. Телефонные сканеры теперь видят читаемый UTF-8 текст напрямую.
+2. **EC=L** — plain text путь использует EC=L (макс. данных, мин. модулей) вместо EC=H. Вместимость выросла в ~3 раза.
+3. **Module size slider работает** — `_moduleSize` (4-12px) теперь ограничивает версию QR. Длинный текст автоматически разбивается на страницы, каждая с крупными модулями.
+4. **Удалён мёртвый код** — deflate, protocol path, compress toggle (не используются).
+5. **Howard Stark quote** — "Я ограничен технологиями моего времени" мелким шрифтом под счётчиком страниц. Hover tooltip с пояснением физического лимита QR со экрана.
+6. **Default module size** — 9px вместо 6px.
+
+**Физический лимит QR со экрана:**
+- ~60-70 кириллических символов при 9px модуля (EC=L, version 5-6)
+- Камера не различает модули <2mm на экране
+- QR работает для коротких данных (ссылки, пароли, ключи)
+
+---
+
+### Ember — inert removal + anchors fixes (сессия 2026-07-18)
+
+** Ember `inert` fix:**
+- `#ember-slot` имел `attribution` от Lighthouse a11y — блокировал ВСЕ взаимодействие (клики, тултипы, фокус). Ember выглядел "за стеклом".
+- Фикс: `inert` удалён, `aria-hidden="true"` достаточен для a11y.
+- **Коммит:** `7fab625`
+
+** Anchors — long-press scope:**
+- Левая кнопка ("Предыдущий якорь") long-press → удаляет якоря только с текущей **вкладки блока** (`clearTabAnchors(blockId)`)
+- Правая кнопка ("Следующий якорь") long-press → удаляет **все** якоря (`clearAnchors()`) — как и задумано
+- Фильтрация по `blockId` + `activeSubtab`
+- **Коммит:** `c651981`, `5e4ba76`
+
+** Anchors — multi-line gutter highlight:**
+- Фоновый хайлайт (gutter) теперь растягивается на все строки многострочного выделения
+- Раньше: `selW = |endPos.x - pos.x|` + фиксированная `lineHeight` → только первая строка
+- Теперь: `topLine/bottomLine` расчёт, `gTop = topLine + 12`, полная ширина блока
+- **Коммит:** `db2b4ab`, `d9e28be`
+
+** Anchors — layout jerk fix:**
+- `clearAnchors` и `clearTabAnchors` использовали `State.update()` → полный re-render DOM → правая колонка дёргалась
+- Заменено на `State.updateLive()` — без перерисовки блоков
+- **Коммит:** `d674a23`
+
+---
+
+### Blocks — MD scroll buttons fix (сессия 2026-07-18)
+
+**Баг:** кнопки "Прокрутка блока вверх/вниз" не работали в MD-режиме.
+
+**Причина:** `_jumpBlockScroll` вызывал `ta.focus()`, `ta.setSelectionRange()`, `ta.scrollTop` на скрытом textarea (`display: none`).
+
+**Фикс:** в MD-режиме скроллится `mdContent` напрямую.
+
+**Коммит:** `750a4de`
+
+---
+
 ## Следующий шаг
 
 1. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
-2. Проверить F5 — эмбер запускается сразу с кольцом и яркостью
-3. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
-4. ~~Протестировать QR-панель~~ — все аудиты (1-13) пройдены
+2. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
 
 ### Preview — логотип Paste/Copy + QR-кнопка
 
@@ -1159,4 +1215,31 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - Фоновый маркер (gutter) только когда якорь виден
 - rAF guard — DOM-обновления не чаще 1 раза за кадр
 
-**Коммиты:** `e630cb6`, `5c32d10`, `bd564aa`, `a862d76`, `05113b9`, `76a80d3`, `2b2ce10`
+**Коммиты:** `e630cb6`, `5c32d10`, `bd564aa`, `a862d76`, `05113b9`, `76a80d3`, `2b2ce10`, `c651981`, `5e4ba76`, `db2b4ab`, `d9e28be`, `d674a23`
+
+---
+
+## TODO на завтра
+
+### Авто-заголовок блока / вкладки — popup с выбором
+
+**Задача:** сделать то же popup-меню (как в export name) для:
+1. **Авто-заголовок блока** (`AutoTitle.autoTitle(blockId)` в `llm-features.js:916`)
+2. **Авто-заголовок вкладки** (`SubtabAutoTitle.autoTitle(blockId)` в `llm-features.js:1087`)
+
+**Текущая реализация** (уже есть popup в `llm-features.js:985`):
+- `_showPopup(blockId)` — показывает 1 вариант + счётчик (1/4) + ✓↺✕
+- Генерирует 4 варианта через `_LLMCore.getPrompt('autotitle')`
+- Циклит по variant'ам кнопкой ↺
+
+**Что нужно сделать:**
+- Заменить текущий popup на новый (как в export name): 1 editable input (3 строки) + ◀ 2/4 ▶ ✓ ✕
+- Использовать `_showExportNamePopup` из `blocks.js` или продублировать паттерн
+- `onSave` = применить заголовок к блоку/вкладке
+
+**Где смотреть:**
+- `llm-features.js:910-1078` — `AutoTitle` модуль
+- `llm-features.js:1081-1250` — `SubtabAutoTitle` модуль
+- `llm-features.js:985-1078` — текущий `_showPopup` (паттерн для замены)
+- `blocks.js:4352-4460` — `_showExportNamePopup` (референс popup)
+- `llm-core.js:2027` — промпт `autotitle`
