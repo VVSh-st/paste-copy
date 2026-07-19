@@ -4150,7 +4150,11 @@ const AutoPoet = (() => {
         const langName = Translator.LANG_BY_CODE[targetLang]?.name || targetLang;
         btn.innerHTML = '⏳';
         btn.title = 'Перевод → ' + langName + '...';
-        Translator.translateProtected(srcText, targetLang).then(result => {
+        const lines = srcText.split('\n');
+        const translatePromise = lines.length > 1
+          ? (async () => { const r = []; for (const l of lines) r.push(await Translator.translateProtected(l, targetLang)); return r.join('\n'); })()
+          : Translator.translateProtected(srcText, targetLang);
+        translatePromise.then(result => {
           if (!result || result === srcText) { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести → ' + langName; return; }
           btn.dataset.original = srcText;
           btn.dataset.translated = '1';
