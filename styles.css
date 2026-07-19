@@ -1668,7 +1668,7 @@ textarea.block-textarea:focus {
   color: var(--text2); text-transform: uppercase;
   cursor: pointer; user-select: none;
 }
-.preview-controls { display: flex; gap: 3px; align-items: center; }
+.preview-controls { display: flex; gap: 3px; align-items: center; flex: 1; }
 .preview-controls button {
   background: var(--surface); color: var(--text1); border: 1px solid var(--border);
   padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer;
