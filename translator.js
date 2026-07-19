@@ -807,6 +807,7 @@ const Translator = (() => {
     const promises = [];
     const gReady = Date.now() >= gBlockUntil;
     const mReady = Date.now() >= mBlockUntil;
+    const tReady = Date.now() >= tBlockUntil;
 
     if (gReady) {
       promises.push(
@@ -822,6 +823,13 @@ const Translator = (() => {
           .catch(() => ({ engine: 'ms', result: null }))
       );
     }
+    if (tReady) {
+      promises.push(
+        withTimeout(translateTencent([text], target), 12000)
+          .then(r => ({ engine: 'tc', result: r?.[0] }))
+          .catch(() => ({ engine: 'tc', result: null }))
+      );
+    }
     if (!promises.length) {
       try {
         const l = await translateLegacy([text], target);
@@ -831,7 +839,9 @@ const Translator = (() => {
 
     const res = await Promise.any(promises).catch(() => null);
     if (res?.result && accept(res.result)) {
-      if (res.engine === 'g') gFail = 0; else mFail = 0;
+      if (res.engine === 'g') gFail = 0;
+      else if (res.engine === 'ms') mFail = 0;
+      else if (res.engine === 'tc') tFail = 0;
       cacheSet(n, target, res.result);
       return res.result;
     }
