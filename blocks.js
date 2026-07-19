@@ -4351,7 +4351,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
   /* ── Export name: popup ─────────────────────────────────────── */
   let _exportNamePopup = null;
-  function _showExportNamePopup(btn, text, fallbackName) {
+  function _showExportNamePopup(btn, text, fallbackName, onSave) {
     if (_exportNamePopup) { _exportNamePopup.remove(); _exportNamePopup = null; }
     const suggestions = _generateNamesLocal(text); // start local, async LLM replaces
     let current = 0;
@@ -4423,7 +4423,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     function accept() {
       const name = _sanitizeFileName(input.value) || fallbackName || 'Без названия';
       _exportNamePopup?.remove(); _exportNamePopup = null;
-      _doExportTxt(text, name);
+      if (onSave) onSave(name);
+      else _doExportTxt(text, name);
     }
 
     function closePopup() {
@@ -4491,7 +4492,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     textLintBadgeCache.clear();
   }
 
-  return { render, applyLayout, setupColumns, syncColumnElements, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge, patchSubtab };
+  return { render, applyLayout, setupColumns, syncColumnElements, clearTextLintBadgeCache, refreshAllAnchorCounts, updateGroomBadge, patchSubtab, _sanitizeFileName, _generateExportName, _showExportNamePopup, _doExportTxt };
 })();
 
 document.addEventListener('mindmap:jump-word', e => {

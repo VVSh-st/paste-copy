@@ -199,6 +199,72 @@
 
   onClick('btn-export', exportFile);
   onClick('btn-export-tab', exportCurrentTab);
+
+  /* ── Long-press for export buttons ──────────────────────────── */
+  (function setupExportLongPress() {
+    let _lpTimer = null;
+    function _makeLP(el, onLong) {
+      let started = false, triggered = false;
+      const start = () => { started = true; triggered = false; clearTimeout(_lpTimer); _lpTimer = setTimeout(() => { if (started) { triggered = true; onLong(); } }, 400); };
+      const stop = () => { started = false; clearTimeout(_lpTimer); };
+      el.addEventListener('pointerdown', start);
+      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointercancel', stop);
+      el.addEventListener('pointerleave', stop);
+      return () => triggered;
+    }
+
+    function _gatherTabText(tab) {
+      const blocks = tab?.blocks || [];
+      return blocks.map(b => {
+        if (b.type !== 'text') return '';
+        const sub = b.subtabs?.[b.activeSubtab ?? 0];
+        return sub?.value || '';
+      }).filter(Boolean).join('\n\n');
+    }
+
+    function _gatherAllText() {
+      return (State.getAll() || []).map(t => _gatherTabText(t)).filter(Boolean).join('\n\n');
+    }
+
+    function _doExportJson(data, name) {
+      const safeName = (name || 'export').replace(/[/\\:*?"<>|]/g, '_').slice(0, 60);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      Object.assign(document.createElement('a'), { href: url, download: safeName + '.json' }).click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      Toast.show('Файл экспортирован ✓', 'success');
+    }
+
+    const btnAll = $id('btn-export');
+    if (btnAll) {
+      const isLongAll = _makeLP(btnAll, async () => {
+        const allText = _gatherAllText();
+        if (!allText) { Toast.show('Нет данных для экспорта', 'info'); return; }
+        window.Blocks?._showExportNamePopup?.(btnAll, allText, 'Все вкладки', name => {
+          const data = State.serialize();
+          _doExportJson(data, name);
+        });
+      });
+      btnAll.addEventListener('click', e => { if (isLongAll()) { e.stopPropagation(); e.preventDefault(); } });
+    }
+
+    const btnTab = $id('btn-export-tab');
+    if (btnTab) {
+      const isLongTab = _makeLP(btnTab, async () => {
+        const tab = State.getActive();
+        if (!tab) return;
+        const tabText = _gatherTabText(tab);
+        if (!tabText) { Toast.show('Нет данных для экспорта', 'info'); return; }
+        window.Blocks?._showExportNamePopup?.(btnTab, tabText, tab.name || 'Вкладка', name => {
+          const exported = JSON.parse(JSON.stringify(tab));
+          delete exported.history;
+          delete exported.historyIdx;
+          _doExportJson({ tabs: [exported] }, name);
+        });
+      });
+      btnTab.addEventListener('click', e => { if (isLongTab()) { e.stopPropagation(); e.preventDefault(); } });
+    }
+  })();
   onClick('btn-import', () => $id('file-input')?.click());
   const fileInput = $id('file-input');
   if (fileInput) fileInput.onchange = importFile;
