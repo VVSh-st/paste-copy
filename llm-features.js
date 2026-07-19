@@ -963,13 +963,13 @@ window.LLMFeatures = (() => {
           const fw = l.split(/\s+/)[0] || '';
           return fw.length >= 4 && fw.length <= 6;
         })
-        .slice(0, 4);
+        .slice(0, 10);
 
       if (_variants.length === 0) {
         _variants = result.trim().split('\n')
           .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
           .filter(l => l.length > 0 && l.length <= 60)
-          .slice(0, 4);
+          .slice(0, 10);
       }
 
       if (_variants.length === 0) {
@@ -1141,7 +1141,7 @@ window.LLMFeatures = (() => {
             { role: 'system', content: _LLMCore.getPrompt('subtab_autotitle') + (_LANG_INSTR ?? '') },
             { role: 'user',   content: text },
           ],
-          maxTokens: 200,
+          maxTokens: 300,
           stream: false,
           featureTag: 'subtab_autotitle',
         });
@@ -1162,13 +1162,13 @@ window.LLMFeatures = (() => {
           const fw = l.split(/\s+/)[0] || '';
           return fw.length >= 4 && fw.length <= 6;
         })
-        .slice(0, 4);
+        .slice(0, 10);
 
       if (_variants.length === 0) {
         _variants = result.trim().split('\n')
           .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
           .filter(l => l.length > 0 && l.length <= 60)
-          .slice(0, 4);
+          .slice(0, 10);
       }
 
       if (_variants.length === 0) {
