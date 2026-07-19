@@ -1722,8 +1722,16 @@
             </svg>
           </button>
 
-          <button type="button" id="prev-export-all" title="Экспортировать все вкладки в .md" aria-label="Экспорт всех вкладок" style="font-size:11px">⬇ Все</button>
-          <button type="button" id="prev-download" title="Скачать .txt"    aria-label="Скачать как текстовый файл">⬇</button>
+          <button type="button" id="prev-export-all" title="Экспортировать все вкладки в .md" aria-label="Экспорт всех вкладок">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px">
+              <rect x="3" y="2" width="11" height="10" rx="1.5"/><path d="M6 12v4h8v-4"/><path d="M10 6v5M7.5 8.5 10 11l2.5-2.5"/>
+            </svg>
+          </button>
+          <button type="button" id="prev-download" title="Скачать .txt"    aria-label="Скачать как текстовый файл">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px">
+              <path d="M10 3v9M6.5 8.5 10 12l3.5-3.5"/><path d="M4 14h12"/>
+            </svg>
+          </button>
 
           <span class="tb-divider" aria-hidden="true"></span>
 
@@ -1743,13 +1751,34 @@
 
           <span class="tb-divider" aria-hidden="true"></span>
 
-          <button type="button" id="prev-audit"    title="Аудит промпта (LLM)"  aria-label="Запустить аудит промпта">🔍</button>
+          <button type="button" id="prev-audit"    title="Аудит промпта (LLM)"  aria-label="Запустить аудит промпта">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px">
+              <path d="M10 2l1.5 3 3.5.5-2.5 2.5.5 3.5L10 10l-3 1.5.5-3.5L5 5.5l3.5-.5z"/>
+              <path d="M6 13h8M6 16h5"/>
+            </svg>
+          </button>
 
-          <button type="button" id="prev-compress" title="Сжать токены (LLM)"   aria-label="Сжать токены промпта">✏</button>
+          <button type="button" id="prev-compress" title="Сжать токены (LLM)"   aria-label="Сжать токены промпта">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px">
+              <path d="M4 7h12M4 13h12"/><path d="M7 4v3M13 4v3M7 13v3M13 13v3"/>
+              <path d="M8.5 9l-1.5 2h3l-1.5 2" stroke-width="1.3"/>
+            </svg>
+          </button>
 
-          <button type="button" id="prev-mindmap" title="Визуализация мышления" aria-label="Визуализация мышления">🧠</button>
+          <button type="button" id="prev-mindmap" title="Визуализация мышления" aria-label="Визуализация мышления">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px">
+              <circle cx="10" cy="10" r="2.5"/><circle cx="3" cy="5" r="1.8"/><circle cx="17" cy="5" r="1.8"/><circle cx="3" cy="15" r="1.8"/><circle cx="17" cy="15" r="1.8"/>
+              <path d="M7.8 8.8L4.5 6M12.2 8.8l3.3-2.8M7.8 11.2l-3.3 2.8M12.2 11.2l3.3 2.8"/>
+            </svg>
+          </button>
 
-          <button type="button" id="prev-flowchart" title="Блок-схема" aria-label="Блок-схема">📐</button>
+          <button type="button" id="prev-flowchart" title="Блок-схема" aria-label="Блок-схема">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="width:14px;height:14px">
+              <rect x="2" y="3" width="7" height="4" rx="1"/><rect x="11" y="13" width="7" height="4" rx="1"/>
+              <path d="M5.5 7v2.5c0 .8.7 1.5 1.5 1.5h6c.8 0 1.5-.7 1.5-1.5V10"/><path d="M14.5 13v-2.5"/>
+              <circle cx="5.5" cy="10" r="0.7" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10" r="0.7" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
 
           <!-- ── end LLM preview actions ─────────────────────────────────-->
 
