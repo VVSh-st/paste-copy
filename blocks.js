@@ -1862,13 +1862,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       }
     });
     const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt', () => {
-      const prevBlur = ta.onblur;
-      ta.onblur = null;
-      const url = URL.createObjectURL(new Blob([ta.value], { type: 'text/plain;charset=utf-8' }));
-      Object.assign(document.createElement('a'), { href: url, download: (b.title || 'block') + '.txt' }).click();
-      setTimeout(() => { URL.revokeObjectURL(url); ta.onblur = prevBlur; }, 1000);
-      Toast.show('Файл скачан ✓', 'success');
+      _doExportTxt(ta.value, b.title || 'block');
     });
+    const isLongSave = _makeLongPress(saveBtn, () => {
+      _showExportNamePopup(saveBtn, ta.value, b.title || 'block');
+    });
+    saveBtn.addEventListener('click', e => { if (isLongSave()) { e.preventDefault(); return; } });
 
     const transferBtn = makeToolBtn(svgIcon('transfer'), 'Скопировать текст на следующую вкладку', () => {
       const selStart = ta.selectionStart;
@@ -4275,6 +4274,189 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     b.className = 'block-tool-btn';
     b.innerHTML = html; b.title = title; b.onclick = onclick;
     return b;
+  }
+
+  /* ── Long-press helper ──────────────────────────────────────── */
+  let _longPressTimer = null;
+  function _makeLongPress(el, onLongPress) {
+    let started = false, triggered = false;
+    const start = () => {
+      started = true; triggered = false;
+      clearTimeout(_longPressTimer);
+      _longPressTimer = setTimeout(() => { if (started) { triggered = true; onLongPress(); } }, 400);
+    };
+    const stop = () => { started = false; clearTimeout(_longPressTimer); };
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointercancel', stop);
+    el.addEventListener('pointerleave', stop);
+    return () => triggered;
+  }
+
+  /* ── Export name: sanitize ──────────────────────────────────── */
+  function _sanitizeFileName(name) {
+    return (name || '').replace(/[/\\:*?"<>|\n\r]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 75);
+  }
+
+  /* ── Export name: local frequency analysis ──────────────────── */
+  const _EXPORT_STOP = new Set(['это','для','что','как','не','но','или','так','его','при','она','они','все','ее','их','быть','был','была','были','будет','будут','может','могут','нужно','нужен','нужна','можно','которые','который','которая','которое','этого','этой','этот','этих','того','той','тех','такой','такая','такое','такие','каждый','каждая','каждое','каждые','очень','также','уже','еще','ещё','просто','только','пока','после','перед','между','через','если','чтобы','потому','поэтому','однако','кроме','того','самый','самая','самое','самые','другой','другая','другое','другие','несколько','много','мало','весь','вся','всё','какой','какая','какое','какие','бы','быть','был','была','были','будет','будут','было','будем','будешь','будете','буду','будешь','будете','бы','быть','был','была','были','будет','будут','было','будем','будешь','будете','быть','был','была','были','будет','будут']);
+
+  function _generateNamesLocal(text) {
+    const words = text.split(/\s+/).map(w => w.toLowerCase().replace(/[^а-яёa-z0-9]/g, '')).filter(w => w.length >= 3 && !_EXPORT_STOP.has(w));
+    const freq = new Map();
+    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+    const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7).map(e => e[0]);
+    if (!top.length) return ['Без названия'];
+    const results = [];
+    if (top.length >= 5) results.push(top.slice(0, 5).join(' '));
+    if (top.length >= 3) results.push(top.slice(0, 3).join(' '));
+    if (top.length >= 4) results.push(top.slice(0, 4).join(' '));
+    if (top.length >= 6) results.push(top.slice(0, 3).concat(top.slice(4)).join(' '));
+    if (top.length >= 5) results.push(top.filter((_, i) => i % 2 === 0).join(' '));
+    if (top.length >= 4) results.push(top.slice(0, 2).concat(top.slice(2, 4)).join(' '));
+    if (top.length >= 3) results.push(top.slice(0, 2).concat(top.slice(-1)).join(' '));
+    if (top.length >= 5) results.push(top.slice(0, 3).concat(top.slice(-2)).join(' '));
+    if (top.length >= 4) results.push(top.slice(0, 3).concat(top.slice(3, 5)).join(' '));
+    if (top.length >= 6) results.push(top.slice(0, 4).concat(top.slice(-2)).join(' '));
+    return [...new Set(results)].slice(0, 10);
+  }
+
+  /* ── Export name: LLM + fallback ────────────────────────────── */
+  async function _generateExportName(text) {
+    if (!text || text.length < 10) return ['Без названия'];
+    try {
+      if (typeof TextSkeletonizer !== 'undefined' && window.LLMCore) {
+        const compressed = await TextSkeletonizer.processAsync(text, 'light');
+        const result = await window.LLMCore.request({
+          messages: [
+            { role: 'system', content: 'Дай 10 коротких названий (3-5 слов) для этого текста. Каждое название с новой строки. Только названия, без кавычек, нумерации и пояснений.' },
+            { role: 'user', content: compressed || text.slice(0, 2000) },
+          ],
+          maxTokens: 200,
+          stream: false,
+          featureTag: 'export-name',
+        });
+        if (result && typeof result === 'string') {
+          const parsed = result.trim().split('\n')
+            .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
+            .filter(l => l.length > 0 && l.length <= 75);
+          if (parsed.length >= 3) return parsed.slice(0, 10);
+        }
+      }
+    } catch {}
+    return _generateNamesLocal(text);
+  }
+
+  /* ── Export name: popup ─────────────────────────────────────── */
+  let _exportNamePopup = null;
+  function _showExportNamePopup(btn, text, fallbackName) {
+    if (_exportNamePopup) { _exportNamePopup.remove(); _exportNamePopup = null; }
+    const suggestions = _generateNamesLocal(text); // start local, async LLM replaces
+    let current = 0;
+
+    const popup = document.createElement('div');
+    popup.className = 'export-name-popup';
+    popup.setAttribute('role', 'dialog');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'export-name-input';
+    input.value = suggestions[0] || fallbackName || 'Без названия';
+    input.maxLength = 75;
+
+    const nav = document.createElement('div');
+    nav.className = 'export-name-nav';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.type = 'button';
+    prevBtn.className = 'export-name-nav-btn';
+    prevBtn.innerHTML = '◀';
+    prevBtn.title = 'Предыдущее';
+
+    const counter = document.createElement('span');
+    counter.className = 'export-name-counter';
+    counter.textContent = `1/${suggestions.length}`;
+
+    const nextBtn = document.createElement('button');
+    nextBtn.type = 'button';
+    nextBtn.className = 'export-name-nav-btn';
+    nextBtn.innerHTML = '▶';
+    nextBtn.title = 'Следующее';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'export-name-nav-btn export-name-close';
+    closeBtn.innerHTML = '✕';
+    closeBtn.title = 'Закрыть';
+
+    nav.append(prevBtn, counter, nextBtn, closeBtn);
+    popup.append(input, nav);
+    document.body.appendChild(popup);
+    _exportNamePopup = popup;
+
+    // Position under button
+    const r = btn.getBoundingClientRect();
+    popup.style.left = r.left + 'px';
+    popup.style.top = (r.bottom + 6) + 'px';
+    requestAnimationFrame(() => {
+      const pr = popup.getBoundingClientRect();
+      if (pr.bottom > window.innerHeight - 8) popup.style.top = Math.max(8, r.top - pr.height - 6) + 'px';
+      if (pr.right > window.innerWidth - 8) popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
+    });
+
+    function updateNav() {
+      counter.textContent = `${current + 1}/${suggestions.length}`;
+      input.value = suggestions[current] || '';
+    }
+
+    prevBtn.onclick = () => { current = (current - 1 + suggestions.length) % suggestions.length; updateNav(); };
+    nextBtn.onclick = () => { current = (current + 1) % suggestions.length; updateNav(); };
+
+    function accept() {
+      const name = _sanitizeFileName(input.value) || fallbackName || 'Без названия';
+      _exportNamePopup?.remove(); _exportNamePopup = null;
+      _doExportTxt(text, name);
+    }
+
+    function closePopup() {
+      _exportNamePopup?.remove(); _exportNamePopup = null;
+    }
+
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); accept(); } });
+    closeBtn.onclick = closePopup;
+
+    // Click outside
+    setTimeout(() => {
+      document.addEventListener('pointerdown', function onOutside(e) {
+        if (_exportNamePopup && !_exportNamePopup.contains(e.target)) {
+          closePopup();
+          document.removeEventListener('pointerdown', onOutside);
+        }
+      });
+    }, 0);
+
+    input.focus();
+    input.select();
+
+    // Async LLM replacement
+    _generateExportName(text).then(llmSuggestions => {
+      if (!_exportNamePopup) return;
+      if (llmSuggestions.length > 0 && llmSuggestions[0] !== 'Без названия') {
+        suggestions.length = 0;
+        suggestions.push(...llmSuggestions);
+        current = 0;
+        updateNav();
+      }
+    });
+  }
+
+  /* ── Export .txt ────────────────────────────────────────────── */
+  function _doExportTxt(text, name) {
+    const safeName = _sanitizeFileName(name) || 'Без названия';
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    Object.assign(document.createElement('a'), { href: url, download: safeName + '.txt' }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    Toast.show('Файл скачан ✓', 'success');
   }
 
   function makeDivider() {
