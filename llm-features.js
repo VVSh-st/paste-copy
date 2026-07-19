@@ -920,7 +920,7 @@ window.LLMFeatures = (() => {
       const block = _State.findBlock(t?.blocks ?? [], blockId);
       if (!block) return;
 
-      const text = (block.subtabs?.[block.activeSubtab ?? 0]?.value ?? '').slice(0, 500).trim();
+      const text = (block.subtabs ?? []).map(s => s.value ?? '').join('\n').slice(0, 500).trim();
       if (!text) {
         window.Toast?.show('Блок пустой', 'error');
         return;
@@ -993,84 +993,114 @@ window.LLMFeatures = (() => {
       }
       if (!anchor) return;
 
-      const variant = _variants[_current];
-      const counter = `(${_current + 1}/${_variants.length})`;
-
       const popup = document.createElement('div');
-      popup.className = 'llm-inline-popup';
+      popup.className = 'export-name-popup';
       popup.setAttribute('role', 'dialog');
       popup.setAttribute('aria-modal', 'true');
-      popup.setAttribute('aria-label', 'Подтверждение заголовка');
-      popup.innerHTML =
-        `<span class="llm-inline-popup-text">${_esc(variant)} <small style="opacity:.5">${counter}</small></span>` +
-        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept" title="Применить">✓</button>` +
-        `<button type="button" class="btn-sm" data-action="next" title="Следующий вариант">↺</button>` +
-        `<button type="button" class="btn-sm" data-action="cancel">✕</button>`;
+      popup.setAttribute('aria-label', 'Авто-заголовок блока');
 
-      const r = anchor.getBoundingClientRect();
-      popup.style.cssText = `position:fixed;top:${r.bottom + 6}px;left:${r.left}px;z-index:700`;
+      const input = document.createElement('textarea');
+      input.rows = 3;
+      input.className = 'export-name-input';
+      input.value = _variants[_current] || '';
+      input.maxLength = 60;
+
+      const nav = document.createElement('div');
+      nav.className = 'export-name-nav';
+
+      const prevBtn = document.createElement('button');
+      prevBtn.type = 'button';
+      prevBtn.className = 'export-name-nav-btn';
+      prevBtn.innerHTML = '◀';
+      prevBtn.title = 'Предыдущий';
+
+      const counter = document.createElement('span');
+      counter.className = 'export-name-counter';
+      counter.textContent = `${_current + 1}/${_variants.length}`;
+
+      const nextBtn = document.createElement('button');
+      nextBtn.type = 'button';
+      nextBtn.className = 'export-name-nav-btn';
+      nextBtn.innerHTML = '▶';
+      nextBtn.title = 'Следующий';
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.className = 'export-name-nav-btn export-name-confirm';
+      confirmBtn.innerHTML = '✓';
+      confirmBtn.title = 'Применить';
+
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'export-name-nav-btn export-name-close';
+      closeBtn.innerHTML = '✕';
+      closeBtn.title = 'Закрыть';
+
+      nav.append(prevBtn, counter, nextBtn, confirmBtn, closeBtn);
+      popup.append(input, nav);
       document.body.appendChild(popup);
 
-      const pr = popup.getBoundingClientRect();
-      if (pr.bottom > window.innerHeight) popup.style.top = Math.max(8, r.top - pr.height - 6) + 'px';
-      if (pr.right > window.innerWidth) popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
-
-      popup.querySelector('[data-action="accept"]').focus();
-      _popup = popup;
-
-      popup.addEventListener('click', function onPopupClick(e) {
-        const action = e.target.closest('[data-action]')?.dataset.action;
-        if (!action) return;
-
-        if (action === 'accept') {
-          _State.update(tab => {
-            const b = _State.findBlock(tab.blocks, blockId);
-            if (b) b.title = _variants[_current];
-          });
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
-          window.Toast?.show('Заголовок обновлён ✓', 'success');
-        } else if (action === 'next') {
-          _current = (_current + 1) % _variants.length;
-          _closePopup();
-          _showPopup(blockId);
-        } else if (action === 'cancel') {
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
-        }
+      const r = anchor.getBoundingClientRect();
+      popup.style.left = r.left + 'px';
+      popup.style.top = (r.bottom + 6) + 'px';
+      requestAnimationFrame(() => {
+        const pr = popup.getBoundingClientRect();
+        if (pr.bottom > window.innerHeight - 8) popup.style.top = Math.max(8, r.top - pr.height - 6) + 'px';
+        if (pr.right > window.innerWidth - 8) popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
       });
 
-      popup._docClick = e => {
-        if (!popup.contains(e.target)) {
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
-        }
-      };
-      setTimeout(() => document.addEventListener('click', popup._docClick), 0);
+      function updateNav() {
+        counter.textContent = `${_current + 1}/${_variants.length}`;
+        input.value = _variants[_current] || '';
+      }
 
-      popup._escKey = e => {
-        if (e.key === 'Escape') {
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
-        }
-      };
-      document.addEventListener('keydown', popup._escKey);
+      prevBtn.onclick = () => { _current = (_current - 1 + _variants.length) % _variants.length; updateNav(); };
+      nextBtn.onclick = () => { _current = (_current + 1) % _variants.length; updateNav(); };
+
+      function accept() {
+        const name = input.value.trim() || _variants[_current] || '';
+        if (!name) return;
+        _State.update(tab => {
+          const b = _State.findBlock(tab.blocks, blockId);
+          if (b) b.title = name;
+        });
+        _variants = [];
+        _current = 0;
+        _blockId = null;
+        _closePopup();
+        window.Toast?.show('Заголовок обновлён ✓', 'success');
+      }
+
+      function closePopup() {
+        _variants = [];
+        _current = 0;
+        _blockId = null;
+        _closePopup();
+      }
+
+      input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); accept(); } });
+      confirmBtn.onclick = accept;
+      closeBtn.onclick = closePopup;
+
+      setTimeout(() => {
+        popup._onOutside = function onOutside(e) {
+          if (_popup && !_popup.contains(e.target)) {
+            closePopup();
+            document.removeEventListener('pointerdown', onOutside);
+          }
+        };
+        document.addEventListener('pointerdown', popup._onOutside);
+      }, 0);
+
+      input.focus();
+      input.select();
+      _popup = popup;
     }
 
     function _closePopup() {
       if (!_popup) return;
-      if (_popup._docClick) document.removeEventListener('click', _popup._docClick);
-      if (_popup._escKey) document.removeEventListener('keydown', _popup._escKey);
-      _popup._docClick = null;
-      _popup._escKey = null;
+      if (_popup._onOutside) document.removeEventListener('pointerdown', _popup._onOutside);
+      _popup._onOutside = null;
       _popup.remove();
       _popup = null;
     }
@@ -1162,87 +1192,117 @@ window.LLMFeatures = (() => {
       }
       if (!anchor) return;
 
-      const variant = _variants[_current];
-      const counter = `(${_current + 1}/${_variants.length})`;
-
       const popup = document.createElement('div');
-      popup.className = 'llm-inline-popup';
+      popup.className = 'export-name-popup';
       popup.setAttribute('role', 'dialog');
       popup.setAttribute('aria-modal', 'true');
       popup.setAttribute('aria-label', 'Авто-заголовок вкладки');
-      popup.innerHTML =
-        `<span class="llm-inline-popup-text">${_esc(variant)} <small style="opacity:.5">${counter}</small></span>` +
-        `<button type="button" class="btn-sm btn-sm-accent" data-action="accept" title="Применить">✓</button>` +
-        `<button type="button" class="btn-sm" data-action="next" title="Следующий вариант">↺</button>` +
-        `<button type="button" class="btn-sm" data-action="cancel">✕</button>`;
 
-      const r = anchor.getBoundingClientRect();
-      popup.style.cssText = `position:fixed;top:${r.bottom + 6}px;left:${r.left}px;z-index:700`;
+      const input = document.createElement('textarea');
+      input.rows = 3;
+      input.className = 'export-name-input';
+      input.value = _variants[_current] || '';
+      input.maxLength = 60;
+
+      const nav = document.createElement('div');
+      nav.className = 'export-name-nav';
+
+      const prevBtn = document.createElement('button');
+      prevBtn.type = 'button';
+      prevBtn.className = 'export-name-nav-btn';
+      prevBtn.innerHTML = '◀';
+      prevBtn.title = 'Предыдущий';
+
+      const counter = document.createElement('span');
+      counter.className = 'export-name-counter';
+      counter.textContent = `${_current + 1}/${_variants.length}`;
+
+      const nextBtn = document.createElement('button');
+      nextBtn.type = 'button';
+      nextBtn.className = 'export-name-nav-btn';
+      nextBtn.innerHTML = '▶';
+      nextBtn.title = 'Следующий';
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.className = 'export-name-nav-btn export-name-confirm';
+      confirmBtn.innerHTML = '✓';
+      confirmBtn.title = 'Применить';
+
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'export-name-nav-btn export-name-close';
+      closeBtn.innerHTML = '✕';
+      closeBtn.title = 'Закрыть';
+
+      nav.append(prevBtn, counter, nextBtn, confirmBtn, closeBtn);
+      popup.append(input, nav);
       document.body.appendChild(popup);
 
-      const pr = popup.getBoundingClientRect();
-      if (pr.bottom > window.innerHeight) popup.style.top = Math.max(8, r.top - pr.height - 6) + 'px';
-      if (pr.right > window.innerWidth) popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
-
-      popup.querySelector('[data-action="accept"]').focus();
-      _popup = popup;
-
-      popup.addEventListener('click', function onPopupClick(e) {
-        const action = e.target.closest('[data-action]')?.dataset.action;
-        if (!action) return;
-
-        if (action === 'accept') {
-          const t = _State.getActive();
-          const block = _State.findBlock(t?.blocks ?? [], blockId);
-          if (block) {
-            const sub = block.subtabs?.[block.activeSubtab ?? 0];
-            if (sub) sub.name = _variants[_current];
-          }
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
-          _State.update(() => {});
-          window.Toast?.show('Название вкладки обновлено ✓', 'success');
-        } else if (action === 'next') {
-          _current = (_current + 1) % _variants.length;
-          _closePopup();
-          _showPopup(blockId);
-        } else if (action === 'cancel') {
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
-        }
+      const r = anchor.getBoundingClientRect();
+      popup.style.left = r.left + 'px';
+      popup.style.top = (r.bottom + 6) + 'px';
+      requestAnimationFrame(() => {
+        const pr = popup.getBoundingClientRect();
+        if (pr.bottom > window.innerHeight - 8) popup.style.top = Math.max(8, r.top - pr.height - 6) + 'px';
+        if (pr.right > window.innerWidth - 8) popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
       });
 
-      popup._docClick = e => {
-        if (!popup.contains(e.target)) {
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
-        }
-      };
-      setTimeout(() => document.addEventListener('click', popup._docClick), 0);
+      function updateNav() {
+        counter.textContent = `${_current + 1}/${_variants.length}`;
+        input.value = _variants[_current] || '';
+      }
 
-      popup._escKey = e => {
-        if (e.key === 'Escape') {
-          _variants = [];
-          _current = 0;
-          _blockId = null;
-          _closePopup();
+      prevBtn.onclick = () => { _current = (_current - 1 + _variants.length) % _variants.length; updateNav(); };
+      nextBtn.onclick = () => { _current = (_current + 1) % _variants.length; updateNav(); };
+
+      function accept() {
+        const name = input.value.trim() || _variants[_current] || '';
+        if (!name) return;
+        const t = _State.getActive();
+        const block = _State.findBlock(t?.blocks ?? [], blockId);
+        if (block) {
+          const sub = block.subtabs?.[block.activeSubtab ?? 0];
+          if (sub) sub.name = name;
         }
-      };
-      document.addEventListener('keydown', popup._escKey);
+        _variants = [];
+        _current = 0;
+        _blockId = null;
+        _closePopup();
+        _State.update(() => {});
+        window.Toast?.show('Название вкладки обновлено ✓', 'success');
+      }
+
+      function closePopup() {
+        _variants = [];
+        _current = 0;
+        _blockId = null;
+        _closePopup();
+      }
+
+      input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); accept(); } });
+      confirmBtn.onclick = accept;
+      closeBtn.onclick = closePopup;
+
+      setTimeout(() => {
+        popup._onOutside = function onOutside(e) {
+          if (_popup && !_popup.contains(e.target)) {
+            closePopup();
+            document.removeEventListener('pointerdown', onOutside);
+          }
+        };
+        document.addEventListener('pointerdown', popup._onOutside);
+      }, 0);
+
+      input.focus();
+      input.select();
+      _popup = popup;
     }
 
     function _closePopup() {
       if (!_popup) return;
-      if (_popup._docClick) document.removeEventListener('click', _popup._docClick);
-      if (_popup._escKey) document.removeEventListener('keydown', _popup._escKey);
-      _popup._docClick = null;
-      _popup._escKey = null;
+      if (_popup._onOutside) document.removeEventListener('pointerdown', _popup._onOutside);
+      _popup._onOutside = null;
       _popup.remove();
       _popup = null;
     }
