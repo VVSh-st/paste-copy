@@ -968,7 +968,7 @@ body {
   background: var(--bg0); border: 1px solid var(--border);
   color: var(--text0); border-radius: 4px;
   padding: 4px 8px; font-size: 12px; font-family: inherit;
-  outline: none;
+  outline: none; resize: none; line-height: 1.4;
 }
 .export-name-input:focus { border-color: var(--accent); }
 .export-name-nav {
@@ -982,6 +982,7 @@ body {
 }
 .export-name-nav-btn:hover { background: var(--surface2); color: var(--text0); }
 .export-name-counter { min-width: 36px; text-align: center; font-size: 10px; color: var(--text3); }
+.export-name-confirm { color: var(--accent); }
 
 textarea.block-textarea {
   width: 100%; background-color: var(--bg0); border: 1px solid var(--border);

@@ -4360,8 +4360,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     popup.className = 'export-name-popup';
     popup.setAttribute('role', 'dialog');
 
-    const input = document.createElement('input');
-    input.type = 'text';
+    const input = document.createElement('textarea');
+    input.rows = 2;
     input.className = 'export-name-input';
     input.value = suggestions[0] || fallbackName || 'Без названия';
     input.maxLength = 75;
@@ -4385,13 +4385,19 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     nextBtn.innerHTML = '▶';
     nextBtn.title = 'Следующее';
 
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'export-name-nav-btn export-name-confirm';
+    confirmBtn.innerHTML = '✓';
+    confirmBtn.title = 'Сохранить';
+
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'export-name-nav-btn export-name-close';
     closeBtn.innerHTML = '✕';
     closeBtn.title = 'Закрыть';
 
-    nav.append(prevBtn, counter, nextBtn, closeBtn);
+    nav.append(prevBtn, counter, nextBtn, confirmBtn, closeBtn);
     popup.append(input, nav);
     document.body.appendChild(popup);
     _exportNamePopup = popup;
@@ -4424,7 +4430,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       _exportNamePopup?.remove(); _exportNamePopup = null;
     }
 
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); accept(); } });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); accept(); } });
+    confirmBtn.onclick = accept;
     closeBtn.onclick = closePopup;
 
     // Click outside
