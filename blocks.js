@@ -4297,7 +4297,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
   /* ── Export name: sanitize ──────────────────────────────────── */
   function _sanitizeFileName(name) {
-    return (name || '').replace(/[/\\:*?"<>|\n\r]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 75);
+    return (name || '').replace(/[/\\:*?"<>|\n\r]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
   }
 
   /* ── Export name: local frequency analysis ──────────────────── */
@@ -4307,19 +4307,19 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const words = text.split(/\s+/).map(w => w.toLowerCase().replace(/[^а-яёa-z0-9]/g, '')).filter(w => w.length >= 3 && !_EXPORT_STOP.has(w));
     const freq = new Map();
     for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
-    const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7).map(e => e[0]);
+    const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(e => e[0]);
     if (!top.length) return ['Без названия'];
     const results = [];
     if (top.length >= 5) results.push(top.slice(0, 5).join(' '));
-    if (top.length >= 3) results.push(top.slice(0, 3).join(' '));
-    if (top.length >= 4) results.push(top.slice(0, 4).join(' '));
-    if (top.length >= 6) results.push(top.slice(0, 3).concat(top.slice(4)).join(' '));
-    if (top.length >= 5) results.push(top.filter((_, i) => i % 2 === 0).join(' '));
-    if (top.length >= 4) results.push(top.slice(0, 2).concat(top.slice(2, 4)).join(' '));
-    if (top.length >= 3) results.push(top.slice(0, 2).concat(top.slice(-1)).join(' '));
-    if (top.length >= 5) results.push(top.slice(0, 3).concat(top.slice(-2)).join(' '));
-    if (top.length >= 4) results.push(top.slice(0, 3).concat(top.slice(3, 5)).join(' '));
-    if (top.length >= 6) results.push(top.slice(0, 4).concat(top.slice(-2)).join(' '));
+    if (top.length >= 7) results.push(top.slice(0, 7).join(' '));
+    if (top.length >= 6) results.push(top.slice(0, 6).join(' '));
+    if (top.length >= 8) results.push(top.slice(0, 8).join(' '));
+    if (top.length >= 5) results.push(top.slice(0, 3).concat(top.slice(5)).join(' '));
+    if (top.length >= 6) results.push(top.filter((_, i) => i % 2 === 0).join(' '));
+    if (top.length >= 7) results.push(top.slice(0, 4).concat(top.slice(5, 8)).join(' '));
+    if (top.length >= 5) results.push(top.slice(0, 2).concat(top.slice(3, 7)).join(' '));
+    if (top.length >= 8) results.push(top.slice(0, 5).concat(top.slice(6)).join(' '));
+    if (top.length >= 6) results.push(top.slice(1, 6).join(' '));
     return [...new Set(results)].slice(0, 10);
   }
 
@@ -4331,7 +4331,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         const compressed = await TextSkeletonizer.processAsync(text, 'light');
         const result = await window.LLMCore.request({
           messages: [
-            { role: 'system', content: 'Дай 10 коротких названий (3-5 слов) для этого текста. Каждое название с новой строки. Только названия, без кавычек, нумерации и пояснений.' },
+            { role: 'system', content: 'Дай 10 названий (5-10 слов) для этого текста. Каждое название с новой строки. Только названия, без кавычек, нумерации и пояснений.' },
             { role: 'user', content: compressed || text.slice(0, 2000) },
           ],
           maxTokens: 200,
@@ -4341,7 +4341,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         if (result && typeof result === 'string') {
           const parsed = result.trim().split('\n')
             .map(l => l.replace(/^\d+[.):\s]+/, '').replace(/[""]/g, '').trim())
-            .filter(l => l.length > 0 && l.length <= 75);
+            .filter(l => l.length > 0 && l.length <= 120);
           if (parsed.length >= 3) return parsed.slice(0, 10);
         }
       }
@@ -4364,7 +4364,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     input.rows = 2;
     input.className = 'export-name-input';
     input.value = suggestions[0] || fallbackName || 'Без названия';
-    input.maxLength = 75;
+    input.maxLength = 120;
 
     const nav = document.createElement('div');
     nav.className = 'export-name-nav';
