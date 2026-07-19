@@ -4361,7 +4361,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     popup.setAttribute('role', 'dialog');
 
     const input = document.createElement('textarea');
-    input.rows = 2;
+    input.rows = 3;
     input.className = 'export-name-input';
     input.value = suggestions[0] || fallbackName || 'Без названия';
     input.maxLength = 120;
