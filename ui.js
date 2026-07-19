@@ -1180,10 +1180,10 @@ const Preview = (() => {
     }
 
     function applyState(p) {
-      /* Material: brightness 1→1.23, contrast 1→1.10, saturate 1→1.13 */
-      const b = 1 + p * 0.23;
-      const c = 1 + p * 0.10;
-      const s = 1 + p * 0.13;
+      /* Material: brightness 1→..., contrast 1→..., saturate 1→... */
+      const b = 1 + p * 0.83;
+      const c = 1 + p * 0.18;
+      const s = 1 + p * 0.45;
       svgPath.style.filter = `brightness(${b}) contrast(${c}) saturate(${s})`;
 
       /* Reflection opacity: 0→0.10 */
