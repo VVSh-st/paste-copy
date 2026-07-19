@@ -885,21 +885,24 @@
 
     if (!settings.enabled || !settings.autoPull || !isConnected()) return;
 
+    const budget = getRequestBudgetSnapshot();
+    if (!budget.ok) {
+      const delay = budget.retryAfterMs + 10_000;
+      console.log('[MemorySync] auto-pull skipped — budget exhausted, next check in ' + Math.round(delay / 1000) + 's');
+      autoPullTimer = setTimeout(() => scheduleAutoPullCheck(), delay);
+      return;
+    }
+
     const elapsed = settings.lastAutoPullAt ? now() - settings.lastAutoPullAt : Infinity;
-    let delay = elapsed >= AUTO_PULL_MIN_INTERVAL_MS
+    const delay = elapsed >= AUTO_PULL_MIN_INTERVAL_MS
       ? 5_000
       : AUTO_PULL_MIN_INTERVAL_MS - elapsed;
 
     autoPullTimer = setTimeout(async () => {
-      let result;
       try {
-        result = await pull({ reason: 'auto-pull', silent: true });
+        await pull({ reason: 'auto-pull', silent: true });
       } catch (_) {
         // pull() сам пишет lastError
-      }
-      if (result?.reason === 'local_request_budget' && result?.retryAfterMs) {
-        delay = result.retryAfterMs + 5_000;
-        console.log('[MemorySync] auto-pull budget exhausted — rescheduling in ' + Math.round(delay / 1000) + 's');
       }
       scheduleAutoPullCheck();
     }, delay);
@@ -951,7 +954,12 @@
     settings = loadSettings();
     wrapSaveHooks();
     if (settings.enabled && settings.autoPull && isConnected()) {
-      setTimeout(() => pull({ reason: 'init-auto-pull' }).catch(() => {}), 1000);
+      const budget = getRequestBudgetSnapshot();
+      if (budget.ok) {
+        setTimeout(() => pull({ reason: 'init-auto-pull' }).catch(() => {}), 1000);
+      } else {
+        console.log('[MemorySync] init-auto-pull skipped — budget exhausted');
+      }
     }
     scheduleAutoPullCheck();
   }
