@@ -1,6 +1,6 @@
 // file_name: translator.js
 /* ============================================================
-   translator.js — Google / Microsoft / legacy fallback translate
+   translator.js — Google / Microsoft / Tencent / legacy fallback translate
    ============================================================ */
 'use strict';
 
@@ -35,6 +35,7 @@ const Translator = (() => {
   let lFail = 0, lBlockUntil = 0;
   let _inited = false;
   const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+  let _bcChannel = null;
   let _activeController = null;
   let _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, tencentRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 };
 
@@ -291,6 +292,9 @@ const Translator = (() => {
       cache.delete(first);
     }
     scheduleCacheSave();
+    if (_bcChannel) {
+      try { _bcChannel.postMessage({ type: 'cache-set', key, text: translated, ts: Date.now() }); } catch {}
+    }
   }
 
   // ── History ────────────────────────────────────────────────
@@ -787,11 +791,67 @@ const Translator = (() => {
     return res[0] || null;
   }
 
+  async function translateOneVisible(text, toLang) {
+    const target = normalizeTargetLang(toLang || settings.targetLang);
+    const n = norm(text);
+    if (!n) return null;
+    const cached = cacheGet(n, target);
+    if (cached !== undefined) return cached;
+
+    const accept = (tr) => {
+      if (!tr || !tr.trim()) return false;
+      if (norm(tr) === n && needsTranslation(n, target)) return false;
+      return true;
+    };
+
+    const promises = [];
+    const gReady = Date.now() >= gBlockUntil;
+    const mReady = Date.now() >= mBlockUntil;
+
+    if (gReady) {
+      promises.push(
+        withTimeout(translateGoogle([text], target), GOOGLE_TIMEOUT)
+          .then(r => ({ engine: 'g', result: r?.[0] }))
+          .catch(() => ({ engine: 'g', result: null }))
+      );
+    }
+    if (mReady) {
+      promises.push(
+        withTimeout(translateMs([text], target), MS_TIMEOUT)
+          .then(r => ({ engine: 'ms', result: r?.[0] }))
+          .catch(() => ({ engine: 'ms', result: null }))
+      );
+    }
+    if (!promises.length) {
+      try {
+        const l = await translateLegacy([text], target);
+        return l?.[0] || text;
+      } catch { return text; }
+    }
+
+    const res = await Promise.any(promises).catch(() => null);
+    if (res?.result && accept(res.result)) {
+      if (res.engine === 'g') gFail = 0; else mFail = 0;
+      cacheSet(n, target, res.result);
+      return res.result;
+    }
+
+    // Fallback: legacy для непереведённых
+    try {
+      const l = await translateLegacy([text], target);
+      if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
+    } catch {}
+
+    return text;
+  }
+
   async function translateOne(text, toLang) {
     const target = normalizeTargetLang(toLang || settings.targetLang);
     if (!needsTranslation(text, target)) return text;
-    const translated = await translateOneRaw(text, toLang);
-    if (translated) {
+    const translated = settings.engine === 'auto' || settings.engine === 'google' || settings.engine === 'microsoft'
+      ? await translateOneVisible(text, toLang)
+      : await translateOneRaw(text, toLang);
+    if (translated && translated !== text) {
       const from = detectLangHint(text)?.code || 'auto';
       addHistory(text, translated, from, target);
     }
@@ -843,6 +903,17 @@ const Translator = (() => {
       loadCache();
       loadHistory();
       loadSettings();
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          _bcChannel = new BroadcastChannel('tr-cache-sync');
+          _bcChannel.onmessage = e => {
+            if (e.data?.type === 'cache-set' && e.data.key) {
+              cache.delete(e.data.key);
+              cache.set(e.data.key, { text: e.data.text, ts: e.data.ts });
+            }
+          };
+        } catch {}
+      }
       if (typeof window !== 'undefined') {
         const finalFlush = () => { if (_activeController) _activeController.abort(); flushCache(); };
         window.addEventListener('beforeunload', finalFlush);
