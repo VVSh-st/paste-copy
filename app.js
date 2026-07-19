@@ -639,8 +639,6 @@
   onClick('prev-md',       () => Preview.toggleMarkdown());
   onClick('prev-toggle',   () => Preview.toggleCollapse());
 
-
-
   onEvent('preview-bar', 'dblclick', e => {
     if (e.target.closest('button, .preview-controls')) return;
     Preview.toggleCollapse();
