@@ -193,13 +193,13 @@
 | Файл | Изменения |
 |------|-----------|
 | `state.js` | Diff-снапшоты: `_computeDelta`, `_deepDiff`, `_applyDelta`, `_rebuildFromHistory`, `_migrateHistory`; `snapshot()`/`undo()`/`redo()`/`canUndo()`/`canRedo()` переписаны на base+deltas; blockHistory аналогично; `_dropBlockHistory` рекурсивен; `closeTab()` чистит `_blockHistory`; лимиты: history 30, namedSnapshots 5, blockHistory 30; **Capture undo:** `_undoRedoInProgress` flag блокирует `snapshot()` во время undo/redo; `cancelPendingSnapshot()` |
-| `app.js` | `exportCurrentTab()` — удалены `history`/`historyIdx` из экспорта; `incoming.history = { base: null, deltas: [] }` для импорта |
+| `app.js` | `exportCurrentTab()` — удалены `history`/`historyIdx` из экспорта; `incoming.history = { base: null, deltas: [] }` для импорта; **Шапка превью:** удалён handler `prev-qr` (QRPanel), init: `btn.classList.add('collapsed')` вместо `textContent = '▲'` |
 | `blocks.js` | MD-превью текстовых блоков: кнопка в шапке (toggle + long-press dropdown), `_renderBlockMdPreview`, `b.mdPreview`/`b.mdHighlight`, min-height 110px; sync MD при patchSubtab/undo/redo/translate; dropdown: "🎨 MD + Подсветка", "📋 Копировать HTML", "📝 Копировать Markdown"; active state синей подсветкой; скрытие кнопки при неактивном блоке; **Capture mode:** long-press dropdown ("В строчку"/"С пропуском"), `_captureInsertMode` persistence, `_captureBtns` Set (global toggle), `_captureUndoStack/_captureRedoStack` (↩️/↪️), `_ensureStickyBlock(sourceBlock)` — insert after source block, `State.makeBlock()` + push (no addBlock side effects), `_syncCaptureTextarea()`, `_getStickyBlock()` with stale ID reset, `_closeCaptureDropdown` document listener |
-| `ui.js` | Превью: 3-режимная кнопка MD (Text→MD→MD*→Text), `getMdHighlight()`, highlight.js только в режиме md-hl |
+| `ui.js` | Превью: 3-режимная кнопка MD (Text→MD→MD*→Text), `getMdHighlight()`, highlight.js только в режиме md-hl; **Кнопка превью:** `btn.classList.toggle('collapsed')` вместо textContent, `toggleCollapse()` + `toggleStartCollapsed()` |
 | `notepad.js` | MD-превью: кнопка, `_renderMdPreview`, `_toggleMdPreview`, `marked.parse()`; `_loadSaved` возвращает `mdPreview`; A−/A+ работают в MD; render при открытии; SVG "MD"; кнопки MD + "Перевести текст" в header; перевод: `_undoStack`, dropdown (язык/движок), long-press 400ms, без toast, очистка при смене вкладки и закрытии; `_cleanupTranslate` listener; highlight.jsalways on |
 | `llm-features.js` | Мини-чат: `_renderChatMd` хелпер (marked.parse + hljs), assistant-сообщения рендерятся как markdown с подсветкой; `finalizeLastMessage` переключает на markdown после стриминга; translate undo сохраняет raw text в `dataset.rawText` |
-| `index.html` | highlight.js CSS + JS через CDN; `prev-md` button |
-| `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон; **Capture pulse:** `@keyframes capturePulse` 1s infinite, `.capture-active` accent + glow, `prefers-reduced-motion` → animation none |
+| `index.html` | highlight.js CSS + JS через CDN; `prev-md` button; **Шапка превью:** заголовок "Paste\copy", удалён QR-кнопка, SVG-иконки (экспорт .md, скачивание, аудит-щит, воронка-сжатие, mindmap, блок-схема), кнопка "превью" с классом `.preview-toggle-wrap` |
+| `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон; **Capture pulse:** `@keyframes capturePulse` 1s infinite, `.capture-active` accent + glow, `prefers-reduced-motion` → animation none; **Кнопка превью:** `.preview-toggle-wrap` — min-width 75px, accent цвет, `.collapsed` состояние, `@keyframes toggleBreathe` 4s infinite, `prefers-reduced-motion` отключение |
 | `prompt-loom.js` | `renderPalette` — DOM-diff (не пересоздаёт search input); `close-all-palettes` listener; `closePalette` export; фикс `handleBackslashTrigger` |
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
@@ -1246,6 +1246,35 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - rAF guard — DOM-обновления не чаще 1 раза за кадр
 
 **Коммиты:** `e630cb6`, `5c32d10`, `bd564aa`, `a862d76`, `05113b9`, `76a80d3`, `2b2ce10`, `c651981`, `5e4ba76`, `db2b4ab`, `d9e28be`, `d674a23`
+
+---
+
+### Шапка превью — UI-улучшения
+
+**Файлы:** `index.html`, `styles.css`, `ui.js`, `app.js`
+
+**Изменения:**
+1. **Заголовок:** "Превью" → "Paste\copy" (`index.html:1713`)
+2. **QR-кнопка:** удалена (`#prev-qr` + SVG, `app.js` handler `prev-qr`)
+3. **SVG-иконки** вместо emoji в 6 кнопках:
+   - Экспорт всех → файл с `.md` подписью
+   - Скачать → стрелка вниз с линией
+   - Аудит → щит (без лупы — лупа занята поиском)
+   - Сжать токены → воронка
+   - Mindmap → 5 узлов с соединениями
+   - Блок-схема → прямоугольники со стрелкой
+4. **Кнопка "превью"** (`#prev-toggle`):
+   - Текст `превью` без треугольника ▲/▼
+   - Класс `.preview-toggle-wrap` — `min-width: 75px`, `min-height: 30px`
+   - Акцентный цвет (`var(--accent)`), полупрозрачный фон, акцентная рамка
+   - Hover: усиление фона + `box-shadow` glow
+   - `.collapsed`: ярче для обратной связи
+   - Анимация `toggleBreathe` — мягкое пульсирующее свечение 4s
+   - `prefers-reduced-motion` отключает анимацию
+5. **Фикс init** (`app.js:1111`): `btn.textContent = '▲'` → `btn.classList.add('collapsed')` — больше не затирает текст
+6. **JS toggle** (`ui.js:653`, `ui.js:1115`): вместо смены текста `▲/▼` — `btn.classList.toggle('collapsed', ...)`
+
+**Позиция кнопки:** в конце `.preview-controls`, после LLM-группы (аудит, сжатие, mindmap, схема). Не перемещалась.
 
 ---
 
