@@ -947,7 +947,7 @@
     );
     Object.assign(document.createElement('a'), {
       href:     url,
-      download: 'prompt-builder-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json',
+      download: 'Paste-copy-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json',
     }).click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     Toast.show('Файл экспортирован ✓', 'success');
@@ -966,10 +966,10 @@
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
     );
-    const name = (tab.name || 'tab').replace(/[^\wа-яА-ЯёЁ-]/gi, '_').slice(0, 40);
+    const name = 'Paste-copy-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     Object.assign(document.createElement('a'), {
       href:     url,
-      download: name + '-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json',
+      download: name + '.json',
     }).click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     Toast.show('Вкладка «' + (tab.name || 'Без имени') + '» экспортирована ✓', 'success');
