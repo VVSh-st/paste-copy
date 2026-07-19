@@ -1861,13 +1861,15 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         ta.setSelectionRange(0, 0);
       }
     });
-    const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt', () => {
-      _doExportTxt(ta.value, b.title || 'block');
-    });
+    const saveBtn     = makeToolBtn(svgIcon('save'),      'Сохранить в .txt', null);
     const isLongSave = _makeLongPress(saveBtn, () => {
       _showExportNamePopup(saveBtn, ta.value, b.title || 'block');
     });
-    saveBtn.addEventListener('click', e => { if (isLongSave()) { e.preventDefault(); return; } });
+    saveBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (isLongSave()) return;
+      _doExportTxt(ta.value, b.title || 'block');
+    });
 
     const transferBtn = makeToolBtn(svgIcon('transfer'), 'Скопировать текст на следующую вкладку', () => {
       const selStart = ta.selectionStart;
