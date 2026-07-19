@@ -237,6 +237,8 @@
 
     const btnAll = $id('btn-export');
     if (btnAll) {
+      const origAllClick = btnAll.onclick;
+      btnAll.onclick = null;
       const isLongAll = _makeLP(btnAll, async () => {
         const allText = _gatherAllText();
         if (!allText) { Toast.show('Нет данных для экспорта', 'info'); return; }
@@ -245,11 +247,16 @@
           _doExportJson(data, name);
         });
       });
-      btnAll.addEventListener('click', e => { if (isLongAll()) { e.stopPropagation(); e.preventDefault(); } });
+      btnAll.addEventListener('click', e => {
+        if (isLongAll()) { e.stopPropagation(); e.preventDefault(); return; }
+        if (origAllClick) origAllClick.call(btnAll, e);
+      });
     }
 
     const btnTab = $id('btn-export-tab');
     if (btnTab) {
+      const origTabClick = btnTab.onclick;
+      btnTab.onclick = null;
       const isLongTab = _makeLP(btnTab, async () => {
         const tab = State.getActive();
         if (!tab) return;
@@ -262,7 +269,10 @@
           _doExportJson({ tabs: [exported] }, name);
         });
       });
-      btnTab.addEventListener('click', e => { if (isLongTab()) { e.stopPropagation(); e.preventDefault(); } });
+      btnTab.addEventListener('click', e => {
+        if (isLongTab()) { e.stopPropagation(); e.preventDefault(); return; }
+        if (origTabClick) origTabClick.call(btnTab, e);
+      });
     }
   })();
   onClick('btn-import', () => $id('file-input')?.click());
