@@ -149,7 +149,6 @@ body {
 }
 .tb-btn-icon-only { padding: 7px 9px; min-width: 36px; justify-content: center; }
 .tb-divider { width: 1px; height: 22px; background: var(--border2); margin: 0 4px; flex-shrink: 0; border-radius: 99px; }
-.tb-divider.ml-auto { margin-left: auto; }
 .spacer { flex: 1; }
 .hint { color: var(--text3); font-size: 11px; white-space: nowrap; padding: 0 4px; }
 
@@ -1668,7 +1667,7 @@ textarea.block-textarea:focus {
   color: var(--text2); text-transform: uppercase;
   cursor: pointer; user-select: none;
 }
-.preview-controls { display: flex; gap: 3px; align-items: center; flex: 1; }
+.preview-controls { display: flex; gap: 3px; align-items: center; }
 .preview-controls button {
   background: var(--surface); color: var(--text1); border: 1px solid var(--border);
   padding: 5px 9px; border-radius: var(--radius-sm); cursor: pointer;
