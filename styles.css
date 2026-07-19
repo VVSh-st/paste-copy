@@ -149,6 +149,7 @@ body {
 }
 .tb-btn-icon-only { padding: 7px 9px; min-width: 36px; justify-content: center; }
 .tb-divider { width: 1px; height: 22px; background: var(--border2); margin: 0 4px; flex-shrink: 0; border-radius: 99px; }
+.tb-divider.ml-auto { margin-left: auto; }
 .spacer { flex: 1; }
 .hint { color: var(--text3); font-size: 11px; white-space: nowrap; padding: 0 4px; }
 
