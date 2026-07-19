@@ -236,7 +236,7 @@
     settings.lastRequestAt = t;
     settings.requestCountStartedAt = requestCountStartedAt;
     settings.requestCount = requestCount + 1;
-    console.log('[MemorySync] noteRequestStarted: count=' + settings.requestCount + '/' + MAX_REQUESTS_PER_WINDOW);
+    console.log('[MemorySync] noteRequestStarted: count=' + settings.requestCount + '/' + MAX_REQUESTS_PER_WINDOW + ' at=' + new Date(t).toLocaleTimeString());
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (err) {
@@ -653,6 +653,7 @@
 
   async function push(options = {}) {
     if (pushInFlight) return pushInFlight;
+    console.log('[MemorySync] push() called — reason=' + (options.reason || '?') + ' force=' + !!options.force);
 
     pushInFlight = (async () => {
       if (!settings.enabled) return { skipped: true, reason: 'disabled' };
@@ -741,6 +742,7 @@
 
   async function pull(options = {}) {
     if (pullInFlight) return pullInFlight;
+    console.log('[MemorySync] pull() called — reason=' + (options.reason || '?'));
 
     pullInFlight = (async () => {
       if (!settings.enabled) return { skipped: true, reason: 'disabled' };
@@ -969,6 +971,15 @@
     };
   }
 
+  function resetBudget() {
+    settings.requestCount = 0;
+    settings.requestCountStartedAt = now();
+    settings.lastRequestAt = 0;
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
+    console.log('[MemorySync] budget RESET — count=0/6');
+    renderModal();
+  }
+
   window.MemorySync = {
     init,
     openDialog,
@@ -977,6 +988,7 @@
     flush,
     push,
     pull,
+    resetBudget,
     setEnabled(value) {
       return saveSettings({ enabled: Boolean(value) });
     },
