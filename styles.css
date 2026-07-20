@@ -7776,7 +7776,13 @@ body.help-open {
 
 /* Subtle group alternation */
 .tf-menu-item.tf-subtle {
-  background: rgba(255,255,255,0.025);
+  background: rgba(255,255,255,0.04);
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.tf-menu-item.tf-subtle-first {
+  border-top: 1px solid rgba(79,142,247,0.2);
+  margin-top: 2px;
+  padding-top: 7px;
 }
 
 /* Number */

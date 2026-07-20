@@ -17,7 +17,7 @@ window.TextFormat = (() => {
     { id: 'empty',    tier: 1, name: 'Убрать пустые строки',  desc: 'Схлопнуть consecutive пустые строки в одну', example: 'a\\n\\n\\nb → a\\nb', fn: t => t.replace(/\n{2,}/g, '\n') },
     { id: 'sort',     tier: 1, name: 'Сортировка A→Я',       desc: 'Алфавитная сортировка строк', example: 'b\\na → a\\nb', fn: t => t.split('\n').sort((a, b) => a.localeCompare(b, 'ru')).join('\n') },
     { id: 'dedup',    tier: 1, name: 'Убрать дубли строк',    desc: 'Уникальные строки (порядок сохраняется)', example: 'a\\na\\nb → a\\nb', fn: t => { const seen = new Set(); return t.split('\n').filter(l => { if (seen.has(l)) return false; seen.add(l); return true; }).join('\n'); } },
-    { id: 'linenum',  tier: 1, name: 'Номера строк',          desc: 'Добавить нумерацию перед каждой строкой', example: 'a → 1. a', vars: ['1. ', '1) ', '- ', '• ', '→ '], fn: (t, v) => t.split('\n').map((l, i) => v + l).join('\n') },
+    { id: 'linenum',  tier: 1, name: 'Номера строк',          desc: 'Добавить нумерацию перед каждой строкой', example: 'a → 1. a', vars: ['1. ', '1) ', '- ', '• ', '→ '], fn: (t, v) => t.split('\n').map((l, i) => { if (v === '1. ') return (i + 1) + '. ' + l; if (v === '1) ') return (i + 1) + ') ' + l; return v + l; }).join('\n') },
 
     // Tier 2 — Форматирование (subtle)
     { id: 'title',    tier: 2, name: 'Title Case',            desc: 'Каждое слово с заглавной буквы', example: 'hello world → Hello World', fn: t => t.replace(/\b\w/g, c => c.toUpperCase()) },
@@ -118,7 +118,6 @@ window.TextFormat = (() => {
     }
     _lastItem = item.id;
     _saveLastItem(item.id);
-    _cycleVar(item);
     updateButtonIcon();
   }
 
@@ -228,9 +227,10 @@ window.TextFormat = (() => {
 
     Object.keys(tiers).sort((a, b) => a - b).forEach((tier, tierIdx) => {
       const isSubtle = tierIdx % 2 === 1;
-      tiers[tier].forEach(({ item, idx }) => {
+      tiers[tier].forEach(({ item, idx }, i) => {
         const row = document.createElement('div');
         row.className = 'tf-menu-item' + (isSubtle ? ' tf-subtle' : '');
+        if (isSubtle && i === 0) row.classList.add('tf-subtle-first');
         if (_lastItem === item.id) row.classList.add('tf-active');
 
         const num = document.createElement('span');
@@ -254,6 +254,17 @@ window.TextFormat = (() => {
         // Click
         row.addEventListener('click', e => {
           e.stopPropagation();
+          if (item.vars) {
+            // Cycle variable, don't apply
+            _cycleVar(item);
+            varSpan.textContent = _getVar(item);
+            row.classList.add('tf-active');
+            // Update other rows' active state
+            popup.querySelectorAll('.tf-menu-item').forEach(r => {
+              if (r !== row) r.classList.remove('tf-active');
+            });
+            return;
+          }
           execute(item, ta);
           hideMenu();
         });
@@ -265,7 +276,8 @@ window.TextFormat = (() => {
           hoverTimer = setTimeout(() => {
             const tip = document.createElement('div');
             tip.className = 'tf-item-tooltip';
-            tip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '');
+            const varInfo = item.vars ? '<br>Текущий: <code>' + esc(_getVar(item)) + '</code>' : '';
+            tip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '') + varInfo;
             popup.appendChild(tip);
             const r = row.getBoundingClientRect();
             tip.style.left = (r.right + 8) + 'px';
