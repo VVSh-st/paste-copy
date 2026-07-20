@@ -7848,10 +7848,14 @@ body.help-open {
   padding: 8px 10px;
   font-size: 11px;
   color: var(--text1, #b0bccf);
-  max-width: 260px;
+  max-width: min(360px, calc(100vw - 20px));
   pointer-events: none;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.tf-item-tooltip code {
+  white-space: pre-wrap;
 }
 .tf-item-tooltip b {
   color: var(--text0, #edf2fc);
