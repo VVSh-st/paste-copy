@@ -7890,3 +7890,10 @@ body.help-open {
   pointer-events: none;
   white-space: nowrap;
 }
+.tf-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.tf-tooltip-body {
+  opacity: 0.85;
+}
