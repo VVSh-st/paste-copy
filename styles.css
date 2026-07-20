@@ -7815,12 +7815,14 @@ body.help-open {
   font-size: 10px;
   color: var(--accent, #4f8ef7);
   background: rgba(79,142,247,0.1);
-  padding: 1px 5px;
+  padding: 2px 8px;
   border-radius: 3px;
   white-space: nowrap;
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+  min-width: 6ch;
+  text-align: center;
 }
 .tf-var:hover {
   background: rgba(79,142,247,0.2);
