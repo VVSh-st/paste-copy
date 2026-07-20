@@ -1362,7 +1362,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `app.js:746-754` — Shift+F shortcut
 - `index.html:1894` — `<script src="text-format.js">`
 
-**Коммиты:** `a6d1845` → `c74121e` → `18b1a70` (revert) → `ccc28ab` → `099b9ba` → `60df0bd` → `9abc49d` → `41af167` → `f23d4b5` → `08f0687` → `3488b22` → `9768dac` → `bc34af9` → `0c2d68c` → `e820def` → `2c9ddc9`
+**Коммиты:** `a6d1845` → `c74121e` → `18b1a70` (revert) → `ccc28ab` → `099b9ba` → `60df0bd` → `9abc49d` → `41af167` → `f23d4b5` → `08f0687` → `3488b22` → `9768dac` → `bc34af9` → `0c2d68c` → `e820def` → `2c9ddc9` → `d3166bd`
 
 **Аудит GPT-5 Codex (6 раундов):**
 - Раунд 1 (`ccc28ab`): trim (trimEnd→trim), varSpan scope fix, deindent guard, uncomment regex, aria, ITEM_BY_ID Map
@@ -1371,6 +1371,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - Раунд 4 (`9768dac`): contacts phone regex, Cyrillic mirror/mirrorf maps, randcase wave mode, cyr2lat bidirectional (→ Lat/← Cyr), noascii rename, execute(btn) param, tooltip viewport clamp, aria-expanded _menuBtn
 - Раунд 5 (`e820def`): Title Case lowercases rest of word (hELLO→Hello), menu fade-in animation (0.15s), prefers-reduced-motion
 - Раунд 6 (`2c9ddc9`): cyr2lat ← Cyr regex multi-char (sh→ш, shch→щ, yo→ё), е>э priority, Sentence case Unicode (\p{Ll}+toLocaleUpperCase), menu top overflow (rect.top<10), _loadState validation, execute(!text.length), invisible Array.from, Intl.Collator cache
+- Раунд 7 (`d3166bd`): wrap long-word chunking+NaN validation, execute _lastItem before early return, caret→end, tooltip left/right clamp, tooltip single DOM node, pulse div-by-zero guard, bubble ASCII Array.from
 
 **Поведение меню:**
 - Клик по пункту = ТОЛЬКО выбор + закрытие + смена цифры на иконке. НЕ применяет.
