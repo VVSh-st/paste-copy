@@ -88,6 +88,7 @@ window.TextFormat = (() => {
   let _vars = {};
   let _closeHandlers = [];
   let _closeHandlersTimer = null;
+  let _menuBtn = null; // кнопка блока, с которого открыли меню
   let _State = null;
 
   function _loadState() {
@@ -144,16 +145,17 @@ window.TextFormat = (() => {
   let _tooltip = null;
   let _tooltipTimer = null;
 
-  function updateButtonIcon() {
-    if (!_btnEl) return;
+  function updateButtonIcon(btn) {
+    const target = btn || _menuBtn || _btnEl;
+    if (!target) return;
     const item = _lastItem ? ITEM_BY_ID.get(_lastItem) : null;
     const num = item ? ITEMS.indexOf(item) + 1 : null;
-    const numEl = _btnEl.querySelector('.tf-btn-num');
+    const numEl = target.querySelector('.tf-btn-num');
     if (numEl) numEl.textContent = num || 'F';
     if (item) {
-      _btnEl.title = item.name + (item.vars ? ' (' + _getVar(item) + ')' : '') + ' (Shift+F)';
+      target.title = item.name + (item.vars ? ' (' + _getVar(item) + ')' : '') + ' (Shift+F)';
     } else {
-      _btnEl.title = 'Форматирование текста (Shift+F)';
+      target.title = 'Форматирование текста (Shift+F)';
     }
   }
 
@@ -179,7 +181,7 @@ window.TextFormat = (() => {
       longPressTimer = setTimeout(() => {
         longPressed = true;
         const rect = btn.getBoundingClientRect();
-        showMenu(ta, rect.left, rect.top);
+        showMenu(ta, rect.left, rect.top, btn);
       }, 400);
     });
     btn.addEventListener('mouseup', () => clearTimeout(longPressTimer));
@@ -194,7 +196,7 @@ window.TextFormat = (() => {
         if (item) execute(item, ta);
       } else {
         const rect = btn.getBoundingClientRect();
-        showMenu(ta, rect.left, rect.top);
+        showMenu(ta, rect.left, rect.top, btn);
       }
     };
 
@@ -232,9 +234,10 @@ window.TextFormat = (() => {
   }
 
   // ── Меню ─────────────────────────────────────────────────
-  function showMenu(ta, x, y) {
+  function showMenu(ta, x, y, btn) {
     hideMenu();
     _loadState();
+    _menuBtn = btn || _btnEl;
     const popup = document.createElement('div');
     popup.className = 'tf-menu';
     popup.setAttribute('role', 'menu');
@@ -412,8 +415,11 @@ window.TextFormat = (() => {
 
   function openMenu(ta) {
     if (!ta) return;
+    // Find the button from the same block
+    const block = ta.closest('.block');
+    const btn = block?.querySelector('.tf-btn');
     const rect = ta.getBoundingClientRect();
-    showMenu(ta, rect.left + 10, rect.top);
+    showMenu(ta, rect.left + 10, rect.top, btn);
   }
 
   return { init, createButton, execute, openMenu, hideMenu, updateButtonIcon, ITEMS };

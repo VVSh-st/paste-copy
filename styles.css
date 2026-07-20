@@ -7727,11 +7727,13 @@ body.help-open {
 /* ── Text Format module ───────────────────────── */
 .tf-btn {
   position: relative;
+  min-width: 24px;
+  min-height: 22px;
 }
 .tf-btn-num {
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   line-height: 1;
   pointer-events: none;
 }
