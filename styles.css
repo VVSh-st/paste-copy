@@ -5526,7 +5526,8 @@ textarea.llm-bro-processing {
   .diff-ins,
   .llm-result-content--classic .diff-classic-token,
   .llm-result-content--matrix .diff-matrix-token,
-  .llm-result-content--matrix .diff-matrix-token::before {
+  .llm-result-content--matrix .diff-matrix-token::before,
+  .tf-menu {
     animation: none;
     transition: none;
   }
@@ -7752,6 +7753,11 @@ body.help-open {
   scrollbar-width: none;
   min-width: 200px;
   user-select: none;
+  animation: tf-fade-in 0.15s ease-out;
+}
+@keyframes tf-fade-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .tf-menu::-webkit-scrollbar { display: none; }
 

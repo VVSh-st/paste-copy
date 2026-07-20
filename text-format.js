@@ -20,7 +20,7 @@ window.TextFormat = (() => {
     { id: 'linenum',  tier: 1, name: 'Номера строк',          desc: 'Добавить нумерацию перед каждой строкой', example: 'a → 1. a', vars: ['1. ', '1) ', '- ', '• ', '→ '], fn: (t, v) => t.split('\n').map((l, i) => { if (v === '1. ') return (i + 1) + '. ' + l; if (v === '1) ') return (i + 1) + ') ' + l; return v + l; }).join('\n') },
 
     // Tier 2 — Форматирование (subtle)
-    { id: 'title',    tier: 2, name: 'Title Case',            desc: 'Каждое слово с заглавной буквы', example: 'hello world → Hello World', fn: t => t.replace(/(^|[^\p{L}])(\p{L})/gu, (_, prefix, letter) => prefix + letter.toUpperCase()) },
+    { id: 'title',    tier: 2, name: 'Title Case',            desc: 'Каждое слово с заглавной буквы', example: 'hELLO world → Hello World', fn: t => t.toLowerCase().replace(/(^|[^\p{L}])(\p{L})/gu, (_, prefix, letter) => prefix + letter.toUpperCase()) },
     { id: 'sentence', tier: 2, name: 'Sentence case',         desc: 'Первая буква предложения заглавная', example: 'hello. world → Hello. World', fn: t => t.replace(/(^|[.!?]\s+)([a-zа-яё])/g, (m, p, c) => p + c.toUpperCase()) },
     { id: 'json',     tier: 2, name: 'Формат JSON',          desc: 'Красивое форматирование JSON (2 отступа)', example: '{"a":1} → структурированный', fn: t => { try { return JSON.stringify(JSON.parse(t), null, 2); } catch { return t; } } },
     { id: 'slug',     tier: 2, name: 'Slugify',               desc: 'URL-safe строка', example: 'Привет Мир! → привет-мир', fn: t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') },
