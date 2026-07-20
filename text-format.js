@@ -26,7 +26,7 @@ window.TextFormat = (() => {
     { id: 'slug',     tier: 2, name: 'Slugify',               desc: 'URL-safe строка', example: 'Привет Мир! → привет-мир', fn: t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') },
     { id: 'reverse',  tier: 2, name: 'Обратный порядок',      desc: 'Инвертировать порядок строк', example: 'a\\nb\\nc → c\\nb\\na', fn: t => t.split('\n').reverse().join('\n') },
     { id: 'deindent', tier: 2, name: 'Убрать отступ',         desc: 'Убрать минимальный общий пробел/таб со всех строк', example: '  a\\n  b → a\\nb', fn: t => { const lines = t.split('\n'); const nonEmpty = lines.filter(l => l.trim()); if (!nonEmpty.length) return t; const min = nonEmpty.reduce((m, l) => Math.min(m, l.match(/^(\s*)/)[1].length), Infinity); return lines.map(l => l.slice(min)).join('\n'); } },
-    { id: 'wrap',     tier: 2, name: 'Wrap на N',             desc: 'Перенос длинных строк по словам', example: 'Текст >40 символов → перенос', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = parseInt(v); return t.split('\n').map(l => { if (l.length <= n) return l; const words = l.split(' '); let result = '', line = ''; for (const w of words) { if (line && (line + ' ' + w).length > n) { result += line + '\n'; line = w; } else { line = line ? line + ' ' + w : w; } } return result + line; }).join('\n'); } },
+    { id: 'wrap',     tier: 2, name: 'Перенос на N',             desc: 'Перенос длинных строк по словам', example: 'Текст >40 символов → перенос', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = parseInt(v); return t.split('\n').map(l => { if (l.length <= n) return l; const words = l.split(' '); let result = '', line = ''; for (const w of words) { if (line && (line + ' ' + w).length > n) { result += line + '\n'; line = w; } else { line = line ? line + ' ' + w : w; } } return result + line; }).join('\n'); } },
     { id: 'split',    tier: 2, name: 'Разбить по',            desc: 'Split по разделителю', example: 'a,b,c → a\\nb\\nc', vars: [',', ';', '|', '\\n', '\\t'], fn: (t, v) => t.split(v === '\\n' ? '\n' : v === '\\t' ? '\t' : v).join('\n') },
 
     // Tier 3 — Строки (transparent)
@@ -46,7 +46,7 @@ window.TextFormat = (() => {
     { id: 'caesar',   tier: 4, name: 'Шифр Цезаря',          desc: 'Сдвиг букв на N позиций', example: 'abc → def (+3)', vars: ['+1', '+3', '+6', '+13', '-1', '-3', '-6', '-13'], fn: (t, v) => { const n = parseInt(v); const alpha = 'abcdefghijklmnopqrstuvwxyz'; const cyr = 'абвгдежзийклмнопрстуфхцчшщъыьэюя'; return t.split('').map(ch => { const isUpper = ch === ch.toUpperCase(); const lower = ch.toLowerCase(); let idx = alpha.indexOf(lower); if (idx !== -1) { idx = (idx + n + 26) % 26; return isUpper ? alpha[idx].toUpperCase() : alpha[idx]; } idx = cyr.indexOf(lower); if (idx !== -1) { idx = (idx + n + 33) % 33; return isUpper ? cyr[idx].toUpperCase() : cyr[idx]; } return ch; }).join(''); } },
 
     // Tier 5 — Извлечение (transparent)
-    { id: 'contacts', tier: 5, name: 'Извлечь контакты',      desc: 'Найти email / URL / телефоны в тексте', example: 'Позвони 8-900-111-22-33 → контакт', fn: t => { const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|https?:\/\/[^\s<>"')\]}]+|[\+]?[0-9][\-\s\(\)]{7,}[0-9]/g; const found = t.match(re); return found ? found.join('\n') : t; } },
+    { id: 'contacts', tier: 5, name: 'Извлечь контакты',      desc: 'Найти email / URL / телефоны в тексте', example: 'Позвони 8-900-111-22-33 → контакт', fn: t => { const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|https?:\/\/[^\s<>"')\]}]+|\+?\d[\d\s().-]{7,}\d/g; const found = t.match(re); return found ? found.join('\n') : t; } },
     { id: 'onlynum',  tier: 5, name: 'Извлечь числа',         desc: 'Оставить только цифры из текста', example: 'a1b2c3 → 123', fn: t => t.replace(/[^0-9]/g, '') },
     { id: 'onlylet',  tier: 5, name: 'Извлечь буквы',         desc: 'Оставить только буквы (latin + кириллица)', example: 'h3ll0 → hll', fn: t => t.replace(/[^\p{Script=Latin}\p{Script=Cyrillic}]/gu, '') },
     { id: 'uniqword', tier: 5, name: 'Только уникальные слова', desc: 'Дедупликация слов внутри строк', example: 'a b a c → a b c', fn: t => t.split('\n').map(l => { const seen = new Set(); return l.split(/\s+/).filter(w => { if (seen.has(w)) return false; seen.add(w); return true; }).join(' '); }).join('\n') },
@@ -61,19 +61,20 @@ window.TextFormat = (() => {
     // Tier 7 — Оформление (transparent)
     { id: 'trunc',    tier: 7, name: 'Обрезать на N',         desc: 'Truncate каждую строку до N символов', example: 'Длинный текст → Длинный', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = parseInt(v); return t.split('\n').map(l => l.length > n ? l.slice(0, n) + '…' : l).join('\n'); } },
     { id: 'numstep',  tier: 7, name: 'Prefix цифрами',        desc: 'Пронумеровать строки с шагом', example: '1. a\\n2. b', vars: ['+1', '+5', '+10', '+100'], fn: (t, v) => { const step = parseInt(v); let n = step; return t.split('\n').map(l => (n += step) - step + '. ' + l).join('\n'); } },
-    { id: 'noascii',  tier: 7, name: 'Убрать не-ASCII',       desc: 'Оставить только латиницу + цифры', example: 'Привет → (пусто)', fn: t => t.replace(/[^a-zA-Z0-9]/g, '') },
+    { id: 'noascii',  tier: 7, name: 'Только латиница',       desc: 'Оставить только латиницу + цифры', example: 'Привет → (пусто)', fn: t => t.replace(/[^a-zA-Z0-9]/g, '') },
 
     // Tier 8 — Безумие (subtle)
-    { id: 'randcase', tier: 8, name: 'Случайный регистр',     desc: 'Каждая буква случайно верхний/нижний', example: 'hello → hElLo', fn: t => t.split('').map(ch => /[a-zA-Zа-яА-ЯёЁ]/.test(ch) ? (Math.random() > 0.5 ? ch.toUpperCase() : ch.toLowerCase()) : ch).join('') },
-    { id: 'mirror',   tier: 8, name: 'Зеркало',              desc: 'Отражение текста', example: 'abc → abc ( ↕ ) или abc ( ↔ )', vars: ['↕ Вертикаль', '↔ Горизонталь'], fn: (t, v) => { if (v === '↕ Вертикаль') { const map = {a:'∀',b:'q',c:'ɔ',d:'p',e:'Ǝ',f:'ꟻ',g:'ƃ',h:'ɥ',i:'ı',j:'ſ',k:'ʞ',l:'˥',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'ꟻ',G:'ɓ',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'N',O:'O',P:'d',Q:'b',R:'ɹ',S:'S',T:'ʇ',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z'}; return t.split('\n').map(l => l.split('').map(ch => map[ch] || ch).reverse().join('')).join('\n'); } return t.split('\n').map(l => l.split('').reverse().join('')).join('\n'); } },
+    { id: 'randcase', tier: 8, name: 'Регистр',              desc: 'Случайный или волновой регистр', example: 'hello → hElLo', vars: ['random', 'wave'], fn: (t, v) => { if (v === 'wave') { let i = 0; return Array.from(t).map(ch => { if (!/[a-zA-Zа-яА-ЯёЁ]/.test(ch)) return ch; const out = i % 2 === 0 ? ch.toLowerCase() : ch.toUpperCase(); i++; return out; }).join(''); } return Array.from(t).map(ch => /[a-zA-Zа-яА-ЯёЁ]/.test(ch) ? (Math.random() > 0.5 ? ch.toUpperCase() : ch.toLowerCase()) : ch).join(''); } },
+    { id: 'mirror',   tier: 8, name: 'Зеркало',              desc: 'Разворот текста и зеркальные Unicode-символы', example: 'abc → cba ( ↕ ) или cba ( ↔ )', vars: ['↕ Вертикаль', '↔ Горизонталь'], fn: (t, v) => { if (v === '↕ Вертикаль') { const map = {a:'∀',b:'q',c:'ɔ',d:'p',e:'Ǝ',f:'ꟻ',g:'ƃ',h:'ɥ',i:'ı',j:'ſ',k:'ʞ',l:'˥',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'ꟻ',G:'ɓ',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'N',O:'O',P:'d',Q:'b',R:'ɹ',S:'S',T:'ʇ',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z',а:'ɐ',б:'ƍ',в:'ʚ',г:'ɹ',е:'ǝ',ё:'ǝ̈',з:'ε',к:'ʞ',м:'w',н:'н',о:'о',р:'d',с:'ɔ',т:'ʇ',у:'ʎ',х:'х',я:'ʁ',А:'∀',Б:'Ƃ',В:'ʚ',Г:'⅃',Е:'Ǝ',Ё:'Ǝ̈',З:'Ɛ',К:'ʞ',М:'W',Н:'Н',О:'О',Р:'Ԁ',С:'Ɔ',Т:'⊥',У:'⅄',Х:'Х',Я:'Я'}; return t.split('\n').map(l => Array.from(l).map(ch => map[ch] || ch).reverse().join('')).join('\n'); } return t.split('\n').map(l => Array.from(l).reverse().join('')).join('\n'); } },
     { id: 'leet',     tier: 8, name: 'Leet speak',           desc: 'Замена букв на цифры (1337)', example: 'Hello → H3llo', fn: t => t.replace(/[eE]/g, '3').replace(/[oO]/g, '0').replace(/[iI]/g, '1').replace(/[sS]/g, '5').replace(/[tT]/g, '7').replace(/[aA]/g, '4').replace(/[bB]/g, '8') },
-    { id: 'cyr2lat',  tier: 8, name: 'Кириллица ↔ Латиница', desc: 'Однобуквенная подмена кириллицы', example: 'привет → npivеt', fn: t => { const map = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'}; return t.split('').map(ch => { const lower = ch.toLowerCase(); const rep = map[lower]; if (!rep) return ch; const isUpper = ch !== lower; const result = isUpper ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; return result; }).join(''); } },
+    { id: 'cyr2lat',  tier: 8, name: 'Кириллица ↔ Латиница', desc: 'Однобуквенная подмена', example: 'привет → npivеt', vars: ['→ Lat', '← Cyr'], fn: (t, v) => { const cyrToLat = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'}; const latToCyr = {}; for (const [k, v] of Object.entries(cyrToLat)) { if (v) latToCyr[v] = k; } const map = v === '← Cyr' ? latToCyr : cyrToLat; return t.split('').map(ch => { const rep = map[ch.toLowerCase()]; if (!rep) return ch; return ch !== ch.toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }).join(''); } },
     { id: 'bubble',   tier: 8, name: 'Bubble text',          desc: 'Полноширинные символы Юникода', example: 'hello → ｈｅｌｌｏ', fn: t => t.split('').map(ch => { const code = ch.charCodeAt(0); if (code >= 33 && code <= 126) return String.fromCharCode(code + 0xFEE0); if (code === 32) return ' '; return ch; }).join('') },
-    { id: 'mirrorf',  tier: 8, name: 'Зеркальный шрифт',     desc: 'Юникод-зеркальные буквы', example: 'hello → ollǝh', fn: t => { const map = {a:'ɐ',b:'q',c:'ɔ',d:'p',e:'ǝ',f:'ɟ',g:'ƃ',h:'ɥ',i:'ᴉ',j:'ɾ',k:'ʞ',l:'l',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'Ⅎ',G:'⅁',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'И',O:'O',P:'Ԁ',Q:'Q',R:'Я',S:'S',T:'⊥',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z'}; return t.split('').reverse().map(ch => map[ch] || ch).join(''); } },
+    { id: 'mirrorf',  tier: 8, name: 'Зеркальный шрифт',     desc: 'Юникод-зеркальные буквы', example: 'hello → ollǝh', fn: t => { const map = {a:'ɐ',b:'q',c:'ɔ',d:'p',e:'ǝ',f:'ɟ',g:'ƃ',h:'ɥ',i:'ᴉ',j:'ɾ',k:'ʞ',l:'l',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'Ⅎ',G:'⅁',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'И',O:'O',P:'Ԁ',Q:'Q',R:'Я',S:'S',T:'⊥',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z',а:'ɐ',б:'ƍ',в:'ʚ',г:'ɹ',д:'ɓ',е:'ǝ',ё:'ǝ̈',ж:'ж',з:'ε',и:'и',й:'ӣ',к:'ʞ',л:'v',м:'w',н:'н',о:'о',п:'u',р:'d',с:'ɔ',т:'ʇ',у:'ʎ',ф:'ф',х:'х',ц:'ц',ч:'Һ',ш:'m',щ:'m',ы:'ıq',э:'є',ю:'oı',я:'ʁ',А:'∀',Б:'Ƃ',В:'ʚ',Г:'⅃',Д:'ᗡ',Е:'Ǝ',Ё:'Ǝ̈',Ж:'Ж',З:'Ɛ',И:'И',Й:'Ӣ',К:'ʞ',Л:'Λ',М:'W',Н:'Н',О:'О',П:'∩',Р:'Ԁ',С:'Ɔ',Т:'⊥',У:'⅄',Ф:'Ф',Х:'Х',Ц:'Ц',Ч:'Һ',Ш:'M',Щ:'M',Ы:'Іᑫ',Э:'Є',Ю:'OІ',Я:'Я'}; return Array.from(t).reverse().map(ch => map[ch] || ch).join(''); } },
     { id: 'invisible', tier: 8, name: 'Invisible chars',     desc: 'Вставить zero-width символы между буквами', example: 'hello → h​e​l​l​o', fn: t => t.split('').join('\u200B') },
   ];
 
   const ITEM_BY_ID = new Map(ITEMS.map(item => [item.id, item]));
+  const ITEM_INDEX_BY_ID = new Map(ITEMS.map((item, idx) => [item.id, idx + 1]));
 
   // Precompute tier grouping
   const ITEMS_BY_TIER = {};
@@ -113,7 +114,7 @@ window.TextFormat = (() => {
   }
 
   // ── Выполнение (с поддержкой выделения) ─────────────────
-  function execute(item, textarea) {
+  function execute(item, textarea, btn) {
     if (!textarea) return;
     const text = textarea.value;
     if (!text.trim()) return;
@@ -137,7 +138,7 @@ window.TextFormat = (() => {
     }
     _lastItem = item.id;
     _saveLastItem(item.id);
-    updateButtonIcon();
+    updateButtonIcon(btn);
   }
 
   // ── Кнопка ──────────────────────────────────────────────
@@ -149,7 +150,7 @@ window.TextFormat = (() => {
     const target = btn || _menuBtn || _btnEl;
     if (!target) return;
     const item = _lastItem ? ITEM_BY_ID.get(_lastItem) : null;
-    const num = item ? ITEMS.indexOf(item) + 1 : null;
+    const num = item ? ITEM_INDEX_BY_ID.get(item.id) : null;
     const numEl = target.querySelector('.tf-btn-num');
     if (numEl) numEl.textContent = num || 'F';
     if (item) {
@@ -193,7 +194,7 @@ window.TextFormat = (() => {
       if (longPressed) { longPressed = false; return; }
       if (_lastItem) {
         const item = ITEM_BY_ID.get(_lastItem);
-        if (item) execute(item, ta);
+        if (item) execute(item, ta, btn);
       } else {
         const rect = btn.getBoundingClientRect();
         showMenu(ta, rect.left, rect.top, btn);
@@ -226,7 +227,7 @@ window.TextFormat = (() => {
     document.body.appendChild(_tooltip);
     const rect = anchor.getBoundingClientRect();
     _tooltip.style.left = rect.left + 'px';
-    _tooltip.style.top = (rect.top - _tooltip.offsetHeight - 6) + 'px';
+    _tooltip.style.top = Math.max(10, rect.top - _tooltip.offsetHeight - 6) + 'px';
   }
 
   function _hideTooltip() {
@@ -362,7 +363,8 @@ window.TextFormat = (() => {
     });
 
     // aria-expanded
-    if (_btnEl) _btnEl.setAttribute('aria-expanded', 'true');
+    const expandedBtn = _menuBtn || _btnEl;
+    if (expandedBtn) expandedBtn.setAttribute('aria-expanded', 'true');
 
     // Keyboard navigation
     popup.addEventListener('keydown', e => {
@@ -412,7 +414,9 @@ window.TextFormat = (() => {
   function hideMenu() {
     if (_closeHandlersTimer) { clearTimeout(_closeHandlersTimer); _closeHandlersTimer = null; }
     if (_popup) { _popup.remove(); _popup = null; }
-    if (_btnEl) _btnEl.setAttribute('aria-expanded', 'false');
+    const expandedBtn = _menuBtn || _btnEl;
+    if (expandedBtn) expandedBtn.setAttribute('aria-expanded', 'false');
+    _menuBtn = null;
     _closeHandlers.forEach(fn => fn());
     _closeHandlers = [];
   }
