@@ -36,7 +36,7 @@ window.TextFormat = (() => {
     { id: 'uncomment', tier: 3, name: 'Убрать комментарии',  desc: 'Стрипнуть комментарии из начала строк', example: '// code → code', fn: t => t.split('\n').map(l => l.replace(/^\s*(\/\/|#|--|\/\*|\*\/)\s?/, '')).join('\n') },
     { id: 'comment',  tier: 3, name: 'В комментарий',         desc: 'Обернуть каждую строку в комментарий', example: 'code → // code', vars: ['// ', '# ', '/* ', '-- '], fn: (t, v) => t.split('\n').map(l => v + l).join('\n') },
     { id: 'wrapch',   tier: 3, name: 'Обернуть в',            desc: 'Скобки/кавычки вокруг всего текста', example: 'text → (text)', vars: ['()', '[]', '{}', '""', "''"], fn: (t, v) => { const o = v[0], c = v[1]; return o + t + c; } },
-    { id: 'join',     tier: 3, name: 'Склеить строки',        desc: 'Всё в одну строку через пробел', example: 'a\\nb → a b', fn: t => t.replace(/\n/g, ' ') },
+    { id: 'join',     tier: 3, name: 'Склеить строки',        desc: 'Всё в одну строку через пробел', example: 'a\\nb → a b', fn: t => t.replace(/\r\n|\r|\n/g, ' ') },
     { id: 'spaces',   tier: 3, name: 'Схлопнуть пробелы',    desc: 'Множественные пробелы → один', example: 'a   b → a b', fn: t => t.replace(/ {2,}/g, ' ') },
     { id: 'tab2sp',   tier: 3, name: 'Tabs → Spaces',         desc: 'Конвертация табов в пробелы', example: '\\tcode →     code', vars: ['2', '4', '8'], fn: (t, v) => t.replace(/\t/g, ' '.repeat(parseInt(v))) },
     { id: 'sp2tab',   tier: 3, name: 'Spaces → Tabs',         desc: 'Конвертация пробелов в табы', example: '    code → \\tcode', vars: ['2', '4', '8'], fn: (t, v) => { const n = parseInt(v); const re = new RegExp(' {' + n + '}', 'g'); return t.replace(re, '\t'); } },
@@ -61,7 +61,7 @@ window.TextFormat = (() => {
     { id: 'repeat',   tier: 6, name: 'Повторить N',           desc: 'Дублировать текст N раз', example: 'hello × 3', vars: ['2', '3', '5', '10'], fn: (t, v) => { const n = parseInt(v); return Array(n).fill(t).join('\n'); } },
 
     // Tier 7 — Оформление (transparent)
-    { id: 'trunc',    tier: 7, name: 'Обрезать на N',         desc: 'Truncate каждую строку до N символов', example: 'Длинный текст → Длинный', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = parseInt(v); return t.split('\n').map(l => l.length > n ? l.slice(0, n) + '…' : l).join('\n'); } },
+    { id: 'trunc',    tier: 7, name: 'Обрезать на N',         desc: 'Truncate каждую строку до N символов', example: 'Длинный текст → Длинный', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = Number.parseInt(v, 10); const limit = Number.isFinite(n) && n > 0 ? n : 80; return t.split('\n').map(line => { const chars = Array.from(line); return chars.length > limit ? chars.slice(0, limit - 1).join('') + '…' : line; }).join('\n'); } },
     { id: 'numstep',  tier: 7, name: 'Prefix цифрами',        desc: 'Пронумеровать строки с шагом', example: '1. a\\n2. b', vars: ['+1', '+5', '+10', '+100'], fn: (t, v) => { const step = parseInt(v); let n = step; return t.split('\n').map(l => (n += step) - step + '. ' + l).join('\n'); } },
     { id: 'noascii',  tier: 7, name: 'Только латиница',       desc: 'Оставить только латиницу + цифры', example: 'Привет → (пусто)', fn: t => t.replace(/[^a-zA-Z0-9]/g, '') },
 
@@ -137,11 +137,13 @@ window.TextFormat = (() => {
       _saveLastItem(item.id);
       updateButtonIcon(btn);
       if (result === source) return;
+      const scrollTop = textarea.scrollTop;
       textarea.value = hasSelection
         ? text.slice(0, start) + result + text.slice(end)
         : result;
       textarea.selectionStart = hasSelection ? start : result.length;
       textarea.selectionEnd = hasSelection ? start + result.length : result.length;
+      textarea.scrollTop = scrollTop;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     } finally {
       try { textarea._skipWordComplete = false; } catch {}
@@ -403,7 +405,7 @@ window.TextFormat = (() => {
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         rows[(idx - 1 + rows.length) % rows.length]?.focus();
-      } else if (e.key === 'Enter') {
+      } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         current?.click();
       }
