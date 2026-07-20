@@ -7812,7 +7812,7 @@ body.help-open {
 /* Variable pill button */
 .tf-var {
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--accent, #4f8ef7);
   background: rgba(79,142,247,0.1);
   padding: 2px 8px;
@@ -7821,7 +7821,7 @@ body.help-open {
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
-  min-width: 6ch;
+  min-width: 8ch;
   text-align: center;
 }
 .tf-var:hover {
@@ -7853,13 +7853,18 @@ body.help-open {
   margin-bottom: 2px;
 }
 .tf-item-tooltip code {
-  display: block;
+  display: inline-block;
   margin-top: 4px;
   font-size: 10px;
   color: var(--accent, #4f8ef7);
   background: rgba(79,142,247,0.08);
   padding: 2px 5px;
   border-radius: 3px;
+}
+.tf-item-tooltip code.tf-tip-active {
+  background: rgba(79,142,247,0.25);
+  border: 1px solid rgba(79,142,247,0.4);
+  font-weight: 600;
 }
 
 /* Button tooltip */

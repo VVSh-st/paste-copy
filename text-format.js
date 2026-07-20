@@ -301,8 +301,14 @@ window.TextFormat = (() => {
           hoverTimer = setTimeout(() => {
             const tip = document.createElement('div');
             tip.className = 'tf-item-tooltip';
-            const varInfo = item.vars ? '<br>Текущий: <code>' + esc(_getVar(item)) + '</code>' : '';
-            tip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '') + varInfo;
+            let varHtml = '';
+            if (item.vars) {
+              const cur = _getVar(item);
+              varHtml = '<br>Варианты: ' + item.vars.map(v =>
+                v === cur ? '<code class="tf-tip-active">' + esc(v) + '</code>' : '<code>' + esc(v) + '</code>'
+              ).join(' ');
+            }
+            tip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '') + varHtml;
             popup.appendChild(tip);
             const r = row.getBoundingClientRect();
             tip.style.left = (r.right + 8) + 'px';
