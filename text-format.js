@@ -28,7 +28,7 @@ window.TextFormat = (() => {
     { id: 'slug',     tier: 2, name: 'Slugify',               desc: 'URL-safe строка', example: 'Привет Мир! → привет-мир', fn: t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') },
     { id: 'reverse',  tier: 2, name: 'Обратный порядок',      desc: 'Инвертировать порядок строк', example: 'a\\nb\\nc → c\\nb\\na', fn: t => t.split('\n').reverse().join('\n') },
     { id: 'deindent', tier: 2, name: 'Убрать отступ',         desc: 'Убрать минимальный общий пробел/таб со всех строк', example: '  a\\n  b → a\\nb', fn: t => { const lines = t.split('\n'); const nonEmpty = lines.filter(l => l.trim()); if (!nonEmpty.length) return t; const min = nonEmpty.reduce((m, l) => Math.min(m, l.match(/^(\s*)/)[1].length), Infinity); return lines.map(l => l.slice(min)).join('\n'); } },
-    { id: 'wrap',     tier: 2, name: 'Перенос на N',             desc: 'Перенос длинных строк по словам', example: 'Текст >40 символов → перенос', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = parseInt(v); return t.split('\n').map(l => { if (l.length <= n) return l; const words = l.split(' '); let result = '', line = ''; for (const w of words) { if (line && (line + ' ' + w).length > n) { result += line + '\n'; line = w; } else { line = line ? line + ' ' + w : w; } } return result + line; }).join('\n'); } },
+    { id: 'wrap',     tier: 2, name: 'Перенос на N',             desc: 'Перенос длинных строк по словам', example: 'Текст >40 символов → перенос', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = Number.parseInt(v, 10); const width = Number.isFinite(n) && n > 0 ? n : 80; return t.split('\n').map(l => { if (l.length <= width) return l; const words = l.trim().split(/\s+/); const lines = []; let line = ''; for (const w of words) { if (w.length > width) { if (line) { lines.push(line); line = ''; } for (let i = 0; i < w.length; i += width) lines.push(w.slice(i, i + width)); continue; } if (line && (line + ' ' + w).length > width) { lines.push(line); line = w; } else { line = line ? line + ' ' + w : w; } } if (line) lines.push(line); return lines.join('\n'); }).join('\n'); } },
     { id: 'split',    tier: 2, name: 'Разбить по',            desc: 'Split по разделителю', example: 'a,b,c → a\\nb\\nc', vars: [',', ';', '|', '\\n', '\\t'], fn: (t, v) => t.split(v === '\\n' ? '\n' : v === '\\t' ? '\t' : v).join('\n') },
 
     // Tier 3 — Строки (transparent)
@@ -66,11 +66,11 @@ window.TextFormat = (() => {
     { id: 'noascii',  tier: 7, name: 'Только латиница',       desc: 'Оставить только латиницу + цифры', example: 'Привет → (пусто)', fn: t => t.replace(/[^a-zA-Z0-9]/g, '') },
 
     // Tier 8 — Безумие (subtle)
-    { id: 'randcase', tier: 8, name: 'Регистр',              desc: 'Случайный, волновой или пульсирующий регистр', example: 'hello → hElLo', vars: ['random', 'wave', 'pulse'], fn: (t, v) => { if (v === 'wave') { let i = 0; return Array.from(t).map(ch => { if (!/[a-zA-Zа-яА-ЯёЁ]/.test(ch)) return ch; const out = i % 2 === 0 ? ch.toLowerCase() : ch.toUpperCase(); i++; return out; }).join(''); } if (v === 'pulse') { return t.split(/(\s+)/).map(word => { if (!/[a-zA-Zа-яА-ЯёЁ]/.test(word)) return word; const letters = Array.from(word); const len = letters.length; const mid = (len - 1) / 2; return letters.map((ch, i) => { if (!/[a-zA-Zа-яА-ЯёЁ]/.test(ch)) return ch; const dist = Math.abs(i - mid) / mid; return dist < 0.4 ? ch.toUpperCase() : ch.toLowerCase(); }).join(''); }).join(''); } return Array.from(t).map(ch => /[a-zA-Zа-яА-ЯёЁ]/.test(ch) ? (Math.random() > 0.5 ? ch.toUpperCase() : ch.toLowerCase()) : ch).join(''); } },
+    { id: 'randcase', tier: 8, name: 'Регистр',              desc: 'Случайный, волновой или пульсирующий регистр', example: 'hello → hElLo', vars: ['random', 'wave', 'pulse'], fn: (t, v) => { if (v === 'wave') { let i = 0; return Array.from(t).map(ch => { if (!/[a-zA-Zа-яА-ЯёЁ]/.test(ch)) return ch; const out = i % 2 === 0 ? ch.toLowerCase() : ch.toUpperCase(); i++; return out; }).join(''); } if (v === 'pulse') { return t.split(/(\s+)/).map(word => { if (!/[a-zA-Zа-яА-ЯёЁ]/.test(word)) return word; const letters = Array.from(word); const len = letters.length; if (len === 1) return letters[0].toUpperCase(); const mid = (len - 1) / 2; return letters.map((ch, i) => { if (!/[a-zA-Zа-яА-ЯёЁ]/.test(ch)) return ch; const dist = Math.abs(i - mid) / mid; return dist < 0.4 ? ch.toUpperCase() : ch.toLowerCase(); }).join(''); }).join(''); } return Array.from(t).map(ch => /[a-zA-Zа-яА-ЯёЁ]/.test(ch) ? (Math.random() > 0.5 ? ch.toUpperCase() : ch.toLowerCase()) : ch).join(''); } },
     { id: 'mirror',   tier: 8, name: 'Зеркало',              desc: 'Разворот текста и зеркальные Unicode-символы', example: 'abc → cba ( ↕ ) или cba ( ↔ )', vars: ['↕ Вертикаль', '↔ Горизонталь'], fn: (t, v) => { if (v === '↕ Вертикаль') { const map = {a:'∀',b:'q',c:'ɔ',d:'p',e:'Ǝ',f:'ꟻ',g:'ƃ',h:'ɥ',i:'ı',j:'ſ',k:'ʞ',l:'˥',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'ꟻ',G:'ɓ',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'N',O:'O',P:'d',Q:'b',R:'ɹ',S:'S',T:'ʇ',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z',а:'ɐ',б:'ƍ',в:'ʚ',г:'ɹ',е:'ǝ',ё:'ǝ̈',з:'ε',к:'ʞ',м:'w',н:'н',о:'о',р:'d',с:'ɔ',т:'ʇ',у:'ʎ',х:'х',я:'ʁ',А:'∀',Б:'Ƃ',В:'ʚ',Г:'⅃',Е:'Ǝ',Ё:'Ǝ̈',З:'Ɛ',К:'ʞ',М:'W',Н:'Н',О:'О',Р:'Ԁ',С:'Ɔ',Т:'⊥',У:'⅄',Х:'Х',Я:'Я'}; return t.split('\n').map(l => Array.from(l).map(ch => map[ch] || ch).reverse().join('')).join('\n'); } return t.split('\n').map(l => Array.from(l).reverse().join('')).join('\n'); } },
     { id: 'leet',     tier: 8, name: 'Leet speak',           desc: 'Замена букв на цифры (1337)', example: 'Hello → H3llo', fn: t => t.replace(/[eE]/g, '3').replace(/[oO]/g, '0').replace(/[iI]/g, '1').replace(/[sS]/g, '5').replace(/[tT]/g, '7').replace(/[aA]/g, '4').replace(/[bB]/g, '8') },
     { id: 'cyr2lat',  tier: 8, name: 'Кириллица ↔ Латиница', desc: 'Однобуквенная подмена', example: 'привет → privet', vars: ['→ Lat', '← Cyr'], fn: (t, v) => { const cyrToLat = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya'}; if (v === '← Cyr') { const latToCyr = {}; for (const [k, val] of Object.entries(cyrToLat)) { if (val) latToCyr[val] = k; } latToCyr['e'] = 'е'; const keys = Object.keys(latToCyr).sort((a, b) => b.length - a.length); const re = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi'); return t.replace(re, m => { const rep = latToCyr[m.toLowerCase()]; return m[0] !== m[0].toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }); } return t.split('').map(ch => { const rep = cyrToLat[ch.toLowerCase()]; if (!rep) return ch; return ch !== ch.toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }).join(''); } },
-    { id: 'bubble',   tier: 8, name: 'Bubble text',          desc: 'Полноширинные символы Юникода', example: 'hello → ｈｅｌｌｏ', vars: ['ASCII', 'Все'], fn: (t, v) => { if (v === 'Все') { return Array.from(t).map(ch => { const code = ch.charCodeAt(0); if (code >= 33 && code <= 126) return String.fromCharCode(code + 0xFEE0); if (code === 32) return ' '; if (/[а-яА-ЯёЁ]/.test(ch)) return ch + '\u0361'; return ch; }).join(''); } return t.split('').map(ch => { const code = ch.charCodeAt(0); if (code >= 33 && code <= 126) return String.fromCharCode(code + 0xFEE0); if (code === 32) return ' '; return ch; }).join(''); } },
+    { id: 'bubble',   tier: 8, name: 'Bubble text',          desc: 'Полноширинные символы Юникода', example: 'hello → ｈｅｌｌｏ', vars: ['ASCII', 'Все'], fn: (t, v) => { return Array.from(t).map(ch => { const code = ch.charCodeAt(0); if (code >= 33 && code <= 126) return String.fromCharCode(code + 0xFEE0); if (code === 32) return ' '; if (v === 'Все' && /[а-яА-ЯёЁ]/.test(ch)) return ch + '\u0361'; return ch; }).join(''); } },
     { id: 'mirrorf',  tier: 8, name: 'Зеркальный шрифт',     desc: 'Юникод-зеркальные буквы', example: 'hello → ollǝh', fn: t => { const map = {a:'ɐ',b:'q',c:'ɔ',d:'p',e:'ǝ',f:'ɟ',g:'ƃ',h:'ɥ',i:'ᴉ',j:'ɾ',k:'ʞ',l:'l',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'Ⅎ',G:'⅁',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'И',O:'O',P:'Ԁ',Q:'Q',R:'Я',S:'S',T:'⊥',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z',а:'ɐ',б:'ƍ',в:'ʚ',г:'ɹ',д:'ɓ',е:'ǝ',ё:'ǝ̈',ж:'ж',з:'ε',и:'и',й:'ӣ',к:'ʞ',л:'v',м:'w',н:'н',о:'о',п:'u',р:'d',с:'ɔ',т:'ʇ',у:'ʎ',ф:'ф',х:'х',ц:'ц',ч:'Һ',ш:'m',щ:'m',ы:'ıq',э:'є',ю:'oı',я:'ʁ',А:'∀',Б:'Ƃ',В:'ʚ',Г:'⅃',Д:'ᗡ',Е:'Ǝ',Ё:'Ǝ̈',Ж:'Ж',З:'Ɛ',И:'И',Й:'Ӣ',К:'ʞ',Л:'Λ',М:'W',Н:'Н',О:'О',П:'∩',Р:'Ԁ',С:'Ɔ',Т:'⊥',У:'⅄',Ф:'Ф',Х:'Х',Ц:'Ц',Ч:'Һ',Ш:'M',Щ:'M',Ы:'Іᑫ',Э:'Є',Ю:'OІ',Я:'Я'}; return Array.from(t).reverse().map(ch => map[ch] || ch).join(''); } },
     { id: 'invisible', tier: 8, name: 'Invisible chars',     desc: 'Вставить zero-width символы между буквами', example: 'hello → h​e​l​l​o', fn: t => Array.from(t).join('\u200B') },
   ];
@@ -92,6 +92,7 @@ window.TextFormat = (() => {
   let _closeHandlers = [];
   let _closeHandlersTimer = null;
   let _menuBtn = null; // кнопка блока, с которого открыли меню
+  let _menuTooltip = null;
   let _State = null;
 
   function _loadState() {
@@ -131,18 +132,18 @@ window.TextFormat = (() => {
       const hasSelection = start !== end;
       const source = hasSelection ? text.slice(start, end) : text;
       const result = item.fn(source, varVal);
+      _lastItem = item.id;
+      _saveLastItem(item.id);
       if (result === source) return;
       textarea.value = hasSelection
         ? text.slice(0, start) + result + text.slice(end)
         : result;
-      textarea.selectionStart = hasSelection ? start : 0;
-      textarea.selectionEnd = hasSelection ? start + result.length : 0;
+      textarea.selectionStart = hasSelection ? start : result.length;
+      textarea.selectionEnd = hasSelection ? start + result.length : result.length;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     } finally {
       try { textarea._skipWordComplete = false; } catch {}
     }
-    _lastItem = item.id;
-    _saveLastItem(item.id);
     updateButtonIcon(btn);
   }
 
@@ -231,8 +232,17 @@ window.TextFormat = (() => {
     _tooltip.textContent = item.example || item.desc;
     document.body.appendChild(_tooltip);
     const rect = anchor.getBoundingClientRect();
-    _tooltip.style.left = rect.left + 'px';
-    _tooltip.style.top = Math.max(10, rect.top - _tooltip.offsetHeight - 6) + 'px';
+    let left = rect.left;
+    const top = Math.max(10, rect.top - _tooltip.offsetHeight - 6);
+    requestAnimationFrame(() => {
+      const tr = _tooltip?.getBoundingClientRect();
+      if (tr && tr.right > window.innerWidth - 10) {
+        left = Math.max(10, window.innerWidth - tr.width - 10);
+      }
+      if (_tooltip) _tooltip.style.left = left + 'px';
+    });
+    _tooltip.style.left = left + 'px';
+    _tooltip.style.top = top + 'px';
   }
 
   function _hideTooltip() {
@@ -313,8 +323,11 @@ window.TextFormat = (() => {
         row.addEventListener('mouseenter', () => {
           clearTimeout(hoverTimer);
           hoverTimer = setTimeout(() => {
-            const tip = document.createElement('div');
-            tip.className = 'tf-item-tooltip';
+            if (!_menuTooltip) {
+              _menuTooltip = document.createElement('div');
+              _menuTooltip.className = 'tf-item-tooltip';
+              popup.appendChild(_menuTooltip);
+            }
             let varHtml = '';
             if (item.vars) {
               const cur = _getVar(item);
@@ -322,26 +335,27 @@ window.TextFormat = (() => {
                 v === cur ? '<code class="tf-tip-active">' + esc(v) + '</code>' : '<code>' + esc(v) + '</code>'
               ).join(' ');
             }
-            tip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '') + varHtml;
-            popup.appendChild(tip);
+            _menuTooltip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '') + varHtml;
+            _menuTooltip.style.display = '';
             const r = row.getBoundingClientRect();
-            tip.style.left = (r.right + 8) + 'px';
-            tip.style.top = r.top + 'px';
+            let left = r.right + 8;
+            let top = r.top;
             requestAnimationFrame(() => {
-              const tr = tip.getBoundingClientRect();
-              if (tr.right > window.innerWidth - 10) {
-                tip.style.left = (r.left - tr.width - 8) + 'px';
-              }
-              if (tr.bottom > window.innerHeight - 10) {
-                tip.style.top = Math.max(10, window.innerHeight - tr.height - 10) + 'px';
-              }
+              if (!_menuTooltip) return;
+              const tr = _menuTooltip.getBoundingClientRect();
+              if (tr.right > window.innerWidth - 10) left = Math.max(10, r.left - tr.width - 8);
+              if (left < 10) left = 10;
+              if (tr.bottom > window.innerHeight - 10) top = Math.max(10, window.innerHeight - tr.height - 10);
+              _menuTooltip.style.left = left + 'px';
+              _menuTooltip.style.top = top + 'px';
             });
+            _menuTooltip.style.left = left + 'px';
+            _menuTooltip.style.top = top + 'px';
           }, 500);
         });
         row.addEventListener('mouseleave', () => {
           clearTimeout(hoverTimer);
-          const tip = popup.querySelector('.tf-item-tooltip');
-          if (tip) tip.remove();
+          if (_menuTooltip) _menuTooltip.style.display = 'none';
         });
 
         popup.appendChild(row);
@@ -419,6 +433,7 @@ window.TextFormat = (() => {
   function hideMenu() {
     if (_closeHandlersTimer) { clearTimeout(_closeHandlersTimer); _closeHandlersTimer = null; }
     if (_popup) { _popup.remove(); _popup = null; }
+    _menuTooltip = null;
     const expandedBtn = _menuBtn || _btnEl;
     if (expandedBtn) expandedBtn.setAttribute('aria-expanded', 'false');
     _menuBtn = null;
