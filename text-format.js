@@ -163,11 +163,6 @@ window.TextFormat = (() => {
     const num = item ? ITEM_INDEX_BY_ID.get(item.id) : null;
     const numEl = target.querySelector('.tf-btn-num');
     if (numEl) numEl.textContent = num || 'F';
-    if (item) {
-      target.title = item.name + (item.vars ? ' (' + _getVar(item) + ')' : '') + ' (Shift+F)';
-    } else {
-      target.title = 'Форматирование текста (Shift+F)';
-    }
   }
 
   function createButton(ta) {
@@ -175,7 +170,6 @@ window.TextFormat = (() => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'font-ctrl-btn tf-btn';
-    btn.title = 'Форматирование текста (Shift+F)';
     btn.innerHTML = '<span class="tf-btn-num">F</span>';
     btn.setAttribute('aria-label', 'Форматирование текста');
     btn.setAttribute('aria-haspopup', 'menu');
