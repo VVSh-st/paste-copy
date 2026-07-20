@@ -1326,7 +1326,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 **Файл:** `text-format.js` (новый, ~400 строк), `styles.css`
 
 **Функционал:**
-- 49 пунктов форматирования в 8 группах (tier 1-8)
+- 50 пунктов форматирования в 8 группах (tier 1-8)
 - Кнопка в footer текстового блока перед "Тезаурус"
 - **Короткий клик:** выполняет последний выбранный пункт
 - **Долгий клик (400мс) / ПКМ:** открывает меню
@@ -1362,7 +1362,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `app.js:746-754` — Shift+F shortcut
 - `index.html:1894` — `<script src="text-format.js">`
 
-**Коммиты:** `a6d1845` → `c74121e` → `18b1a70` (revert) → `ccc28ab` → `099b9ba` → `60df0bd` → `9abc49d` → `41af167` → `f23d4b5` → `08f0687` → `3488b22` → `9768dac` → `bc34af9` → `0c2d68c` → `e820def` → `2c9ddc9` → `d3166bd` → `7ff15e2` → `8e2aff5` → `6608828` → `1f4aa30` → `c9ee47c`
+**Коммиты:** `a6d1845` → `c74121e` → `18b1a70` (revert) → `ccc28ab` → `099b9ba` → `60df0bd` → `9abc49d` → `41af167` → `f23d4b5` → `08f0687` → `3488b22` → `9768dac` → `bc34af9` → `0c2d68c` → `e820def` → `2c9ddc9` → `d3166bd` → `7ff15e2` → `8e2aff5` → `6608828` → `1f4aa30` → `c9ee47c` → `a255260`
 
 **Аудит GPT-5 Codex (6 раундов):**
 - Раунд 1 (`ccc28ab`): trim (trimEnd→trim), varSpan scope fix, deindent guard, uncomment regex, aria, ITEM_BY_ID Map
@@ -1377,6 +1377,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - Раунд 10 (`6608828`): Zalgo (new tier 8), JSON modes 2/4/min, leet Cyrillic, tooltip shows item.name+var, wrap indent-aware width, caesar ё+dynamicallycyr.length, contacts URL trailing punctuation strip, spaces [^\\S\\r\\n]
 - Раунд 11 (`1f4aa30`): Russian names (Title Case→Слово с Заглавной, etc.), contacts Unicode email (\\p{L}\\p{N})
 - Раунд 12 (`c9ee47c`): Typography (tier 7, «кавычки»/—/…/nbsp), Small Caps (tier 8), mirror vars renamed, contacts returns empty on no match, comment "46" removed
+- Раунд 13 (`a255260`): caseconv (tier 2, camel/snake/kebab), sp2tab leading-only, uniqword/sortword trim+filterEmpty, numstep startFrom1, varSpan tabIndex=-1, keyboard safeIdx+closestRow
 
 **Поведение меню:**
 - Клик по пункту = ТОЛЬКО выбор + закрытие + смена цифры на иконке. НЕ применяет.
