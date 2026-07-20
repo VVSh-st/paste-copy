@@ -46,7 +46,7 @@ window.TextFormat = (() => {
     { id: 'caesar',   tier: 4, name: 'Шифр Цезаря',          desc: 'Сдвиг букв на N позиций', example: 'abc → def (+3)', vars: ['+1', '+3', '+6', '+13', '-1', '-3', '-6', '-13'], fn: (t, v) => { const n = parseInt(v); const alpha = 'abcdefghijklmnopqrstuvwxyz'; const cyr = 'абвгдежзийклмнопрстуфхцчшщъыьэюя'; return t.split('').map(ch => { const isUpper = ch === ch.toUpperCase(); const lower = ch.toLowerCase(); let idx = alpha.indexOf(lower); if (idx !== -1) { idx = (idx + n + 26) % 26; return isUpper ? alpha[idx].toUpperCase() : alpha[idx]; } idx = cyr.indexOf(lower); if (idx !== -1) { idx = (idx + n + 33) % 33; return isUpper ? cyr[idx].toUpperCase() : cyr[idx]; } return ch; }).join(''); } },
 
     // Tier 5 — Извлечение (transparent)
-    { id: 'contacts', tier: 5, name: 'Извлечь контакты',      desc: 'Найти email / URL / телефоны в тексте', example: 'Позвони 8-900-111-22-33 → контакт', fn: t => { const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|https?:\/\/[^\s]+|[\+]?[0-9][\-\s\(\)]{7,}[0-9]/g; const found = t.match(re); return found ? found.join('\n') : t; } },
+    { id: 'contacts', tier: 5, name: 'Извлечь контакты',      desc: 'Найти email / URL / телефоны в тексте', example: 'Позвони 8-900-111-22-33 → контакт', fn: t => { const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|https?:\/\/[^\s<>"')\]}]+|[\+]?[0-9][\-\s\(\)]{7,}[0-9]/g; const found = t.match(re); return found ? found.join('\n') : t; } },
     { id: 'onlynum',  tier: 5, name: 'Извлечь числа',         desc: 'Оставить только цифры из текста', example: 'a1b2c3 → 123', fn: t => t.replace(/[^0-9]/g, '') },
     { id: 'onlylet',  tier: 5, name: 'Извлечь буквы',         desc: 'Оставить только буквы (latin + кириллица)', example: 'h3ll0 → hll', fn: t => t.replace(/[^a-zA-Zа-яА-ЯёЁ]/g, '') },
     { id: 'uniqword', tier: 5, name: 'Только уникальные слова', desc: 'Дедупликация слов внутри строк', example: 'a b a c → a b c', fn: t => t.split('\n').map(l => { const seen = new Set(); return l.split(/\s+/).filter(w => { if (seen.has(w)) return false; seen.add(w); return true; }).join(' '); }).join('\n') },
@@ -243,6 +243,7 @@ window.TextFormat = (() => {
         if (isSubtle && i === 0) row.classList.add('tf-subtle-first');
         if (_lastItem === item.id) row.classList.add('tf-active');
         row.setAttribute('role', 'menuitem');
+        row.tabIndex = -1;
 
         const num = document.createElement('span');
         num.className = 'tf-num';
@@ -255,26 +256,30 @@ window.TextFormat = (() => {
         row.appendChild(num);
         row.appendChild(name);
 
-        // varSpan — объявлен ДО if, доступен в click handler
+        // varSpan — кнопка-пилюля для цикла переменной
         let varSpan = null;
         if (item.vars) {
-          varSpan = document.createElement('span');
+          varSpan = document.createElement('button');
+          varSpan.type = 'button';
           varSpan.className = 'tf-var';
           varSpan.textContent = _getVar(item);
+          varSpan.setAttribute('aria-label', 'Переключить параметр');
+          varSpan.addEventListener('click', e => {
+            e.stopPropagation();
+            _cycleVar(item);
+            varSpan.textContent = _getVar(item);
+            _lastItem = item.id;
+            _saveLastItem(item.id);
+            updateButtonIcon();
+          });
           row.appendChild(varSpan);
         }
 
-        // Click
+        // Click по строке — execute + close (для всех)
         row.addEventListener('click', e => {
           e.stopPropagation();
-          if (item.vars) {
-            _cycleVar(item);
-            if (varSpan) varSpan.textContent = _getVar(item);
-            return;
-          }
-          _lastItem = item.id;
-          _saveLastItem(item.id);
-          updateButtonIcon();
+          if (item.vars && e.target === varSpan) return; // клик по пилюле обработан выше
+          execute(item, ta);
           hideMenu();
         });
 
@@ -333,6 +338,32 @@ window.TextFormat = (() => {
 
     // aria-expanded
     if (_btnEl) _btnEl.setAttribute('aria-expanded', 'true');
+
+    // Keyboard navigation
+    popup.addEventListener('keydown', e => {
+      const rows = [...popup.querySelectorAll('.tf-menu-item')];
+      const current = document.activeElement;
+      const idx = rows.indexOf(current);
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        hideMenu();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        rows[(idx + 1) % rows.length]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        rows[(idx - 1 + rows.length) % rows.length]?.focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        current?.click();
+      }
+    });
+
+    // Focus first item
+    requestAnimationFrame(() => {
+      popup.querySelector('.tf-menu-item')?.focus();
+    });
 
     // Close handlers
     const onClickOutside = e => {

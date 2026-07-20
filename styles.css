@@ -7804,7 +7804,7 @@ body.help-open {
   text-overflow: ellipsis;
 }
 
-/* Variable */
+/* Variable pill button */
 .tf-var {
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
   font-size: 10px;
@@ -7813,6 +7813,16 @@ body.help-open {
   padding: 1px 5px;
   border-radius: 3px;
   white-space: nowrap;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tf-var:hover {
+  background: rgba(79,142,247,0.2);
+  border-color: rgba(79,142,247,0.3);
+}
+.tf-var:active {
+  background: rgba(79,142,247,0.3);
 }
 
 /* Item tooltip */
