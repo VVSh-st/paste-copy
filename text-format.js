@@ -251,21 +251,18 @@ window.TextFormat = (() => {
           row.appendChild(varSpan);
         }
 
-        // Click
+        // Click — select item + close menu (no apply)
         row.addEventListener('click', e => {
           e.stopPropagation();
           if (item.vars) {
-            // Cycle variable, don't apply
             _cycleVar(item);
             varSpan.textContent = _getVar(item);
-            row.classList.add('tf-active');
-            // Update other rows' active state
-            popup.querySelectorAll('.tf-menu-item').forEach(r => {
-              if (r !== row) r.classList.remove('tf-active');
-            });
-            return;
+            return; // stay in menu to see change
           }
-          execute(item, ta);
+          // Select this item
+          _lastItem = item.id;
+          _saveLastItem(item.id);
+          updateButtonIcon();
           hideMenu();
         });
 
