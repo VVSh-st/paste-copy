@@ -280,6 +280,14 @@ window.TextFormat = (() => {
             _lastItem = item.id;
             _saveLastItem(item.id);
             updateButtonIcon();
+            // Update tooltip active highlight
+            const tip = popup.querySelector('.tf-item-tooltip');
+            if (tip) {
+              const codes = tip.querySelectorAll('code');
+              codes.forEach(c => {
+                c.classList.toggle('tf-tip-active', c.textContent === _getVar(item));
+              });
+            }
           });
           row.appendChild(varSpan);
         }
