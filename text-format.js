@@ -281,11 +281,13 @@ window.TextFormat = (() => {
           row.appendChild(varSpan);
         }
 
-        // Click по строке — execute + close (для всех)
+        // Click по строке — только выбрать + закрыть (без apply)
         row.addEventListener('click', e => {
           e.stopPropagation();
           if (item.vars && e.target === varSpan) return; // клик по пилюле обработан выше
-          execute(item, ta);
+          _lastItem = item.id;
+          _saveLastItem(item.id);
+          updateButtonIcon();
           hideMenu();
         });
 
