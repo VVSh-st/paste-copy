@@ -1280,6 +1280,22 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ## TODO на завтра
 
+### Subtab blocked — фикс множественных blocked (сессия 2026-07-19)
+
+**Баг:** при установке blocked на несколько subtabs (например, 1 и 5), красный цвет появлялся только на первом. Стрелка `>` не горела красным когда заблокированные subtabs были справа.
+
+**Причины (два бага в `updateSubtabBlockedState`):**
+1. **Цифры subtabs:** `findIndex` + `idx === blockedIdx` — применял класс `subtab-blocked` ТОЛЬКО к первому заблокированному subtab. Остальные игнорировались.
+2. **Стрелки:** та же логика `findIndex` — `dir = blockedIdx > cur ? 1 : -1` — определяла направление ТОЛЬКО по первому заблокированному. Если заблокированы 0 и 4, а текущий 2 — `findIndex` возвращал 0 → `dir = -1` → только `<` горела.
+
+**Фикс:**
+1. **Цифры:** `btn.classList.toggle('subtab-blocked', !!b.subtabs[idx]?.blocked)` — каждый subtab проверяется индивидуально (как `updateSubtabCompletedColors` уже делал для completed).
+2. **Стрелки:** `some((s, i) => s.blocked && i < cur)` / `some((s, i) => s.blocked && i > cur)` — каждая стрелка независимо проверяет свою сторону.
+
+**Удалено:** переменная `blockedIdx` (больше не нужна).
+
+**Файл:** `blocks.js` (`updateSubtabBlockedState`)
+
 ### Авто-заголовок блока / вкладки — popup с выбором
 
 **Задача:** сделать то же popup-меню (как в export name) для:
@@ -1302,3 +1318,48 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `llm-features.js:985-1078` — текущий `_showPopup` (паттерн для замены)
 - `blocks.js:4352-4460` — `_showExportNamePopup` (референс popup)
 - `llm-core.js:2027` — промпт `autotitle`
+
+---
+
+### TextFormat — модуль форматирования текста (46 операций)
+
+**Файл:** `text-format.js` (новый, ~400 строк), `styles.css`
+
+**Функционал:**
+- 46 пунктов форматирования в 8 группах (tier 1-8)
+- Кнопка в footer текстового блока перед "Тезаурус"
+- **Короткий клик:** выполняет последний выбранный пункт
+- **Долгий клик (400мс) / ПКМ:** открывает меню
+- **Shift+F:** открывает меню из клавиатуры
+
+**Группы и подсветка:**
+- 8 tier'ов чередуются `transparent → subtle` фоном
+- Tier 1 (1-7): transparent — Регистр и пробелы
+- Tier 2 (8-15): subtle — Форматирование
+- Tier 3 (16-24): transparent — Строки
+- Tier 4 (25-27): subtle — Код/декод
+- Tier 5 (28-32): transparent — Извлечение
+- Tier 6 (33-36): subtle — Трансформации
+- Tier 7 (37-39): transparent — Оформление
+- Tier 8 (40-46): subtle — Безумие
+
+**Пункты с переменной 🔄 (13 шт):**
+Циклят варианты при повторном клике: Номера строк, Wrap, Split, Префикс, Комментарий, Обёртка, Tabs↔Spaces, Переносы строк, Base64, URL Encode, Цезарь, Повторить, Обрезать, Prefix цифрами, Обратный текст, Зеркало
+
+**UI:**
+- Иконка: номер текущего пункта (01-46) моноширинным шрифтом
+- Меню: выпадает вверх, max 320px, scrollbar скрыт
+- Hover: tooltip с описанием + примером (появляется через 500мс)
+- Active state: синяя подсветка текущего пункта
+
+**localStorage:**
+- `text-format-last` — ID последнего пункта
+- `text-format-vars` — текущие варианты переменных `{ itemId: varIndex }`
+
+**Интеграция:**
+- `blocks.js:2806-2810` — кнопка в footer перед thesaurusBtn
+- `app.js:1123` — `TextFormat.init(State)`
+- `app.js:746-754` — Shift+F shortcut
+- `index.html:1894` — `<script src="text-format.js">`
+
+**Коммит:** `a6d1845`
