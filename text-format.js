@@ -13,7 +13,7 @@ window.TextFormat = (() => {
     // Tier 1 — Регистр и пробелы (transparent)
     { id: 'upper',    tier: 1, name: 'Верхний регистр',       desc: 'Все символы в верхний регистр', example: 'hello → HELLO', fn: t => t.toUpperCase() },
     { id: 'lower',    tier: 1, name: 'Нижний регистр',        desc: 'Все символы в нижний регистр', example: 'HELLO → hello', fn: t => t.toLowerCase() },
-    { id: 'trim',     tier: 1, name: 'Trim строк',            desc: 'Убрать пробелы/табы по краям каждой строки', example: '"  hello  " → "hello"', fn: t => t.split('\n').map(l => l.trimEnd()).join('\n') },
+    { id: 'trim',     tier: 1, name: 'Trim строк',            desc: 'Убрать пробелы/табы по краям каждой строки', example: '"  hello  " → "hello"', fn: t => t.split('\n').map(l => l.trim()).join('\n') },
     { id: 'empty',    tier: 1, name: 'Убрать пустые строки',  desc: 'Схлопнуть consecutive пустые строки в одну', example: 'a\\n\\n\\nb → a\\nb', fn: t => t.replace(/\n{2,}/g, '\n') },
     { id: 'sort',     tier: 1, name: 'Сортировка A→Я',       desc: 'Алфавитная сортировка строк', example: 'b\\na → a\\nb', fn: t => t.split('\n').sort((a, b) => a.localeCompare(b, 'ru')).join('\n') },
     { id: 'dedup',    tier: 1, name: 'Убрать дубли строк',    desc: 'Уникальные строки (порядок сохраняется)', example: 'a\\na\\nb → a\\nb', fn: t => { const seen = new Set(); return t.split('\n').filter(l => { if (seen.has(l)) return false; seen.add(l); return true; }).join('\n'); } },
@@ -25,13 +25,13 @@ window.TextFormat = (() => {
     { id: 'json',     tier: 2, name: 'Формат JSON',          desc: 'Красивое форматирование JSON (2 отступа)', example: '{"a":1} → структурированный', fn: t => { try { return JSON.stringify(JSON.parse(t), null, 2); } catch { return t; } } },
     { id: 'slug',     tier: 2, name: 'Slugify',               desc: 'URL-safe строка', example: 'Привет Мир! → привет-мир', fn: t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') },
     { id: 'reverse',  tier: 2, name: 'Обратный порядок',      desc: 'Инвертировать порядок строк', example: 'a\\nb\\nc → c\\nb\\na', fn: t => t.split('\n').reverse().join('\n') },
-    { id: 'deindent', tier: 2, name: 'Убрать отступ',         desc: 'Убрать минимальный общий пробел/таб со всех строк', example: '  a\\n  b → a\\nb', fn: t => { const lines = t.split('\n'); const min = lines.filter(l => l.trim()).reduce((m, l) => Math.min(m, l.match(/^(\s*)/)[1].length), Infinity); return lines.map(l => l.slice(min)).join('\n'); } },
+    { id: 'deindent', tier: 2, name: 'Убрать отступ',         desc: 'Убрать минимальный общий пробел/таб со всех строк', example: '  a\\n  b → a\\nb', fn: t => { const lines = t.split('\n'); const nonEmpty = lines.filter(l => l.trim()); if (!nonEmpty.length) return t; const min = nonEmpty.reduce((m, l) => Math.min(m, l.match(/^(\s*)/)[1].length), Infinity); return lines.map(l => l.slice(min)).join('\n'); } },
     { id: 'wrap',     tier: 2, name: 'Wrap на N',             desc: 'Перенос длинных строк по словам', example: 'Текст >40 символов → перенос', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = parseInt(v); return t.split('\n').map(l => { if (l.length <= n) return l; const words = l.split(' '); let result = '', line = ''; for (const w of words) { if (line && (line + ' ' + w).length > n) { result += line + '\n'; line = w; } else { line = line ? line + ' ' + w : w; } } return result + line; }).join('\n'); } },
     { id: 'split',    tier: 2, name: 'Разбить по',            desc: 'Split по разделителю', example: 'a,b,c → a\\nb\\nc', vars: [',', ';', '|', '\\n', '\\t'], fn: (t, v) => t.split(v === '\\n' ? '\n' : v === '\\t' ? '\t' : v).join('\n') },
 
     // Tier 3 — Строки (transparent)
     { id: 'prefix',   tier: 3, name: 'Префикс строк',         desc: 'Добавить префикс к каждой строке', example: '> hello', vars: ['> ', '// ', '# ', '  ', '→ '], fn: (t, v) => t.split('\n').map(l => v + l).join('\n') },
-    { id: 'uncomment', tier: 3, name: 'Убрать комментарии',  desc: 'Стрипнуть комментарии из начала строк', example: '// code → code', fn: t => t.split('\n').map(l => l.replace(/^\s*(\/\/|#|--|\/\*|\*\/?\s*)/, '')).join('\n') },
+    { id: 'uncomment', tier: 3, name: 'Убрать комментарии',  desc: 'Стрипнуть комментарии из начала строк', example: '// code → code', fn: t => t.split('\n').map(l => l.replace(/^\s*(\/\/|#|--|\/\*|\*\/)\s?/, '')).join('\n') },
     { id: 'comment',  tier: 3, name: 'В комментарий',         desc: 'Обернуть каждую строку в комментарий', example: 'code → // code', vars: ['// ', '# ', '/* ', '-- '], fn: (t, v) => t.split('\n').map(l => v + l).join('\n') },
     { id: 'wrapch',   tier: 3, name: 'Обернуть в',            desc: 'Скобки/кавычки вокруг всего текста', example: 'text → (text)', vars: ['()', '[]', '{}', '""', "''"], fn: (t, v) => { const o = v[0], c = v[1]; return o + t + c; } },
     { id: 'join',     tier: 3, name: 'Склеить строки',        desc: 'Всё в одну строку через пробел', example: 'a\\nb → a b', fn: t => t.replace(/\n/g, ' ') },
@@ -73,6 +73,8 @@ window.TextFormat = (() => {
     { id: 'invisible', tier: 8, name: 'Invisible chars',     desc: 'Вставить zero-width символы между буквами', example: 'hello → h​e​l​l​o', fn: t => t.split('').join('\u200B') },
   ];
 
+  const ITEM_BY_ID = new Map(ITEMS.map(item => [item.id, item]));
+
   // ── Состояние ───────────────────────────────────────────
   let _popup = null;
   let _lastItem = null;
@@ -97,7 +99,7 @@ window.TextFormat = (() => {
     _saveVars();
   }
 
-  // ── Выполнение ──────────────────────────────────────────
+  // ── Выполнение (с поддержкой выделения) ─────────────────
   function execute(item, textarea) {
     if (!textarea) return;
     const text = textarea.value;
@@ -105,13 +107,17 @@ window.TextFormat = (() => {
     try { textarea._skipWordComplete = true; } catch {}
     try {
       const varVal = _getVar(item);
-      const result = item.fn(text, varVal);
-      if (result === text) return;
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
-      textarea.value = result;
-      textarea.selectionStart = 0;
-      textarea.selectionEnd = 0;
+      const hasSelection = start !== end;
+      const source = hasSelection ? text.slice(start, end) : text;
+      const result = item.fn(source, varVal);
+      if (result === source) return;
+      textarea.value = hasSelection
+        ? text.slice(0, start) + result + text.slice(end)
+        : result;
+      textarea.selectionStart = hasSelection ? start : 0;
+      textarea.selectionEnd = hasSelection ? start + result.length : 0;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     } finally {
       try { textarea._skipWordComplete = false; } catch {}
@@ -128,7 +134,7 @@ window.TextFormat = (() => {
 
   function updateButtonIcon() {
     if (!_btnEl) return;
-    const item = _lastItem ? ITEMS.find(i => i.id === _lastItem) : null;
+    const item = _lastItem ? ITEM_BY_ID.get(_lastItem) : null;
     const num = item ? ITEMS.indexOf(item) + 1 : null;
     const numEl = _btnEl.querySelector('.tf-btn-num');
     if (numEl) numEl.textContent = num || 'F';
@@ -146,6 +152,9 @@ window.TextFormat = (() => {
     btn.className = 'font-ctrl-btn tf-btn';
     btn.title = 'Форматирование текста (Shift+F)';
     btn.innerHTML = '<span class="tf-btn-num">F</span>';
+    btn.setAttribute('aria-label', 'Форматирование текста');
+    btn.setAttribute('aria-haspopup', 'menu');
+    btn.setAttribute('aria-expanded', 'false');
     _btnEl = btn;
 
     // Long press → menu, short click → last action
@@ -169,7 +178,7 @@ window.TextFormat = (() => {
       clearTimeout(longPressTimer);
       if (longPressed) { longPressed = false; return; }
       if (_lastItem) {
-        const item = ITEMS.find(i => i.id === _lastItem);
+        const item = ITEM_BY_ID.get(_lastItem);
         if (item) execute(item, ta);
       } else {
         const rect = btn.getBoundingClientRect();
@@ -195,7 +204,7 @@ window.TextFormat = (() => {
   function _showTooltip(anchor) {
     _hideTooltip();
     if (!_lastItem) return;
-    const item = ITEMS.find(i => i.id === _lastItem);
+    const item = ITEM_BY_ID.get(_lastItem);
     if (!item) return;
     _tooltip = document.createElement('div');
     _tooltip.className = 'tf-tooltip';
@@ -216,6 +225,7 @@ window.TextFormat = (() => {
     _loadState();
     const popup = document.createElement('div');
     popup.className = 'tf-menu';
+    popup.setAttribute('role', 'menu');
     _popup = popup;
 
     // Group items by tier
@@ -232,6 +242,7 @@ window.TextFormat = (() => {
         row.className = 'tf-menu-item' + (isSubtle ? ' tf-subtle' : '');
         if (isSubtle && i === 0) row.classList.add('tf-subtle-first');
         if (_lastItem === item.id) row.classList.add('tf-active');
+        row.setAttribute('role', 'menuitem');
 
         const num = document.createElement('span');
         num.className = 'tf-num';
@@ -244,8 +255,10 @@ window.TextFormat = (() => {
         row.appendChild(num);
         row.appendChild(name);
 
+        // varSpan — объявлен ДО if, доступен в click handler
+        let varSpan = null;
         if (item.vars) {
-          const varSpan = document.createElement('span');
+          varSpan = document.createElement('span');
           varSpan.className = 'tf-var';
           varSpan.textContent = _getVar(item);
           row.appendChild(varSpan);
@@ -255,17 +268,13 @@ window.TextFormat = (() => {
         row.addEventListener('click', e => {
           e.stopPropagation();
           if (item.vars) {
-            // Cycle variable, don't apply
             _cycleVar(item);
-            varSpan.textContent = _getVar(item);
-            row.classList.add('tf-active');
-            // Update other rows' active state
-            popup.querySelectorAll('.tf-menu-item').forEach(r => {
-              if (r !== row) r.classList.remove('tf-active');
-            });
+            if (varSpan) varSpan.textContent = _getVar(item);
             return;
           }
-          execute(item, ta);
+          _lastItem = item.id;
+          _saveLastItem(item.id);
+          updateButtonIcon();
           hideMenu();
         });
 
@@ -282,7 +291,6 @@ window.TextFormat = (() => {
             const r = row.getBoundingClientRect();
             tip.style.left = (r.right + 8) + 'px';
             tip.style.top = r.top + 'px';
-            // Adjust if off screen
             requestAnimationFrame(() => {
               const tr = tip.getBoundingClientRect();
               if (tr.right > window.innerWidth - 10) {
@@ -323,6 +331,9 @@ window.TextFormat = (() => {
       }
     });
 
+    // aria-expanded
+    if (_btnEl) _btnEl.setAttribute('aria-expanded', 'true');
+
     // Close handlers
     const onClickOutside = e => {
       if (!popup.contains(e.target)) hideMenu();
@@ -342,6 +353,7 @@ window.TextFormat = (() => {
 
   function hideMenu() {
     if (_popup) { _popup.remove(); _popup = null; }
+    if (_btnEl) _btnEl.setAttribute('aria-expanded', 'false');
     _closeHandlers.forEach(fn => fn());
     _closeHandlers = [];
   }
