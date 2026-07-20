@@ -14,13 +14,13 @@ window.TextFormat = (() => {
     { id: 'upper',    tier: 1, name: 'Верхний регистр',       desc: 'Все символы в верхний регистр', example: 'hello → HELLO', fn: t => t.toUpperCase() },
     { id: 'lower',    tier: 1, name: 'Нижний регистр',        desc: 'Все символы в нижний регистр', example: 'HELLO → hello', fn: t => t.toLowerCase() },
     { id: 'trim',     tier: 1, name: 'Trim строк',            desc: 'Убрать пробелы/табы по краям каждой строки', example: '"  hello  " → "hello"', fn: t => t.split('\n').map(l => l.trim()).join('\n') },
-    { id: 'empty',    tier: 1, name: 'Убрать пустые строки',  desc: 'Схлопнуть consecutive пустые строки в одну', example: 'a\\n\\n\\nb → a\\nb', fn: t => t.replace(/\n{2,}/g, '\n') },
+    { id: 'empty',    tier: 1, name: 'Убрать пустые строки',  desc: 'Схлопнуть consecutive пустые строки в одну', example: 'a\\n\\n\\nb → a\\nb', fn: t => t.replace(/\r?\n[ \t]*(?:\r?\n[ \t]*)+/g, '\n') },
     { id: 'sort',     tier: 1, name: 'Сортировка A→Я',       desc: 'Алфавитная сортировка строк', example: 'b\\na → a\\nb', fn: t => t.split('\n').sort((a, b) => a.localeCompare(b, 'ru')).join('\n') },
     { id: 'dedup',    tier: 1, name: 'Убрать дубли строк',    desc: 'Уникальные строки (порядок сохраняется)', example: 'a\\na\\nb → a\\nb', fn: t => { const seen = new Set(); return t.split('\n').filter(l => { if (seen.has(l)) return false; seen.add(l); return true; }).join('\n'); } },
     { id: 'linenum',  tier: 1, name: 'Номера строк',          desc: 'Добавить нумерацию перед каждой строкой', example: 'a → 1. a', vars: ['1. ', '1) ', '- ', '• ', '→ '], fn: (t, v) => t.split('\n').map((l, i) => { if (v === '1. ') return (i + 1) + '. ' + l; if (v === '1) ') return (i + 1) + ') ' + l; return v + l; }).join('\n') },
 
     // Tier 2 — Форматирование (subtle)
-    { id: 'title',    tier: 2, name: 'Title Case',            desc: 'Каждое слово с заглавной буквы', example: 'hello world → Hello World', fn: t => t.replace(/\b\w/g, c => c.toUpperCase()) },
+    { id: 'title',    tier: 2, name: 'Title Case',            desc: 'Каждое слово с заглавной буквы', example: 'hello world → Hello World', fn: t => t.replace(/(^|[^\p{L}])(\p{L})/gu, (_, prefix, letter) => prefix + letter.toUpperCase()) },
     { id: 'sentence', tier: 2, name: 'Sentence case',         desc: 'Первая буква предложения заглавная', example: 'hello. world → Hello. World', fn: t => t.replace(/(^|[.!?]\s+)([a-zа-яё])/g, (m, p, c) => p + c.toUpperCase()) },
     { id: 'json',     tier: 2, name: 'Формат JSON',          desc: 'Красивое форматирование JSON (2 отступа)', example: '{"a":1} → структурированный', fn: t => { try { return JSON.stringify(JSON.parse(t), null, 2); } catch { return t; } } },
     { id: 'slug',     tier: 2, name: 'Slugify',               desc: 'URL-safe строка', example: 'Привет Мир! → привет-мир', fn: t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') },
@@ -48,12 +48,12 @@ window.TextFormat = (() => {
     // Tier 5 — Извлечение (transparent)
     { id: 'contacts', tier: 5, name: 'Извлечь контакты',      desc: 'Найти email / URL / телефоны в тексте', example: 'Позвони 8-900-111-22-33 → контакт', fn: t => { const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|https?:\/\/[^\s<>"')\]}]+|[\+]?[0-9][\-\s\(\)]{7,}[0-9]/g; const found = t.match(re); return found ? found.join('\n') : t; } },
     { id: 'onlynum',  tier: 5, name: 'Извлечь числа',         desc: 'Оставить только цифры из текста', example: 'a1b2c3 → 123', fn: t => t.replace(/[^0-9]/g, '') },
-    { id: 'onlylet',  tier: 5, name: 'Извлечь буквы',         desc: 'Оставить только буквы (latin + кириллица)', example: 'h3ll0 → hll', fn: t => t.replace(/[^a-zA-Zа-яА-ЯёЁ]/g, '') },
+    { id: 'onlylet',  tier: 5, name: 'Извлечь буквы',         desc: 'Оставить только буквы (latin + кириллица)', example: 'h3ll0 → hll', fn: t => t.replace(/[^\p{Script=Latin}\p{Script=Cyrillic}]/gu, '') },
     { id: 'uniqword', tier: 5, name: 'Только уникальные слова', desc: 'Дедупликация слов внутри строк', example: 'a b a c → a b c', fn: t => t.split('\n').map(l => { const seen = new Set(); return l.split(/\s+/).filter(w => { if (seen.has(w)) return false; seen.add(w); return true; }).join(' '); }).join('\n') },
     { id: 'sortword', tier: 5, name: 'Сортировать слова',     desc: 'Слова в каждой строке по алфавиту', example: 'c a b → a b c', fn: t => t.split('\n').map(l => l.split(/\s+/).sort((a, b) => a.localeCompare(b, 'ru')).join(' ')).join('\n') },
 
     // Tier 6 — Трансформации (subtle)
-    { id: 'revtext',  tier: 6, name: 'Обратный текст',        desc: 'Перевернуть текст', example: 'abc → cba', vars: ['буквы', 'строки'], fn: (t, v) => v === 'строки' ? t.split('\n').reverse().join('\n') : t.split('\n').map(l => l.split('').reverse().join('')).join('\n') },
+    { id: 'revtext',  tier: 6, name: 'Обратный текст',        desc: 'Перевернуть текст', example: 'abc → cba', vars: ['буквы', 'строки'], fn: (t, v) => v === 'строки' ? t.split('\n').reverse().join('\n') : t.split('\n').map(l => Array.from(l).reverse().join('')).join('\n') },
     { id: 'shuffle',  tier: 6, name: 'Shuffle строки',        desc: 'Случайный порядок строк', example: 'c\\na\\nb → b\\nc\\na', fn: t => { const a = t.split('\n'); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.join('\n'); } },
     { id: 'sortlen',  tier: 6, name: 'Сортировка по длине',   desc: 'Короткие строки сверху', example: 'ccc\\nbb\\na → a\\nbb\\nccc', fn: t => t.split('\n').sort((a, b) => a.length - b.length).join('\n') },
     { id: 'repeat',   tier: 6, name: 'Повторить N',           desc: 'Дублировать текст N раз', example: 'hello × 3', vars: ['2', '3', '5', '10'], fn: (t, v) => { const n = parseInt(v); return Array(n).fill(t).join('\n'); } },
@@ -75,11 +75,19 @@ window.TextFormat = (() => {
 
   const ITEM_BY_ID = new Map(ITEMS.map(item => [item.id, item]));
 
+  // Precompute tier grouping
+  const ITEMS_BY_TIER = {};
+  ITEMS.forEach((item, idx) => {
+    if (!ITEMS_BY_TIER[item.tier]) ITEMS_BY_TIER[item.tier] = [];
+    ITEMS_BY_TIER[item.tier].push({ item, idx });
+  });
+
   // ── Состояние ───────────────────────────────────────────
   let _popup = null;
   let _lastItem = null;
   let _vars = {};
   let _closeHandlers = [];
+  let _closeHandlersTimer = null;
   let _State = null;
 
   function _loadState() {
@@ -90,7 +98,11 @@ window.TextFormat = (() => {
   function _saveLastItem(id) { try { localStorage.setItem(STORAGE_KEY, id); } catch {} }
   function _saveVars() { try { localStorage.setItem(STORAGE_VARS, JSON.stringify(_vars)); } catch {} }
 
-  function _getVarIdx(item) { return _vars[item.id] ?? 0; }
+  function _getVarIdx(item) {
+    if (!item.vars?.length) return 0;
+    const saved = Number(_vars[item.id]);
+    return Number.isInteger(saved) && saved >= 0 && saved < item.vars.length ? saved : 0;
+  }
   function _getVar(item) { return item.vars ? item.vars[_getVarIdx(item)] : null; }
   function _cycleVar(item) {
     if (!item.vars) return;
@@ -228,16 +240,10 @@ window.TextFormat = (() => {
     popup.setAttribute('role', 'menu');
     _popup = popup;
 
-    // Group items by tier
-    const tiers = {};
-    ITEMS.forEach((item, idx) => {
-      if (!tiers[item.tier]) tiers[item.tier] = [];
-      tiers[item.tier].push({ item, idx });
-    });
-
-    Object.keys(tiers).sort((a, b) => a - b).forEach((tier, tierIdx) => {
+    // Group items by tier (precomputed)
+    Object.keys(ITEMS_BY_TIER).sort((a, b) => a - b).forEach((tier, tierIdx) => {
       const isSubtle = tierIdx % 2 === 1;
-      tiers[tier].forEach(({ item, idx }, i) => {
+      ITEMS_BY_TIER[tier].forEach(({ item, idx }, i) => {
         const row = document.createElement('div');
         row.className = 'tf-menu-item' + (isSubtle ? ' tf-subtle' : '');
         if (isSubtle && i === 0) row.classList.add('tf-subtle-first');
@@ -372,7 +378,9 @@ window.TextFormat = (() => {
     const onContextMenu = e => {
       if (!popup.contains(e.target)) { e.preventDefault(); hideMenu(); }
     };
-    setTimeout(() => {
+    _closeHandlersTimer = setTimeout(() => {
+      _closeHandlersTimer = null;
+      if (_popup !== popup) return; // stale — new menu opened
       document.addEventListener('mousedown', onClickOutside, true);
       document.addEventListener('contextmenu', onContextMenu, true);
     }, 0);
@@ -383,6 +391,7 @@ window.TextFormat = (() => {
   }
 
   function hideMenu() {
+    if (_closeHandlersTimer) { clearTimeout(_closeHandlersTimer); _closeHandlersTimer = null; }
     if (_popup) { _popup.remove(); _popup = null; }
     if (_btnEl) _btnEl.setAttribute('aria-expanded', 'false');
     _closeHandlers.forEach(fn => fn());

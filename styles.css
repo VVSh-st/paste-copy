@@ -7772,6 +7772,9 @@ body.help-open {
 }
 .tf-menu-item.tf-active {
   color: var(--accent, #4f8ef7);
+  background: rgba(79,142,247,0.08);
+  border-left: 3px solid var(--accent, #4f8ef7);
+  padding-left: 9px;
 }
 
 /* Subtle group alternation */
