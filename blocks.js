@@ -848,8 +848,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const autoTitleBtn = document.createElement('button');
       autoTitleBtn.type      = 'button';
       autoTitleBtn.className = 'llm-block-btn';
-      autoTitleBtn.title     = 'Авто-заголовок (LLM)';
-      autoTitleBtn.setAttribute('aria-label', 'Авто-заголовок через LLM');
+      autoTitleBtn.title     = 'Авто-заголовок';
+      autoTitleBtn.setAttribute('aria-label', 'Авто-заголовок через');
       autoTitleBtn.innerHTML =
         '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">' +
         '<path d="M8 2l.9 1.8 2 .3-1.45 1.4.34 2L8 6.7l-1.79.8.34-2L5.1 4.1l2-.3z"/>' +
@@ -863,7 +863,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const subtabAutoBtn = document.createElement('button');
       subtabAutoBtn.type = 'button';
       subtabAutoBtn.className = 'subtab-autotitle-btn';
-      subtabAutoBtn.title = 'Авто-заголовок вкладки (LLM)';
+      subtabAutoBtn.title = 'Авто-заголовок вкладки';
       subtabAutoBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><path d="M8 2v4m0 4v4M2 8h4m4 0h4"/><circle cx="8" cy="8" r="2.5"/></svg>';
       subtabAutoBtn.addEventListener('click', e => {
         e.stopPropagation();
@@ -2803,6 +2803,12 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     footer.appendChild(fIncBtn);
     footer.appendChild(pasteCursorBtn);
     footer.appendChild(spellcheckBtn);
+
+    // Text Format button — перед Тезаурусом
+    if (typeof TextFormat !== 'undefined') {
+      const formatBtn = TextFormat.createButton(ta);
+      footer.appendChild(formatBtn);
+    }
 
     const thesaurusBtn = document.createElement('button');
     thesaurusBtn.type = 'button';
