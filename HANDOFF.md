@@ -2,6 +2,31 @@
 
 ## Текущий статус
 
+### Меню настроек — реорганизация (задание 1)
+
+**Проблема:** было 2 меню настроек, нужно объединить и структурировать.
+
+**Решение:**
+1. **Перенесены пункты** из `settings-dropdown` в секцию "Общее" вкладки "Разное" LLM-настроек:
+   - Разделитель (select)
+   - Подсказки (hover) (checkbox)
+   - Clipboard API (вставка) (checkbox)
+   - Ninja cursor (след каретки) (checkbox)
+2. **Переименован `settings-dropdown`** в "INTELLIGENCE" (кнопка + заголовок меню)
+3. **Оставлены в INTELLIGENCE:**
+   - Сохранить версию структуры
+   - Сравнить версии структуры
+   - Baseline структуры
+   - Сделать текущую baseline
+   - Очистка ProjectGraph
+   - Синхронизация памяти
+   - Диагностика и обучение
+
+**Файл:** `index.html`
+**Коммит:** `20a2c29`
+
+---
+
 ### Highlight.js — подсветка кода в markdown
 
 **Подключена** через CDN (`github-dark-dimmed` тема). Автономно, без настроек, авто-определение языка.
@@ -198,7 +223,7 @@
 | `ui.js` | Превью: 3-режимная кнопка MD (Text→MD→MD*→Text), `getMdHighlight()`, highlight.js только в режиме md-hl; **Кнопка превью:** `btn.classList.toggle('collapsed')` вместо textContent, `toggleCollapse()` + `toggleStartCollapsed()` |
 | `notepad.js` | MD-превью: кнопка, `_renderMdPreview`, `_toggleMdPreview`, `marked.parse()`; `_loadSaved` возвращает `mdPreview`; A−/A+ работают в MD; render при открытии; SVG "MD"; кнопки MD + "Перевести текст" в header; перевод: `_undoStack`, dropdown (язык/движок), long-press 400ms, без toast, очистка при смене вкладки и закрытии; `_cleanupTranslate` listener; highlight.jsalways on |
 | `llm-features.js` | Мини-чат: `_renderChatMd` хелпер (marked.parse + hljs), assistant-сообщения рендерятся как markdown с подсветкой; `finalizeLastMessage` переключает на markdown после стриминга; translate undo сохраняет raw text в `dataset.rawText` |
-| `index.html` | highlight.js CSS + JS через CDN; `prev-md` button; **Шапка превью:** заголовок "Paste\copy", удалён QR-кнопка, SVG-иконки (экспорт .md, скачивание, аудит-щит, воронка-сжатие, mindmap, блок-схема), кнопка "превью" с классом `.preview-toggle-wrap` |
+| `index.html` | highlight.js CSS + JS через CDN; `prev-md` button; **Шапка превью:** заголовок "Paste\copy", удалён QR-кнопка, SVG-иконки (экспорт .md, скачивание, аудит-щит, воронка-сжатие, mindmap, блок-схема), кнопка "превью" с классом `.preview-toggle-wrap`; **Реорганизация меню:** перенесены пункты (Разделитель, Подсказки, Clipboard API, Ninja cursor) из `settings-dropdown` в "Общее" вкладки "Разное" LLM-настроек; `settings-dropdown` переименован в "INTELLIGENCE" |
 | `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон; **Capture pulse:** `@keyframes capturePulse` 1s infinite, `.capture-active` accent + glow, `prefers-reduced-motion` → animation none; **Кнопка превью:** `.preview-toggle-wrap` — min-width 75px, accent цвет, `.collapsed` состояние, `@keyframes toggleBreathe` 4s infinite, `prefers-reduced-motion` отключение |
 | `prompt-loom.js` | `renderPalette` — DOM-diff (не пересоздаёт search input); `close-all-palettes` listener; `closePalette` export; фикс `handleBackslashTrigger` |
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
@@ -1355,6 +1380,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `_lastItem` + `updateButtonIcon` до проверки `result===source`
 - Caret ставится в конец результата (без выделения)
 - `!text.length` вместо `!text.trim()` (whitespace-only обрабатывается)
+- **Undo-safe:** `document.execCommand('insertText')` с fallback на прямое присваивание
 
 **Клавиатура:**
 - Escape→close, ArrowUp/Down→focus (safeIdx), Enter/Space→activate (closest row)
@@ -1369,6 +1395,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `ITEM_BY_ID`, `ITEM_INDEX_BY_ID`, `ITEMS_BY_TIER` — предвычисление
 - `ZALGO_UP/MID/DOWN` + `_zalgoPick` — модульные константы
 - `ALPHA_RE` + `isAlpha` — общий regex для randcase/leet
+- `CYR_TO_LAT`, `LAT_TO_CYR`, `LAT_TO_CYR_RE` — предвычисленные таблицы cyr2lat
 
 **Интеграция:**
 - `blocks.js:2806-2810` — кнопка в footer перед thesaurusBtn
@@ -1376,10 +1403,10 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `app.js:746-754` — Shift+F shortcut
 - `index.html:1894` — `<script src="text-format.js">`
 
-**Ключевые фиксы (16 раундов аудита):**
-- cyr2lat: обратимая транслитерация (й→j, ы→y, regex multi-char ← Cyr)
+**Ключевые фиксы (16 раундов аудита + hover откат):**
+- cyr2lat: полная обратимость (й→j, ы→y, э→eh, ъ→', ь→'', precomputed tables + regex)
 - wrap: отступ + available width, long-word chunking
-- execute: scrollTop, _lastItem before early return, caret→end
+- execute: scrollTop, _lastItem before early return, caret→end, undo-safe (execCommand)
 - Tooltip: single DOM node, clamp по всем краям, max-width
 - Меню: DocumentFragment, aria-current, Space key, safeIdx
 - Sentence: `\n\s*` + `…` для многоточия, `\s*` вместо `\s+` для hello.world
@@ -1390,5 +1417,8 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - join/CRLF, spaces Unicode, contacts Unicode email + URL trim
 - bubble/invisible/caesar: Array.from для emoji
 - Round 16: ALPHA_RE/isAlpha, tf-btn-var бейдж, onClickOutside исключает кнопку, empty rows guard
+- Round 17: uncomment сохраняет отступ, b64 TextEncoder/TextDecoder, tooltip supress при long press/menu open
+- Round 18: b64 chunked encoding, menu position numerical clamp, varSpan обновляет active class, closeHandlers push после регистрации listeners
+- Round 19: tooltip supress при long press/menu open, tooltip overlap fix
 
-**Коммиты:** `a6d1845` → ... → `fed8cc9` (16 раундов аудита)
+**Коммиты:** `a6d1845` → ... → `b1c73fe` (16 раундов аудита, hover откачен)
