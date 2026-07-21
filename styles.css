@@ -7752,7 +7752,8 @@ body.help-open {
   pointer-events: none;
 }
 .thesaurus-btn {
-  min-width: 24px;
+  min-width: 26px;
+  min-height: 22px;
   justify-content: center;
 }
 .tf-btn-var {
