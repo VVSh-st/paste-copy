@@ -179,7 +179,8 @@ window.TextFormat = (() => {
     if (numEl) numEl.textContent = num || 'F';
     const varEl = target.querySelector('.tf-btn-var');
     if (varEl) {
-      const value = item?.vars ? _getVar(item) : '';
+      const raw = item?.vars ? _getVar(item) : '';
+      const value = raw.length > 3 ? raw.slice(0, 3) : raw;
       varEl.textContent = value;
       varEl.hidden = !value;
     }
