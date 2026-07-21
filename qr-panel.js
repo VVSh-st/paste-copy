@@ -494,43 +494,44 @@ const QRPanel = (() => {
       return;
     }
 
-    // Draw QR at native resolution (1 pixel per module)
-    // CSS width:100% + height:auto scales it to fill the wrapper
+    // Draw QR — render at module size from slider (min 2px) for visible styles
+    // CSS width:100% scales the canvas to fill the wrapper
     const quiet = _padding ? 4 : 0;
-    const nativeSize = qr.size + quiet * 2;
+    const modPx = Math.max(2, _moduleSize);
+    const renderSize = (qr.size + quiet * 2) * modPx;
     const captionText = _caption.trim();
-    _lastModSize = _moduleSize;
+    _lastModSize = modPx;
 
-    canvas.width = nativeSize;
-    canvas.height = nativeSize;
+    canvas.width = renderSize;
+    canvas.height = renderSize;
 
     // Background
     ctx.fillStyle = _bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw modules — function modules use classic style, data modules use selected style
+    // Draw modules — function modules always classic, data modules use selected style
     ctx.fillStyle = _fg;
     for (let r = 0; r < qr.size; r++) {
       for (let c = 0; c < qr.size; c++) {
         if (!qr.matrix[r][c]) continue;
-        const x = c + quiet;
-        const y = r + quiet;
-        _drawModule(ctx, x, y, 1, qr.reserved[r][c] ? 'classic' : _style);
+        const x = (c + quiet) * modPx;
+        const y = (r + quiet) * modPx;
+        _drawModule(ctx, x, y, modPx, qr.reserved[r][c] ? 'classic' : _style);
       }
     }
 
     // Caption below QR — render as part of the canvas for clean export
     if (captionText) {
-      const extraH = Math.max(2, Math.floor(nativeSize * 0.1));
-      canvas.height = nativeSize + extraH;
+      const extraH = Math.max(2, Math.floor(modPx * 2));
+      canvas.height = renderSize + extraH;
       ctx.fillStyle = _bg;
-      ctx.fillRect(0, nativeSize, nativeSize, extraH);
-      const fSize = Math.max(1, Math.floor(nativeSize * 0.06));
+      ctx.fillRect(0, renderSize, renderSize, extraH);
+      const fSize = Math.max(2, Math.floor(modPx * 1.2));
       ctx.font = `bold ${fSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
       ctx.fillStyle = _fg;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(captionText, nativeSize / 2, nativeSize + extraH / 2);
+      ctx.fillText(captionText, renderSize / 2, renderSize + extraH / 2);
       _lastCaptionFontSize = fSize;
     }
 
