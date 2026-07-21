@@ -444,7 +444,8 @@ const Notepad = (() => {
         translateLongPressed = true;
         if (!translateDropdown.children.length && typeof Translator !== 'undefined') _buildTranslateMenu();
         const rect = translateBtn.getBoundingClientRect();
-        translateDropdown.style.left = rect.left + 'px';
+        const ddWidth = 180;
+        translateDropdown.style.left = Math.max(4, rect.right - ddWidth) + 'px';
         translateDropdown.style.top = (rect.bottom + 4) + 'px';
         translateDropdown.style.bottom = '';
         translateDropdown.style.display = translateDropdown.style.display === 'none' ? 'block' : 'none';
