@@ -375,7 +375,7 @@ window.TextFormat = (() => {
           hideMenu();
         });
 
-        // Hover tooltip (appended to body to avoid transform containing block)
+        // Hover tooltip
         let hoverTimer = null;
         row.addEventListener('mouseenter', () => {
           clearTimeout(hoverTimer);
@@ -383,7 +383,7 @@ window.TextFormat = (() => {
             if (!_menuTooltip) {
               _menuTooltip = document.createElement('div');
               _menuTooltip.className = 'tf-item-tooltip';
-              document.body.appendChild(_menuTooltip);
+              popup.appendChild(_menuTooltip);
             }
             let varHtml = '';
             if (item.vars) {
@@ -395,13 +395,19 @@ window.TextFormat = (() => {
             _menuTooltip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '') + varHtml;
             _menuTooltip.style.display = '';
             const r = row.getBoundingClientRect();
+            const pr = popup.getBoundingClientRect();
             let left = r.right + 8;
             let top = r.top;
             requestAnimationFrame(() => {
               if (!_menuTooltip) return;
               const tr = _menuTooltip.getBoundingClientRect();
+              // If tooltip would go off-screen right, flip to left side
               if (tr.right > window.innerWidth - 10) left = Math.max(10, r.left - tr.width - 8);
               if (left < 10) left = 10;
+              // If tooltip overlaps the menu popup, move it below the row
+              if (left < pr.right && left + tr.width > pr.left && top < pr.bottom && top + tr.height > pr.top) {
+                top = r.bottom + 4;
+              }
               if (tr.bottom > window.innerHeight - 10) top = Math.max(10, window.innerHeight - tr.height - 10);
               _menuTooltip.style.left = left + 'px';
               _menuTooltip.style.top = top + 'px';
@@ -495,7 +501,7 @@ window.TextFormat = (() => {
   function hideMenu() {
     if (_closeHandlersTimer) { clearTimeout(_closeHandlersTimer); _closeHandlersTimer = null; }
     if (_popup) { _popup.remove(); _popup = null; }
-    if (_menuTooltip) { _menuTooltip.remove(); _menuTooltip = null; }
+    _menuTooltip = null;
     const expandedBtn = _menuBtn || _btnEl;
     if (expandedBtn) expandedBtn.setAttribute('aria-expanded', 'false');
     _menuBtn = null;
