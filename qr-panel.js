@@ -476,8 +476,6 @@ const QRPanel = (() => {
     if (!_pages.length) {
       canvas.width = 1;
       canvas.height = 1;
-      canvas.style.width = '';
-      canvas.style.height = '';
       if (statsEl) statsEl.textContent = 'Нет данных';
       if (sourceEl) sourceEl.textContent = '';
       if (pageEl) pageEl.textContent = '';
@@ -492,30 +490,19 @@ const QRPanel = (() => {
     if (!qr) {
       canvas.width = 1;
       canvas.height = 1;
-      canvas.style.width = '';
-      canvas.style.height = '';
       if (statsEl) statsEl.textContent = 'Текст не помещается в QR-код';
       return;
     }
 
-    // Draw QR at native resolution (1 pixel per module) — CSS handles scaling
+    // Draw QR at native resolution (1 pixel per module)
+    // CSS width:100% + height:auto scales it to fill the wrapper
     const quiet = _padding ? 4 : 0;
-    const nativeSize = (qr.size + quiet * 2);
+    const nativeSize = qr.size + quiet * 2;
     const captionText = _caption.trim();
-    const captionHeight = captionText ? Math.max(16, Math.floor(nativeSize * 0.15)) : 0;
-    _lastModSize = _moduleSize; // for export
-    _lastCaptionFontSize = 16;
+    _lastModSize = _moduleSize;
 
     canvas.width = nativeSize;
-    canvas.height = nativeSize + captionHeight;
-
-    // Scale canvas via CSS to fill the wrapper (object-fit: contain handles aspect ratio)
-    const wrap = _panel?.querySelector('.qr-canvas-wrap');
-    const availW = wrap ? wrap.clientWidth - 24 : 300;
-    const availH = wrap ? wrap.clientHeight - 24 : 300;
-    const scale = Math.min(availW / nativeSize, availH / (nativeSize + captionHeight), 8);
-    canvas.style.width = Math.floor(nativeSize * scale) + 'px';
-    canvas.style.height = Math.floor((nativeSize + captionHeight) * scale) + 'px';
+    canvas.height = nativeSize;
 
     // Background
     ctx.fillStyle = _bg;
@@ -532,14 +519,18 @@ const QRPanel = (() => {
       }
     }
 
-    // Caption below QR
+    // Caption below QR — render as part of the canvas for clean export
     if (captionText) {
-      const fSize = Math.max(1, Math.floor(nativeSize * 0.08));
+      const extraH = Math.max(2, Math.floor(nativeSize * 0.1));
+      canvas.height = nativeSize + extraH;
+      ctx.fillStyle = _bg;
+      ctx.fillRect(0, nativeSize, nativeSize, extraH);
+      const fSize = Math.max(1, Math.floor(nativeSize * 0.06));
       ctx.font = `bold ${fSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
       ctx.fillStyle = _fg;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(captionText, nativeSize / 2, nativeSize + Math.max(1, Math.floor(nativeSize * 0.03)));
+      ctx.textBaseline = 'middle';
+      ctx.fillText(captionText, nativeSize / 2, nativeSize + extraH / 2);
       _lastCaptionFontSize = fSize;
     }
 
