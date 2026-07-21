@@ -2668,27 +2668,38 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       });
       translateDropdown.appendChild(engineRow);
 
-      // Auto-target option
-      const autoOpt = document.createElement('button');
-      autoOpt.type = 'button';
-      autoOpt.className = 'translate-lang-opt' + (Translator.autoTarget ? ' active' : '');
-      autoOpt.textContent = '🔄 Auto (RU↔EN)';
-      autoOpt.onclick = e => {
-        e.stopPropagation();
-        Translator.autoTarget = true;
-        translateBtn.dataset.lang = 'auto';
-        translateBtn.title = 'Перевести → Auto (RU↔EN)';
-        _buildTranslateMenu();
-        translateDropdown.style.display = 'none';
-      };
-      translateDropdown.appendChild(autoOpt);
+      const AUTO_PAIRS = { ru: 'en', en: 'ru' };
 
       Translator.LANGUAGES.forEach(lang => {
         const opt = document.createElement('button');
         opt.type = 'button';
-        opt.className = 'translate-lang-opt' + (!Translator.autoTarget && lang.code === Translator.targetLang ? ' active' : '');
+        const isActive = !Translator.autoTarget && lang.code === Translator.targetLang;
+        opt.className = 'translate-lang-opt' + (isActive ? ' active' : '');
         opt.textContent = lang.flag + ' ' + lang.name;
+
+        // Auto toggle pill — only on "ru" row
+        if (lang.code === 'ru') {
+          const pill = document.createElement('span');
+          pill.className = 'translate-auto-pill' + (Translator.autoTarget ? ' active' : '');
+          pill.textContent = Translator.autoTarget ? 'RU↔EN' : 'Auto';
+          pill.onclick = e => {
+            e.stopPropagation();
+            Translator.autoTarget = !Translator.autoTarget;
+            if (Translator.autoTarget) {
+              translateBtn.dataset.lang = 'auto';
+              translateBtn.title = 'Перевести → Auto (RU↔EN)';
+            } else {
+              Translator.targetLang = 'en';
+              translateBtn.dataset.lang = 'en';
+              translateBtn.title = 'Перевести → English';
+            }
+            _buildTranslateMenu();
+          };
+          opt.appendChild(pill);
+        }
+
         opt.onclick = e => {
+          if (e.target.closest('.translate-auto-pill')) return;
           e.stopPropagation();
           Translator.autoTarget = false;
           Translator.targetLang = lang.code;
