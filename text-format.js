@@ -427,10 +427,21 @@ window.TextFormat = (() => {
 
     document.body.appendChild(popup);
 
-    // Position
+    // Position: try upward from button, fit max-height to available space
     popup.style.left = x + 'px';
-    popup.style.bottom = (window.innerHeight - y + 4) + 'px';
     popup.style.top = 'auto';
+    const spaceAbove = y - 10;
+    const spaceBelow = window.innerHeight - y - 10;
+    const fullHeight = popup.scrollHeight;
+    if (fullHeight <= spaceAbove) {
+      popup.style.bottom = (window.innerHeight - y + 4) + 'px';
+    } else if (spaceAbove >= 150) {
+      popup.style.bottom = (window.innerHeight - y + 4) + 'px';
+      popup.style.maxHeight = spaceAbove + 'px';
+    } else {
+      popup.style.top = (y + 4) + 'px';
+      popup.style.maxHeight = Math.max(150, spaceBelow) + 'px';
+    }
 
     requestAnimationFrame(() => {
       const rect = popup.getBoundingClientRect();
@@ -438,11 +449,6 @@ window.TextFormat = (() => {
       if (left + rect.width > window.innerWidth - 10) left = window.innerWidth - rect.width - 10;
       left = Math.max(10, left);
       popup.style.left = left + 'px';
-      const next = popup.getBoundingClientRect();
-      if (next.top < 10 || next.bottom > window.innerHeight - 10) {
-        popup.style.top = '10px';
-        popup.style.bottom = 'auto';
-      }
     });
 
     // aria-expanded
