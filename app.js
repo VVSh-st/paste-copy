@@ -744,8 +744,8 @@
       }
     }
 
-    // TextFormat: Shift+F — меню форматирования
-    else if (e.shiftKey && !ctrl && k === 'KeyF') {
+    // TextFormat: Alt+Shift+F — меню форматирования (Shift+F конфликтует с вводом "А" на русской раскладке)
+    else if (e.altKey && e.shiftKey && !ctrl && k === 'KeyF') {
       e.preventDefault();
       if (typeof TextFormat !== 'undefined') {
         const ta = document.activeElement;
