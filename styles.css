@@ -1012,7 +1012,7 @@ textarea.block-textarea {
   color: var(--text1); font-family: var(--mono); font-size: 12px; line-height: 1.65;
   padding: 9px 11px; border-radius: var(--radius-sm);
   resize: vertical; outline: none;
-  min-height: 80px; max-height: 1000px; overflow-y: auto; flex-shrink: 0;
+  min-height: 80px; max-height: 1200px; overflow-y: auto; flex-shrink: 0;
   transition: border-color var(--trans), box-shadow var(--trans);
 }
 textarea.block-textarea:focus {
@@ -2379,7 +2379,7 @@ textarea.block-textarea:focus {
   overflow: auto; background: var(--bg0); color: var(--text1);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 7px 9px; font-size: 13px; line-height: 1.6;
-  min-height: 80px; max-height: 60vh;
+  min-height: 80px; max-height: 1200px;
   resize: vertical;
 }
 .block-md-content h1, .block-md-content h2, .block-md-content h3,
