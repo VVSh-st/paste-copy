@@ -1321,9 +1321,9 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ---
 
-### TextFormat — модуль форматирования текста (46 операций)
+### TextFormat — модуль форматирования текста (50 операций)
 
-**Файл:** `text-format.js` (новый, ~400 строк), `styles.css`
+**Файл:** `text-format.js` (~490 строк), `styles.css`
 
 **Функционал:**
 - 50 пунктов форматирования в 8 группах (tier 1-8)
@@ -1332,29 +1332,42 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - **Долгий клик (400мс) / ПКМ:** открывает меню
 - **Shift+F:** открывает меню из клавиатуры
 
-**Группы и подсветка:**
-- 8 tier'ов чередуются `transparent → subtle` фоном
-- Tier 1 (1-7): transparent — Регистр и пробелы
-- Tier 2 (8-15): subtle — Форматирование
-- Tier 3 (16-24): transparent — Строки
-- Tier 4 (25-27): subtle — Код/декод
-- Tier 5 (28-32): transparent — Извлечение
-- Tier 6 (33-36): subtle — Трансформации
-- Tier 7 (37-39): transparent — Оформление
-- Tier 8 (40-46): subtle — Безумие
-
-**Пункты с переменной 🔄 (13 шт):**
-Циклят варианты при повторном клике: Номера строк, Wrap, Split, Префикс, Комментарий, Обёртка, Tabs↔Spaces, Переносы строк, Base64, URL Encode, Цезарь, Повторить, Обрезать, Prefix цифрами, Обратный текст, Зеркало
+**50 пунктов по tier'ам:**
+- **Tier 1 (1-7):** Регистр и пробелы — Верхний/Нижний регистр, Trim строк, Убрать пустые строки, Сортировка A→Я, Убрать дубли строк, Номера строк
+- **Tier 2 (8-15):** Форматирование — Слово с Заглавной, Предложение с Заглавной, Формат JSON (2/4/min), Slugify, Case строки (camel/snake/kebab), Обратный порядок, Убрать отступ, Перенос на N, Разбить по
+- **Tier 3 (16-24):** Строки — Префикс строк, Убрать комментарии, В комментарий, Обернуть в, Склеить строки, Схлопнуть пробелы, Табы→Пробелы, Пробелы→Табы, Переносы строк
+- **Tier 4 (25-27):** Код/декод — Base64, URL-кодирование, Шифр Цезаря (с ё, обратимый)
+- **Tier 5 (28-32):** Извлечение — Извлечь контакты (Unicode email), Извлечь числа, Извлечь буквы, Только уникальные слова, Сортировать слова
+- **Tier 6 (33-36):** Трансформации — Обратный текст, Shuffle строки, Сортировка по длине, Повторить N
+- **Tier 7 (37-41):** Оформление — Обрезать на N, Prefix цифрами (шаг от 1), Только латиница, Типографика («кавычки», —, …, неразрывные пробелы)
+- **Tier 8 (42-50):** Безумие — Регистр (random/wave/pulse), Зеркало (символы/простой), Leet speak (latin+cyr), Кириллица↔Латиница (обратимая), Bubble text, Зеркальный шрифт, Zalgo (low/mid/high), Small Caps (latin), Невидимые символы
 
 **UI:**
-- Иконка: номер текущего пункта (01-46) моноширинным шрифтом
-- Меню: выпадает вверх, max 320px, scrollbar скрыт
-- Hover: tooltip с описанием + примером (появляется через 500мс)
-- Active state: синяя подсветка текущего пункта
+- Иконка: номер текущего пункта (01-50) моноширинным шрифтом
+- Меню: выпадает вверх, max 320px, scrollbar скрыт, CSS-анимация fade-in 0.15s
+- Hover tooltip (500мс): показывает `name (var)` + `desc` + `example` + варианты
+- Tooltip: clamp по всем краям, max-width `min(360px, 100vw-20px)`, overflow-wrap
+- Active state: синяя подсветка + `aria-current="true"`
+- Кнопка: без системного title (только кастомный tooltip)
+
+**execute:**
+- Сохраняет `scrollTop` при форматировании
+- `_lastItem` + `updateButtonIcon` до проверки `result===source`
+- Caret ставится в конец результата (без выделения)
+- `!text.length` вместо `!text.trim()` (whitespace-only обрабатывается)
+
+**Клавиатура:**
+- Escape→close, ArrowUp/Down→focus (safeIdx), Enter/Space→activate (closest row)
+- varSpan `tabIndex=-1` (фокус не уходит в кнопку переменной)
 
 **localStorage:**
 - `text-format-last` — ID последнего пункта
 - `text-format-vars` — текущие варианты переменных `{ itemId: varIndex }`
+
+**Кэширование:**
+- `RU_COLLATOR`: `Intl.Collator('ru')` для сортировок
+- `ITEM_BY_ID`, `ITEM_INDEX_BY_ID`, `ITEMS_BY_TIER` — предвычисление
+- `ZALGO_UP/MID/DOWN` + `_zalgoPick` — модульные константы
 
 **Интеграция:**
 - `blocks.js:2806-2810` — кнопка в footer перед thesaurusBtn
@@ -1362,36 +1375,18 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `app.js:746-754` — Shift+F shortcut
 - `index.html:1894` — `<script src="text-format.js">`
 
-**Коммиты:** `a6d1845` → `c74121e` → `18b1a70` (revert) → `ccc28ab` → `099b9ba` → `60df0bd` → `9abc49d` → `41af167` → `f23d4b5` → `08f0687` → `3488b22` → `9768dac` → `bc34af9` → `0c2d68c` → `e820def` → `2c9ddc9` → `d3166bd` → `7ff15e2` → `8e2aff5` → `6608828` → `1f4aa30` → `c9ee47c` → `a255260` → `ad75cf5`
+**Ключевые фиксы (15 раундов аудита):**
+- cyr2lat: обратимая транслитерация (й→j, ы→y, regex multi-char ← Cyr)
+- wrap: отступ + available width, long-word chunking
+- execute: scrollTop, _lastItem before early return, caret→end
+- Tooltip: single DOM node, clamp по всем краям, max-width
+- Меню: DocumentFragment, aria-current, Space key, safeIdx
+- Sentence: `\n\s*` для заглавной после переноса строки
+- JSON: modes 2/4/min, trailing LF preserve
+- Типографика: «кавычки», —, …, неразрывные пробелы для единиц
+- Zalgo: module-scope arrays, low/mid/high
+- NaN guards: tab2sp, caesar, trunc, wrap
+- join/CRLF, spaces Unicode, contacts Unicode email + URL trim
+- bubble/invisible/caesar: Array.from для emoji
 
-**Аудит GPT-5 Codex (6 раундов):**
-- Раунд 1 (`ccc28ab`): trim (trimEnd→trim), varSpan scope fix, deindent guard, uncomment regex, aria, ITEM_BY_ID Map
-- Раунд 2 (`099b9ba`): execute bug fix, var pill button, keyboard nav (Escape/Arrows/Enter), contacts regex
-- Раунд 3 (`9abc49d`): _getVarIdx validation, Title Case cyrillic, emoji reverse (Array.from), empty lines CRLF, close handlers race condition, ITEMS_BY_TIER precompute
-- Раунд 4 (`9768dac`): contacts phone regex, Cyrillic mirror/mirrorf maps, randcase wave mode, cyr2lat bidirectional (→ Lat/← Cyr), noascii rename, execute(btn) param, tooltip viewport clamp, aria-expanded _menuBtn
-- Раунд 5 (`e820def`): Title Case lowercases rest of word (hELLO→Hello), menu fade-in animation (0.15s), prefers-reduced-motion
-- Раунд 6 (`2c9ddc9`): cyr2lat ← Cyr regex multi-char (sh→ш, shch→щ, yo→ё), е>э priority, Sentence case Unicode (\p{Ll}+toLocaleUpperCase), menu top overflow (rect.top<10), _loadState validation, execute(!text.length), invisible Array.from, Intl.Collator cache
-- Раунд 7 (`d3166bd`): wrap long-word chunking+NaN validation, execute _lastItem before early return, caret→end, tooltip left/right clamp, tooltip single DOM node, pulse div-by-zero guard, bubble ASCII Array.from
-- Раунд 8 (`7ff15e2`): wrap indent preservation, execute updateButtonIcon before early return, DocumentFragment menu, tooltip max-width+overflow-wrap, cyr2lat y→й, caesar isUpper lower!==ch
-- Раунд 9 (`8e2aff5`): join CRLF handling, trunc Array.from+limit-1+NaN, execute scrollTop preservation, Space key for menuitem
-- Раунд 10 (`6608828`): Zalgo (new tier 8), JSON modes 2/4/min, leet Cyrillic, tooltip shows item.name+var, wrap indent-aware width, caesar ё+dynamicallycyr.length, contacts URL trailing punctuation strip, spaces [^\\S\\r\\n]
-- Раунд 11 (`1f4aa30`): Russian names (Title Case→Слово с Заглавной, etc.), contacts Unicode email (\\p{L}\\p{N})
-- Раунд 12 (`c9ee47c`): Typography (tier 7, «кавычки»/—/…/nbsp), Small Caps (tier 8), mirror vars renamed, contacts returns empty on no match, comment "46" removed
-- Раунд 13 (`a255260`): caseconv (tier 2, camel/snake/kebab), sp2tab leading-only, uniqword/sortword trim+filterEmpty, numstep startFrom1, varSpan tabIndex=-1, keyboard safeIdx+closestRow
-- Раунд 14 (`ad75cf5`): sentence \\n\\s* normalization, json trailing LF preserve, aria-current, wrapch safe pairs, tab2sp/caesar NaN guards, trunc limit<1, zalgo arrays module-scope, _loadState null check
-
-**Поведение меню:**
-- Клик по пункту = ТОЛЬКО выбор + закрытие + смена цифры на иконке. НЕ применяет.
-- Клик по pill-кнопке переменной = цикл варианта + подсветка в tooltip
-- Short click по кнопке "F" = применение выбранного формата к выделению (или всему тексту)
-- Keyboard: Escape→close, ArrowUp/Down→focus, Enter→activate
-
-**Дополнения:**
-- `randcase`: 3 режима — random, wave (чередование), pulse (волна из слова: h→E→L→l→o)
-- `cyr2lat`: двунаправленный (→ Lat / ← Cyr). ← Cyr использует regex для многосимвольных последовательностей (sh→ш, shch→щ, yo→ё). `е` приоритетнее `э` для обратного `e`.
-- `mirror`/`mirrorf`: полные карты кириллицы для зеркальных символов
-- `bubble`: переменная (ASCII / Все) — режим "Все" добавляет U+0361 к кириллице
-- `_menuBtn`: запоминает кнопку блока, с которого открыли меню (фикс обновления иконки)
-- `ITEM_INDEX_BY_ID`: предвычисленная карта для O(1) поиска индекса
-- `RU_COLLATOR`: кэшированный `Intl.Collator('ru')` для сортировок
-- Меню: `tf-fade-in` CSS-анимация 0.15s + viewport clamp сверху (`rect.top < 10`)
+**Коммиты:** `a6d1845` → ... → `fed8cc9` (15 раундов аудита)
