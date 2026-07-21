@@ -2812,9 +2812,9 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     const thesaurusBtn = document.createElement('button');
     thesaurusBtn.type = 'button';
-    thesaurusBtn.className = 'font-ctrl-btn';
+    thesaurusBtn.className = 'font-ctrl-btn thesaurus-btn';
     thesaurusBtn.title = 'Тезаурус — подбор синонимов (Alt+T)';
-    thesaurusBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 5h4M3 8h3M3 11h4"/><path d="M10 5l2 3-2 3"/><path d="M12 8h2"/></svg>';
+    thesaurusBtn.innerHTML = '<span class="thesaurus-btn-letter">Т</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 5h4M3 8h3M3 11h4"/><path d="M10 5l2 3-2 3"/><path d="M12 8h2"/></svg>';
 
     const thesaurusDropdown = document.createElement('div');
     thesaurusDropdown.className = 'translate-dropdown';
@@ -2822,10 +2822,13 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
     let lastThesaurusMode = localStorage.getItem('thesaurus_mode') || 'thesaurus';
     const _thesaurusModeLabels = { thesaurus: 'Тезаурус', antonyms: 'Антонимы', rephrase: 'Перефразирование', explain: 'Объяснение', structure: 'Структурирование', checklist: '+ чеклист' };
+    const _thesaurusModeLetters = { thesaurus: 'Т', antonyms: 'А', rephrase: 'П', explain: 'О', structure: 'С', checklist: '+Ч' };
 
     function _updateThesaurusBtnLabel() {
       const label = _thesaurusModeLabels[lastThesaurusMode] || 'Тезаурус';
       thesaurusBtn.title = 'Тезаурус → ' + label + ' (Alt+T)';
+      const letterEl = thesaurusBtn.querySelector('.thesaurus-btn-letter');
+      if (letterEl) letterEl.textContent = _thesaurusModeLetters[lastThesaurusMode] || 'Т';
     }
 
     function _buildThesaurusMenu() {
@@ -2853,6 +2856,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
           document.querySelectorAll('.font-ctrl-btn[title^="Тезаурус"]').forEach(btn => {
             const lbl = _thesaurusModeLabels[m.id] || 'Тезаурус';
             btn.title = 'Тезаурус → ' + lbl + ' (Alt+T)';
+            const letterEl = btn.querySelector('.thesaurus-btn-letter');
+            if (letterEl) letterEl.textContent = _thesaurusModeLetters[m.id] || 'Т';
           });
         };
         thesaurusDropdown.appendChild(opt);
