@@ -1511,3 +1511,29 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 **Файлы:** `qr-panel.js`, `styles.css`
 **Коммиты:** `3311712` (замена энкодера), `673c79f` (flex wrapper), `8f4d730` (width:100%), `8cdf8f9` (убрана цитата), `1ae5049` (стили видны)
+
+---
+
+### QR Panel — аудит GPT-5 (сессия 2026-07-21)
+
+**Источник:** `NEW 2.txt` — аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **P1 — ReferenceError если `qrcode-generator.js` не загрузился** — `typeof qrcode === 'undefined'` guard с fallback-объектом `{ encode: () => null, unavailable: true }`. Без этого при ошибке сети/загрузки весь QRPanel не создавался.
+
+2. **P2 — Auto EC downgrade игнорировал выбор пользователя** — `_QR.getAutoEc(text)` всегда начинает с H, даже если пользователь выбрал L. Новая функция `getAutoEcFrom(text, preferredEc)` начинает downgrade от выбранного уровня. `_splitText` теперь использует `getAutoEcFrom`.
+
+3. **P3 — Caption ломал PNG-экспорт** — `canvas.height = ...` после отрисовки QR очищал canvas. Баг был в `_download` и `_downloadAll`. Решение: общая функция `_renderQRToCanvas(page, opts)` устанавливает `canvas.width/height` ДО отрисовки. Используется в preview, export PNG и batch export.
+
+4. **P4 — UTF-16 surrogate pairs в `_splitText`** — `substring()` мог разорвать emoji/символы Unicode. Заменено на `Array.from(text)` + `slice().join('')`.
+
+**Улучшения:**
+- `_renderQRToCanvas(page, { modSize, includeCaption })` — единый рендер для preview, export PNG, batch export. Убрано дублирование (~120 строк).
+- `_renderPreview` теперь копирует offscreen canvas через `drawImage` вместо прямой отрисовки.
+- `_download` PNG использует `_renderQRToCanvas` вместо собственного рендера.
+
+**Пропущено (аргументы):**
+- Автоматический fallback-объект `_QR` при отсутствии библиотеки — guard + console.warn надёжнее, чем молчаливый пустой объект.
+
+**Файлы:** `qr-panel.js`

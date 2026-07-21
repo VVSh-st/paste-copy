@@ -91,6 +91,18 @@ const QRPanel = (() => {
   // Uses Kazuhiko Arase's qrcode-generator (MIT), loaded via <script> in index.html
   // typeNumber=0 → auto-selects version 1-40 for maximum data capacity
   const _QR = (() => {
+    if (typeof qrcode === 'undefined') {
+      console.warn('[QRPanel] qrcode-generator.js not loaded');
+      return {
+        encode: () => null,
+        getMaxDataBytes: () => 0,
+        getAutoEc: () => 'L',
+        getAutoEcFrom: () => 'L',
+        EC_LIST: ['H', 'Q', 'M', 'L'],
+        unavailable: true,
+      };
+    }
+
     // Ensure UTF-8 encoding for Cyrillic support
     if (qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) {
       qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
@@ -219,7 +231,18 @@ const QRPanel = (() => {
       return 'L';
     }
 
-    return { encode, getMaxDataBytes, getAutoEc, EC_LIST };
+    function getAutoEcFrom(text, preferredEc) {
+      // Start downgrade from user's chosen EC level, not from H
+      const order = ['H', 'Q', 'M', 'L'];
+      const start = order.indexOf(preferredEc);
+      const downgradeOrder = start >= 0 ? order.slice(start) : order;
+      for (const ec of downgradeOrder) {
+        if (new TextEncoder().encode(text).length <= getMaxDataBytes(ec)) return ec;
+      }
+      return 'L';
+    }
+
+    return { encode, getMaxDataBytes, getAutoEc, getAutoEcFrom, EC_LIST };
   })();
 
   /* ── QR encode cache ───────────────────────────────────── */
@@ -271,14 +294,14 @@ const QRPanel = (() => {
 
     const rawBytes = new TextEncoder().encode(text);
 
-    // Auto-downgrade EC if data doesn't fit at current level
+    // Auto-downgrade EC: start from user's chosen level, not from H
     let ecLevel = _ec;
     if (_autoEc) {
-      ecLevel = _QR.getAutoEc(text);
+      ecLevel = _QR.getAutoEcFrom(text, _ec);
     } else {
       // Even without auto-ec, check if current level can hold it
       if (rawBytes.length > _QR.getMaxDataBytes(ecLevel)) {
-        ecLevel = _QR.getAutoEc(text);
+        ecLevel = _QR.getAutoEcFrom(text, _ec);
       }
     }
 
@@ -287,16 +310,16 @@ const QRPanel = (() => {
       return { pages: [{ text, bytes: rawBytes, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: ecLevel };
     }
 
-    // Split into multiple pages by text chunks
-    // Re-encode each chunk to measure byte length
+    // Split into multiple pages using Array.from for safe surrogate pair handling
     const pages = [];
-    let remaining = text;
+    const chars = Array.from(text);
+    let remaining = chars;
     while (remaining.length > 0) {
       // Binary search for the largest prefix that fits in maxBytes
       let lo = 1, hi = remaining.length, best = 1;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        const chunk = remaining.substring(0, mid);
+        const chunk = remaining.slice(0, mid).join('');
         if (new TextEncoder().encode(chunk).length <= maxBytes) {
           best = mid;
           lo = mid + 1;
@@ -304,10 +327,10 @@ const QRPanel = (() => {
           hi = mid - 1;
         }
       }
-      const chunk = remaining.substring(0, best);
+      const chunk = remaining.slice(0, best).join('');
       const chunkBytes = new TextEncoder().encode(chunk);
       pages.push({ text: chunk, bytes: chunkBytes, compressed: false, page: pages.length, total: 0, plain: true });
-      remaining = remaining.substring(best);
+      remaining = remaining.slice(best);
     }
     // Set total after counting
     for (const p of pages) p.total = pages.length;
@@ -462,6 +485,51 @@ const QRPanel = (() => {
   }
 
   /* ── canvas rendering ──────────────────────────────────── */
+  // Common QR-to-canvas renderer for preview, export PNG, and batch export.
+  // Sets canvas dimensions BEFORE drawing to avoid the caption-clear bug.
+  function _renderQRToCanvas(page, { modSize = _moduleSize, includeCaption = true, exportMode = false } = {}) {
+    const qr = _getEncodedQR(page);
+    if (!qr) return null;
+
+    const quiet = _padding ? 4 : 0;
+    const qrModules = qr.size + quiet * 2;
+    const qrSize = qrModules * modSize;
+    const captionText = includeCaption ? _caption.trim() : '';
+    const fSize = captionText ? Math.round(16 * modSize / 4) : 0;
+    const captionH = captionText ? fSize + Math.floor(modSize * 1.3) : 0;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Set dimensions BEFORE drawing (fixes caption-clear bug)
+    canvas.width = qrSize;
+    canvas.height = qrSize + captionH;
+
+    // Background
+    ctx.fillStyle = _bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw modules
+    ctx.fillStyle = _fg;
+    for (let r = 0; r < qr.size; r++) {
+      for (let c = 0; c < qr.size; c++) {
+        if (!qr.matrix[r][c]) continue;
+        _drawModule(ctx, (c + quiet) * modSize, (r + quiet) * modSize, modSize, qr.reserved[r][c] ? 'classic' : _style);
+      }
+    }
+
+    // Caption
+    if (captionText) {
+      ctx.font = `bold ${fSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
+      ctx.fillStyle = _fg;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(captionText, qrSize / 2, qrSize + Math.floor(modSize * 0.8));
+    }
+
+    return canvas;
+  }
+
   function _renderPreview() {
     const canvas = _panel?.querySelector('.qr-canvas');
     if (!canvas) return;
@@ -486,52 +554,26 @@ const QRPanel = (() => {
     }
 
     const page = _pages[_currentPage];
-    const qr = _getEncodedQR(page);
-    if (!qr) {
+
+    // Render QR to offscreen canvas (min 2px for visible styles)
+    const modPx = Math.max(2, _moduleSize);
+    _lastModSize = modPx;
+    const rendered = _renderQRToCanvas(page, { modSize: modPx, includeCaption: true });
+    if (!rendered) {
       canvas.width = 1;
       canvas.height = 1;
       if (statsEl) statsEl.textContent = 'Текст не помещается в QR-код';
       return;
     }
 
-    // Draw QR — render at module size from slider (min 2px) for visible styles
-    // CSS width:100% scales the canvas to fill the wrapper
-    const quiet = _padding ? 4 : 0;
-    const modPx = Math.max(2, _moduleSize);
-    const renderSize = (qr.size + quiet * 2) * modPx;
-    const captionText = _caption.trim();
-    _lastModSize = modPx;
+    // Copy rendered canvas to DOM canvas
+    canvas.width = rendered.width;
+    canvas.height = rendered.height;
+    ctx.drawImage(rendered, 0, 0);
 
-    canvas.width = renderSize;
-    canvas.height = renderSize;
-
-    // Background
-    ctx.fillStyle = _bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw modules — function modules always classic, data modules use selected style
-    ctx.fillStyle = _fg;
-    for (let r = 0; r < qr.size; r++) {
-      for (let c = 0; c < qr.size; c++) {
-        if (!qr.matrix[r][c]) continue;
-        const x = (c + quiet) * modPx;
-        const y = (r + quiet) * modPx;
-        _drawModule(ctx, x, y, modPx, qr.reserved[r][c] ? 'classic' : _style);
-      }
-    }
-
-    // Caption below QR — render as part of the canvas for clean export
-    if (captionText) {
-      const extraH = Math.max(2, Math.floor(modPx * 2));
-      canvas.height = renderSize + extraH;
-      ctx.fillStyle = _bg;
-      ctx.fillRect(0, renderSize, renderSize, extraH);
-      const fSize = Math.max(2, Math.floor(modPx * 1.2));
-      ctx.font = `bold ${fSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
-      ctx.fillStyle = _fg;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(captionText, renderSize / 2, renderSize + extraH / 2);
+    const qr = _getEncodedQR(page);
+    if (_caption.trim()) {
+      const fSize = Math.round(16 * modPx / 4);
       _lastCaptionFontSize = fSize;
     }
 
@@ -549,7 +591,7 @@ const QRPanel = (() => {
         sourceEl.textContent = title ? `Блок: ${title}` : 'Весь блок';
       }
     }
-    if (infoRow) {
+    if (infoRow && qr) {
       infoRow.textContent = '';
       const badges = [];
       if (page.compressed) badges.push('Сжатие вкл.');
@@ -1527,47 +1569,19 @@ const QRPanel = (() => {
   function _download(format) {
     if (!_hasValidCurrentPage()) { _showToast('Нет QR-кода для экспорта'); return; }
     const page = _pages[_currentPage];
-    const qr = _getEncodedQR(page);
-    if (!qr) { _showToast('Нет QR-кода для экспорта'); return; }
-    const modSize = _moduleSize;
-    const quiet = _padding ? 4 : 0;
 
     if (format === 'png') {
-      const totalSize = (qr.size + quiet * 2) * modSize;
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = totalSize;
-      canvas.height = totalSize;
-      ctx.fillStyle = _bg;
-      ctx.fillRect(0, 0, totalSize, totalSize);
-      ctx.fillStyle = _fg;
-      for (let r = 0; r < qr.size; r++) {
-        for (let c = 0; c < qr.size; c++) {
-          if (!qr.matrix[r][c]) continue;
-          const x = (c + quiet) * modSize;
-          const y = (r + quiet) * modSize;
-          _drawModule(ctx, x, y, modSize, qr.reserved[r][c] ? 'classic' : _style);
-        }
-      }
-      const captionText = _caption.trim();
-      if (captionText) {
-        const fSize = Math.round(16 * modSize / 4);
-        ctx.font = `bold ${fSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
-        ctx.fillStyle = _fg;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillText(captionText, totalSize / 2, totalSize + Math.floor(modSize * 0.8));
-        canvas.height = totalSize + fSize + Math.floor(modSize * 0.5);
-        ctx.fillStyle = _bg;
-        ctx.fillRect(0, totalSize, totalSize, fSize + Math.floor(modSize * 0.5));
-        ctx.fillStyle = _fg;
-        ctx.fillText(captionText, totalSize / 2, totalSize + Math.floor(modSize * 0.8));
-      }
+      const canvas = _renderQRToCanvas(page, { modSize: _moduleSize, includeCaption: true });
+      if (!canvas) { _showToast('Не удалось создать PNG'); return; }
       const link = document.createElement('a');
       link.download = 'qr-code.png';
       link.href = canvas.toDataURL('image/png');
       link.click();
     } else if (format === 'svg') {
+      const qr = _getEncodedQR(page);
+      if (!qr) { _showToast('Нет QR-кода для экспорта'); return; }
+      const modSize = _moduleSize;
+      const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
       const captionText = _caption.trim();
       const fontSize = Math.round(16 * modSize / 4);
@@ -1621,36 +1635,8 @@ const QRPanel = (() => {
       const qr = _getEncodedQR(page);
       if (!qr) continue;
       if (format === 'png') {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const totalSize = (qr.size + quiet * 2) * modSize;
-        canvas.width = totalSize;
-        canvas.height = totalSize;
-        ctx.fillStyle = _bg;
-        ctx.fillRect(0, 0, totalSize, totalSize);
-        ctx.fillStyle = _fg;
-        for (let r = 0; r < qr.size; r++) {
-          for (let c = 0; c < qr.size; c++) {
-            if (!qr.matrix[r][c]) continue;
-            const x = (c + quiet) * modSize;
-            const y = (r + quiet) * modSize;
-            _drawModule(ctx, x, y, modSize, qr.reserved[r][c] ? 'classic' : _style);
-          }
-        }
-        if (_caption.trim()) {
-          const fontSize = Math.round(16 * modSize / 4);
-          ctx.font = `bold ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
-          ctx.fillStyle = _fg;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'top';
-          const textY = totalSize + Math.floor(modSize * 0.8);
-          ctx.fillText(_caption.trim(), totalSize / 2, textY);
-          canvas.height = textY + fontSize + Math.floor(modSize * 0.5);
-          ctx.fillStyle = _bg;
-          ctx.fillRect(0, totalSize, totalSize, fontSize + Math.floor(modSize * 0.5));
-          ctx.fillStyle = _fg;
-          ctx.fillText(_caption.trim(), totalSize / 2, textY);
-        }
+        const canvas = _renderQRToCanvas(page, { modSize, includeCaption: true });
+        if (!canvas) continue;
         const link = document.createElement('a');
         link.download = `qr-page-${i + 1}-of-${total}.png`;
         link.href = canvas.toDataURL('image/png');
