@@ -559,7 +559,7 @@
 
     <div id="settings-dropdown" class="dropdown ui-menu">
 
-      <button id="btn-settings" type="button" title="Настройки" class="tb-btn tb-btn-icon-only" aria-label="Настройки" aria-haspopup="true" aria-expanded="false">
+      <button id="btn-settings" type="button" title="INTELLIGENCE" class="tb-btn tb-btn-icon-only" aria-label="INTELLIGENCE" aria-haspopup="true" aria-expanded="false">
 
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
 
@@ -571,55 +571,9 @@
 
       </button>
 
-      <section id="settings-menu" class="dropdown-menu settings-menu-wide" aria-label="Настройки приложения">
+      <section id="settings-menu" class="dropdown-menu settings-menu-wide" aria-label="INTELLIGENCE">
 
-        <div class="settings-section">Превью</div>
-
-        <div class="settings-item settings-item-row">
-
-          <label for="opt-separator">Разделитель</label>
-
-          <select id="opt-separator">
-
-            <option value="\n\n">↵↵ Пустая строка</option>
-
-            <option value="\n">↵ Перенос</option>
-
-            <option value="\n---\n">─── разделитель</option>
-
-            <option value="\n\n---\n\n">↵ ─── ↵</option>
-
-            <option value="\n===\n">══ широкий</option>
-
-            <option value="\n\n***\n\n">*** звёздочки</option>
-
-          </select>
-
-        </div>
-
-        <div class="menu-sep"></div>
-
-        <div class="settings-section">Интерфейс</div>
-
-        <label class="settings-item">
-
-          <input type="checkbox" id="opt-tooltips" checked>
-
-          Подсказки (hover)
-
-        </label>
-
-        <label class="settings-item" title="Отключите, если браузер повторно запрашивает разрешение на чтение буфера">
-
-          <input type="checkbox" id="opt-clipboard-api" checked>
-
-          Clipboard API (вставка)
-
-        </label>
-
-        <div class="menu-sep"></div>
-
-        <div class="settings-section">Intelligence</div>
+        <div class="settings-section">INTELLIGENCE</div>
 
         <button type="button" id="btn-intelligence-save-version" class="settings-item settings-action" title="Сохранить именованную privacy-safe версию структуры текущей вкладки">
 
@@ -663,17 +617,7 @@
 
         </button>
 
-        <div class="menu-sep"></div>
 
-        <div class="settings-section">Эффекты</div>
-
-        <label class="settings-item" title="Анимированный след курсора при вводе текста">
-
-          <input type="checkbox" id="opt-ninja-cursor">
-
-          Ninja cursor (след каретки)
-
-        </label>
 
       </section>
 
@@ -1444,6 +1388,35 @@
                   <label class="settings-item"><input id="opt-emoji-picker" type="checkbox" checked> Эмодзи по ":"</label>
                   <label class="settings-item"><input id="opt-headers" type="checkbox" checked> Заголовки блоков в превью</label>
                   <label class="settings-item"><input id="llm-debug" type="checkbox"> Debug-режим</label>
+
+                  <div class="menu-sep"></div>
+
+                  <label class="settings-item settings-item-row">
+                    <label for="opt-separator">Разделитель</label>
+                    <select id="opt-separator">
+                      <option value="\n\n">↵↵ Пустая строка</option>
+                      <option value="\n">↵ Перенос</option>
+                      <option value="\n---\n">─── разделитель</option>
+                      <option value="\n\n---\n\n">↵ ─── ↵</option>
+                      <option value="\n===\n">══ широкий</option>
+                      <option value="\n\n***\n\n">*** звёздочки</option>
+                    </select>
+                  </label>
+
+                  <label class="settings-item">
+                    <input type="checkbox" id="opt-tooltips" checked>
+                    Подсказки (hover)
+                  </label>
+
+                  <label class="settings-item" title="Отключите, если браузер повторно запрашивает разрешение на чтение буфера">
+                    <input type="checkbox" id="opt-clipboard-api" checked>
+                    Clipboard API (вставка)
+                  </label>
+
+                  <label class="settings-item" title="Анимированный след курсора при вводе текста">
+                    <input type="checkbox" id="opt-ninja-cursor">
+                    Ninja cursor (след каретки)
+                  </label>
                 </div>
               </details>
 
