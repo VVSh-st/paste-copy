@@ -42,7 +42,7 @@ const QRPanel = (() => {
   const VALID_STYLES = ['classic', 'dotted', 'rounded', 'cross'];
   const VALID_EC = ['L', 'M', 'Q', 'H'];
   let _style = VALID_STYLES.includes(_storageGet('qr-style')) ? _storageGet('qr-style') : 'classic';
-  let _moduleSize = Math.max(4, Math.min(12, parseInt(_storageGet('qr-module-size', '9'), 10))) || 9;
+  let _moduleSize = Math.max(1, Math.min(12, parseInt(_storageGet('qr-module-size', '9'), 10))) || 9;
   let _fg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-fg')) ? _storageGet('qr-fg') : '#000000';
   let _bg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-bg')) ? _storageGet('qr-bg') : '#FFFFFF';
   let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'H';
@@ -87,91 +87,16 @@ const QRPanel = (() => {
   const DEBOUNCE_SEL = 150;
   const DEBOUNCE_INPUT = 300;
 
-  /* ── QR code generator (minimal inline) ────────────────── */
-  // Uses qrcode-generator algorithm (kazuhikoarase) — embedded for zero dependencies
-  // Supports versions 1-40, EC levels L/M/Q/H
+  /* ── QR code generator (wraps qrcode-generator.js library) ── */
+  // Uses Kazuhiko Arase's qrcode-generator (MIT), loaded via <script> in index.html
+  // typeNumber=0 → auto-selects version 1-40 for maximum data capacity
   const _QR = (() => {
-    // QR code mode indicators
-    const MODE_BYTE = 1 << 2;
-    // EC ordinal for table lookup (L=0,M=1,Q=2,H=3)
-    const EC_ORDINAL = { L: 0, M: 1, Q: 2, H: 3 };
-    // EC format bits for FORMAT_INFO (L=1,M=0,Q=3,H=2)
-    const EC_FORMAT_BITS = { L: 1, M: 0, Q: 3, H: 2 };
-
-    // GF(256) operations for Reed-Solomon
-    const EXP = new Uint8Array(256);
-    const LOG = new Uint8Array(256);
-    let initialized = false;
-
-    function initGF() {
-      if (initialized) return;
-      initialized = true;
-      let x = 1;
-      for (let i = 0; i < 255; i++) {
-        EXP[i] = x;
-        LOG[x] = i;
-        x = (x << 1) ^ (x & 0x80 ? 0x11d : 0);
-      }
-      EXP[255] = EXP[0];
+    // Ensure UTF-8 encoding for Cyrillic support
+    if (qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) {
+      qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
     }
 
-    function polyMul(a, b) {
-      const r = new Uint8Array(a.length + b.length - 1);
-      for (let i = 0; i < a.length; i++) {
-        if (a[i] === 0) continue;
-        for (let j = 0; j < b.length; j++) {
-          if (b[j] === 0) continue;
-          r[i + j] ^= EXP[(LOG[a[i]] + LOG[b[j]]) % 255];
-        }
-      }
-      return r;
-    }
-
-    function polyMod(data, generator) {
-      const ecSize = generator.length - 1;
-      const remainder = new Uint8Array(ecSize);
-      for (const value of data) {
-        const factor = value ^ remainder[0];
-        remainder.copyWithin(0, 1);
-        remainder[ecSize - 1] = 0;
-        for (let i = 0; i < ecSize; i++) {
-          if (factor && generator[i + 1]) {
-            remainder[i] ^= EXP[(LOG[factor] + LOG[generator[i + 1]]) % 255];
-          }
-        }
-      }
-      return remainder;
-    }
-
-    const _polyCache = new Map();
-    function generatorPoly(nsym) {
-      if (_polyCache.has(nsym)) return _polyCache.get(nsym);
-      let g = new Uint8Array([1]);
-      for (let i = 0; i < nsym; i++)
-        g = polyMul(g, new Uint8Array([1, EXP[i]]));
-      _polyCache.set(nsym, g);
-      return g;
-    }
-
-    // Version info
-    const TOTAL_CODEWORDS = [
-      0,26,44,70,100,134,172,196,242,292,346,404,466,532,581,655,733,815,901,991,
-      1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532,3706
-    ];
-    // ECC codewords per block — indexed by [ordinal][version], ordinals: L=0,M=1,Q=2,H=3
-    const ECC_CODEWORDS_PER_BLOCK = [
-      [-1, 7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],  // L
-      [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26,26,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28],  // M
-      [-1,13,22,18,26,18,24,18,22,20,24,28,26,24,20,30,24,28,28,26,30,28,30,30,30,30,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],  // Q
-      [-1,17,28,22,16,22,28,26,26,24,28,24,28,22,24,24,30,28,28,26,28,30,24,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30],  // H
-    ];
-    // Number of ECC blocks — indexed by [ordinal][version]
-    const NUM_ECC_BLOCKS = [
-      [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9,10,12,12,12,13,14,15,16,17,18,19,19,20,21,22,24,25],  // L
-      [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9,10,10,11,13,14,16,17,17,18,20,21,23,25,26,28,29,31,33,35,37,38,40,43,45,47,49],  // M
-      [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8,10,12,16,12,17,16,18,21,20,23,23,25,27,29,34,34,35,38,40,43,45,48,51,53,56,59,62,65,68],  // Q
-      [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8,11,11,16,16,18,16,19,21,25,25,25,34,30,32,35,37,40,42,45,48,51,54,57,60,63,66,70,74,77,81],  // H
-    ];
+    // Alignment pattern positions per version (QR spec table)
     const ALIGN_POS = [
       0,[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],
       [6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],
@@ -185,376 +110,125 @@ const QRPanel = (() => {
       [6,30,58,86,114,142,170]
     ];
 
-    function getVersion(dataLen, ecLevel) {
-      const ordinal = EC_ORDINAL[ecLevel];
-      for (let v = 1; v <= 40; v++) {
-        const dataCW = TOTAL_CODEWORDS[v] - ECC_CODEWORDS_PER_BLOCK[ordinal][v] * NUM_ECC_BLOCKS[ordinal][v];
-        // byte mode: 4 bits mode + 8/16 bits count + data + terminator
-        const countBits = v <= 9 ? 8 : 16;
-        const maxBytes = Math.floor((dataCW * 8 - 4 - countBits) / 8);
-        if (dataLen <= maxBytes) return v;
-      }
-      return -1;
-    }
-
-    /* ── mask helpers ──────────────────────────────────────── */
-    function cloneMatrix(matrix) {
-      return matrix.map(row => new Uint8Array(row));
-    }
-
-    function applyMask(matrix, reserved, maskFn) {
-      const size = matrix.length;
-      for (let r = 0; r < size; r++) {
-        for (let c = 0; c < size; c++) {
-          if (!reserved[r][c] && maskFn(r, c)) {
-            matrix[r][c] ^= 1;
-          }
-        }
-      }
-    }
-
-    function placeFormatInfo(matrix, formatBits) {
-      const size = matrix.length;
-      const bit = i => (formatBits >> i) & 1;
-
-      // First copy: around upper-left finder pattern
-      for (let i = 0; i < 6; i++) {
-        matrix[8][i] = bit(14 - i);
-        matrix[5 - i][8] = bit(i);
-      }
-      matrix[8][7] = bit(8);
-      matrix[8][8] = bit(7);
-      matrix[7][8] = bit(6);
-
-      // Second copy: lower-left and upper-right areas
-      for (let i = 0; i < 7; i++) {
-        matrix[size - 1 - i][8] = bit(i);
-      }
-      for (let i = 7; i < 15; i++) {
-        matrix[8][size - 15 + i] = bit(i);
-      }
-    }
-
-    const FORMAT_INFO = [
-      0x5412,0x5125,0x5E7C,0x5B4B,0x45F9,0x40CE,0x4F97,0x4AA0,
-      0x77C4,0x72F3,0x7DAA,0x789D,0x662F,0x6318,0x6C41,0x6976,
-      0x1689,0x13BE,0x1CE7,0x19D0,0x0762,0x0255,0x0D0C,0x083B,
-      0x355F,0x3068,0x3F31,0x3A06,0x24B4,0x2183,0x2EDA,0x2BED
+    // ECC codewords per block — indexed by [ordinal][version], ordinals: L=0,M=1,Q=2,H=3
+    const ECC_CODEWORDS_PER_BLOCK = [
+      [-1, 7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],
+      [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26,26,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28],
+      [-1,13,22,18,26,18,24,18,22,20,24,28,26,24,20,30,24,28,28,26,30,28,30,30,30,30,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],
+      [-1,17,28,22,16,22,28,26,26,24,28,24,28,22,24,24,30,28,28,26,28,30,24,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30],
+    ];
+    const NUM_ECC_BLOCKS = [
+      [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9,10,12,12,12,13,14,15,16,17,18,19,19,20,21,22,24,25],
+      [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9,10,10,11,13,14,16,17,17,18,20,21,23,25,26,28,29,31,33,35,37,38,40,43,45,47,49],
+      [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8,10,12,16,12,17,16,18,21,20,23,23,25,27,29,34,34,35,38,40,43,45,48,51,53,56,59,62,65,68],
+      [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8,11,11,16,16,18,16,19,21,25,25,25,34,30,32,35,37,40,42,45,48,51,54,57,60,63,66,70,74,77,81],
+    ];
+    const TOTAL_CODEWORDS = [
+      0,26,44,70,100,134,172,196,242,292,346,404,466,532,581,655,733,815,901,991,
+      1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532,3706
     ];
 
-    function penaltyN1(matrix) {
-      const size = matrix.length;
-      let score = 0;
-      function scoreLine(get) {
-        let runColor = get(0), runLength = 1;
-        for (let i = 1; i < size; i++) {
-          const color = get(i);
-          if (color === runColor) { runLength++; }
-          else {
-            if (runLength >= 5) score += 3 + runLength - 5;
-            runColor = color; runLength = 1;
-          }
-        }
-        if (runLength >= 5) score += 3 + runLength - 5;
-      }
-      for (let r = 0; r < size; r++) scoreLine(c => matrix[r][c]);
-      for (let c = 0; c < size; c++) scoreLine(r => matrix[r][c]);
-      return score;
-    }
+    const EC_ORDINAL = { L: 0, M: 1, Q: 2, H: 3 };
+    const EC_LIST = ['H', 'Q', 'M', 'L']; // downgrade order
 
-    function penaltyN2(matrix) {
-      const size = matrix.length;
-      let score = 0;
-      for (let r = 0; r < size - 1; r++) {
-        for (let c = 0; c < size - 1; c++) {
-          const v = matrix[r][c];
-          if (matrix[r][c+1] === v && matrix[r+1][c] === v && matrix[r+1][c+1] === v) score += 3;
-        }
-      }
-      return score;
-    }
-
-    function penaltyN3(matrix) {
-      const size = matrix.length;
-      let score = 0;
-      const left = [1,0,1,1,1,0,1,0,0,0,0];
-      const right = [0,0,0,0,1,0,1,1,1,0,1];
-      function matches(get, start, pat) {
-        for (let i = 0; i < pat.length; i++) if (get(start + i) !== pat[i]) return false;
-        return true;
-      }
-      function scoreLine(get) {
-        for (let s = 0; s <= size - 11; s++) {
-          if (matches(get, s, left)) score += 40;
-          if (matches(get, s, right)) score += 40;
-        }
-      }
-      for (let r = 0; r < size; r++) scoreLine(i => matrix[r][i]);
-      for (let c = 0; c < size; c++) scoreLine(i => matrix[i][c]);
-      return score;
-    }
-
-    function penaltyN4(matrix) {
-      const size = matrix.length;
-      const total = size * size;
-      let dark = 0;
-      for (let r = 0; r < size; r++)
-        for (let c = 0; c < size; c++) if (matrix[r][c]) dark++;
-      const percent = dark * 100 / total;
-      return Math.floor(Math.abs(percent - 50) / 5) * 10;
-    }
-
-    function calculatePenalty(matrix) {
-      return penaltyN1(matrix) + penaltyN2(matrix) + penaltyN3(matrix) + penaltyN4(matrix);
-    }
-
-    function encode(data, ecLevel) {
-      initGF();
-      const ordinal = EC_ORDINAL[ecLevel];
-      const version = getVersion(data.length, ecLevel);
-      if (version < 1) return null;
+    // Compute which modules are "function" (finder, timing, alignment, format, version, dark)
+    // so we can render them in classic style while data modules use the user's style
+    function _computeReserved(version) {
       const size = version * 4 + 17;
-      const numBlocks = NUM_ECC_BLOCKS[ordinal][version];
-      const ecCW = ECC_CODEWORDS_PER_BLOCK[ordinal][version];
-      const totalCW = TOTAL_CODEWORDS[version];
-      const dataCW = totalCW - ecCW * numBlocks;
-      const gen = generatorPoly(ecCW);
+      const r = Array.from({ length: size }, () => new Uint8Array(size));
 
-      // Build data codewords
-      const bits = [];
-      const pushBits = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
-      pushBits(MODE_BYTE, 4);
-      pushBits(data.length, version <= 9 ? 8 : 16);
-      for (let i = 0; i < data.length; i++) pushBits(data[i], 8);
-      // Terminator
-      const termLen = Math.min(4, dataCW * 8 - bits.length);
-      pushBits(0, termLen);
-      // Pad to byte boundary
-      while (bits.length % 8) bits.push(0);
-      // Pad bytes
-      const padBytes = [0xEC, 0x11];
-      let padIdx = 0;
-      while (bits.length < dataCW * 8) {
-        pushBits(padBytes[padIdx], 8);
-        padIdx = (padIdx + 1) % 2;
-      }
-
-      // Convert to codewords
-      const dataCodewords = [];
-      for (let i = 0; i < bits.length; i += 8) {
-        let b = 0;
-        for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
-        dataCodewords.push(b);
-      }
-
-      // Split into blocks
-      const blockSizes = [];
-      const totalDataCW = dataCW;
-      const baseSize = Math.floor(totalDataCW / numBlocks);
-      const extraBlocks = totalDataCW % numBlocks;
-      for (let i = 0; i < numBlocks; i++) {
-        blockSizes.push(baseSize + (i < extraBlocks ? 1 : 0));
-      }
-
-      // Generate EC for each block
-      const dataBlocks = [];
-      const ecBlocks = [];
-      let offset = 0;
-      for (let i = 0; i < numBlocks; i++) {
-        const block = dataCodewords.slice(offset, offset + blockSizes[i]);
-        offset += blockSizes[i];
-        dataBlocks.push(block);
-        const ec = polyMod(block, gen);
-        ecBlocks.push(Array.from(ec));
-      }
-
-      // Interleave data
-      const result = [];
-      const maxDataLen = Math.max(...blockSizes);
-      for (let i = 0; i < maxDataLen; i++) {
-        for (let j = 0; j < numBlocks; j++) {
-          if (i < dataBlocks[j].length) result.push(dataBlocks[j][i]);
-        }
-      }
-      // Interleave EC
-      for (let i = 0; i < ecCW; i++) {
-        for (let j = 0; j < numBlocks; j++) {
-          result.push(ecBlocks[j][i]);
-        }
-      }
-
-      // Convert to matrix
-      const matrix = Array.from({ length: size }, () => new Uint8Array(size));
-      const reserved = Array.from({ length: size }, () => new Uint8Array(size));
-
-      // Place finder patterns
-      const placeFinder = (row, col) => {
-        for (let r = -1; r <= 7; r++) {
-          for (let c = -1; c <= 7; c++) {
-            const mr = row + r, mc = col + c;
-            if (mr < 0 || mr >= size || mc < 0 || mc >= size) continue;
-            if ((r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
-                (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
-                (r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
-              matrix[mr][mc] = 1;
-            }
-            reserved[mr][mc] = 1;
+      // Finder patterns + separators
+      const markFinder = (row, col) => {
+        for (let dr = -1; dr <= 7; dr++) {
+          for (let dc = -1; dc <= 7; dc++) {
+            const rr = row + dr, cc = col + dc;
+            if (rr >= 0 && rr < size && cc >= 0 && cc < size) r[rr][cc] = 1;
           }
         }
       };
-      placeFinder(0, 0);
-      placeFinder(0, size - 7);
-      placeFinder(size - 7, 0);
+      markFinder(0, 0);
+      markFinder(0, size - 7);
+      markFinder(size - 7, 0);
 
       // Timing patterns
-      for (let i = 8; i < size - 8; i++) {
-        matrix[6][i] = i % 2 === 0 ? 1 : 0;
-        matrix[i][6] = i % 2 === 0 ? 1 : 0;
-        reserved[6][i] = 1;
-        reserved[i][6] = 1;
-      }
+      for (let i = 8; i < size - 8; i++) { r[6][i] = 1; r[i][6] = 1; }
 
       // Alignment patterns
-      const alignPos = ALIGN_POS[version];
-      for (let i = 0; i < alignPos.length; i++) {
-        for (let j = 0; j < alignPos.length; j++) {
-          const r = alignPos[i], c = alignPos[j];
-          if (reserved[r][c]) continue;
-          for (let dr = -2; dr <= 2; dr++) {
-            for (let dc = -2; dc <= 2; dc++) {
-              matrix[r + dr][c + dc] = (Math.abs(dr) === 2 || Math.abs(dc) === 2 || (dr === 0 && dc === 0)) ? 1 : 0;
-              reserved[r + dr][c + dc] = 1;
-            }
-          }
+      const ap = ALIGN_POS[version] || [];
+      for (let i = 0; i < ap.length; i++) {
+        for (let j = 0; j < ap.length; j++) {
+          if (r[ap[i]][ap[j]]) continue; // skip if finder/timing
+          for (let dr = -2; dr <= 2; dr++)
+            for (let dc = -2; dc <= 2; dc++)
+              r[ap[i] + dr][ap[j] + dc] = 1;
         }
       }
 
       // Dark module
-      matrix[size - 8][8] = 1;
-      reserved[size - 8][8] = 1;
+      r[4 * version + 9][8] = 1;
 
-      // Reserve format info areas
-      // First copy: around upper-left finder
-      for (let i = 0; i < 6; i++) {
-        reserved[8][i] = 1;
-        reserved[5 - i][8] = 1;
-      }
-      reserved[8][7] = 1;
-      reserved[8][8] = 1;
-      reserved[7][8] = 1;
-      // Second copy: lower-left (7 modules)
-      for (let i = 0; i < 7; i++) {
-        reserved[size - 1 - i][8] = 1;
-      }
-      // Second copy: upper-right (8 modules)
-      for (let i = 7; i < 15; i++) {
-        reserved[8][size - 15 + i] = 1;
-      }
-      // Reserve version areas
+      // Format info areas (15 bits, two copies)
+      // First copy: around top-left finder
+      for (let i = 0; i < 6; i++) { r[8][i] = 1; r[5 - i][8] = 1; }
+      r[8][7] = 1; r[8][8] = 1; r[7][8] = 1;
+      // Second copy: lower-left (7 modules) + upper-right (8 modules)
+      for (let i = 0; i < 7; i++) r[size - 1 - i][8] = 1;
+      for (let i = 7; i < 15; i++) r[8][size - 15 + i] = 1;
+
+      // Version info (version >= 7)
       if (version >= 7) {
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6; i++)
           for (let j = 0; j < 3; j++) {
-            reserved[i][size - 11 + j] = 1;
-            reserved[size - 11 + j][i] = 1;
+            r[i][size - 11 + j] = 1;
+            r[size - 11 + j][i] = 1;
           }
-        }
       }
 
-      // Place data
-      let bitIdx = 0;
-      const allBits = [];
-      for (let i = 0; i < result.length; i++) {
-        for (let b = 7; b >= 0; b--) allBits.push((result[i] >> b) & 1);
+      return r;
+    }
+
+    function encode(text, ecLevel) {
+      try {
+        const qr = qrcode(0, ecLevel); // typeNumber=0 → auto version
+        qr.addData(text);
+        qr.make();
+        const size = qr.getModuleCount();
+        const version = (size - 17) / 4;
+        const matrix = Array.from({ length: size }, (_, row) =>
+          new Uint8Array(size).map((_, col) => qr.isDark(row, col) ? 1 : 0)
+        );
+        return { matrix, size, reserved: _computeReserved(version) };
+      } catch {
+        return null;
       }
-      let col = size - 1;
-      let upward = true;
-      while (col >= 0) {
-        if (col === 6) col--;
-        const rows = upward ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
-        for (const row of rows) {
-          for (let dc = 0; dc <= 1; dc++) {
-            const c = col - dc;
-            if (c < 0 || reserved[row][c]) continue;
-            matrix[row][c] = bitIdx < allBits.length ? allBits[bitIdx] : 0;
-            bitIdx++;
-          }
-        }
-        upward = !upward;
-        col -= 2;
-      }
-
-      // Select best mask per QR spec (penalty N1-N4)
-      const masks = [
-        (r, c) => (r + c) % 2 === 0,
-        (r, c) => r % 2 === 0,
-        (r, c) => c % 3 === 0,
-        (r, c) => (r + c) % 3 === 0,
-        (r, c) => (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0,
-        (r, c) => (r * c) % 2 + (r * c) % 3 === 0,
-        (r, c) => ((r * c) % 2 + (r * c) % 3) % 2 === 0,
-        (r, c) => ((r + c) % 2 + (r * c) % 3) % 2 === 0,
-      ];
-
-      let bestMaskIdx = 0;
-      let bestScore = Infinity;
-      let bestMatrix = null;
-
-      for (let candidateMaskIdx = 0; candidateMaskIdx < masks.length; candidateMaskIdx++) {
-        const candidate = cloneMatrix(matrix);
-        applyMask(candidate, reserved, masks[candidateMaskIdx]);
-        placeFormatInfo(candidate, FORMAT_INFO[EC_FORMAT_BITS[ecLevel] * 8 + candidateMaskIdx]);
-        const score = calculatePenalty(candidate);
-        if (score < bestScore) {
-          bestScore = score;
-          bestMaskIdx = candidateMaskIdx;
-          bestMatrix = candidate;
-        }
-      }
-
-      if (!bestMatrix) return null;
-      for (let r = 0; r < size; r++) matrix[r] = bestMatrix[r];
-
-      return { matrix, size, reserved };
     }
 
     function getMaxDataBytes(ecLevel) {
       const ordinal = EC_ORDINAL[ecLevel] ?? 0;
       const version = 40;
       const dataCW = TOTAL_CODEWORDS[version] - ECC_CODEWORDS_PER_BLOCK[ordinal][version] * NUM_ECC_BLOCKS[ordinal][version];
-      const countBits = 16;
-      return Math.floor((dataCW * 8 - 4 - countBits) / 8);
+      return Math.floor((dataCW * 8 - 4 - 16) / 8);
     }
 
-    function getMaxDataBytesAtVersion(ecLevel, maxVersion) {
-      const ordinal = EC_ORDINAL[ecLevel] ?? 0;
-      const version = Math.min(40, Math.max(1, maxVersion));
-      const dataCW = TOTAL_CODEWORDS[version] - ECC_CODEWORDS_PER_BLOCK[ordinal][version] * NUM_ECC_BLOCKS[ordinal][version];
-      const countBits = version <= 9 ? 8 : 16;
-      return Math.floor((dataCW * 8 - 4 - countBits) / 8);
+    function getAutoEc(text) {
+      // Try H first, downgrade if data doesn't fit
+      for (const ec of EC_LIST) {
+        const cap = getMaxDataBytes(ec);
+        if (new TextEncoder().encode(text).length <= cap) return ec;
+      }
+      return 'L';
     }
 
-    function getMaxVersionForModuleSize(ecLevel, modSize, availWidth) {
-      const quietModules = _padding ? 8 : 0;
-      const maxModules = Math.floor(availWidth / modSize);
-      const qrModules = maxModules - quietModules;
-      if (qrModules < 21) return 1;
-      const version = Math.min(40, Math.floor((qrModules - 17) / 4));
-      // Verify this version actually fits
-      const size = version * 4 + 17;
-      if ((size + quietModules) * modSize > availWidth) return Math.max(1, version - 1);
-      return version;
-    }
-
-    return { encode, getMaxDataBytes, getMaxDataBytesAtVersion, getMaxVersionForModuleSize };
+    return { encode, getMaxDataBytes, getAutoEc, EC_LIST };
   })();
 
   /* ── QR encode cache ───────────────────────────────────── */
   const _qrCache = new Map();
   const QR_CACHE_LIMIT = 50;
   function _getEncodedQR(page) {
-    const key = `${_effectiveEc}:${Array.from(page.bytes).join(',')}`;
+    const key = `${_effectiveEc}:${page.text || ''}`;
     if (!_qrCache.has(key)) {
-      const qr = _QR.encode(page.bytes, _effectiveEc);
+      const qr = _QR.encode(page.text, _effectiveEc);
       if (!qr) return null;
       _qrCache.set(key, qr);
       while (_qrCache.size > QR_CACHE_LIMIT) {
@@ -593,30 +267,52 @@ const QRPanel = (() => {
 
   /* ── QR generation + split ─────────────────────────────── */
   async function _splitText(text) {
+    if (!text) return { pages: [], effectiveEc: _ec };
+
     const rawBytes = new TextEncoder().encode(text);
 
-    // ── Plain-text path: raw UTF-8, no header, no compression ──
-    // Phone scanners read this directly. EC=L for max data capacity.
-    // Limit QR version by module size so modules stay scannable.
-    const estAvailWidth = 430; // panel 500px - padding
-    const maxVer = _QR.getMaxVersionForModuleSize('L', _moduleSize, estAvailWidth);
-    const plainCap = _QR.getMaxDataBytesAtVersion('L', maxVer);
-
-    if (rawBytes.length <= plainCap) {
-      return { pages: [{ bytes: rawBytes, text, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: 'L' };
+    // Auto-downgrade EC if data doesn't fit at current level
+    let ecLevel = _ec;
+    if (_autoEc) {
+      ecLevel = _QR.getAutoEc(text);
+    } else {
+      // Even without auto-ec, check if current level can hold it
+      if (rawBytes.length > _QR.getMaxDataBytes(ecLevel)) {
+        ecLevel = _QR.getAutoEc(text);
+      }
     }
 
-    // Split into multiple scannable plain-text pages
-    const rawPages = [];
-    for (let i = 0; i < rawBytes.length; i += plainCap) {
-      rawPages.push(rawBytes.slice(i, i + plainCap));
+    const maxBytes = _QR.getMaxDataBytes(ecLevel);
+    if (rawBytes.length <= maxBytes) {
+      return { pages: [{ text, bytes: rawBytes, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: ecLevel };
     }
-    return {
-      pages: rawPages.map((chunk, idx) => ({
-        bytes: chunk, text: '', compressed: false, page: idx, total: rawPages.length, plain: true,
-      })),
-      effectiveEc: 'L',
-    };
+
+    // Split into multiple pages by text chunks
+    // Re-encode each chunk to measure byte length
+    const pages = [];
+    let remaining = text;
+    while (remaining.length > 0) {
+      // Binary search for the largest prefix that fits in maxBytes
+      let lo = 1, hi = remaining.length, best = 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const chunk = remaining.substring(0, mid);
+        if (new TextEncoder().encode(chunk).length <= maxBytes) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      const chunk = remaining.substring(0, best);
+      const chunkBytes = new TextEncoder().encode(chunk);
+      pages.push({ text: chunk, bytes: chunkBytes, compressed: false, page: pages.length, total: 0, plain: true });
+      remaining = remaining.substring(best);
+    }
+    // Set total after counting
+    for (const p of pages) p.total = pages.length;
+
+    return { pages, effectiveEc: ecLevel };
   }
 
   /* ── clear preview state ──────────────────────────────── */
@@ -780,6 +476,8 @@ const QRPanel = (() => {
     if (!_pages.length) {
       canvas.width = 1;
       canvas.height = 1;
+      canvas.style.width = '';
+      canvas.style.height = '';
       if (statsEl) statsEl.textContent = 'Нет данных';
       if (sourceEl) sourceEl.textContent = '';
       if (pageEl) pageEl.textContent = '';
@@ -794,31 +492,30 @@ const QRPanel = (() => {
     if (!qr) {
       canvas.width = 1;
       canvas.height = 1;
+      canvas.style.width = '';
+      canvas.style.height = '';
       if (statsEl) statsEl.textContent = 'Текст не помещается в QR-код';
       return;
     }
 
-    // Auto-fit: calculate module size that fills the wrapper without scrollbar
-    const wrap = _panel?.querySelector('.qr-canvas-wrap');
-    const availW = wrap ? wrap.clientWidth - 24 : 300; // minus padding
-    const availH = wrap ? wrap.clientHeight - 24 : 300;
-    const avail = Math.min(availW, availH);
+    // Draw QR at native resolution (1 pixel per module) — CSS handles scaling
     const quiet = _padding ? 4 : 0;
-    const fitModSize = Math.max(_moduleSize, Math.min(12, Math.floor(avail / (qr.size + quiet * 2))));
-    const modSize = fitModSize;
-    _lastModSize = modSize;
-    const totalSize = (qr.size + quiet * 2) * modSize;
-
-    // Caption height — font scales with canvas so it looks the same after CSS scale-down
+    const nativeSize = (qr.size + quiet * 2);
     const captionText = _caption.trim();
-    const displayFontSize = 16; // desired size on screen
-    const scaleFactor = avail / totalSize;
-    const fontSize = captionText ? Math.round(displayFontSize / Math.max(scaleFactor, 0.3)) : 0;
-    _lastCaptionFontSize = fontSize;
-    const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
+    const captionHeight = captionText ? Math.max(16, Math.floor(nativeSize * 0.15)) : 0;
+    _lastModSize = _moduleSize; // for export
+    _lastCaptionFontSize = 16;
 
-    canvas.width = totalSize;
-    canvas.height = totalSize + captionHeight;
+    canvas.width = nativeSize;
+    canvas.height = nativeSize + captionHeight;
+
+    // Scale canvas via CSS to fill the wrapper (object-fit: contain handles aspect ratio)
+    const wrap = _panel?.querySelector('.qr-canvas-wrap');
+    const availW = wrap ? wrap.clientWidth - 24 : 300;
+    const availH = wrap ? wrap.clientHeight - 24 : 300;
+    const scale = Math.min(availW / nativeSize, availH / (nativeSize + captionHeight), 8);
+    canvas.style.width = Math.floor(nativeSize * scale) + 'px';
+    canvas.style.height = Math.floor((nativeSize + captionHeight) * scale) + 'px';
 
     // Background
     ctx.fillStyle = _bg;
@@ -829,19 +526,21 @@ const QRPanel = (() => {
     for (let r = 0; r < qr.size; r++) {
       for (let c = 0; c < qr.size; c++) {
         if (!qr.matrix[r][c]) continue;
-        const x = (c + quiet) * modSize;
-        const y = (r + quiet) * modSize;
-        _drawModule(ctx, x, y, modSize, qr.reserved[r][c] ? 'classic' : _style);
+        const x = c + quiet;
+        const y = r + quiet;
+        _drawModule(ctx, x, y, 1, qr.reserved[r][c] ? 'classic' : _style);
       }
     }
 
     // Caption below QR
     if (captionText) {
-      ctx.font = `bold ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
+      const fSize = Math.max(1, Math.floor(nativeSize * 0.08));
+      ctx.font = `bold ${fSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
       ctx.fillStyle = _fg;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(captionText, totalSize / 2, totalSize + Math.floor(modSize * 0.8));
+      ctx.fillText(captionText, nativeSize / 2, nativeSize + Math.max(1, Math.floor(nativeSize * 0.03)));
+      _lastCaptionFontSize = fSize;
     }
 
     // Update UI
@@ -865,6 +564,7 @@ const QRPanel = (() => {
       const ecPct = { H: '30', Q: '25', M: '15', L: '7' };
       badges.push(`К.о. +${ecPct[_effectiveEc] || '?'}%`);
       badges.push(`${page.bytes.length} байт`);
+      badges.push(`v${(qr.size - 17) / 4}`);
       if (_pages.length > 1) badges.push(`${_currentPage + 1} из ${_pages.length}`);
       for (const b of badges) {
         const el = document.createElement('span');
@@ -1077,7 +777,7 @@ const QRPanel = (() => {
     const slider = document.createElement('input');
     slider.type = 'range';
     slider.className = 'qr-slider';
-    slider.min = '4';
+    slider.min = '1';
     slider.max = '12';
     slider.value = String(_moduleSize);
     const sliderVal = document.createElement('span');
@@ -1839,23 +1539,51 @@ const QRPanel = (() => {
 
   function _download(format) {
     if (!_hasValidCurrentPage()) { _showToast('Нет QR-кода для экспорта'); return; }
-    const canvas = _panel?.querySelector('.qr-canvas');
-    if (!canvas) return;
+    const page = _pages[_currentPage];
+    const qr = _getEncodedQR(page);
+    if (!qr) { _showToast('Нет QR-кода для экспорта'); return; }
+    const modSize = _moduleSize;
+    const quiet = _padding ? 4 : 0;
 
     if (format === 'png') {
+      const totalSize = (qr.size + quiet * 2) * modSize;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = totalSize;
+      canvas.height = totalSize;
+      ctx.fillStyle = _bg;
+      ctx.fillRect(0, 0, totalSize, totalSize);
+      ctx.fillStyle = _fg;
+      for (let r = 0; r < qr.size; r++) {
+        for (let c = 0; c < qr.size; c++) {
+          if (!qr.matrix[r][c]) continue;
+          const x = (c + quiet) * modSize;
+          const y = (r + quiet) * modSize;
+          _drawModule(ctx, x, y, modSize, qr.reserved[r][c] ? 'classic' : _style);
+        }
+      }
+      const captionText = _caption.trim();
+      if (captionText) {
+        const fSize = Math.round(16 * modSize / 4);
+        ctx.font = `bold ${fSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
+        ctx.fillStyle = _fg;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(captionText, totalSize / 2, totalSize + Math.floor(modSize * 0.8));
+        canvas.height = totalSize + fSize + Math.floor(modSize * 0.5);
+        ctx.fillStyle = _bg;
+        ctx.fillRect(0, totalSize, totalSize, fSize + Math.floor(modSize * 0.5));
+        ctx.fillStyle = _fg;
+        ctx.fillText(captionText, totalSize / 2, totalSize + Math.floor(modSize * 0.8));
+      }
       const link = document.createElement('a');
       link.download = 'qr-code.png';
       link.href = canvas.toDataURL('image/png');
       link.click();
     } else if (format === 'svg') {
-      const page = _pages[_currentPage];
-      const qr = _getEncodedQR(page);
-      if (!qr) { _showToast('Нет QR-кода для экспорта'); return; }
-      const modSize = _lastModSize;
-      const quiet = _padding ? 4 : 0;
       const totalSize = (qr.size + quiet * 2) * modSize;
-      const fontSize = _lastCaptionFontSize;
       const captionText = _caption.trim();
+      const fontSize = Math.round(16 * modSize / 4);
       const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
       const svgH = totalSize + captionHeight;
       let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${svgH}" width="${totalSize}" height="${svgH}">`;
@@ -1899,6 +1627,8 @@ const QRPanel = (() => {
     if (_pages.length === 1) { _download(format); return; }
     let downloaded = 0;
     const total = _pages.length;
+    const modSize = _moduleSize;
+    const quiet = _padding ? 4 : 0;
     for (let i = 0; i < total; i++) {
       const page = _pages[i];
       const qr = _getEncodedQR(page);
@@ -1906,51 +1636,22 @@ const QRPanel = (() => {
       if (format === 'png') {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        const modSize = _lastModSize;
-        const quiet = _padding ? 4 : 0;
         const totalSize = (qr.size + quiet * 2) * modSize;
         canvas.width = totalSize;
         canvas.height = totalSize;
         ctx.fillStyle = _bg;
         ctx.fillRect(0, 0, totalSize, totalSize);
+        ctx.fillStyle = _fg;
         for (let r = 0; r < qr.size; r++) {
           for (let c = 0; c < qr.size; c++) {
             if (!qr.matrix[r][c]) continue;
             const x = (c + quiet) * modSize;
             const y = (r + quiet) * modSize;
-            const style = qr.reserved[r][c] ? 'classic' : _style;
-            if (style === 'dotted') {
-              ctx.fillStyle = _fg;
-              ctx.beginPath();
-              ctx.arc(x + modSize / 2, y + modSize / 2, modSize / 2, 0, Math.PI * 2);
-              ctx.fill();
-            } else if (style === 'rounded') {
-              ctx.fillStyle = _fg;
-              const rad = modSize * 0.3;
-              ctx.beginPath();
-              ctx.roundRect(x, y, modSize, modSize, rad);
-              ctx.fill();
-            } else if (style === 'cross') {
-              const arm = modSize * 0.35;
-              const thickness = modSize * 0.2;
-              ctx.beginPath();
-              ctx.moveTo(x + modSize / 2, y + modSize / 2 - arm);
-              ctx.lineTo(x + modSize / 2, y + modSize / 2 + arm);
-              ctx.moveTo(x + modSize / 2 - arm, y + modSize / 2);
-              ctx.lineTo(x + modSize / 2 + arm, y + modSize / 2);
-              ctx.lineWidth = thickness;
-              ctx.lineCap = 'round';
-              ctx.strokeStyle = _fg;
-              ctx.stroke();
-            } else {
-              ctx.fillStyle = _fg;
-              ctx.fillRect(x, y, modSize, modSize);
-            }
+            _drawModule(ctx, x, y, modSize, qr.reserved[r][c] ? 'classic' : _style);
           }
         }
-        // Caption
         if (_caption.trim()) {
-          const fontSize = _lastCaptionFontSize;
+          const fontSize = Math.round(16 * modSize / 4);
           ctx.font = `bold ${fontSize}px "Segoe UI Variable", "Segoe UI", system-ui, sans-serif`;
           ctx.fillStyle = _fg;
           ctx.textAlign = 'center';
@@ -1958,16 +1659,18 @@ const QRPanel = (() => {
           const textY = totalSize + Math.floor(modSize * 0.8);
           ctx.fillText(_caption.trim(), totalSize / 2, textY);
           canvas.height = textY + fontSize + Math.floor(modSize * 0.5);
+          ctx.fillStyle = _bg;
+          ctx.fillRect(0, totalSize, totalSize, fontSize + Math.floor(modSize * 0.5));
+          ctx.fillStyle = _fg;
+          ctx.fillText(_caption.trim(), totalSize / 2, textY);
         }
         const link = document.createElement('a');
         link.download = `qr-page-${i + 1}-of-${total}.png`;
         link.href = canvas.toDataURL('image/png');
         link.click();
       } else if (format === 'svg') {
-        const modSize = _lastModSize;
-        const quiet = _padding ? 4 : 0;
         const totalSize = (qr.size + quiet * 2) * modSize;
-        const fontSize = _lastCaptionFontSize;
+        const fontSize = Math.round(16 * modSize / 4);
         const captionText = _caption.trim();
         const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
         const svgH = totalSize + captionHeight;
