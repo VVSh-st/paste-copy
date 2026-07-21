@@ -850,7 +850,8 @@ body {
   background: rgba(79,142,247,0.1);
 }
 .translate-lang-opt {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   padding: 5px 12px;
   border: none;
