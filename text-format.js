@@ -393,31 +393,26 @@ window.TextFormat = (() => {
               ).join(' ');
             }
             _menuTooltip.innerHTML = '<b>' + esc(item.name) + '</b><br>' + esc(item.desc) + (item.example ? '<br><code>' + esc(item.example) + '</code>' : '') + varHtml;
-            // Position off-screen first, then reveal after layout
-            _menuTooltip.style.visibility = 'hidden';
             _menuTooltip.style.display = '';
             const r = row.getBoundingClientRect();
             let left = r.right + 8;
             let top = r.top;
-            _menuTooltip.style.left = '-9999px';
-            _menuTooltip.style.top = '-9999px';
             requestAnimationFrame(() => {
               if (!_menuTooltip) return;
               const tr = _menuTooltip.getBoundingClientRect();
-              left = r.right + 8;
-              top = r.top;
               if (tr.right > window.innerWidth - 10) left = Math.max(10, r.left - tr.width - 8);
               if (left < 10) left = 10;
               if (tr.bottom > window.innerHeight - 10) top = Math.max(10, window.innerHeight - tr.height - 10);
               _menuTooltip.style.left = left + 'px';
               _menuTooltip.style.top = top + 'px';
-              _menuTooltip.style.visibility = '';
             });
+            _menuTooltip.style.left = left + 'px';
+            _menuTooltip.style.top = top + 'px';
           }, 500);
         });
         row.addEventListener('mouseleave', () => {
           clearTimeout(hoverTimer);
-          if (_menuTooltip) _menuTooltip.style.visibility = 'hidden';
+          if (_menuTooltip) _menuTooltip.style.display = 'none';
         });
 
         fragment.appendChild(row);
