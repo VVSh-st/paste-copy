@@ -37,16 +37,19 @@
    - Русский → English
    - English → Русский
    - Смешанный/неизвестный → использует `targetLang`
-3. **Опция "🔄 Auto (RU↔EN)"** в выпадающем списке языков (blocks.js + notepad.js)
+3. **Таблетка "Auto"** в строке "RU Русский" выпадающего списка:
+   - **Auto** (серая) — авто-режим выключен
+   - **RU↔EN** (синяя) — авто-режим включён
 4. При выборе конкретного языка `autoTarget` отключается
+5. **Удалён скроллбар** из меню перевода (`max-height` + `overflow-y` убраны)
 
 **Логика:**
 - `translate()`, `translateOne()`, `translateOneVisible()`, `translateProtected()` используют `resolveTargetLang(text)` когда `autoTarget === true`
 - `resolveTargetLang` вызывает `detectLangHint(text)` для определения языка
 - `AUTO_LANG_PAIRS = { ru: 'en', en: 'ru' }` — маппинг противоположных языков
 
-**Файлы:** `translator.js`, `blocks.js`, `notepad.js`
-**Коммит:** `8d5b421`
+**Файлы:** `translator.js`, `blocks.js`, `notepad.js`, `styles.css`
+**Коммиты:** `8d5b421` (auto-target), `8ce2786` (pill inline), `fc70483` (flex), `8cecd71` (scrollbar)
 
 ---
 
@@ -241,13 +244,14 @@
 | Файл | Изменения |
 |------|-----------|
 | `state.js` | Diff-снапшоты: `_computeDelta`, `_deepDiff`, `_applyDelta`, `_rebuildFromHistory`, `_migrateHistory`; `snapshot()`/`undo()`/`redo()`/`canUndo()`/`canRedo()` переписаны на base+deltas; blockHistory аналогично; `_dropBlockHistory` рекурсивен; `closeTab()` чистит `_blockHistory`; лимиты: history 30, namedSnapshots 5, blockHistory 30; **Capture undo:** `_undoRedoInProgress` flag блокирует `snapshot()` во время undo/redo; `cancelPendingSnapshot()` |
-| `app.js` | `exportCurrentTab()` — удалены `history`/`historyIdx` из экспорта; `incoming.history = { base: null, deltas: [] }` для импорта; **Шапка превью:** удалён handler `prev-qr` (QRPanel), init: `btn.classList.add('collapsed')` вместо `textContent = '▲'` |
-| `blocks.js` | MD-превью текстовых блоков: кнопка в шапке (toggle + long-press dropdown), `_renderBlockMdPreview`, `b.mdPreview`/`b.mdHighlight`, min-height 110px; sync MD при patchSubtab/undo/redo/translate; dropdown: "🎨 MD + Подсветка", "📋 Копировать HTML", "📝 Копировать Markdown"; active state синей подсветкой; скрытие кнопки при неактивном блоке; **Capture mode:** long-press dropdown ("В строчку"/"С пропуском"), `_captureInsertMode` persistence, `_captureBtns` Set (global toggle), `_captureUndoStack/_captureRedoStack` (↩️/↪️), `_ensureStickyBlock(sourceBlock)` — insert after source block, `State.makeBlock()` + push (no addBlock side effects), `_syncCaptureTextarea()`, `_getStickyBlock()` with stale ID reset, `_closeCaptureDropdown` document listener; **Тезаурус:** буква режима на кнопке (Т/А/П/О/С/+Ч), `_thesaurusModeLetters`, `.thesaurus-btn-letter` span, `_updateThesaurusBtnLabel` обновляет и title и букву |
+| `app.js` | `exportCurrentTab()` — удалены `history`/`historyIdx` из экспорта; `incoming.history = { base: null, deltas: [] }` для импорта; **Шапка превью:** удалён handler `prev-qr` (QRPanel), init: `btn.classList.add('collapsed')` вместо `textContent = '▲'`; **TextFormat:** Shift+F → Alt+Shift+F (fix: русская раскладка) |
+| `blocks.js` | MD-превью текстовых блоков: кнопка в шапке (toggle + long-press dropdown), `_renderBlockMdPreview`, `b.mdPreview`/`b.mdHighlight`, min-height 110px; sync MD при patchSubtab/undo/redo/translate; dropdown: "🎨 MD + Подсветка", "📋 Копировать HTML", "📝 Копировать Markdown"; active state синей подсветкой; скрытие кнопки при неактивном блоке; **Capture mode:** long-press dropdown ("В строчку"/"С пропуском"), `_captureInsertMode` persistence, `_captureBtns` Set (global toggle), `_captureUndoStack/_captureRedoStack` (↩️/↪️), `_ensureStickyBlock(sourceBlock)` — insert after source block, `State.makeBlock()` + push (no addBlock side effects), `_syncCaptureTextarea()`, `_getStickyBlock()` with stale ID reset, `_closeCaptureDropdown` document listener; **Тезаурус:** буква режима на кнопке (Т/А/П/О/С/+Ч), `_thesaurusModeLetters`, `.thesaurus-btn-letter` span, `_updateThesaurusBtnLabel` обновляет и title и букву; **Translate auto-target:** таблетка Auto в строке RU, `resolveTargetLang()` |
 | `ui.js` | Превью: 3-режимная кнопка MD (Text→MD→MD*→Text), `getMdHighlight()`, highlight.js только в режиме md-hl; **Кнопка превью:** `btn.classList.toggle('collapsed')` вместо textContent, `toggleCollapse()` + `toggleStartCollapsed()` |
-| `notepad.js` | MD-превью: кнопка, `_renderMdPreview`, `_toggleMdPreview`, `marked.parse()`; `_loadSaved` возвращает `mdPreview`; A−/A+ работают в MD; render при открытии; SVG "MD"; кнопки MD + "Перевести текст" в header; перевод: `_undoStack`, dropdown (язык/движок), long-press 400ms, без toast, очистка при смене вкладки и закрытии; `_cleanupTranslate` listener; highlight.jsalways on |
+| `notepad.js` | MD-превью: кнопка, `_renderMdPreview`, `_toggleMdPreview`, `marked.parse()`; `_loadSaved` возвращает `mdPreview`; A−/A+ работают в MD; render при открытии; SVG "MD"; кнопки MD + "Перевести текст" в header; перевод: `_undoStack`, dropdown (язык/движок), long-press 400ms, без toast, очистка при смене вкладки и закрытии; `_cleanupTranslate` listener; highlight.jsalways on; **Translate auto-target:** таблетка Auto в строке RU, `resolveTargetLang()` |
+| `translator.js` | **Auto-target:** `autoTarget` flag, `resolveTargetLang(text)`, `AUTO_LANG_PAIRS = { ru: 'en', en: 'ru' }`, `detectLangHint()` для определения языка, публичный API `autoTarget` getter/setter |
 | `llm-features.js` | Мини-чат: `_renderChatMd` хелпер (marked.parse + hljs), assistant-сообщения рендерятся как markdown с подсветкой; `finalizeLastMessage` переключает на markdown после стриминга; translate undo сохраняет raw text в `dataset.rawText` |
 | `index.html` | highlight.js CSS + JS через CDN; `prev-md` button; **Шапка превью:** заголовок "Paste\copy", удалён QR-кнопка, SVG-иконки (экспорт .md, скачивание, аудит-щит, воронка-сжатие, mindmap, блок-схема), кнопка "превью" с классом `.preview-toggle-wrap`; **Реорганизация меню:** перенесены пункты (Разделитель, Подсказки, Clipboard API, Ninja cursor) из `settings-dropdown` в "Общее" вкладки "Разное" LLM-настроек; `settings-dropdown` переименован в "INTELLIGENCE" |
-| `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон; **Capture pulse:** `@keyframes capturePulse` 1s infinite, `.capture-active` accent + glow, `prefers-reduced-motion` → animation none; **Кнопка превью:** `.preview-toggle-wrap` — min-width 75px, accent цвет, `.collapsed` состояние, `@keyframes toggleBreathe` 4s infinite, `prefers-reduced-motion` отключение; **Тезаурус:** `.thesaurus-btn-letter` — шрифт/размер как `.tf-btn-num` |
+| `styles.css` | `.block-md-content` — стили markdown + min-height 110px; `.block-md-btn` — скрытие по hover, active синяя подсветка; `.notepad-md-content pre code.hljs`, `.llm-chat-msg-text pre code.hljs` — прозрачный фон; **Capture pulse:** `@keyframes capturePulse` 1s infinite, `.capture-active` accent + glow, `prefers-reduced-motion` → animation none; **Кнопка превью:** `.preview-toggle-wrap` — min-width 75px, accent цвет, `.collapsed` состояние, `@keyframes toggleBreathe` 4s infinite, `prefers-reduced-motion` отключение; **Тезаурус:** `.thesaurus-btn-letter` — шрифт/размер как `.tf-btn-num`, `.thesaurus-btn` min-width/min-height; **Translate:** `.translate-auto-pill` — таблетка Auto/RU↔EN, `.translate-lang-opt` flex, `.translate-dropdown` без scrollbar |
 | `prompt-loom.js` | `renderPalette` — DOM-diff (не пересоздаёт search input); `close-all-palettes` listener; `closePalette` export; фикс `handleBackslashTrigger` |
 | `llm-core.js` | `closeAllMenus` в menu trigger и bank trigger |
 | `text-linter.js` | `many-commas` regex → comma counting; `ui-menu` на gearDrop; `closeAllMenus` в gearBtn; `ANIM_TOKEN_LIMIT` 300→80; тайминг в `openPreview` (убран) |
