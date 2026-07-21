@@ -20,6 +20,13 @@ window.TextFormat = (() => {
   const ALPHA_RE = /[a-zA-Zа-яА-ЯёЁ]/u;
   const isAlpha = ch => ALPHA_RE.test(ch);
 
+  // ── cyr2lat precomputed tables ──────────────────────────
+  const CYR_TO_LAT = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'j',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:"'",ы:'y',ь:"''",э:'eh',ю:'yu',я:'ya'};
+  const LAT_TO_CYR = {};
+  for (const [k, val] of Object.entries(CYR_TO_LAT)) { if (val) LAT_TO_CYR[val] = k; }
+  const LAT_TO_CYR_KEYS = Object.keys(LAT_TO_CYR).sort((a, b) => b.length - a.length);
+  const LAT_TO_CYR_RE = new RegExp(LAT_TO_CYR_KEYS.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+
   // ── Определения пунктов ─────────────────────────────────
   const ITEMS = [
     // Tier 1 — Регистр и пробелы (transparent)
@@ -44,7 +51,7 @@ window.TextFormat = (() => {
 
     // Tier 3 — Строки (transparent)
     { id: 'prefix',   tier: 3, name: 'Префикс строк',         desc: 'Добавить префикс к каждой строке', example: '> hello', vars: ['> ', '// ', '# ', '  ', '→ '], fn: (t, v) => t.split('\n').map(l => v + l).join('\n') },
-    { id: 'uncomment', tier: 3, name: 'Убрать комментарии',  desc: 'Стрипнуть комментарии из начала строк', example: '// code → code', fn: t => t.split('\n').map(l => l.replace(/^\s*(\/\/|#|--|\/\*|\*\/)\s?/, '')).join('\n') },
+    { id: 'uncomment', tier: 3, name: 'Убрать комментарии',  desc: 'Стрипнуть комментарии из начала строк', example: '// code → code', fn: t => t.split('\n').map(l => l.replace(/^(\s*)(\/\/|#|--|\/\*|\*\/)\s?/, '$1')).join('\n') },
     { id: 'comment',  tier: 3, name: 'В комментарий',         desc: 'Обернуть каждую строку в комментарий', example: 'code → // code', vars: ['// ', '# ', '/* ', '-- '], fn: (t, v) => t.split('\n').map(l => v + l).join('\n') },
     { id: 'wrapch',   tier: 3, name: 'Обернуть в',            desc: 'Скобки/кавычки вокруг всего текста', example: 'text → (text)', vars: ['()', '[]', '{}', '""', "''"], fn: (t, v) => { const pairs = { '()': ['(', ')'], '[]': ['[', ']'], '{}': ['{', '}'], '""': ['\u0022', '\u0022'], "''": ['\u0027', '\u0027'] }; const [open, close] = pairs[v] || [v[0] || '', v.slice(1) || '']; return open + t + close; } },
     { id: 'join',     tier: 3, name: 'Склеить строки',        desc: 'Всё в одну строку через пробел', example: 'a\\nb → a b', fn: t => t.replace(/\r\n|\r|\n/g, ' ') },
@@ -54,7 +61,7 @@ window.TextFormat = (() => {
     { id: 'newline',  tier: 3, name: 'Переносы строк',        desc: 'Конвертация окончаний строк', example: 'CRLF → LF', vars: ['→ LF', '→ CRLF', '→ CR'], fn: (t, v) => { const clean = t.replace(/\r\n/g, '\n').replace(/\r/g, '\n'); if (v === '→ LF') return clean; if (v === '→ CRLF') return clean.replace(/\n/g, '\r\n'); return clean.replace(/\n/g, '\r'); } },
 
     // Tier 4 — Код/декод (subtle)
-    { id: 'b64',      tier: 4, name: 'Base64',               desc: 'Кодировать/Декодировать Base64', example: 'hello → aGVsbG8=', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') return btoa(unescape(encodeURIComponent(t))); return decodeURIComponent(escape(atob(t))); } catch { return t; } } },
+    { id: 'b64',      tier: 4, name: 'Base64',               desc: 'Кодировать/Декодировать Base64', example: 'hello → aGVsbG8=', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') { const bytes = new TextEncoder().encode(t); let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]); return btoa(bin); } const bin = atob(t); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder('utf-8', { fatal: false }).decode(bytes); } catch { return t; } } },
     { id: 'urlencode', tier: 4, name: 'URL-кодирование',      desc: 'Кодировать/Декодировать URL', example: 'привет → %D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') return encodeURIComponent(t); return decodeURIComponent(t); } catch { return t; } } },
     { id: 'caesar',   tier: 4, name: 'Шифр Цезаря',          desc: 'Сдвиг букв на N позиций', example: 'abc → def (+3)', vars: ['+1', '+3', '+6', '+13', '-1', '-3', '-6', '-13'], fn: (t, v) => { const n = Number.parseInt(v, 10); const shift = Number.isFinite(n) ? n : 0; const alpha = 'abcdefghijklmnopqrstuvwxyz'; const cyr = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'; return Array.from(t).map(ch => { const lower = ch.toLowerCase(); const isUpper = lower !== ch; let idx = alpha.indexOf(lower); if (idx !== -1) { idx = (idx + shift + alpha.length) % alpha.length; return isUpper ? alpha[idx].toUpperCase() : alpha[idx]; } idx = cyr.indexOf(lower); if (idx !== -1) { idx = (idx + shift + cyr.length) % cyr.length; return isUpper ? cyr[idx].toUpperCase() : cyr[idx]; } return ch; }).join(''); } },
 
@@ -81,8 +88,7 @@ window.TextFormat = (() => {
     { id: 'randcase', tier: 8, name: 'Регистр',              desc: 'Случайный, волновой или пульсирующий регистр', example: 'hello → hElLo', vars: ['random', 'wave', 'pulse'], fn: (t, v) => { if (v === 'wave') { let i = 0; return Array.from(t).map(ch => { if (!isAlpha(ch)) return ch; const out = i % 2 === 0 ? ch.toLowerCase() : ch.toUpperCase(); i++; return out; }).join(''); } if (v === 'pulse') { return t.split(/(\s+)/).map(word => { if (!isAlpha(word)) return word; const letters = Array.from(word); const len = letters.length; if (len === 1) return letters[0].toUpperCase(); const mid = (len - 1) / 2; return letters.map((ch, idx) => { if (!isAlpha(ch)) return ch; const dist = Math.abs(idx - mid) / mid; return dist < 0.4 ? ch.toUpperCase() : ch.toLowerCase(); }).join(''); }).join(''); } return Array.from(t).map(ch => isAlpha(ch) ? (Math.random() > 0.5 ? ch.toUpperCase() : ch.toLowerCase()) : ch).join(''); } },
     { id: 'mirror',   tier: 8, name: 'Зеркало',              desc: 'Разворот текста с Unicode-символами или без', example: 'abc → ɐbɔ или cba', vars: ['↕ Символы', '↔ Простой'], fn: (t, v) => { if (v === '↕ Символы') { const map = {a:'∀',b:'q',c:'ɔ',d:'p',e:'Ǝ',f:'ꟻ',g:'ƃ',h:'ɥ',i:'ı',j:'ſ',k:'ʞ',l:'˥',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'ꟻ',G:'ɓ',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'N',O:'O',P:'d',Q:'b',R:'ɹ',S:'S',T:'ʇ',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z',а:'ɐ',б:'ƍ',в:'ʚ',г:'ɹ',е:'ǝ',ё:'ǝ̈',з:'ε',к:'ʞ',м:'w',н:'н',о:'о',р:'d',с:'ɔ',т:'ʇ',у:'ʎ',х:'х',я:'ʁ',А:'∀',Б:'Ƃ',В:'ʚ',Г:'⅃',Е:'Ǝ',Ё:'Ǝ̈',З:'Ɛ',К:'ʞ',М:'W',Н:'Н',О:'О',Р:'Ԁ',С:'Ɔ',Т:'⊥',У:'⅄',Х:'Х',Я:'Я'}; return t.split('\n').map(l => Array.from(l).map(ch => map[ch] || ch).reverse().join('')).join('\n'); } return t.split('\n').map(l => Array.from(l).reverse().join('')).join('\n'); } },
     { id: 'leet',     tier: 8, name: 'Leet speak',           desc: 'Замена букв на цифры (1337)', example: 'Hello → H3llo', fn: t => { const map = {a:'4',b:'8',e:'3',g:'6',i:'1',o:'0',s:'5',t:'7',z:'2',а:'4',б:'6',в:'8',е:'3',ё:'3',и:'1',й:'1',о:'0',с:'5',т:'7',з:'2'}; return t.replace(/[a-zA-Zа-яА-ЯёЁ]/gu, ch => map[ch.toLowerCase()] ?? ch); } },
-    { id: 'cyr2lat',  tier: 8, name: 'Кириллица ↔ Латиница', desc: 'Транслитерация (обратимая)', example: 'привет → privet', vars: ['→ Lat', '← Cyr'], fn: (t, v) => { const cyrToLat = {а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'yo',ж:'zh',з:'z',и:'i',й:'j',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'eh',ю:'yu',я:'ya'}; if (v === '← Cyr') { const latToCyr = {}; for (const [k, val] of Object.entries(cyrToLat)) { if (val) latToCyr[val] = k; }
-      const keys = Object.keys(latToCyr).sort((a, b) => b.length - a.length); const re = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi'); return t.replace(re, m => { const rep = latToCyr[m.toLowerCase()]; return m[0] !== m[0].toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }); } return t.split('').map(ch => { const rep = cyrToLat[ch.toLowerCase()]; if (!rep) return ch; return ch !== ch.toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }).join(''); } },
+    { id: 'cyr2lat',  tier: 8, name: 'Кириллица ↔ Латиница', desc: 'Транслитерация (обратимая)', example: 'привет → privet', vars: ['→ Lat', '← Cyr'], fn: (t, v) => { if (v === '← Cyr') { return t.replace(LAT_TO_CYR_RE, m => { const rep = LAT_TO_CYR[m.toLowerCase()]; return m[0] !== m[0].toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }); } return t.split('').map(ch => { const rep = CYR_TO_LAT[ch.toLowerCase()]; if (!rep) return ch; return ch !== ch.toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }).join(''); } },
     { id: 'bubble',   tier: 8, name: 'Bubble text',          desc: 'Полноширинные символы Юникода', example: 'hello → ｈｅｌｌｏ', vars: ['ASCII', 'Все'], fn: (t, v) => { return Array.from(t).map(ch => { const code = ch.charCodeAt(0); if (code >= 33 && code <= 126) return String.fromCharCode(code + 0xFEE0); if (code === 32) return ' '; if (v === 'Все' && /[а-яА-ЯёЁ]/.test(ch)) return ch + '\u0361'; return ch; }).join(''); } },
     { id: 'mirrorf',  tier: 8, name: 'Зеркальный шрифт',     desc: 'Юникод-зеркальные буквы', example: 'hello → ollǝh', fn: t => { const map = {a:'ɐ',b:'q',c:'ɔ',d:'p',e:'ǝ',f:'ɟ',g:'ƃ',h:'ɥ',i:'ᴉ',j:'ɾ',k:'ʞ',l:'l',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'Ⅎ',G:'⅁',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'И',O:'O',P:'Ԁ',Q:'Q',R:'Я',S:'S',T:'⊥',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z',а:'ɐ',б:'ƍ',в:'ʚ',г:'ɹ',д:'ɓ',е:'ǝ',ё:'ǝ̈',ж:'ж',з:'ε',и:'и',й:'ӣ',к:'ʞ',л:'v',м:'w',н:'н',о:'о',п:'u',р:'d',с:'ɔ',т:'ʇ',у:'ʎ',ф:'ф',х:'х',ц:'ц',ч:'Һ',ш:'m',щ:'m',ы:'ıq',э:'є',ю:'oı',я:'ʁ',А:'∀',Б:'Ƃ',В:'ʚ',Г:'⅃',Д:'ᗡ',Е:'Ǝ',Ё:'Ǝ̈',Ж:'Ж',З:'Ɛ',И:'И',Й:'Ӣ',К:'ʞ',Л:'Λ',М:'W',Н:'Н',О:'О',П:'∩',Р:'Ԁ',С:'Ɔ',Т:'⊥',У:'⅄',Ф:'Ф',Х:'Х',Ц:'Ц',Ч:'Һ',Ш:'M',Щ:'M',Ы:'Іᑫ',Э:'Є',Ю:'OІ',Я:'Я'}; return Array.from(t).reverse().map(ch => map[ch] || ch).join(''); } },
     { id: 'zalgo',    tier: 8, name: 'Zalgo',               desc: 'Хаотичные диакритические знаки (glitch text)', example: 'hello → h̷e̸l̶l̴o̷', vars: ['low', 'mid', 'high'], fn: (t, v) => { const count = v === 'high' ? 6 : v === 'low' ? 1 : 3; return Array.from(t).map(ch => { if (!/\p{L}|\p{N}/u.test(ch)) return ch; let out = ch; for (let i = 0; i < count; i++) out += _zalgoPick(ZALGO_UP) + _zalgoPick(ZALGO_MID) + _zalgoPick(ZALGO_DOWN); return out; }).join(''); } },
@@ -135,7 +141,7 @@ window.TextFormat = (() => {
     _saveVars();
   }
 
-  // ── Выполнение (с поддержкой выделения) ─────────────────
+  // ── Выполнение (с поддержкой выделения и undo) ───────────
   function execute(item, textarea, btn) {
     if (!textarea) return;
     const text = textarea.value;
@@ -153,9 +159,20 @@ window.TextFormat = (() => {
       updateButtonIcon(btn);
       if (result === source) return;
       const scrollTop = textarea.scrollTop;
-      textarea.value = hasSelection
-        ? text.slice(0, start) + result + text.slice(end)
-        : result;
+      // execCommand сохраняет undo-стек (Ctrl+Z работает)
+      textarea.focus();
+      if (hasSelection) {
+        textarea.setSelectionRange(start, end);
+      } else {
+        textarea.setSelectionRange(0, text.length);
+      }
+      const ok = document.execCommand('insertText', false, result);
+      // Fallback если execCommand не сработал
+      if (!ok || textarea.value === text) {
+        textarea.value = hasSelection
+          ? text.slice(0, start) + result + text.slice(end)
+          : result;
+      }
       textarea.selectionStart = hasSelection ? start : result.length;
       textarea.selectionEnd = hasSelection ? start + result.length : result.length;
       textarea.scrollTop = scrollTop;
