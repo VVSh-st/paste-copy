@@ -204,6 +204,8 @@ window.TextFormat = (() => {
     btn.addEventListener('mousedown', e => {
       if (e.button !== 0) return;
       longPressed = false;
+      clearTimeout(_tooltipTimer);
+      _hideTooltip();
       longPressTimer = setTimeout(() => {
         longPressed = true;
         const rect = btn.getBoundingClientRect();
@@ -243,7 +245,7 @@ window.TextFormat = (() => {
   // ── Tooltip ──────────────────────────────────────────────
   function _showTooltip(anchor) {
     _hideTooltip();
-    if (!_lastItem) return;
+    if (!_lastItem || _popup) return;
     const item = ITEM_BY_ID.get(_lastItem);
     if (!item) return;
     _tooltip = document.createElement('div');
