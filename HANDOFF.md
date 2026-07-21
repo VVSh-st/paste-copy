@@ -258,7 +258,8 @@
 | `timer.js` | 12-сегментный периметр: `_buildSegments/_fillSegment/_extinguishSegment/_syncSegments`; `viewBox`; CW для обоих режимов; `completedSegments` state; `timer-value-sm` + `_prevDigitLen`; Segment tick marks perpendicular to path, inward only; **Аудит итерации 1-4:** AudioContext reuse (один на цикл, user-gesture init); `_cachePoints` аналитический (0 layout вместо 800); `_tickRAF` safety (`rafId=null`); `closeInlineInput` comma→if/else; inline-input фидбэк (shake+red); ResizeObserver debounce (`_resizeRaf`); cssText cache (`_cachedDigitCssText/Sig/Font`); `_applyArc` hot path оптимизация (display/r только при смене dir, `_lastHeadIdx` guard, убран strokeDashoffset='0'); AudioContext.resume().catch(); `restoreState` AudioContext init; `_updateDisplay` guards; `void offsetWidth` убран; `setIdleVisual` дубли убраны; `parentNode.style.position` вынесен в init; **Аудит задание 2:** `_resetRenderState()` — единый сброс arc/render state; `resetToIdle()` + `onLimitReached()` вызывают `_resetRenderState()` (фикс кометы после сброса); countdown warm glow — `overallProgress = 1-rem/duration` вместо `(elapsed%60)/60`; `_digitAnimationTimer` cancel prev setTimeout; удалён `_firedCorners`; **Пауза/возобновление:** `pauseTimer()`/`resumeTimer()`, `onPointerUp` active→pause/paused→resume, `saveState` с `pausedElapsed`, `restoreState` paused state, `_pausedAt`/`_pausedElapsed`; **Аудит задание 2(1):** `_hideArc()` безусловное удаление классов; `_clearDigitAnimation()` хелпер (clearTimeout + remove .timer-digit-old + .timer-digit-enter); `_setWarmGlow(warm)` — glow только при `rem <= 5`; `_applyWarmGlow` удалён из `_applyArc()`; `_runStartPerf` удалён (Date.now() для elapsed); `pausedElapsed` валидация; `WARM_START_SEC` удалена; **CCW комета фикс:** `_cachePoints('ccw')` 5-й сегмент `(0,h-r)→(w-r,h)` → `(r,h)→(w-r,h)` — синхронизация с `_buildPath`, комета идёт по периметру вместо диагонали; **CCW направление фикс:** `_buildPath`/`_cachePoints` с разными CW/CCW sweep-флагами, progress `(elapsed%60)/60` (0→1 per-minute), `_applyArc` идентичен для обоих направлений — визуал определяется путём, не прогрессом; **DOM-based `_cachePoints`:** возврат на `getPointAtLength()` (точное совпадение с SVG path); **Аудит оптимизации:** `_applyArc` static writes (display/offset/r) однократно за arc-сессию, `arcHeadSeg.strokeDasharray` кэш (меняется ~6с/мин), wrap detection `progress < _lastProgress` для сброса кэшей, `_resetArcFrameCache()` хелпер; **Доп оптимизации:** `_updateDisplay` — `_oldDigitEl` ref вместо `querySelectorAll`, `_prevMin` вместо `+textContent`; `saveState` — JSON.stringify кэш; `onPointerDown` — inline style вместо `getComputedStyle`; `onPointerMove` — distance² вместо `Math.hypot`; `startPulse` — `_pulseUrgentApplied` flag; `_checkCornerGlow` — `_endCornerGlow` callback; `_playCompletionSound` — `COMPLETION_FREQS` константа + for; `openInlineInput` — extracted handlers; `_invalidateCaches` — `_initialized` guard; `destroy` — null DOM refs |
 | `ember.js` | CPU-оптимизация: кеш `getEmberCenter()` (per-frame), `isSceneIdle()` idle gate (со спавном частиц внутри), `POSE_BUF`/`resetPose()`, particle throttle 30fps, `setVarApprox`, `deferBurst`, `mouseMovedSinceLastFrame`, `updateMood` в `requestIdleCallback`, `passive: true`; `syncLoopState()` — централизация focus/IO/visibility, optimistic geometry, fallback timeout, `_idleCallbackId` cleanup; `Math.hypot`→dist², `flashHeat`/`coreHeatReserve` early skip; layered breathing `breathCore/Glow/Crust/Ash`; `_throttleTimer` fix; crack color-shift `mixRgb()`; anomaly sparks 380-720px; micro-flicker idle; landed ash particles; dying tab guard; idleLevel throttle УДАЛЁН (убивал визуал); **Аудит R1:** `ringImpulse`/`cursorLean` обнуляются в reduce-motion; tooltip debounce 800мс; `startEgg` guard; `--reveal-delay` через `setVar`/`removeVar`; **Аудит R2:** `deferBurst` рекурсия, `updateCrackLayers` через `setVar`, `notifyEdit` tooltip fix, reduceMotion glint reset, `peek.state` reset в idle, mousemove throttle-lock; **Egg rewrite (4(5)-4(10)):** 12-фазный орбитальный сценарий, orbit中心=raw caret (не clamped), tilt к caret в фазах 4-8, старт от ember (0,0), landing point от реального caret, `_baseApproachAngle`, `realCaretX/Y`, `_landX/_landY` clamped к viewport, minDist guard 150px, viewport clamp, reduceMotion early-return, ПКМ-тест включён |
 | `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode); **Аудит:** segment transition `background-color` → `opacity`; `will-change: transform` на `.ember-core` |
-| `styles.css` | `capturePulse` infinite → 1; `prefers-reduced-motion` для capturePulse; `.timer-input-error` + `@keyframes timerInputShake` |
+| `qr-panel.js` | Замена кастомного QR-генератора (~460 строк) на `qrcode-generator.js` (Kazuhiko Arase, MIT). typeNumber=0 (auto v1-40), UTF-8, EC авто-понижение. Ёмкость: 60→2953 байт. `_computeReserved()` для function/data модулей. Стили видны при moduleSize≥2. Убрана цитата H. Stark. moduleSize 1-12px. |
+| `styles.css` | `capturePulse` infinite → 1; `prefers-reduced-motion` для capturePulse; `.timer-input-error` + `@keyframes timerInputShake`; **QR Panel:** `.qr-canvas-wrap` flex:1, `.qr-canvas` width:100% + image-rendering:pixelated, удалён `.qr-tech-limit` |
 
 ## Как работает
 
@@ -1202,9 +1203,48 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ## Следующий шаг
 
-1. Авто-заголовок блока/вкладки — popup с выбором (см. TODO в конце файла)
-2. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
-2. Проверить highlight.js в превью — цикл Text→MD→MD*, подсветка кода
+1. **QR-генератор — НЕЗАВЕРШЕНО.** Заменили кастомный генератор на `qrcode-generator` (Kazuhiko Arase). Библиотека работает, передаёт 1400+ символов кириллицы. НО: при `_moduleSize < 3` (маленькие модули) QR не отображается. Библиотека `qrcode(0, ec)` с auto-version падает или генерирует version 40 (177 модулей) который не рендерится. **Нужно:** найти почему `qrcode(0, 'L').make()` падает для version 40, или вернуть старый кастомный генератор для version > 30.
+2. Авто-заголовок блока/вкладки — popup с выбором (см. TODO в конце файла)
+3. Решить с пользователем: реализовать ли dropdown/popup для word-complete (список кандидатов)
+
+---
+
+### QR-генератор — замена на qrcode-generator (сессия 2026-07-22)
+
+**Статус: НЕЗАВЕРШЕНО — есть баг с version 40**
+
+**Файлы:** `qr-panel.js`, `qrcode-generator.js` (новый), `index.html`, `styles.css`
+
+**Что сделано:**
+1. **Добавлена библиотека `qrcode-generator.js`** (Kazuhiko Arase, MIT) — та же что в Chrome-плагине QR Code Generator. Сохранена в корне проекта, подключена через `<script>` перед `qr-panel.js`.
+2. **Кастомный `_QR` (~450 строк) заменён на обёртку (~60 строк)** — использует глобальный `qrcode()` из библиотеки.
+3. **UTF-8 кодировка** — `qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']` перед encode. Без этого кириллица терялась (ASCII).
+4. **EC по умолчанию = H (30%)** — авто-понижение H→Q→M→L когда данных много.
+5. **Module size по умолчанию = 2px** — slider минимум 1px, предупреждение только при ≤ 1px.
+6. **Рендеринг** — `modSize = Math.min(12, Math.floor(avail / qrModules))`, CSS `max-width/max-height: 100%` масштабирует.
+7. **Убран `reserved` массив** — все модули рисуются одним стилем.
+
+**Что работает:**
+- 1400+ символов кириллицы на одной странице (EC=L, version 40)
+- 2460 байт данных
+- `_moduleSize ≥ 3` — QR отображается и сканируется
+
+**Баг (НЕЗАВЕРШЕНО):**
+- При `_moduleSize < 3` (slider 1-2px) — QR не отображается
+- Причина: `getMaxVersionForModuleSize` возвращает version 40 (177 модулей), библиотека `qrcode(0, ec)` с auto-version может падать на version 40
+- `_splitText` теперь пробует encode через саму библиотеку (catch→fallback), но encode тоже падает
+- **Гипотезы:**
+  1. `qrcode-generator` имеет баг с version 40 + большие данные
+  2. `TextDecoder().decode()` → `qrcode.stringToBytes()` round-trip теряет данные
+  3. `qr.make()` выбрасывает exception который мы ловим, но fallback тоже не работает
+  4. `modSize = floor(300/185) = 1` → canvas 185×185px — возможно CSS `overflow: hidden` + `min-height: 0` обрезает
+
+**Старый генератор (backup):** `Backup\backup-2026-07-21_21-26-56\qr-panel.js` — кастомный `_QR` с自己的 Reed-Solomon. Поддерживает version 1-40. НО: при `_moduleSize=9` влезало только ~60 символов кириллицы.
+
+**Следующие шаги:**
+1. Открыть консоль браузера, найти ошибку `QR encode failed: ...`
+2. Или: вернуть старый кастомный генератор для version > 30, библиотеку для version ≤ 30
+3. Или: проверить CSS — возможно canvas 185×185 обрезается `overflow: hidden`
 
 ### Preview — логотип Paste/Copy + QR-кнопка
 
@@ -1449,3 +1489,25 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - Round 19: tooltip supress при long press/menu open, tooltip overlap fix
 
 **Коммиты:** `a6d1845` → ... → `b1c73fe` (16 раундов аудита, hover откачен)
+
+---
+
+### QR Panel — замена генератора (задание QR)
+
+**Проблема:** кастомный QR-генератор ограничивал версию QR через размер модуля (moduleSize × ширина панели). С модулем 9px и шириной ~430px → version 5-7 → ~60 символов кириллицы. Плагин для Chrome кодировал ~1500.
+
+**Решение:**
+1. **Заменён кастомный `_QR` IIFE** (~460 строк RS-логики, матриц, масок) на обёртку над `qrcode-generator.js` (Kazuhiko Arase, MIT, ~56KB, уже была в проекте)
+2. **`typeNumber=0`** — авто-подбор версии 1-40 (вместо искусственного ограничения)
+3. **UTF-8** — `qrcode.stringToBytes = stringToBytesFuncs['UTF-8']` для кириллицы
+4. **EC авто-понижение** — при переполнении: H→Q→M→L
+5. **Ёмкость:** version 40 EC=L → ~2953 байт ≈ ~1476 символов кириллицы (2 байта/символ)
+6. **Размер модуля** — расширен с 4-12 до 1-12px, теперь управляет визуальным масштабом, а не версией QR
+7. **CSS растяжение** — canvas рендерится с `_moduleSize` px/модуль (мин 2), `width: 100%` + `image-rendering: pixelated` масштабирует в wrapper
+8. **Стили (точки/скруглённые/крестики)** — видны в превью при moduleSize ≥ 2
+9. **Убрана цитата H. Stark** и её hover
+10. **`_computeReserved()`** — вычисляет function-модулы из спецификации QR (finder/timing/alignment/format/version/dark) для отрисовки в classic-стиле
+11. **Экспорт PNG/SVG** — рендерится на `_moduleSize` px/модуль (слайдер)
+
+**Файлы:** `qr-panel.js`, `styles.css`
+**Коммиты:** `3311712` (замена энкодера), `673c79f` (flex wrapper), `8f4d730` (width:100%), `8cdf8f9` (убрана цитата), `1ae5049` (стили видны)
