@@ -10,6 +10,12 @@ window.TextFormat = (() => {
 
   const RU_COLLATOR = new Intl.Collator('ru');
 
+  // Zalgo combining marks (precomputed)
+  const ZALGO_UP = ['\u030d','\u030e','\u0304','\u0305','\u033f','\u0311','\u0306','\u0310','\u0352','\u0357','\u0351'];
+  const ZALGO_MID = ['\u0315','\u031b','\u0340','\u0341','\u0358','\u0321','\u0322','\u0327','\u0328','\u0334','\u0335','\u0336'];
+  const ZALGO_DOWN = ['\u0316','\u0317','\u0318','\u0319','\u031c','\u031d','\u031e','\u031f','\u0320','\u0323','\u0324','\u0325'];
+  const _zalgoPick = arr => arr[Math.floor(Math.random() * arr.length)];
+
   // ── Определения пунктов ─────────────────────────────────
   const ITEMS = [
     // Tier 1 — Регистр и пробелы (transparent)
@@ -23,8 +29,8 @@ window.TextFormat = (() => {
 
     // Tier 2 — Форматирование (subtle)
     { id: 'title',    tier: 2, name: 'Слово с Заглавной',     desc: 'Каждое слово с заглавной буквы', example: 'hELLO world → Hello World', fn: t => t.toLowerCase().replace(/(^|[^\p{L}])(\p{L})/gu, (_, prefix, letter) => prefix + letter.toUpperCase()) },
-    { id: 'sentence', tier: 2, name: 'Предложение с Заглавной', desc: 'Первая буква предложения заглавная', example: 'hello. world → Hello. World', fn: t => t.replace(/(^|[.!?]\s+)(\p{Ll})/gu, (_, p, c) => p + c.toLocaleUpperCase()) },
-    { id: 'json',     tier: 2, name: 'Формат JSON',          desc: 'Красивое форматирование JSON', example: '{"a":1} → структурированный', vars: ['2', '4', 'min'], fn: (t, v) => { try { const data = JSON.parse(t); return v === 'min' ? JSON.stringify(data) : JSON.stringify(data, null, Number.parseInt(v, 10) || 2); } catch { return t; } } },
+    { id: 'sentence', tier: 2, name: 'Предложение с Заглавной', desc: 'Первая буква предложения заглавная', example: 'hello. world → Hello. World', fn: t => t.replace(/(^|[.!?]\s+|\n\s*)(\p{Ll})/gu, (_, p, c) => p + c.toLocaleUpperCase()) },
+    { id: 'json',     tier: 2, name: 'Формат JSON',          desc: 'Красивое форматирование JSON', example: '{"a":1} → структурированный', vars: ['2', '4', 'min'], fn: (t, v) => { try { const data = JSON.parse(t); const formatted = v === 'min' ? JSON.stringify(data) : JSON.stringify(data, null, Number.parseInt(v, 10) || 2); return /\n$/.test(t) ? formatted + '\n' : formatted; } catch { return t; } } },
     { id: 'slug',     tier: 2, name: 'Slugify',               desc: 'URL-safe строка', example: 'Привет Мир! → привет-мир', fn: t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') },
     { id: 'caseconv', tier: 2, name: 'Case строки',           desc: 'camelCase / snake_case / kebab-case', example: 'hello world → helloWorld', vars: ['camel', 'snake', 'kebab'], fn: (t, v) => { const words = t.trim().toLowerCase().split(/[^\p{L}\p{N}]+/gu).filter(Boolean); if (v === 'snake') return words.join('_'); if (v === 'kebab') return words.join('-'); return words.map((w, i) => i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(''); } },
     { id: 'reverse',  tier: 2, name: 'Обратный порядок',      desc: 'Инвертировать порядок строк', example: 'a\\nb\\nc → c\\nb\\na', fn: t => t.split('\n').reverse().join('\n') },
@@ -36,17 +42,17 @@ window.TextFormat = (() => {
     { id: 'prefix',   tier: 3, name: 'Префикс строк',         desc: 'Добавить префикс к каждой строке', example: '> hello', vars: ['> ', '// ', '# ', '  ', '→ '], fn: (t, v) => t.split('\n').map(l => v + l).join('\n') },
     { id: 'uncomment', tier: 3, name: 'Убрать комментарии',  desc: 'Стрипнуть комментарии из начала строк', example: '// code → code', fn: t => t.split('\n').map(l => l.replace(/^\s*(\/\/|#|--|\/\*|\*\/)\s?/, '')).join('\n') },
     { id: 'comment',  tier: 3, name: 'В комментарий',         desc: 'Обернуть каждую строку в комментарий', example: 'code → // code', vars: ['// ', '# ', '/* ', '-- '], fn: (t, v) => t.split('\n').map(l => v + l).join('\n') },
-    { id: 'wrapch',   tier: 3, name: 'Обернуть в',            desc: 'Скобки/кавычки вокруг всего текста', example: 'text → (text)', vars: ['()', '[]', '{}', '""', "''"], fn: (t, v) => { const o = v[0], c = v[1]; return o + t + c; } },
+    { id: 'wrapch',   tier: 3, name: 'Обернуть в',            desc: 'Скобки/кавычки вокруг всего текста', example: 'text → (text)', vars: ['()', '[]', '{}', '""', "''"], fn: (t, v) => { const pairs = { '()': ['(', ')'], '[]': ['[', ']'], '{}': ['{', '}'], '""': ['\u0022', '\u0022'], "''": ['\u0027', '\u0027'] }; const [open, close] = pairs[v] || [v[0] || '', v.slice(1) || '']; return open + t + close; } },
     { id: 'join',     tier: 3, name: 'Склеить строки',        desc: 'Всё в одну строку через пробел', example: 'a\\nb → a b', fn: t => t.replace(/\r\n|\r|\n/g, ' ') },
     { id: 'spaces',   tier: 3, name: 'Схлопнуть пробелы',    desc: 'Множественные пробелы → один', example: 'a   b → a b', fn: t => t.replace(/[^\S\r\n]{2,}/g, ' ') },
-    { id: 'tab2sp',   tier: 3, name: 'Табы → Пробелы',        desc: 'Конвертация табов в пробелы', example: '\\tcode →     code', vars: ['2', '4', '8'], fn: (t, v) => t.replace(/\t/g, ' '.repeat(parseInt(v))) },
+    { id: 'tab2sp',   tier: 3, name: 'Табы → Пробелы',        desc: 'Конвертация табов в пробелы', example: '\\tcode →     code', vars: ['2', '4', '8'], fn: (t, v) => { const n = Number.parseInt(v, 10); return t.replace(/\t/g, ' '.repeat(Number.isFinite(n) && n > 0 ? n : 4)); } },
     { id: 'sp2tab',   tier: 3, name: 'Пробелы → Табы',        desc: 'Конвертация ведущих пробелов в табы', example: '    code → \\tcode', vars: ['2', '4', '8'], fn: (t, v) => { const n = Number.parseInt(v, 10) || 4; const re = new RegExp(' {' + n + '}', 'g'); return t.split('\n').map(line => { const indent = line.match(/^ */)[0]; return indent.replace(re, '\t') + line.slice(indent.length); }).join('\n'); } },
     { id: 'newline',  tier: 3, name: 'Переносы строк',        desc: 'Конвертация окончаний строк', example: 'CRLF → LF', vars: ['→ LF', '→ CRLF', '→ CR'], fn: (t, v) => { const clean = t.replace(/\r\n/g, '\n').replace(/\r/g, '\n'); if (v === '→ LF') return clean; if (v === '→ CRLF') return clean.replace(/\n/g, '\r\n'); return clean.replace(/\n/g, '\r'); } },
 
     // Tier 4 — Код/декод (subtle)
     { id: 'b64',      tier: 4, name: 'Base64',               desc: 'Кодировать/Декодировать Base64', example: 'hello → aGVsbG8=', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') return btoa(unescape(encodeURIComponent(t))); return decodeURIComponent(escape(atob(t))); } catch { return t; } } },
     { id: 'urlencode', tier: 4, name: 'URL-кодирование',      desc: 'Кодировать/Декодировать URL', example: 'привет → %D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') return encodeURIComponent(t); return decodeURIComponent(t); } catch { return t; } } },
-    { id: 'caesar',   tier: 4, name: 'Шифр Цезаря',          desc: 'Сдвиг букв на N позиций', example: 'abc → def (+3)', vars: ['+1', '+3', '+6', '+13', '-1', '-3', '-6', '-13'], fn: (t, v) => { const n = parseInt(v); const alpha = 'abcdefghijklmnopqrstuvwxyz'; const cyr = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'; return t.split('').map(ch => { const lower = ch.toLowerCase(); const isUpper = lower !== ch; let idx = alpha.indexOf(lower); if (idx !== -1) { idx = (idx + n + 26) % 26; return isUpper ? alpha[idx].toUpperCase() : alpha[idx]; } idx = cyr.indexOf(lower); if (idx !== -1) { idx = (idx + n + cyr.length) % cyr.length; return isUpper ? cyr[idx].toUpperCase() : cyr[idx]; } return ch; }).join(''); } },
+    { id: 'caesar',   tier: 4, name: 'Шифр Цезаря',          desc: 'Сдвиг букв на N позиций', example: 'abc → def (+3)', vars: ['+1', '+3', '+6', '+13', '-1', '-3', '-6', '-13'], fn: (t, v) => { const n = Number.parseInt(v, 10); const shift = Number.isFinite(n) ? n : 0; const alpha = 'abcdefghijklmnopqrstuvwxyz'; const cyr = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'; return Array.from(t).map(ch => { const lower = ch.toLowerCase(); const isUpper = lower !== ch; let idx = alpha.indexOf(lower); if (idx !== -1) { idx = (idx + shift + alpha.length) % alpha.length; return isUpper ? alpha[idx].toUpperCase() : alpha[idx]; } idx = cyr.indexOf(lower); if (idx !== -1) { idx = (idx + shift + cyr.length) % cyr.length; return isUpper ? cyr[idx].toUpperCase() : cyr[idx]; } return ch; }).join(''); } },
 
     // Tier 5 — Извлечение (transparent)
     { id: 'contacts', tier: 5, name: 'Извлечь контакты',      desc: 'Найти email / URL / телефоны в тексте', example: 'Позвони 8-900-111-22-33 → контакт', fn: t => { const re = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}.-]+\.[\p{L}]{2,}|https?:\/\/[^\s<>"')\]}]+|\+?\d[\d\s().-]{7,}\d/gu; const found = t.match(re); return found ? found.map(x => x.replace(/[.,;:!?]+$/g, '')).join('\n') : ''; } },
@@ -62,7 +68,7 @@ window.TextFormat = (() => {
     { id: 'repeat',   tier: 6, name: 'Повторить N',           desc: 'Дублировать текст N раз', example: 'hello × 3', vars: ['2', '3', '5', '10'], fn: (t, v) => { const n = parseInt(v); return Array(n).fill(t).join('\n'); } },
 
     // Tier 7 — Оформление (transparent)
-    { id: 'trunc',    tier: 7, name: 'Обрезать на N',         desc: 'Truncate каждую строку до N символов', example: 'Длинный текст → Длинный', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const n = Number.parseInt(v, 10); const limit = Number.isFinite(n) && n > 0 ? n : 80; return t.split('\n').map(line => { const chars = Array.from(line); return chars.length > limit ? chars.slice(0, limit - 1).join('') + '…' : line; }).join('\n'); } },
+    { id: 'trunc',    tier: 7, name: 'Обрезать на N',         desc: 'Truncate каждую строку до N символов', example: 'Длинный текст → Длинный', vars: ['40', '60', '80', '100', '120'], fn: (t, v) => { const limit = Number.parseInt(v, 10); if (!Number.isFinite(limit) || limit < 1) return t; return t.split('\n').map(line => { const chars = Array.from(line); if (chars.length <= limit) return line; return limit === 1 ? '…' : chars.slice(0, limit - 1).join('') + '…'; }).join('\n'); } },
     { id: 'numstep',  tier: 7, name: 'Prefix цифрами',        desc: 'Пронумеровать строки с шагом', example: '1. a\\n6. b', vars: ['+1', '+5', '+10', '+100'], fn: (t, v) => { const step = Number.parseInt(v, 10) || 1; let n = 1; return t.split('\n').map(l => { const out = n + '. ' + l; n += step; return out; }).join('\n'); } },
     { id: 'noascii',  tier: 7, name: 'Только латиница',       desc: 'Оставить только латиницу + цифры', example: 'Привет → (пусто)', fn: t => t.replace(/[^a-zA-Z0-9]/g, '') },
     { id: 'typography', tier: 7, name: 'Типографика',        desc: 'Кавычки, тире, многоточие и неразрывные пробелы', example: '"Привет" -- сказал он... → «Привет» — сказал он…', vars: ['RU', 'basic'], fn: (t, v) => { let out = t.replace(/\.{3}/g, '…').replace(/\s--\s/g, ' — ').replace(/\s-\s/g, ' — ').replace(/(^|\n)-\s/g, '$1— '); if (v === 'RU') { out = out.replace(/"([^"\n]+)"/g, '«$1»').replace(/\b(№)\s+/g, '$1\u00A0').replace(/\b(г|стр|рис|табл)\.\s+/gi, '$1.\u00A0').replace(/(\d)\s+(%|₽|кг|г|м|см|мм|км|ч|мин|сек)\b/gi, '$1\u00A0$2'); } return out; } },
@@ -75,7 +81,7 @@ window.TextFormat = (() => {
       latToCyr['y'] = 'й'; const keys = Object.keys(latToCyr).sort((a, b) => b.length - a.length); const re = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi'); return t.replace(re, m => { const rep = latToCyr[m.toLowerCase()]; return m[0] !== m[0].toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }); } return t.split('').map(ch => { const rep = cyrToLat[ch.toLowerCase()]; if (!rep) return ch; return ch !== ch.toLowerCase() ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep; }).join(''); } },
     { id: 'bubble',   tier: 8, name: 'Bubble text',          desc: 'Полноширинные символы Юникода', example: 'hello → ｈｅｌｌｏ', vars: ['ASCII', 'Все'], fn: (t, v) => { return Array.from(t).map(ch => { const code = ch.charCodeAt(0); if (code >= 33 && code <= 126) return String.fromCharCode(code + 0xFEE0); if (code === 32) return ' '; if (v === 'Все' && /[а-яА-ЯёЁ]/.test(ch)) return ch + '\u0361'; return ch; }).join(''); } },
     { id: 'mirrorf',  tier: 8, name: 'Зеркальный шрифт',     desc: 'Юникод-зеркальные буквы', example: 'hello → ollǝh', fn: t => { const map = {a:'ɐ',b:'q',c:'ɔ',d:'p',e:'ǝ',f:'ɟ',g:'ƃ',h:'ɥ',i:'ᴉ',j:'ɾ',k:'ʞ',l:'l',m:'ɯ',n:'u',o:'o',p:'d',q:'b',r:'ɹ',s:'s',t:'ʇ',u:'n',v:'ʌ',w:'ʍ',x:'x',y:'ʎ',z:'z',A:'∀',B:'q',C:'Ɔ',D:'p',E:'Ǝ',F:'Ⅎ',G:'⅁',H:'H',I:'I',J:'ſ',K:'ʞ',L:'˥',M:'W',N:'И',O:'O',P:'Ԁ',Q:'Q',R:'Я',S:'S',T:'⊥',U:'∩',V:'Λ',W:'M',X:'X',Y:'⅄',Z:'Z',а:'ɐ',б:'ƍ',в:'ʚ',г:'ɹ',д:'ɓ',е:'ǝ',ё:'ǝ̈',ж:'ж',з:'ε',и:'и',й:'ӣ',к:'ʞ',л:'v',м:'w',н:'н',о:'о',п:'u',р:'d',с:'ɔ',т:'ʇ',у:'ʎ',ф:'ф',х:'х',ц:'ц',ч:'Һ',ш:'m',щ:'m',ы:'ıq',э:'є',ю:'oı',я:'ʁ',А:'∀',Б:'Ƃ',В:'ʚ',Г:'⅃',Д:'ᗡ',Е:'Ǝ',Ё:'Ǝ̈',Ж:'Ж',З:'Ɛ',И:'И',Й:'Ӣ',К:'ʞ',Л:'Λ',М:'W',Н:'Н',О:'О',П:'∩',Р:'Ԁ',С:'Ɔ',Т:'⊥',У:'⅄',Ф:'Ф',Х:'Х',Ц:'Ц',Ч:'Һ',Ш:'M',Щ:'M',Ы:'Іᑫ',Э:'Є',Ю:'OІ',Я:'Я'}; return Array.from(t).reverse().map(ch => map[ch] || ch).join(''); } },
-    { id: 'zalgo',    tier: 8, name: 'Zalgo',               desc: 'Хаотичные диакритические знаки (glitch text)', example: 'hello → h̷e̸l̶l̴o̷', vars: ['low', 'mid', 'high'], fn: (t, v) => { const up = ['\u030d','\u030e','\u0304','\u0305','\u033f','\u0311','\u0306','\u0310','\u0352','\u0357','\u0351']; const mid = ['\u0315','\u031b','\u0340','\u0341','\u0358','\u0321','\u0322','\u0327','\u0328','\u0334','\u0335','\u0336']; const down = ['\u0316','\u0317','\u0318','\u0319','\u031c','\u031d','\u031e','\u031f','\u0320','\u0323','\u0324','\u0325']; const count = v === 'high' ? 6 : v === 'low' ? 1 : 3; const pick = arr => arr[Math.floor(Math.random() * arr.length)]; return Array.from(t).map(ch => { if (!/\p{L}|\p{N}/u.test(ch)) return ch; let out = ch; for (let i = 0; i < count; i++) out += pick(up) + pick(mid) + pick(down); return out; }).join(''); } },
+    { id: 'zalgo',    tier: 8, name: 'Zalgo',               desc: 'Хаотичные диакритические знаки (glitch text)', example: 'hello → h̷e̸l̶l̴o̷', vars: ['low', 'mid', 'high'], fn: (t, v) => { const count = v === 'high' ? 6 : v === 'low' ? 1 : 3; return Array.from(t).map(ch => { if (!/\p{L}|\p{N}/u.test(ch)) return ch; let out = ch; for (let i = 0; i < count; i++) out += _zalgoPick(ZALGO_UP) + _zalgoPick(ZALGO_MID) + _zalgoPick(ZALGO_DOWN); return out; }).join(''); } },
     { id: 'smallcaps', tier: 8, name: 'Small Caps',           desc: 'Unicode small caps (только латиница)', example: 'Hello World → Hᴇʟʟᴏ Wᴏʀʟᴅ', fn: t => { const map = {a:'ᴀ',b:'ʙ',c:'ᴄ',d:'ᴅ',e:'ᴇ',f:'ꜰ',g:'ɢ',h:'ʜ',i:'ɪ',j:'ᴊ',k:'ᴋ',l:'ʟ',m:'ᴍ',n:'ɴ',o:'ᴏ',p:'ᴘ',q:'ǫ',r:'ʀ',s:'ꜱ',t:'ᴛ',u:'ᴜ',v:'ᴠ',w:'ᴡ',x:'x',y:'ʏ',z:'ᴢ'}; return Array.from(t).map(ch => map[ch.toLowerCase()] || ch).join(''); } },
     { id: 'invisible', tier: 8, name: 'Невидимые символы',    desc: 'Вставить zero-width символы между буквами', example: 'hello → h​e​l​l​o', fn: t => Array.from(t).join('\u200B') },
   ];
@@ -103,7 +109,8 @@ window.TextFormat = (() => {
   function _loadState() {
     try { _lastItem = localStorage.getItem(STORAGE_KEY); } catch {}
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_VARS));
+      const raw = localStorage.getItem(STORAGE_VARS);
+      const parsed = raw ? JSON.parse(raw) : null;
       _vars = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch { _vars = {}; }
   }
@@ -275,7 +282,10 @@ window.TextFormat = (() => {
         const row = document.createElement('div');
         row.className = 'tf-menu-item' + (isSubtle ? ' tf-subtle' : '');
         if (isSubtle && i === 0) row.classList.add('tf-subtle-first');
-        if (_lastItem === item.id) row.classList.add('tf-active');
+        if (_lastItem === item.id) {
+          row.classList.add('tf-active');
+          row.setAttribute('aria-current', 'true');
+        }
         row.setAttribute('role', 'menuitem');
         row.tabIndex = -1;
 
