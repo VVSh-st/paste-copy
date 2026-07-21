@@ -22,8 +22,8 @@
    - Синхронизация памяти
    - Диагностика и обучение
 
-**Файл:** `index.html`
-**Коммит:** `20a2c29`
+**Файлы:** `index.html`, `styles.css`
+**Коммиты:** `20a2c29` (HTML), `2cca219` (CSS: `white-space: nowrap` + `min-width: 280px`)
 
 ---
 
