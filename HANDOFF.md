@@ -27,6 +27,29 @@
 
 ---
 
+### Translator — авто-режим перевода (Auto RU↔EN)
+
+**Проблема:** постоянное ручное переключение языков RU/EN при переводе.
+
+**Решение:**
+1. **Новый флаг `autoTarget`** в `translator.js` (по умолчанию `true`)
+2. **Функция `resolveTargetLang(text)`** — определяет исходный язык и выбирает противоположный:
+   - Русский → English
+   - English → Русский
+   - Смешанный/неизвестный → использует `targetLang`
+3. **Опция "🔄 Auto (RU↔EN)"** в выпадающем списке языков (blocks.js + notepad.js)
+4. При выборе конкретного языка `autoTarget` отключается
+
+**Логика:**
+- `translate()`, `translateOne()`, `translateOneVisible()`, `translateProtected()` используют `resolveTargetLang(text)` когда `autoTarget === true`
+- `resolveTargetLang` вызывает `detectLangHint(text)` для определения языка
+- `AUTO_LANG_PAIRS = { ru: 'en', en: 'ru' }` — маппинг противоположных языков
+
+**Файлы:** `translator.js`, `blocks.js`, `notepad.js`
+**Коммит:** `8d5b421`
+
+---
+
 ### Highlight.js — подсветка кода в markdown
 
 **Подключена** через CDN (`github-dark-dimmed` тема). Автономно, без настроек, авто-определение языка.
