@@ -2814,7 +2814,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     thesaurusBtn.type = 'button';
     thesaurusBtn.className = 'font-ctrl-btn thesaurus-btn';
     thesaurusBtn.title = 'Тезаурус — подбор синонимов (Alt+T)';
-    thesaurusBtn.innerHTML = '<span class="thesaurus-btn-letter">Т</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M3 5h4M3 8h3M3 11h4"/><path d="M10 5l2 3-2 3"/><path d="M12 8h2"/></svg>';
+    thesaurusBtn.innerHTML = '<span class="thesaurus-btn-letter">Т</span>';
 
     const thesaurusDropdown = document.createElement('div');
     thesaurusDropdown.className = 'translate-dropdown';
