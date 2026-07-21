@@ -61,7 +61,7 @@ window.TextFormat = (() => {
     { id: 'newline',  tier: 3, name: 'Переносы строк',        desc: 'Конвертация окончаний строк', example: 'CRLF → LF', vars: ['→ LF', '→ CRLF', '→ CR'], fn: (t, v) => { const clean = t.replace(/\r\n/g, '\n').replace(/\r/g, '\n'); if (v === '→ LF') return clean; if (v === '→ CRLF') return clean.replace(/\n/g, '\r\n'); return clean.replace(/\n/g, '\r'); } },
 
     // Tier 4 — Код/декод (subtle)
-    { id: 'b64',      tier: 4, name: 'Base64',               desc: 'Кодировать/Декодировать Base64', example: 'hello → aGVsbG8=', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') { const bytes = new TextEncoder().encode(t); let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]); return btoa(bin); } const bin = atob(t); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder('utf-8', { fatal: false }).decode(bytes); } catch { return t; } } },
+    { id: 'b64',      tier: 4, name: 'Base64',               desc: 'Кодировать/Декодировать Base64', example: 'hello → aGVsbG8=', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') { const bytes = new TextEncoder().encode(t); const chunk = 0x8000; let bin = ''; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk)); return btoa(bin); } const bin = atob(t); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder('utf-8', { fatal: false }).decode(bytes); } catch { return t; } } },
     { id: 'urlencode', tier: 4, name: 'URL-кодирование',      desc: 'Кодировать/Декодировать URL', example: 'привет → %D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82', vars: ['→ Enc', '← Dec'], fn: (t, v) => { try { if (v === '→ Enc') return encodeURIComponent(t); return decodeURIComponent(t); } catch { return t; } } },
     { id: 'caesar',   tier: 4, name: 'Шифр Цезаря',          desc: 'Сдвиг букв на N позиций', example: 'abc → def (+3)', vars: ['+1', '+3', '+6', '+13', '-1', '-3', '-6', '-13'], fn: (t, v) => { const n = Number.parseInt(v, 10); const shift = Number.isFinite(n) ? n : 0; const alpha = 'abcdefghijklmnopqrstuvwxyz'; const cyr = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'; return Array.from(t).map(ch => { const lower = ch.toLowerCase(); const isUpper = lower !== ch; let idx = alpha.indexOf(lower); if (idx !== -1) { idx = (idx + shift + alpha.length) % alpha.length; return isUpper ? alpha[idx].toUpperCase() : alpha[idx]; } idx = cyr.indexOf(lower); if (idx !== -1) { idx = (idx + shift + cyr.length) % cyr.length; return isUpper ? cyr[idx].toUpperCase() : cyr[idx]; } return ch; }).join(''); } },
 
@@ -346,6 +346,13 @@ window.TextFormat = (() => {
             _lastItem = item.id;
             _saveLastItem(item.id);
             updateButtonIcon();
+            // Update active state in menu
+            popup.querySelectorAll('.tf-menu-item').forEach(el => {
+              el.classList.remove('tf-active');
+              el.removeAttribute('aria-current');
+            });
+            row.classList.add('tf-active');
+            row.setAttribute('aria-current', 'true');
             // Update tooltip active highlight
             const tip = popup.querySelector('.tf-item-tooltip');
             if (tip) {
@@ -422,11 +429,12 @@ window.TextFormat = (() => {
 
     requestAnimationFrame(() => {
       const rect = popup.getBoundingClientRect();
-      if (rect.left + rect.width > window.innerWidth - 10) {
-        popup.style.left = (window.innerWidth - rect.width - 10) + 'px';
-      }
-      if (rect.left < 10) popup.style.left = '10px';
-      if (rect.top < 10 || rect.bottom > window.innerHeight - 10) {
+      let left = rect.left;
+      if (left + rect.width > window.innerWidth - 10) left = window.innerWidth - rect.width - 10;
+      left = Math.max(10, left);
+      popup.style.left = left + 'px';
+      const next = popup.getBoundingClientRect();
+      if (next.top < 10 || next.bottom > window.innerHeight - 10) {
         popup.style.top = '10px';
         popup.style.bottom = 'auto';
       }
@@ -477,11 +485,11 @@ window.TextFormat = (() => {
       if (_popup !== popup) return; // stale — new menu opened
       document.addEventListener('mousedown', onClickOutside, true);
       document.addEventListener('contextmenu', onContextMenu, true);
+      _closeHandlers.push(
+        () => document.removeEventListener('mousedown', onClickOutside, true),
+        () => document.removeEventListener('contextmenu', onContextMenu, true)
+      );
     }, 0);
-    _closeHandlers.push(
-      () => document.removeEventListener('mousedown', onClickOutside, true),
-      () => document.removeEventListener('contextmenu', onContextMenu, true)
-    );
   }
 
   function hideMenu() {
