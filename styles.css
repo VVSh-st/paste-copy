@@ -7738,6 +7738,16 @@ body.help-open {
   line-height: 1;
   pointer-events: none;
 }
+.tf-btn-var {
+  margin-left: 3px;
+  font-size: 9px;
+  opacity: 0.72;
+  max-width: 42px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
 
 /* Menu */
 .tf-menu {

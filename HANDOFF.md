@@ -1323,7 +1323,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 
 ### TextFormat — модуль форматирования текста (50 операций)
 
-**Файл:** `text-format.js` (~490 строк), `styles.css`
+**Файл:** `text-format.js` (~498 строк), `styles.css`
 
 **Функционал:**
 - 50 пунктов форматирования в 8 группах (tier 1-8)
@@ -1343,7 +1343,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - **Tier 8 (42-50):** Безумие — Регистр (random/wave/pulse), Зеркало (символы/простой), Leet speak (latin+cyr), Кириллица↔Латиница (обратимая), Bubble text, Зеркальный шрифт, Zalgo (low/mid/high), Small Caps (latin), Невидимые символы
 
 **UI:**
-- Иконка: номер текущего пункта (01-50) моноширинным шрифтом
+- Иконка: номер текущего пункта (01-50) моноширинным шрифтом + бейдж варианта (`tf-btn-var`)
 - Меню: выпадает вверх, max 320px, scrollbar скрыт, CSS-анимация fade-in 0.15s
 - Hover tooltip (500мс): показывает `name (var)` + `desc` + `example` + варианты
 - Tooltip: clamp по всем краям, max-width `min(360px, 100vw-20px)`, overflow-wrap
@@ -1368,6 +1368,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `RU_COLLATOR`: `Intl.Collator('ru')` для сортировок
 - `ITEM_BY_ID`, `ITEM_INDEX_BY_ID`, `ITEMS_BY_TIER` — предвычисление
 - `ZALGO_UP/MID/DOWN` + `_zalgoPick` — модульные константы
+- `ALPHA_RE` + `isAlpha` — общий regex для randcase/leet
 
 **Интеграция:**
 - `blocks.js:2806-2810` — кнопка в footer перед thesaurusBtn
@@ -1375,18 +1376,19 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `app.js:746-754` — Shift+F shortcut
 - `index.html:1894` — `<script src="text-format.js">`
 
-**Ключевые фиксы (15 раундов аудита):**
+**Ключевые фиксы (16 раундов аудита):**
 - cyr2lat: обратимая транслитерация (й→j, ы→y, regex multi-char ← Cyr)
 - wrap: отступ + available width, long-word chunking
 - execute: scrollTop, _lastItem before early return, caret→end
 - Tooltip: single DOM node, clamp по всем краям, max-width
 - Меню: DocumentFragment, aria-current, Space key, safeIdx
-- Sentence: `\n\s*` для заглавной после переноса строки
+- Sentence: `\n\s*` + `…` для многоточия, `\s*` вместо `\s+` для hello.world
 - JSON: modes 2/4/min, trailing LF preserve
 - Типографика: «кавычки», —, …, неразрывные пробелы для единиц
 - Zalgo: module-scope arrays, low/mid/high
-- NaN guards: tab2sp, caesar, trunc, wrap
+- NaN guards: tab2sp, caesar, trunc, wrap, sp2tab, repeat
 - join/CRLF, spaces Unicode, contacts Unicode email + URL trim
 - bubble/invisible/caesar: Array.from для emoji
+- Round 16: ALPHA_RE/isAlpha, tf-btn-var бейдж, onClickOutside исключает кнопку, empty rows guard
 
-**Коммиты:** `a6d1845` → ... → `fed8cc9` (15 раундов аудита)
+**Коммиты:** `a6d1845` → ... → `fed8cc9` (16 раундов аудита)
