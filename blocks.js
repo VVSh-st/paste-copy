@@ -2634,7 +2634,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     const translateBtn = mkBtn('font-ctrl-btn translate-btn', '', 'Перевести');
     translateBtn.innerHTML = TRANSLATE_SVG;
     translateBtn.setAttribute('aria-label', 'Перевести текст');
-    translateBtn.dataset.lang = Translator.targetLang;
+    translateBtn.dataset.lang = Translator.autoTarget ? 'auto' : Translator.targetLang;
+    translateBtn.title = Translator.autoTarget ? 'Перевести → Auto (RU↔EN)' : 'Перевести → ' + (Translator.LANG_BY_CODE[Translator.targetLang]?.name || Translator.targetLang);
 
     const translateDropdown = document.createElement('div');
     translateDropdown.className = 'translate-dropdown';
@@ -2667,13 +2668,29 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       });
       translateDropdown.appendChild(engineRow);
 
+      // Auto-target option
+      const autoOpt = document.createElement('button');
+      autoOpt.type = 'button';
+      autoOpt.className = 'translate-lang-opt' + (Translator.autoTarget ? ' active' : '');
+      autoOpt.textContent = '🔄 Auto (RU↔EN)';
+      autoOpt.onclick = e => {
+        e.stopPropagation();
+        Translator.autoTarget = true;
+        translateBtn.dataset.lang = 'auto';
+        translateBtn.title = 'Перевести → Auto (RU↔EN)';
+        _buildTranslateMenu();
+        translateDropdown.style.display = 'none';
+      };
+      translateDropdown.appendChild(autoOpt);
+
       Translator.LANGUAGES.forEach(lang => {
         const opt = document.createElement('button');
         opt.type = 'button';
-        opt.className = 'translate-lang-opt' + (lang.code === Translator.targetLang ? ' active' : '');
+        opt.className = 'translate-lang-opt' + (!Translator.autoTarget && lang.code === Translator.targetLang ? ' active' : '');
         opt.textContent = lang.flag + ' ' + lang.name;
         opt.onclick = e => {
           e.stopPropagation();
+          Translator.autoTarget = false;
           Translator.targetLang = lang.code;
           translateBtn.dataset.lang = lang.code;
           translateBtn.title = 'Перевести → ' + lang.name;
@@ -2743,7 +2760,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       const leadSpace = sel.match(/^(\s*)/)[1];
       const trailSpace = sel.match(/(\s*)$/)[1];
 
-      const targetLang = Translator.targetLang;
+      const targetLang = Translator.resolveTargetLang(textToTranslate);
       const srcLang = Translator.detectLang(textToTranslate);
 
       if (srcLang && srcLang.code === targetLang) return;

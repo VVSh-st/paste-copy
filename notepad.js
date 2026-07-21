@@ -355,7 +355,8 @@ const Notepad = (() => {
 
     const TRANSLATE_SVG = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15"/><path d="M10 2.5c2.5 2.5 3.5 5 3.5 7.5s-1 5-3.5 7.5"/><path d="M10 2.5c-2.5 2.5-3.5 5-3.5 7.5s1 5 3.5 7.5"/></svg>';
     const translateBtn = _mkBtn(TRANSLATE_SVG, 'Перевести текст');
-    translateBtn.dataset.lang = Translator?.targetLang || '';
+    translateBtn.dataset.lang = Translator?.autoTarget ? 'auto' : (Translator?.targetLang || '');
+    translateBtn.title = Translator?.autoTarget ? 'Перевести → Auto (RU↔EN)' : 'Перевести → ' + (Translator?.LANG_BY_CODE[Translator?.targetLang]?.name || '');
     state._translateBtn = translateBtn;
 
     const translateDropdown = document.createElement('div');
@@ -389,13 +390,29 @@ const Notepad = (() => {
       });
       translateDropdown.appendChild(engineRow);
 
+      // Auto-target option
+      const autoOpt = document.createElement('button');
+      autoOpt.type = 'button';
+      autoOpt.className = 'translate-lang-opt' + (Translator.autoTarget ? ' active' : '');
+      autoOpt.textContent = '🔄 Auto (RU↔EN)';
+      autoOpt.onclick = e => {
+        e.stopPropagation();
+        Translator.autoTarget = true;
+        translateBtn.dataset.lang = 'auto';
+        translateBtn.title = 'Перевести → Auto (RU↔EN)';
+        _buildTranslateMenu();
+        translateDropdown.style.display = 'none';
+      };
+      translateDropdown.appendChild(autoOpt);
+
       Translator.LANGUAGES.forEach(lang => {
         const opt = document.createElement('button');
         opt.type = 'button';
-        opt.className = 'translate-lang-opt' + (lang.code === Translator.targetLang ? ' active' : '');
+        opt.className = 'translate-lang-opt' + (!Translator.autoTarget && lang.code === Translator.targetLang ? ' active' : '');
         opt.textContent = lang.flag + ' ' + lang.name;
         opt.onclick = e => {
           e.stopPropagation();
+          Translator.autoTarget = false;
           Translator.targetLang = lang.code;
           translateBtn.dataset.lang = lang.code;
           translateBtn.title = 'Перевести → ' + lang.name;
@@ -458,7 +475,7 @@ const Notepad = (() => {
       const textToTranslate = sel.trim() || ta.value;
       if (!textToTranslate.trim()) return;
 
-      const targetLang = Translator.targetLang;
+      const targetLang = Translator.resolveTargetLang(textToTranslate);
       const srcLang = Translator.detectLang(textToTranslate);
       if (srcLang && srcLang.code === targetLang) return;
 
@@ -1014,6 +1031,12 @@ const Notepad = (() => {
       try {
         const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         mdEl.innerHTML = marked.parse(safe);
+        if (typeof hljs !== 'undefined') {
+          mdEl.querySelectorAll('pre code').forEach(block => {
+            delete block.dataset.highlighted;
+            hljs.highlightElement(block);
+          });
+        }
       } catch (_) {
         mdEl.textContent = text;
       }

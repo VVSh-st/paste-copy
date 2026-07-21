@@ -21,7 +21,7 @@ const Translator = (() => {
   // ── State ──────────────────────────────────────────────────
   let cache = new Map();
   let history = [];
-  let settings = { targetLang: 'ru', engine: 'auto' };
+  let settings = { targetLang: 'ru', engine: 'auto', autoTarget: true };
   let googleKey = null;
   let googleKeyTs = 0;
   let googleKeyPromise = null;
@@ -96,6 +96,15 @@ const Translator = (() => {
 
   function normalizeTargetLang(v) {
     return LANG_BY_CODE[v] ? v : settings.targetLang;
+  }
+
+  const AUTO_LANG_PAIRS = { ru: 'en', en: 'ru' };
+
+  function resolveTargetLang(text) {
+    if (!settings.autoTarget) return settings.targetLang;
+    const detected = detectLangHint(text);
+    if (!detected || detected.code === 'mixed') return settings.targetLang;
+    return AUTO_LANG_PAIRS[detected.code] || settings.targetLang;
   }
 
   function getStorage() {
@@ -678,7 +687,8 @@ const Translator = (() => {
     if (_activeController) _activeController.abort();
     _activeController = new AbortController();
     const signal = _activeController.signal;
-    toLang = normalizeTargetLang(toLang || settings.targetLang);
+    if (!toLang) toLang = resolveTargetLang(texts[0] || '');
+    else toLang = normalizeTargetLang(toLang);
     const out = new Array(texts.length).fill(null);
     const todo = [], idx = [];
 
@@ -792,7 +802,7 @@ const Translator = (() => {
   }
 
   async function translateOneVisible(text, toLang) {
-    const target = normalizeTargetLang(toLang || settings.targetLang);
+    const target = toLang ? normalizeTargetLang(toLang) : resolveTargetLang(text);
     const n = norm(text);
     if (!n) return null;
     const cached = cacheGet(n, target);
@@ -856,7 +866,7 @@ const Translator = (() => {
   }
 
   async function translateOne(text, toLang) {
-    const target = normalizeTargetLang(toLang || settings.targetLang);
+    const target = toLang ? normalizeTargetLang(toLang) : resolveTargetLang(text);
     if (!needsTranslation(text, target)) return text;
     const translated = settings.engine === 'auto' || settings.engine === 'google' || settings.engine === 'microsoft'
       ? await translateOneVisible(text, toLang)
@@ -871,7 +881,7 @@ const Translator = (() => {
   // ── Translate with template protection ─────────────────────
   async function translateProtected(text, toLang) {
     if (!text?.trim()) return text;
-    const target = normalizeTargetLang(toLang || settings.targetLang);
+    const target = toLang ? normalizeTargetLang(toLang) : resolveTargetLang(text);
     const { text: safe, tokens } = protectTemplates(text);
     const result = await translateOneRaw(safe, target);
     if (!result) {
@@ -904,6 +914,14 @@ const Translator = (() => {
         saveSettings();
       }
     },
+
+    get autoTarget() { return settings.autoTarget; },
+    set autoTarget(v) {
+      settings.autoTarget = !!v;
+      saveSettings();
+    },
+
+    resolveTargetLang,
 
     get history() { return history; },
 
