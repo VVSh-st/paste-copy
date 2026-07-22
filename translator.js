@@ -148,13 +148,14 @@ const Translator = (() => {
   // {{...}}, $VAR, !теги — не переводим
   const TMPL_RE = /(\{\{[^}\n]{1,200}\}\}|\$[A-Z_][A-Z0-9_]*\b|\$\{[^}\n]{1,200}\}|\[\[[^\]\n]{1,200}\]\]|%[A-Z_][A-Z0-9_]*%|\{\d+\}|![а-яёА-ЯЁ]+\b)/g;
 
+  let _tplNs = 0;
   function protectTemplates(text) {
     const tokens = [];
     let i = 0;
-    let prefix;
-    do {
-      prefix = `\u27E6TRPL_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}_`;
-    } while (text.includes(prefix));
+    let ns = _tplNs;
+    while (text.includes(`\u27E6TRPL${ns}_`)) ns++;
+    _tplNs = ns + 1;
+    const prefix = `\u27E6TRPL${ns}_`;
     const protected_ = text.replace(TMPL_RE, m => {
       const token = `${prefix}${i++}\u27E7`;
       tokens.push({ token, original: m });
@@ -830,7 +831,7 @@ const Translator = (() => {
             _stats.failed++;
             if (e?.retryAfterMs) gBlockUntil = Date.now() + e.retryAfterMs;
             else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
-            return null;
+            return { _err: true };
           })
           .finally(() => signal.removeEventListener('abort', onParentAbort));
         const gQuick = await Promise.race([
@@ -839,10 +840,10 @@ const Translator = (() => {
         ]);
 
         if (gQuick.done) {
-          if (gQuick.r && gQuick.r.length && !gQuick.r.every(v => !v)) {
+          if (gQuick.r && !gQuick.r._err && gQuick.r.length && !gQuick.r.every(v => !v)) {
             applyIfEmpty(gQuick.r, gSrc);
             gFail = 0;
-          } else {
+          } else if (!gQuick.r?._err) {
             gFail++;
             if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
           }
@@ -970,6 +971,7 @@ const Translator = (() => {
       const mReady = Date.now() >= mBlockUntil;
       const tReady = Date.now() >= tBlockUntil;
       const controllers = [];
+      const sel = settings.engine;
 
       function pushEngine(fn, ms, engine) {
         const ctrl = new AbortController();
@@ -981,9 +983,9 @@ const Translator = (() => {
         );
       }
 
-      if (gReady) pushEngine(signal => translateGoogle([text], target, signal), GOOGLE_TIMEOUT, 'g');
-      if (mReady) pushEngine(signal => translateMs([text], target, signal), MS_TIMEOUT, 'ms');
-      if (tReady) pushEngine(signal => translateTencent([text], target, signal), 12000, 'tc');
+      if (gReady && (sel === 'auto' || sel === 'google')) pushEngine(signal => translateGoogle([text], target, signal), GOOGLE_TIMEOUT, 'g');
+      if (mReady && (sel === 'auto' || sel === 'microsoft')) pushEngine(signal => translateMs([text], target, signal), MS_TIMEOUT, 'ms');
+      if (tReady && (sel === 'auto' || sel === 'tencent')) pushEngine(signal => translateTencent([text], target, signal), 12000, 'tc');
       if (!promises.length) {
         try {
           const l = await translateLegacy([text], target);
@@ -1116,10 +1118,20 @@ const Translator = (() => {
         try {
           _bcChannel = new BroadcastChannel('tr-cache-sync');
           _bcChannel.onmessage = e => {
-            if (e.data?.type === 'cache-set' && e.data.key) {
-              cache.delete(e.data.key);
-              cache.set(e.data.key, { text: e.data.text, ts: e.data.ts });
+            const d = e.data;
+            if (
+              d?.type !== 'cache-set' ||
+              typeof d.key !== 'string' ||
+              typeof d.text !== 'string' ||
+              d.text.length > MAX_CACHE_TEXT_LEN ||
+              !Number.isFinite(d.ts)
+            ) return;
+            cache.delete(d.key);
+            cache.set(d.key, { text: d.text, ts: d.ts });
+            while (cache.size > MAX_CACHE) {
+              cache.delete(cache.keys().next().value);
             }
+            scheduleCacheSave();
           };
         } catch {}
       }
