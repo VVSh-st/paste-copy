@@ -3646,6 +3646,7 @@ const AutoPoet = (() => {
     let _history      = [];
     let _currentAbort = null;
     let _streaming    = false;
+    let _sending      = false;
     let _dragging     = false;
     let _resizing     = false;
     let _dragOffset   = { x: 0, y: 0 };
@@ -3671,7 +3672,7 @@ const AutoPoet = (() => {
       const p = _panel();
       if (!p) return;
       _loadSessions();
-      _history = [...(_sessions[_sessionIdx]?.history ?? [])];
+      if (!_sending) _history = [...(_sessions[_sessionIdx]?.history ?? [])];
       _applyFontSize();
       p.style.display = 'flex';
       p.classList.remove('llm-chat-collapsed');
@@ -3707,7 +3708,7 @@ const AutoPoet = (() => {
 
     function _saveSessions() {
       try {
-        const data = { sessions: _sessions, sessionIdx: _sessionIdx, fontSize: _fontSize };
+        const data = { sessions: _sessions, sessionIdx: _sessionIdx, fontSize: _fontSize, inputHistory: _inputHistory };
         if (_savedWin) data.win = _savedWin;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } catch (e) {
@@ -3723,6 +3724,7 @@ const AutoPoet = (() => {
           _sessions = Array.isArray(data.sessions) ? data.sessions : [];
           _sessionIdx = typeof data.sessionIdx === 'number' ? data.sessionIdx : 0;
           _fontSize = typeof data.fontSize === 'number' ? data.fontSize : 12;
+          if (Array.isArray(data.inputHistory)) _inputHistory = data.inputHistory;
           if (data.win) _savedWin = data.win;
         }
       } catch {}
@@ -4210,6 +4212,9 @@ const AutoPoet = (() => {
           _sessions[_sessionIdx].title = userText.slice(0, 40) || 'Новый чат';
           _updateNavButtons();
         }
+
+        _sending = true;
+        _saveCurrentSession();
       }
 
       const LLMCore  = _LLMCore;
@@ -4260,6 +4265,7 @@ const AutoPoet = (() => {
       }
       } finally {
         _currentAbort = null;
+        _sending = false;
         _saveCurrentSession();
         _inputEl()?.focus();
       }
@@ -4505,7 +4511,7 @@ const AutoPoet = (() => {
       if (idx === _sessionIdx) return;
       _saveCurrentSession();
       _sessionIdx = idx;
-      _history = [...(_sessions[_sessionIdx]?.history ?? [])];
+      if (!_sending) _history = [...(_sessions[_sessionIdx]?.history ?? [])];
       _inputHistory = [];
       _historyIdx = -1;
       _draftInput = '';
