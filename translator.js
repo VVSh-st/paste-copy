@@ -759,14 +759,17 @@ const Translator = (() => {
     const refreshRem = src => src.filter(x => out[idx[x.i]] == null);
 
     const runMsTencent = async (src) => {
+      const mReady = Date.now() >= mBlockUntil;
+      const tReady = Date.now() >= tBlockUntil;
+      if (!mReady && !tReady) return;
       const textsForEngines = src.map(x => x.t);
       const candidates = [];
-      if (Date.now() >= mBlockUntil) candidates.push(
+      if (mReady) candidates.push(
         translateMs(textsForEngines, toLang, signal)
           .then(result => ({ engine: 'ms', result }))
           .catch(error => ({ engine: 'ms', error }))
       );
-      if (Date.now() >= tBlockUntil) candidates.push(
+      if (tReady) candidates.push(
         translateTencent(textsForEngines, toLang, signal)
           .then(result => ({ engine: 'tc', result }))
           .catch(error => ({ engine: 'tc', error }))
@@ -800,22 +803,24 @@ const Translator = (() => {
       // Google head start
       if (rem.length && Date.now() >= gBlockUntil) {
         gSrc = rem;
-        gPromise = translateGoogle(gSrc.map(x => x.t), toLang, signal);
+        gPromise = translateGoogle(gSrc.map(x => x.t), toLang, signal)
+          .catch(e => {
+            if (e?.name === 'AbortError' || signal.aborted) return null;
+            gFail++;
+            _stats.failed++;
+            if (e?.retryAfterMs) gBlockUntil = Date.now() + e.retryAfterMs;
+            else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
+            return null;
+          });
         const gQuick = await Promise.race([
-          gPromise.then(r => ({ done: true, r })).catch(e => ({ done: true, error: e })),
+          gPromise.then(r => ({ done: true, r })),
           sleep(1200).then(() => ({ done: false }))
         ]);
 
         if (gQuick.done) {
-          if (gQuick.error) {
-            if (gQuick.error?.name === 'AbortError' || signal.aborted) throw gQuick.error;
-            gFail++;
-            _stats.failed++;
-            if (gQuick.error?.retryAfterMs) gBlockUntil = Date.now() + gQuick.error.retryAfterMs;
-            else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
-          } else {
+          if (gQuick.r && gQuick.r.length && !gQuick.r.every(v => !v)) {
+            applyIfEmpty(gQuick.r, gSrc);
             gFail = 0;
-            if (!gQuick.r.every(v => !v)) applyIfEmpty(gQuick.r, gSrc);
           }
           rem = refreshRem(gSrc);
           gPromise = null; // already consumed
@@ -831,16 +836,10 @@ const Translator = (() => {
 
       // Wait for Google if it's still running and there are remaining items
       if (gPromise && rem.length) {
-        try {
-          const gResult = await gPromise;
+        const gResult = await gPromise;
+        if (gResult && gResult.length && !gResult.every(v => !v)) {
+          applyIfEmpty(gResult, gSrc);
           gFail = 0;
-          if (!gResult.every(v => !v)) applyIfEmpty(gResult, gSrc);
-        } catch (e) {
-          if (e?.name === 'AbortError' || signal.aborted) throw e;
-          gFail++;
-          _stats.failed++;
-          if (e?.retryAfterMs) gBlockUntil = Date.now() + e.retryAfterMs;
-          else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
         }
         rem = refreshRem(gSrc);
       }
@@ -947,7 +946,7 @@ const Translator = (() => {
         promises.push(
           withTimeout(fn(ctrl.signal), ms, ctrl)
             .then(r => ({ engine, result: r?.[0] }))
-            .catch(() => ({ engine, result: null }))
+            .catch(error => ({ engine, result: null, error }))
         );
       }
 
@@ -976,6 +975,27 @@ const Translator = (() => {
         else if (res.engine === 'tc') tFail = 0;
         cacheSet(n, target, res.result);
         return res.result;
+      }
+
+      // Track errors from all engines
+      const allResults = await Promise.all(promises);
+      for (const r of allResults) {
+        if (!r.error) continue;
+        _stats.failed++;
+        if (r.engine === 'g') {
+          gFail++;
+          if (r.error?.retryAfterMs) gBlockUntil = Date.now() + r.error.retryAfterMs;
+          else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
+        }
+        if (r.engine === 'ms') {
+          mFail++;
+          if (r.error?.retryAfterMs) mBlockUntil = Date.now() + r.error.retryAfterMs;
+          else if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
+        }
+        if (r.engine === 'tc') {
+          tFail++;
+          if (tFail >= 3) tBlockUntil = Date.now() + 3 * 60 * 1000;
+        }
       }
 
       // Fallback: legacy для непереведённых
