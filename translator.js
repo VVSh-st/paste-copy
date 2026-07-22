@@ -453,12 +453,13 @@ const Translator = (() => {
   function awaitWithSignal(promise, signal) {
     if (!signal) return promise;
     if (signal.aborted) return Promise.reject(signal.reason || new DOMException('Aborted', 'AbortError'));
-    return Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        signal.addEventListener('abort', () => reject(signal.reason || new DOMException('Aborted', 'AbortError')), { once: true });
-      }),
-    ]);
+    let onAbort;
+    const aborted = new Promise((_, reject) => {
+      onAbort = () => reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    return Promise.race([promise, aborted])
+      .finally(() => signal.removeEventListener('abort', onAbort));
   }
 
   async function translateGoogle(texts, to, signal) {
@@ -733,7 +734,7 @@ const Translator = (() => {
     if (!toLang) toLang = resolveTargetLang(texts[0] || '');
     else toLang = normalizeTargetLang(toLang);
     const out = new Array(texts.length).fill(null);
-    const pendingByKey = new Map();
+    const pendingByNorm = new Map();
 
     texts.forEach((t, i) => {
       const n = norm(t);
@@ -744,12 +745,15 @@ const Translator = (() => {
       }
       const c = cacheGet(n, toLang);
       if (c !== undefined) { out[i] = c; return; }
-      const existing = pendingByKey.get(n);
+      let byRaw = pendingByNorm.get(n);
+      if (!byRaw) { byRaw = new Map(); pendingByNorm.set(n, byRaw); }
+      const raw = String(t);
+      const existing = byRaw.get(raw);
       if (existing) existing.indices.push(i);
-      else pendingByKey.set(n, { raw: t, key: n, indices: [i] });
+      else byRaw.set(raw, { raw: t, key: n, indices: [i] });
     });
 
-    const todo = [...pendingByKey.values()];
+    const todo = [...pendingByNorm.values()].flatMap(byRaw => [...byRaw.values()]);
     if (!todo.length) return out;
 
     const engine = settings.engine;
@@ -1047,12 +1051,14 @@ const Translator = (() => {
         }
       }
 
-      // Fallback: legacy для непереведённых
-      controllers.forEach(c => c.abort(Object.assign(new Error('fallback'), { code: 'FALLBACK' })));
-      try {
-        const l = await translateLegacy([text], target);
-        if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
-      } catch {}
+      // Fallback: legacy для непереведённых (только в auto)
+      if (sel === 'auto') {
+        controllers.forEach(c => c.abort(Object.assign(new Error('fallback'), { code: 'FALLBACK' })));
+        try {
+          const l = await translateLegacy([text], target);
+          if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
+        } catch {}
+      }
 
       return text;
     } finally {
