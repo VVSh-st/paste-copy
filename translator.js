@@ -763,35 +763,54 @@ const Translator = (() => {
       if (engine === 'google') return out.map((v, i) => v == null ? texts[i] : v);
     }
 
-    // Microsoft
-    if ((engine === 'microsoft' || engine === 'auto') && rem.length && Date.now() >= mBlockUntil) {
-      try {
-        const m = await translateMs(rem.map(x => x.t), toLang, signal);
-        mFail = 0;
-        if (!m.every(v => !v)) { apply(m, rem); rem = filterRem(m, rem); }
-      } catch (e) {
-        if (e?.name === 'AbortError' || signal.aborted) throw e;
-        mFail++;
-        _stats.failed++;
-        if (e?.retryAfterMs) mBlockUntil = Date.now() + e.retryAfterMs;
-        else if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
+    // Microsoft + Tencent in parallel for remaining
+    if ((engine === 'auto') && rem.length) {
+      const mAvailable = Date.now() >= mBlockUntil;
+      const tAvailable = Date.now() >= tBlockUntil;
+      if (mAvailable || tAvailable) {
+        const candidates = [];
+        if (mAvailable) candidates.push(translateMs(rem.map(x => x.t), toLang, signal).then(r => ({ engine: 'ms', result: r })));
+        if (tAvailable) candidates.push(translateTencent(rem.map(x => x.t), toLang, signal).then(r => ({ engine: 'tc', result: r })));
+        const settled = await Promise.allSettled(candidates);
+        for (const s of settled) {
+          if (s.status !== 'fulfilled') continue;
+          const { engine: eng, result: arr } = s.value;
+          if (eng === 'ms') mFail = 0;
+          else if (eng === 'tc') tFail = 0;
+          if (!arr.every(v => !v)) { apply(arr, rem); rem = filterRem(arr, rem); }
+          if (!rem.length) break;
+        }
       }
-      if (engine === 'microsoft') return out.map((v, i) => v == null ? texts[i] : v);
-    }
+    } else {
+      // Explicit engine: sequential as before
+      if ((engine === 'microsoft') && rem.length && Date.now() >= mBlockUntil) {
+        try {
+          const m = await translateMs(rem.map(x => x.t), toLang, signal);
+          mFail = 0;
+          if (!m.every(v => !v)) { apply(m, rem); rem = filterRem(m, rem); }
+        } catch (e) {
+          if (e?.name === 'AbortError' || signal.aborted) throw e;
+          mFail++;
+          _stats.failed++;
+          if (e?.retryAfterMs) mBlockUntil = Date.now() + e.retryAfterMs;
+          else if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
+        }
+        return out.map((v, i) => v == null ? texts[i] : v);
+      }
 
-    // Tencent (free, no auth)
-    if ((engine === 'tencent' || engine === 'auto') && rem.length && Date.now() >= tBlockUntil) {
-      try {
-        const tc = await translateTencent(rem.map(x => x.t), toLang, signal);
-        tFail = 0;
-        if (!tc.every(v => !v)) { apply(tc, rem); rem = filterRem(tc, rem); }
-      } catch (e) {
-        if (e?.name === 'AbortError' || signal.aborted) throw e;
-        tFail++;
-        _stats.failed++;
-        if (tFail >= 3) tBlockUntil = Date.now() + 3 * 60 * 1000;
+      if ((engine === 'tencent') && rem.length && Date.now() >= tBlockUntil) {
+        try {
+          const tc = await translateTencent(rem.map(x => x.t), toLang, signal);
+          tFail = 0;
+          if (!tc.every(v => !v)) { apply(tc, rem); rem = filterRem(tc, rem); }
+        } catch (e) {
+          if (e?.name === 'AbortError' || signal.aborted) throw e;
+          tFail++;
+          _stats.failed++;
+          if (tFail >= 3) tBlockUntil = Date.now() + 3 * 60 * 1000;
+        }
+        return out.map((v, i) => v == null ? texts[i] : v);
       }
-      if (engine === 'tencent') return out.map((v, i) => v == null ? texts[i] : v);
     }
 
     // Legacy fallback
@@ -834,29 +853,21 @@ const Translator = (() => {
     const gReady = Date.now() >= gBlockUntil;
     const mReady = Date.now() >= mBlockUntil;
     const tReady = Date.now() >= tBlockUntil;
-    const localCtrl = new AbortController();
+    const controllers = [];
 
-    if (gReady) {
+    function pushEngine(fn, ms, engine) {
+      const ctrl = new AbortController();
+      controllers.push(ctrl);
       promises.push(
-        withTimeout(translateGoogle([text], target, localCtrl.signal), GOOGLE_TIMEOUT, localCtrl)
-          .then(r => ({ engine: 'g', result: r?.[0] }))
-          .catch(() => ({ engine: 'g', result: null }))
+        withTimeout(fn(ctrl.signal), ms, ctrl)
+          .then(r => ({ engine, result: r?.[0] }))
+          .catch(() => ({ engine, result: null }))
       );
     }
-    if (mReady) {
-      promises.push(
-        withTimeout(translateMs([text], target, localCtrl.signal), MS_TIMEOUT, localCtrl)
-          .then(r => ({ engine: 'ms', result: r?.[0] }))
-          .catch(() => ({ engine: 'ms', result: null }))
-      );
-    }
-    if (tReady) {
-      promises.push(
-        withTimeout(translateTencent([text], target, localCtrl.signal), 12000, localCtrl)
-          .then(r => ({ engine: 'tc', result: r?.[0] }))
-          .catch(() => ({ engine: 'tc', result: null }))
-      );
-    }
+
+    if (gReady) pushEngine(signal => translateGoogle([text], target, signal), GOOGLE_TIMEOUT, 'g');
+    if (mReady) pushEngine(signal => translateMs([text], target, signal), MS_TIMEOUT, 'ms');
+    if (tReady) pushEngine(signal => translateTencent([text], target, signal), 12000, 'tc');
     if (!promises.length) {
       try {
         const l = await translateLegacy([text], target);
@@ -873,6 +884,7 @@ const Translator = (() => {
 
     const res = await Promise.any(usablePromises).catch(() => null);
     if (res?.result && accept(res.result)) {
+      controllers.forEach(c => c.abort(Object.assign(new Error('done'), { code: 'DONE' })));
       if (res.engine === 'g') gFail = 0;
       else if (res.engine === 'ms') mFail = 0;
       else if (res.engine === 'tc') tFail = 0;
@@ -892,7 +904,7 @@ const Translator = (() => {
   async function translateOne(text, toLang) {
     const target = toLang ? normalizeTargetLang(toLang) : resolveTargetLang(text);
     if (!needsTranslation(text, target)) return text;
-    const translated = settings.engine === 'auto' || settings.engine === 'google' || settings.engine === 'microsoft'
+    const translated = settings.engine === 'auto' || settings.engine === 'google' || settings.engine === 'microsoft' || settings.engine === 'tencent'
       ? await translateOneVisible(text, toLang)
       : await translateOneRaw(text, toLang);
     if (translated && translated !== text) {
