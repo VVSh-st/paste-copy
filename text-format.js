@@ -343,7 +343,6 @@ window.TextFormat = (() => {
           _saveLastItem(item.id);
           _recordRecent(item.id);
           updateButtonIcon();
-          execute(item, ta, _menuBtn);
           hideMenu();
         });
         header.appendChild(pill);
