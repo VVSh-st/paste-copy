@@ -7382,33 +7382,6 @@ body.help-open {
 .qr-style-name { font-size: 10px; color: var(--text3, #888); }
 
 /* ── Slider ──────────────────────────────── */
-.qr-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.qr-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.12);
-  outline: none;
-}
-.qr-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px; height: 14px;
-  border-radius: 50%;
-  background: var(--accent, #4f8ef7);
-  cursor: pointer;
-}
-.qr-slider-val {
-  font-size: 11px;
-  color: var(--text3, #888);
-  min-width: 32px;
-  text-align: right;
-}
 
 /* ── Color rows ──────────────────────────── */
 .qr-color-row {

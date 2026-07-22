@@ -42,16 +42,15 @@ const QRPanel = (() => {
   const VALID_STYLES = ['classic', 'dotted', 'rounded', 'cross'];
   const VALID_EC = ['L', 'M', 'Q', 'H'];
   let _style = VALID_STYLES.includes(_storageGet('qr-style')) ? _storageGet('qr-style') : 'classic';
-  let _moduleSize = Math.max(1, Math.min(12, parseInt(_storageGet('qr-module-size', '9'), 10))) || 9;
+  let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'H';
   let _fg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-fg')) ? _storageGet('qr-fg') : '#000000';
   let _bg = /^#[0-9a-fA-F]{6}$/.test(_storageGet('qr-bg')) ? _storageGet('qr-bg') : '#FFFFFF';
-  let _ec = VALID_EC.includes(_storageGet('qr-ec')) ? _storageGet('qr-ec') : 'H';
   let _effectiveEc = _ec; // actual EC used (may differ from _ec when auto-downgrading)
   let _padding = _storageGet('qr-padding') !== 'false';
   let _caption = _storageGet('qr-caption') || '';
   let _autoEc = _storageGet('qr-auto-ec') !== 'false';
-  let _lastModSize = 6; // last auto-fit modSize from preview, used in export
-  let _lastCaptionFontSize = 16; // last computed caption fontSize for export
+  const PREVIEW_MOD_SIZE = 2;  // min for visible styles (dotted/rounded/cross)
+  const EXPORT_MOD_SIZE = 8;   // good quality for PNG/SVG export
   const VALID_TABS = ['preview', 'style', 'export', 'history'];
   let _activeTab = VALID_TABS.includes(_storageGet('qr-panel-tab')) ? _storageGet('qr-panel-tab') : 'preview';
 
@@ -500,7 +499,7 @@ const QRPanel = (() => {
   /* ── canvas rendering ──────────────────────────────────── */
   // Common QR-to-canvas renderer for preview, export PNG, and batch export.
   // Sets canvas dimensions BEFORE drawing to avoid the caption-clear bug.
-  function _renderQRToCanvas(page, { modSize = _moduleSize, includeCaption = true, exportMode = false } = {}) {
+  function _renderQRToCanvas(page, { modSize = EXPORT_MOD_SIZE, includeCaption = true } = {}) {
     const qr = _getEncodedQR(page);
     if (!qr) return null;
 
@@ -545,7 +544,7 @@ const QRPanel = (() => {
   }
 
   // Common SVG renderer for export and batch export
-  function _renderQRToSVG(page, { modSize = _moduleSize } = {}) {
+  function _renderQRToSVG(page, { modSize = EXPORT_MOD_SIZE } = {}) {
     const qr = _getEncodedQR(page);
     if (!qr) return null;
 
@@ -617,8 +616,7 @@ const QRPanel = (() => {
     const page = _pages[_currentPage];
 
     // Render QR to offscreen canvas (min 2px for visible styles)
-    const modPx = Math.max(2, _moduleSize);
-    _lastModSize = modPx;
+    const modPx = PREVIEW_MOD_SIZE;
     const rendered = _renderQRToCanvas(page, { modSize: modPx, includeCaption: true });
     if (!rendered) {
       canvas.width = 1;
@@ -633,10 +631,6 @@ const QRPanel = (() => {
     ctx.drawImage(rendered, 0, 0);
 
     const qr = _getEncodedQR(page);
-    if (_caption.trim()) {
-      const fSize = Math.round(16 * modPx / 4);
-      _lastCaptionFontSize = fSize;
-    }
 
     // Update UI
     if (pageEl) pageEl.textContent = _pages.length > 1 ? `Стр. ${_currentPage + 1} из ${_pages.length}` : '1 / 1';
@@ -859,28 +853,6 @@ const QRPanel = (() => {
       styleGrid.appendChild(btn);
     }
     stylePane.appendChild(styleGrid);
-
-    // Module size slider
-    stylePane.appendChild(_buildSectionLabel('Размер модуля'));
-    const sliderRow = document.createElement('div');
-    sliderRow.className = 'qr-slider-row';
-    const slider = document.createElement('input');
-    slider.type = 'range';
-    slider.className = 'qr-slider';
-    slider.min = '1';
-    slider.max = '12';
-    slider.value = String(_moduleSize);
-    const sliderVal = document.createElement('span');
-    sliderVal.className = 'qr-slider-val';
-    sliderVal.textContent = _moduleSize + ' px';
-    slider.oninput = () => {
-      _moduleSize = parseInt(slider.value, 10);
-      _storageSet('qr-module-size', String(_moduleSize));
-      sliderVal.textContent = _moduleSize + ' px';
-      _renderPreview();
-    };
-    sliderRow.append(slider, sliderVal);
-    stylePane.appendChild(sliderRow);
 
     // Colors
     stylePane.appendChild(_buildSectionLabel('Цвет'));
@@ -1632,7 +1604,7 @@ const QRPanel = (() => {
     const page = _pages[_currentPage];
 
     if (format === 'png') {
-      const canvas = _renderQRToCanvas(page, { modSize: _moduleSize, includeCaption: true });
+      const canvas = _renderQRToCanvas(page, { modSize: EXPORT_MOD_SIZE, includeCaption: true });
       if (!canvas) { _showToast('Не удалось создать PNG'); return; }
       const link = document.createElement('a');
       link.download = 'qr-code.png';
@@ -1656,7 +1628,7 @@ const QRPanel = (() => {
     if (_pages.length === 1) { _download(format); return; }
     let downloaded = 0;
     const total = _pages.length;
-    const modSize = _moduleSize;
+    const modSize = EXPORT_MOD_SIZE;
     for (let i = 0; i < total; i++) {
       const page = _pages[i];
       if (format === 'png') {

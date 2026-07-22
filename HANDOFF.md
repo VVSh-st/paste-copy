@@ -1502,7 +1502,7 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 3. **UTF-8** — `qrcode.stringToBytes = stringToBytesFuncs['UTF-8']` для кириллицы
 4. **EC авто-понижение** — при переполнении: H→Q→M→L
 5. **Ёмкость:** version 40 EC=L → ~2953 байт ≈ ~1476 символов кириллицы (2 байта/символ)
-6. **Размер модуля** — расширен с 4-12 до 1-12px, теперь управляет визуальным масштабом, а не версией QR
+6. **Размер модуля** — фиксированный: `PREVIEW_MOD_SIZE=2` (превью), `EXPORT_MOD_SIZE=8` (экспорт PNG/SVG)
 7. **CSS растяжение** — canvas рендерится с `_moduleSize` px/модуль (мин 2), `width: 100%` + `image-rendering: pixelated` масштабирует в wrapper
 8. **Стили (точки/скруглённые/крестики)** — видны в превью при moduleSize ≥ 2
 9. **Убрана цитата H. Stark** и её hover
@@ -1582,3 +1582,17 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - **`_lastTa` cache skip** — edge case, воспроизвести без знания всех вызовов `open()` невозможно. Категория "вопрос", не "важно".
 
 **Файлы:** `qr-panel.js`
+**Коммит:** `5cbafaa` (аудит GPT-5 #3: encode validation, SVG caption overflow)
+
+---
+
+### QR Panel — слайдер удалён, экспорт фиксированный (сессия 2026-07-22)
+
+**Изменения:**
+1. **Удалён слайдер "Размер модуля"** — `_moduleSize` переменная, CSS `.qr-slider*`, UI-код слайдера
+2. **Константы:** `PREVIEW_MOD_SIZE = 2` (мин. для видимых стилей), `EXPORT_MOD_SIZE = 8` (хорошее качество PNG/SVG)
+3. **Экспорт** — PNG/SVG рендерятся с `EXPORT_MOD_SIZE = 8` px/модуль (фиксировано)
+4. **Превью** — рендерится с `PREVIEW_MOD_SIZE = 2`, CSS `width: 100%` масштабирует в wrapper
+5. **Удалён CSS** `.qr-slider-row`, `.qr-slider`, `.qr-slider-val`
+
+**Файлы:** `qr-panel.js`, `styles.css`
