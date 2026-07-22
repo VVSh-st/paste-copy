@@ -1,0 +1,2226 @@
+// ==UserScript==
+// @name         Shut Up and Translate - Заткнись и переведи
+// @name:ru      Заткнись и переведи - Shut Up and Translate
+// @namespace    https://docs.scriptcat.org/
+// @version      3.6
+// @description  Shut Up and Translate - RU translation. Google→MS→Tencent→legacy fallback. CJK. Slang tooltips. Unit conversion. BroadcastChannel cache. Alt+A.
+// @description:ru Shut Up and Translate - перевод на русский. Google→MS→Tencent→запасной. CJK. Подсказки сленга. Конвертация единиц. Кэш BroadcastChannel. Alt+A.
+// @icon         data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129'/%3E%3C/svg%3E
+// @author       AI
+// @include      *://*/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @connect      translate.googleapis.com
+// @connect      translate-pa.googleapis.com
+// @connect      transmart.qq.com
+// @connect      edge.microsoft.com
+// @connect      api-edge.cognitive.microsofttranslator.com
+// @run-at       document-end
+// ==/UserScript==
+
+(function () {
+'use strict';
+
+try { if (window.top !== window.self) return; } catch { return; }
+if (location.hostname.includes('translate.google') || location.search.includes('x_tr')) return;
+
+// =config=
+const CONFIG = {
+  TARGET_LANG: 'ru',
+  ENGINE: 'auto',                    // 'google' | 'microsoft' | 'tencent' | 'auto'
+  BATCH_SIZE: 60,                    // [1–200]   текстов на запрос
+  MAX_CACHE_SIZE: 5000,              // [100–50000] записей в кэше
+  MAX_REPS: 2500,                    // [100–20000] операций rollback
+  INTERSECTION_MARGIN: '2500px',       // увеличено для предзагрузки перевода до появления на экране
+  CHUNK_DELAY: 12,                   // [0–1000]  мс между батчами
+  PRIORITY_BATCH_SIZE: 15,            // для видимых элементов
+  PREFETCH_BATCH_SIZE: 60,            // для prefetch
+  ZERO_WIDTH_CLEAN: true,
+  SKIP_IF_RUSSIAN: true,
+  CYRILLIC_RATIO_THRESHOLD: 0.6,
+  TRANSLATE_ATTRS: true,
+  REMEMBER_SITE_STATE: true,
+  REMEMBER_BTN_POS: true,             // запоминать позицию кнопки для каждого сайта
+  SLANG_ENABLED: true,
+  AUTO_CONVERT: true,
+  AUTO_CLICK_MS: 250,                 // [0–2000] мс наведения для авто-клик (0 = выкл)
+  HOTKEY: 'KeyA',
+  GOOGLE_TIMEOUT_MS: 4000,           // [500–30000] мс
+  GOOGLE_BREAK_FAILS: 3,
+  GOOGLE_BREAK_MS: 5 * 60 * 1000,
+  GOOGLE_AUTH_TTL_MS: 4 * 60 * 60 * 1000,
+  BC_CHANNEL: 'tr-cache-v2',
+  CACHE_VERSION: '10',
+  FAIL_MARK_TTL_MS: 12 * 60 * 60 * 1000, // [60000–604800000] мс
+  LEGACY_CONCURRENCY: 5,             // [1–20]    параллельных legacy-запросов
+  MS_TIMEOUT_MS: 12000,              // [500–30000] мс
+  MS_BREAK_FAILS: 3,
+  MS_BREAK_MS: 3 * 60 * 1000,
+  TENCENT_TIMEOUT_MS: 12000,         // [500–30000] мс
+  TENCENT_BREAK_FAILS: 3,
+  TENCENT_BREAK_MS: 3 * 60 * 1000,
+  MUTATION_BATCH_LIMIT: 1200,         // [50–5000] увеличен для длинных лент Reddit
+  REP_PRUNE_EVERY: 150,
+  IGNORE_TTL_MS: 6 * 30 * 24 * 60 * 60 * 1000,
+  IO_OBSERVE_LIMIT: 1200,             // [50–5000] увеличен для большего буфера предзагрузки
+  ALWAYS_ON_SITES: ['news.ycombinator.com', 'reddit.com', '*.reddit.com', '*.medium.com'],
+  NEVER_ON_SITES: ['mail.google.com', 'rutracker.org', '127.0.0.1', 'localhost', '*.ru', 'mysku.club', '4pda.to', 'youtube.com', 'translate.google.com'],
+  SLANG_REDDIT_SITES: ['reddit.com', '*.reddit.com', 'old.reddit.com'],
+};
+
+// =config-validate=
+{
+  const inR = (v, a, b) => Number.isFinite(v) && v >= a && v <= b;
+  const rules = [
+    [!['google','microsoft','tencent','auto'].includes(CONFIG.ENGINE), 'ENGINE'],
+    [!inR(CONFIG.BATCH_SIZE, 1, 200), 'BATCH_SIZE'],
+    [!inR(CONFIG.MAX_CACHE_SIZE, 100, 50000), 'MAX_CACHE_SIZE'],
+    [!inR(CONFIG.MAX_REPS, 100, 20000), 'MAX_REPS'],
+    [!inR(CONFIG.CHUNK_DELAY, 0, 1000), 'CHUNK_DELAY'],
+    [!inR(CONFIG.GOOGLE_TIMEOUT_MS, 500, 30000), 'GOOGLE_TIMEOUT_MS'],
+    [!inR(CONFIG.FAIL_MARK_TTL_MS, 60000, 604800000), 'FAIL_MARK_TTL_MS'],
+    [!inR(CONFIG.LEGACY_CONCURRENCY, 1, 20), 'LEGACY_CONCURRENCY'],
+    [!inR(CONFIG.MS_TIMEOUT_MS, 500, 30000), 'MS_TIMEOUT_MS'],
+    [!inR(CONFIG.MUTATION_BATCH_LIMIT, 50, 5000), 'MUTATION_BATCH_LIMIT'],
+    [!inR(CONFIG.IO_OBSERVE_LIMIT, 50, 10000), 'IO_OBSERVE_LIMIT'],
+  ];
+  for (const [bad, name] of rules) if (bad) console.warn('[SUAT] invalid config:', name);
+}
+
+// =helpers=
+const hostMatches = (h, p) => {
+  if (p instanceof RegExp) return p.test(h);
+  if (typeof p === 'string' && p.startsWith('*.')) return h === p.slice(2) || h.endsWith('.' + p.slice(2));
+  return h === p;
+};
+const normalizeHost = h => String(h || '').toLowerCase().replace(/^www\./, '');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+const retry = async (fn, canRetry, m = 2, d = 700) => {
+  for (let i = 0; i < m; i++) {
+    try { return await fn(); }
+    catch (e) { if (i === m - 1 || (canRetry && !canRetry(e))) throw e; await sleep(d << i); }
+  }
+};
+const makeHttpError = status => { const e = new Error('http ' + status); e.status = status; return e; };
+
+// djb2 — быстрый строковый хэш для дедупликации мутаций
+const hashStr = s => {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0;
+  return h;
+};
+
+// scheduler.yield() (Chrome 129+) → postTask → sleep
+const _hasYield    = typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function';
+const _hasPostTask = !_hasYield && typeof scheduler !== 'undefined' && typeof scheduler.postTask === 'function';
+const yieldToMain = _hasYield
+  ? () => scheduler.yield()
+  : _hasPostTask
+    ? () => scheduler.postTask(() => {}, { priority: 'user-blocking' })
+    : () => sleep(0);
+const yieldBetweenBatches = _hasYield
+  ? () => scheduler.yield()
+  : _hasPostTask
+    ? () => scheduler.postTask(() => {}, { priority: 'background' })
+    : () => sleep(CONFIG.CHUNK_DELAY);
+
+const chunkTexts = (texts, { maxChars = 4000, maxItems = Infinity } = {}) => {
+  const chunks = [];
+  let items = [];
+  let chars = 0;
+  let offset = 0;
+  const push = () => {
+    if (!items.length) return;
+    chunks.push({ items, offset });
+    offset += items.length;
+    items = [];
+    chars = 0;
+  };
+  for (const text of texts) {
+    const length = String(text).length;
+    if (length > maxChars) { push(); chunks.push({ items: [text], offset }); offset++; continue; }
+    if (items.length && (items.length >= maxItems || chars + length > maxChars)) push();
+    items.push(text);
+    chars += length;
+  }
+  push();
+  return chunks;
+};
+
+const zw = /[\u200B-\u200D\uFEFF]/g, ws = /\s+/g;
+
+const fullHtmlDecode = t => {
+  if (!t) return t;
+  if (!t.includes('&')) return t;
+  let s = t
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/&ensp;/g, ' ').replace(/&emsp;/g, ' ').replace(/&thinsp;/g, ' ').replace(/&Tab;/g, '\t').replace(/&NewLine;/g, '\n')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
+  if (/[""'' ]/.test(s)) s = s.replace(/[""]/g, '"').replace(/['']/g, "'").replace(/ /g, ' ');
+  return s;
+};
+
+const norm = t => {
+  let s = t == null ? '' : String(t);
+  if (CONFIG.ZERO_WIDTH_CLEAN) s = s.replace(zw, '').replace(ws, ' ').trim();
+  if (s.includes('&')) s = fullHtmlDecode(s);
+  return s;
+};
+// Расширенный диапазон CJK: Extension A + основные + Compatibility + Extension B (surrogate pairs) + японские + корейские
+const containsCJK = (() => {
+  try {
+    // Флаг /u позволяет использовать \u{XXXXX} для code points выше U+FFFF
+    const re = new RegExp('[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2A6DF}\\u{2A700}-\\u{2B73F}\\u{2B740}-\\u{2B81F}\\u{2B820}-\\u{2CEAF}\\u{2CEB0}-\\u{2EBEF}\\u{30000}-\\u{3134F}\\u3040-\\u30FF\\uAC00-\\uD7A3]', 'u');
+    return s => re.test(s);
+  } catch {
+    // Fallback без Extension B для старых движков
+    return s => /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7A3]/.test(s);
+  }
+})();
+const containsForeignScript = s => /[\u0600-\u06FF\u0750-\u077F\u0590-\u05FF\u0900-\u097F\u0E00-\u0E7F]/.test(s);
+const isLikelyUnitTypo = s => /\bibs\b/i.test(s);
+
+const TOKEN_RE = /__SLG\d+__/g;
+const RICH_TOKEN_RE = /(__SLG\d+__|UZXQ\d+U|QZXT\d+Q)/g;
+
+// =need=
+const need = t => {
+  const c = norm(t);
+  // Для CJK и других нелатинских скриптов разрешаем одиночные символы
+  if (containsCJK(c) || containsForeignScript(c)) return c.length >= 1;
+  if (c.length < 2) return false;
+  if (!/[A-Za-z]/.test(c)) return false;
+  const letters = c.replace(/[\s\d\p{P}\uFFFC]/gu, '');
+  if (!letters) return false;
+  if (CONFIG.SKIP_IF_RUSSIAN) {
+    const cyrCount = (letters.match(/[\u0400-\u04FF]/gu) || []).length;
+    if (cyrCount / letters.length >= CONFIG.CYRILLIC_RATIO_THRESHOLD) return false;
+  }
+  return true;
+};
+
+// =looksUntranslated=
+// Вспомогательная функция для подсчёта CJK символов (включая Extension B+)
+const countCJK = (() => {
+  try {
+    const re = new RegExp('[\\u3400-\\u4DBF\\u4E00-\\u9FFF\\uF900-\\uFAFF\\u{20000}-\\u{2A6DF}\\u{2A700}-\\u{2B73F}\\u{2B740}-\\u{2B81F}\\u{2B820}-\\u{2CEAF}\\u{2CEB0}-\\u{2EBEF}\\u{30000}-\\u{3134F}\\u3040-\\u30FF\\uAC00-\\uD7A3]', 'gu');
+    return s => (s.match(re) || []).length;
+  } catch {
+    return s => (s.match(/[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7A3]/g) || []).length;
+  }
+})();
+
+const looksUntranslated = (src, tr) => {
+  if (!src || !tr) return false;
+  if (/[{};=()\[\]]/.test(src) && (src.match(/[{};=()\[\]]/g) || []).length >= 2) return false;
+  if (containsCJK(src) || containsForeignScript(src)) {
+    if (/[А-Яа-яЁё]/.test(tr)) return false;
+    if (/[A-Za-z]/.test(tr) && !containsCJK(tr) && !containsForeignScript(tr)) return true;
+  }
+  if (!/[A-Za-z]/.test(src)) return false;
+  let s = tr
+    .replace(TOKEN_RE, ' ').replace(/UZXQ\d+U/g, ' ').replace(/QZXT\d+Q/g, ' ')
+    .replace(/https?:\/\/\S+|www\.\S+/gi, ' ').replace(/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/gi, ' ')
+    .replace(/\b[vV]?\d+(?:\.\d+)+\b/g, ' ').replace(/\b[a-f0-9]{7,40}\b/gi, ' ')
+    .replace(/\b[A-Z]{2,}[-_][A-Z0-9_-]+\b/g, ' ');
+  const lat = (s.match(/[A-Za-z]/g) || []).length;
+  const cyr = (s.match(/[А-Яа-яЁё]/g) || []).length;
+  const cjk = countCJK(s);
+  const letters = lat + cyr + cjk;
+  return letters < 25 ? lat >= 14 && lat > (cyr + cjk) : lat / letters > 0.35 && lat > (cyr + cjk);
+};
+
+// =adaptive-batch=
+const AdaptiveBatch = {
+  size: CONFIG.BATCH_SIZE,
+  _times: [],
+  update(ms) {
+    this._times.push(ms);
+    if (this._times.length > 6) this._times.shift();
+    const avg = this._times.reduce((a, b) => a + b, 0) / this._times.length;
+    const prev = this.size;
+    if (avg < 1500) this.size = Math.min(100, this.size + 5);
+    else if (avg > 4000) this.size = Math.max(20, this.size - 10);
+    if (this.size !== prev) GM_setValue('batchSize', this.size).catch(() => {});
+  }
+};
+
+// =units=
+const _n = s => +(String(s).replace(',', '.'));
+const _trimZero = s => String(s).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+const _round1 = n => _trimZero((Math.round(n * 10) / 10).toFixed(1));
+const _round2 = n => _trimZero((Math.round(n * 100) / 100).toFixed(2));
+
+const Units = {
+  // Основной RX: требует буквенную единицу (feet, ft, lb, etc.) или формат N' N"
+  RX: /(?:(\d+)'\s*(\d{1,2})"|(\d+)'\s*(\d{1,2})\b)|(\b\d+(?:[.,]\d+)?(?:\s*(?:and|,)\s*\d+(?:[.,]\d+)?)?\s*(?:lb|lbs|ibs|pounds?)\b)|(-?\d+(?:[.,]\d+)?)(?:\s*-\s*(-?\d+(?:[.,]\d+)?))?\s*(fl\.?\s*oz|oz|ounces?|gal|gallons?|mph|mi|miles?|feet|foot|ft|inches?|inch|in|yds?|yards?|yd|acres?|sq\.?\s*ft|square feet|square foot|°?\s*F)\b/gi,
+  // Дополнительный RX: для "голых" размеров типа 32', 32'x34', 5"x10" без буквенных единиц
+  // Поддерживает прямые ('), типографские (', ′) и двойные (" , ", ″) кавычки
+  RX_BARE: /(\d+(?:[.,]\d+)?)\s*[''′]\s*(?:[xX×]\s*(\d+(?:[.,]\d+)?)\s*[''′])?|(\d+(?:[.,]\d+)?)\s*[""″]\s*(?:[xX×]\s*(\d+(?:[.,]\d+)?)\s*[""″])?/g,
+  QUOTED_TITLE_RX: /(\d+(?:[.,]\d+)?)\s*'([^'\n]{2,160})'/g,
+  APPENDED_METRIC_RX: /\s*\(\s*(?:около\s*)?-?\d+(?:[.,]\d+)?\s*(?:кг|г|л|мл|км|км\/ч|м|см|м²|га|°C)\s*\)/gi,
+  TOKEN_FUZZ_RE(token) {
+    return new RegExp(token.split('').map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*'), 'g');
+  },
+  metric(v, u) {
+    const M = {
+      floz: () => `${Math.round(v * 29.574)} мл`,
+      f:    () => `${Math.round((v - 32) * 5 / 9)}°C`,
+      mph:  () => `${Math.round(v * 1.609)} км/ч`,
+      mi:   () => `${_round1(v * 1.609)} км`,
+      lb:   () => `${_round1(v * 0.4536)} кг`,
+      oz:   () => `${_round1(v * 28.35)} г`,
+      gal:  () => `${_round2(v * 3.785)} л`,
+      ft:   () => `${_round2(v * 0.3048)} м`,
+      in:   () => `${_round1(v * 2.54)} см`,
+      yd:   () => `${_round2(v * 0.9144)} м`,
+      sqft: () => `${_round2(v * 0.0929)} м²`,
+      acre: () => `${_round2(v * 0.4047)} га`,
+    };
+    return M[u]?.() || '';
+  },
+  metricFeetIn(feet, inches) { return `${_round2((feet * 12 + inches) * 2.54)} см`; },
+  normU(u) {
+    u = String(u).toLowerCase().replace(/\s+/g, ' ').trim().replace(/^°\s*/, '');
+    if (/^(lb|lbs|ibs|pounds?)$/.test(u)) return 'lb';
+    if (/^(oz|ounces?)$/.test(u)) return 'oz';
+    if (/^(gal|gallons?)$/.test(u)) return 'gal';
+    if (u === 'mph') return 'mph';
+    if (/^(mi|miles?)$/.test(u)) return 'mi';
+    if (/^(ft|foot|feet)$/.test(u)) return 'ft';
+    if (/^(in|inch|inches)$/.test(u)) return 'in';
+    if (/^(yds?|yards?)$/.test(u)) return 'yd';
+    if (/^acres?$/.test(u)) return 'acre';
+    if (/^sq\.?\s*ft$|^square (feet|foot)$/.test(u)) return 'sqft';
+    if (u === 'f') return 'f';
+    if (/^fl\.?\s*oz$/.test(u)) return 'floz';
+    return u;
+  },
+  metricFromLbPhrase(raw) {
+    const nums = raw.match(/\d+(?:[.,]\d+)?/g);
+    if (!nums?.length) return null;
+    return nums.length === 1
+      ? `${_round1(_n(nums[0]) * 0.4536)} кг`
+      : nums.map(x => `${_round1(_n(x) * 0.4536)} кг`).join(' и ');
+  },
+  token: i => `UZXQ${i}U`,
+  qToken: i => `QZXT${i}Q`,
+  extract(source) {
+    const out = [];
+    if (!source) return out;
+    let m, i = 0;
+    const occupied = []; // отслеживаем занятые диапазоны для предотвращения дублей
+
+    const addMatch = (src, metric, start, end) => {
+      if (!metric) return;
+      // Проверяем перекрытие с уже найденными совпадениями
+      for (const occ of occupied) {
+        if (start < occ.end && end > occ.start) return; // перекрывается — пропускаем
+      }
+      occupied.push({ start, end });
+      out.push({ src, metric, token: this.token(i++), start, end });
+    };
+
+    // Проход 1: основной RX (с буквенными единицами)
+    this.RX.lastIndex = 0;
+    while ((m = this.RX.exec(source))) {
+      if (!m[0]) { this.RX.lastIndex++; continue; }
+      let metric = null;
+      if (m[1] != null && m[2] != null) metric = this.metricFeetIn(_n(m[1]), _n(m[2]));
+      else if (m[3] != null && m[4] != null) metric = this.metricFeetIn(_n(m[3]), _n(m[4]));
+      else if (m[5]) metric = this.metricFromLbPhrase(m[5]);
+      else if (m[6] != null && m[8] != null) {
+        const a = _n(m[6]), b = m[7] != null ? _n(m[7]) : null, u = this.normU(m[8]);
+        if (b != null) { const ma = this.metric(a, u), mb = this.metric(b, u); metric = ma && mb ? `${ma}-${mb}` : null; }
+        else metric = this.metric(a, u) || null;
+      }
+      addMatch(m[0], metric, m.index, m.index + m[0].length);
+    }
+
+    // Проход 2: RX_BARE (размеры без буквенных единиц: 32', 32'x34', 5"x10")
+    this.RX_BARE.lastIndex = 0;
+    while ((m = this.RX_BARE.exec(source))) {
+      // Пропускаем пустые матчи (защита от бесконечного цикла)
+      if (!m[0]) { this.RX_BARE.lastIndex++; continue; }
+      let metric = null;
+      if (m[1] != null) {
+        // Одинарные кавычки (футы): 32' или 32'x34'
+        const ft = _n(m[1]);
+        if (m[2] != null) {
+          // Диапазон: 32'x34' → два значения в метрах
+          const ft2 = _n(m[2]);
+          const m1 = this.metric(ft, 'ft'), m2 = this.metric(ft2, 'ft');
+          if (m1 && m2) metric = `${m1} × ${m2}`;
+        } else {
+          // Одиночное значение: 32'
+          metric = this.metric(ft, 'ft');
+        }
+      } else if (m[3] != null) {
+        // Двойные кавычки (дюймы): 5" или 5"x10"
+        const inc = _n(m[3]);
+        if (m[4] != null) {
+          const inc2 = _n(m[4]);
+          const m1 = this.metric(inc, 'in'), m2 = this.metric(inc2, 'in');
+          if (m1 && m2) metric = `${m1} × ${m2}`;
+        } else {
+          metric = this.metric(inc, 'in');
+        }
+      }
+      addMatch(m[0], metric, m.index, m.index + m[0].length);
+    }
+
+    // Сортируем по позиции начала для корректной замены
+    out.sort((a, b) => a.start - b.start);
+    return out;
+  },
+  protectQuotedTitles(source) {
+    if (!source) return { text: source, map: [], hasQuotes: false };
+    let i = 0; const map = [];
+    const text = source.replace(this.QUOTED_TITLE_RX, (m, num, title) => {
+      const token = this.qToken(i++);
+      map.push({ token, text: `${num} '${title}'` });
+      return token;
+    });
+    return { text, map, hasQuotes: map.length > 0 };
+  },
+  protect(source) {
+    if (!CONFIG.AUTO_CONVERT || !source) return { text: source, map: [], qmap: [], hasUnits: false, hasQuotes: false };
+    let fixed = isLikelyUnitTypo(source) ? source.replace(/\bibs\b/gi, 'lbs') : source;
+    const q = this.protectQuotedTitles(fixed); fixed = q.text;
+    const items = this.extract(fixed);
+    if (!items.length) return { text: fixed, map: [], qmap: q.map, hasUnits: false, hasQuotes: q.hasQuotes };
+    let text = '', pos = 0;
+    for (const item of items) { text += fixed.slice(pos, item.start) + item.token; pos = item.end; }
+    text += fixed.slice(pos);
+    return { text, map: items, qmap: q.map, hasUnits: true, hasQuotes: q.hasQuotes };
+  },
+  restoreQuotes(text, qmap) {
+    if (!text || !qmap?.length) return text;
+    let out = text;
+    for (const item of qmap) {
+      if (out.includes(item.token)) { out = out.split(item.token).join(item.text); continue; }
+      out = out.replace(this.TOKEN_FUZZ_RE(item.token), item.text);
+    }
+    return out;
+  },
+  restoreText(translated, meta) {
+    if (!translated) return { text: translated, full: true };
+    const total = meta?.map?.length || 0;
+    let out = translated, restored = 0;
+    if (meta?.hasUnits && total) {
+      for (const item of meta.map) {
+        const val = item.metric;
+        if (out.includes(item.token)) { out = out.split(item.token).join(val); restored++; continue; }
+        const rx = this.TOKEN_FUZZ_RE(item.token);
+        if (rx.test(out)) { out = out.replace(rx, val); restored++; }
+      }
+      if (!meta.hasQuotes && restored !== total)
+        return { text: this.restoreQuotes(out, meta.qmap), full: false };
+    }
+    return { text: this.restoreQuotes(out, meta?.qmap), full: true };
+  },
+  restoreTokens(translated, meta) {
+    if (!translated || !meta?.hasUnits || !meta.map?.length) return { text: translated, full: true };
+    let out = translated, restored = 0;
+    for (const item of meta.map) {
+      if (out.includes(item.token)) { restored++; continue; }
+      const rx = this.TOKEN_FUZZ_RE(item.token);
+      if (rx.test(out)) { out = out.replace(rx, item.token); restored++; }
+    }
+    if (meta?.qmap?.length) {
+      for (const item of meta.qmap) {
+        if (!out.includes(item.token)) out = out.replace(this.TOKEN_FUZZ_RE(item.token), item.token);
+      }
+    }
+    return { text: out, full: meta.map.length ? restored === meta.map.length : true };
+  },
+  buildNodeMap(meta) {
+    const map = new Map();
+    if (meta?.hasUnits && meta.map?.length)
+      for (const item of meta.map) map.set(item.token, { type: 'unit', text: item.metric, tooltip: item.src });
+    if (meta?.qmap?.length)
+      for (const item of meta.qmap) map.set(item.token, { type: 'quote', text: item.text, tooltip: item.text });
+    return map;
+  },
+  fallbackConvert(text, src = '') {
+    if (!text) return text;
+    let out = text;
+    const fixedSrc = isLikelyUnitTypo(src) ? src.replace(/\bibs\b/gi, 'lbs') : src;
+    for (const item of this.extract(fixedSrc))
+      out = out.replace(new RegExp(item.src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), item.metric);
+    out = out
+      .replace(/\b(\d+(?:[.,]\d+)?)\s*-\s*фунтов(?:ые|ый|ая|ое|ых|ым|ыми|ого|овому|ую|ом)?\s+([а-яё][а-яё-]{1,})\b/gi, (_, n, noun) => `${noun} ${_round1(_n(n) * 0.4536)} кг`)
+      .replace(/\b(\d+(?:[.,]\d+)?)\s+фунт(?:а|ов)?\b/gi, (_, n) => `${_round1(_n(n) * 0.4536)} кг`)
+      .replace(/\bпо\s+(\d+(?:[.,]\d+)?)\s+и\s+(\d+(?:[.,]\d+)?)\s+фунт(?:а|ов)?\b/gi, (_, a, b) => `по ${_round1(_n(a) * 0.4536)} кг и ${_round1(_n(b) * 0.4536)} кг`)
+      .replace(/\b(\d+(?:[.,]\d+)?)\s+и\s+(\d+(?:[.,]\d+)?)\s+фунт(?:а|ов)?\b/gi, (_, a, b) => `${_round1(_n(a) * 0.4536)} кг и ${_round1(_n(b) * 0.4536)} кг`)
+      // Fallback для «голых» футов/дюймов, если токены не восстановились
+      .replace(/(\d+(?:[.,]\d+)?)\s*[''′]\s*(?:[xX×]\s*(\d+(?:[.,]\d+)?)\s*[''′])?/g, (_, a, b) => {
+        const ma = this.metric(_n(a), 'ft');
+        if (b != null) { const mb = this.metric(_n(b), 'ft'); return ma && mb ? `${ma} × ${mb}` : ma; }
+        return ma;
+      })
+      .replace(/(\d+(?:[.,]\d+)?)\s*[""″]\s*(?:[xX×]\s*(\d+(?:[.,]\d+)?)\s*[""″])?/g, (_, a, b) => {
+        const ma = this.metric(_n(a), 'in');
+        if (b != null) { const mb = this.metric(_n(b), 'in'); return ma && mb ? `${ma} × ${mb}` : ma; }
+        return ma;
+      })
+      .replace(/\b(\d+(?:[.,]\d+)?)\s*"\b/g, (_, n) => `${_round1(_n(n) * 2.54)} см`);
+    return out;
+  },
+  cleanup(text) {
+    const UNIT_DUPES = [
+      [/(\d+(?:[.,]\d+)?)\s*кг\s*-?\s*фунт(?:ов|а)?\w*/gi, '$1 кг'],
+      [/(\d+(?:[.,]\d+)?)\s*км\s*миль/gi, '$1 км'],
+      [/(\d+(?:[.,]\d+)?)\s*м\s*фут(?:а|ов)?/gi, '$1 м'],
+      [/(\d+(?:[.,]\d+)?)\s*см\s*дюйм(?:а|ов)?/gi, '$1 см'],
+      [/(\d+(?:[.,]\d+)?)\s*г\s*унц(?:ия|ии|ий)?/gi, '$1 г'],
+      [/(\d+(?:[.,]\d+)?)\s*л\s*галлон(?:а|ов)?/gi, '$1 л'],
+      [/(\d+(?:[.,]\d+)?)\s*км\/ч\s*mph/gi, '$1 км/ч'],
+      [/(\d+(?:[.,]\d+)?)\s*кгми\b/gi, '$1 кг'],
+    ];
+    let out = text.replace(this.APPENDED_METRIC_RX, '');
+    for (const [rx, rep] of UNIT_DUPES) out = out.replace(rx, rep);
+    return out
+      .replace(/\b(\d+(?:[.,]\d+)?)ish\b/gi, '$1')
+      .replace(/\bпо\s+(\d+(?:[.,]\d+)?)\s+кг\s+и\s+(\d+(?:[.,]\d+)?)\s+кг\b/gi, 'по $1 и $2 кг')
+      .replace(/UZXQ\d+U|QZXT\d+Q/gi, ' ')
+      .replace(/\s{2,}/g, ' ').replace(/\s+([,.;:!?])/g, '$1').trim();
+  }
+};
+
+// =slang=
+// Формат: 'ТЕРМИН': 'перевод|Тултип[|+тег]'
+// |+reddit — только на сайтах из SLANG_REDDIT_SITES
+const SLANG_MAP = {
+  'OMFG': 'в полном шоке|OMFG - Крайняя степень удивления',
+  'WTAF': 'что вообще происходит|WTAF - Реакция на полный абсурд',
+  'STFU': 'замолчи уже|STFU - Грубое требование тишины',
+  'GTFO': 'проваливай|GTFO - Требование немедленно уйти',
+  'DGAF': 'мне всё равно|DGAF - Полное отсутствие интереса',
+  'LMAO': 'очень смешно|LMAO - Смеюсь до колик',
+  'LMFAO': 'дико хохочу|LMFAO - Высшая степень смеха',
+  'ROFL': 'катаюсь по полу|ROFL - Реакция на что-то очень забавное',
+  'LOL': 'ржу|LOL - Классический смех',
+  'BS': 'чушь собачья|BS - Ложь или бред',
+  'ELI5': 'Объясни как пятилетнему|ELI5 - расскажи просто и «без лишней науки»',
+  'FFS': 'да сколько можно|FFS - Возглас раздражения',
+  'TF': 'какого черта|TF - Сокращение от What the fuck',
+  'WTF': 'что за дела|WTF - Выражение недоумения',
+  'OMG': 'о боже|OMG - Удивление',
+  'JK': 'шучу|JK - Пометка о юморе',
+  'SMH': 'качаю головой|SMH - Разочарование в чьих-то действиях',
+  'SHOOK': 'потрясен|SHOOK - Состояние сильного шока',
+  'TRIGGERED': 'бомбануло|TRIGGERED - Когда что-то сильно задело',
+  'BUTTHURT': 'сильная обида|BUTTHURT - Обида из-за задетого самолюбия',
+  'RED FLAG': 'тревожный знак|RED FLAG - Сигнал о неадекватности',
+  'GREEN FLAG': 'хороший знак|GREEN FLAG - Признак здорового поведения',
+  'SIMP': 'подкаблучник|SIMP - Чрезмерное заискивание ради внимания',
+  'BOOMER': 'старпёр|BOOMER - Тот, кто поучает, опираясь на прошлое|+reddit',
+  'ZOOMER': 'зумер|ZOOMER - Представитель поколения Z',
+  'GHOST': 'исчезнуть из общения|GHOST - Прекращение общения без объяснений|+reddit',
+  'GASLIGHT': 'манипулировать|GASLIGHT - Искажение чужого восприятия реальности',
+  'SITUATIONSHIP': 'непонятки|SITUATIONSHIP - Отношения без определённого статуса',
+  'BREADCRUMBING': 'давать надежду|BREADCRUMBING - Удержание внимания без серьёзных планов',
+  'KAREN': 'скандалистка|KAREN - Человек, вечно недовольный сервисом',
+  'PICK ME': 'обрати-внимание-на-меня|PICK ME - Поиск одобрения любым путём',
+  'SNOWFLAKE': 'снежинка|SNOWFLAKE - Излишне ранимый человек',
+  'NARCISSIST': 'самовлюбленный|NARCISSIST - Человек, зацикленный на себе',
+  'TOXIC': 'токсичный|TOXIC - Человек, создающий тяжёлую атмосферу',
+  'BFF': 'лучший друг|BFF - Самый близкий человек',
+  'BAE': 'любимый/любимая|BAE - Обращение к партнёру',
+  'STAN': 'ярый фанат|STAN - Одержимый поклонник|+reddit',
+  'TL;DR': 'короче говоря|TL;DR - Краткое содержание длинного текста|+reddit',
+  'CAKE DAY': 'день регистрации|CAKE DAY - Годовщина создания аккаунта|+reddit',
+  'OP': 'автор поста|OP - Original Poster|+reddit',
+  'KARMA WHORE': 'охотник за лайками|KARMA WHORE - Жаждет рейтинга любым способом|+reddit',
+  'SHITPOST': 'пустой контент|SHITPOST - Посты ради троллинга|+reddit',
+  'ITT': 'в этой теме|ITT - В данном обсуждении|+reddit',
+  'AMA': 'спрашивай что хочешь|AMA - Сессия ответов на вопросы|+reddit',
+  'OC': 'авторский контент|OC - Оригинальный материал|+reddit',
+  'TIL': 'сегодня я узнал|TIL - Пост о новом открытии|+reddit',
+  'AFK': 'отошел|AFK - Away From Keyboard',
+  'GG': 'хорошая игра|GG - Вежливость в конце матча|+reddit',
+  'NOOB': 'новичок|NOOB - Неопытный игрок',
+  'PVP': 'игрок против игрока|PVP - Сражение между людьми',
+  'GANK': 'напасть исподтишка|GANK - Нападение группой на одного',
+  'BUFF': 'усилить|BUFF - Улучшение характеристик',
+  'NERF': 'ослабить|NERF - Ухудшение характеристик для баланса',
+  'BUG': 'ошибка|BUG - Дефект в программе|+reddit',
+  'FEATURE': 'фича|FEATURE - Полезная возможность|+reddit',
+  'DIY': 'своими руками|DIY - Самостоятельное изготовление',
+  'LEGACY': 'старый код|LEGACY - Устаревшее программное наследие',
+  'DEPRECATED': 'устарело|DEPRECATED - Больше не поддерживается',
+  'OPEN SOURCE': 'открытый код|OPEN SOURCE - Доступное всем ПО',
+  'PROD': 'прод|PROD - Рабочая версия продукта',
+  'LOWKEY': 'втайне|LOWKEY - Скрыто или слегка',
+  'HIGHKEY': 'открыто|HIGHKEY - Явно и громко',
+  'NGL': 'честно говоря|NGL - Признание без прикрас',
+  'TBH': 'если быть честным|TBH - Откровенное мнение',
+  'FR': 'серьёзно|FR - For Real',
+  'ONG': 'клянусь|ONG - Усиление правдивости',
+  'CAP': 'ложь|CAP - Вранье или преувеличение',
+  'NO CAP': 'без обмана|NO CAP - Клятва в правдивости',
+  'VIBE': 'настрой|VIBE - Атмосфера или энергетика',
+  'LIT': 'круто|LIT - Что-то очень классное',
+  'FLEX': 'хвалиться|FLEX - Выпендриваться достижениями',
+  'SLAY': 'блестяще|SLAY - Высшая похвала успеху',
+  'SUS': 'подозрительно|SUS - Сокращение от suspicious',
+  'YEET': 'швырнуть|YEET - Бросок или возглас восторга',
+  'CRINGE': 'стыд|CRINGE - Чувство неловкости за других',
+  'SJW': 'социальный активист|SJW - Борец за общественную справедливость',
+  'WOKE': 'просвещённый|WOKE - Следящий за социальной повесткой',
+  'FOMO': 'синдром упущенной выгоды|FOMO - Страх пропустить что-то важное',
+  'ASAP': 'как можно быстрее|ASAP - Срочно',
+  'IDK': 'не знаю|IDK - Не владею информацией',
+  'IMHO': 'по моему мнению|IMHO - Личная точка зрения',
+  'BTW': 'кстати|BTW - Попутное уточнение',
+  'FYI': 'к твоему сведению|FYI - Справочная информация',
+  'NSFW': 'не для работы|NSFW - Контент не для коллег',
+  'NSFL': 'жесть|NSFL - Шокирующий контент',
+  'WCGW': 'что может пойти не так|WCGW - Ироничный прогноз провала',
+};
+
+let SLANG_DATA = new Map();
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const buildSlangPat = en => en.trim().split(/\s+/).map(escRe).join('[^A-Za-z0-9]+');
+
+const initSlang = hostname => {
+  const isReddit = CONFIG.SLANG_REDDIT_SITES.some(p => hostMatches(hostname, p));
+  const entries = Object.entries(SLANG_MAP)
+    .filter(([, val]) => { const m = val.match(/\|\+(\w+)$/); const tag = m?.[1]; return !tag || (tag === 'reddit' && isReddit); })
+    .map(([en, val]) => [en, val.replace(/\|\+\w+$/, '')])
+    .sort((a, b) => (b[0].split(' ').length - a[0].split(' ').length) || (b[0].length - a[0].length));
+  SLANG_DATA = new Map();
+  for (const [en, val] of entries) {
+    try {
+      const pipe = val.indexOf('|');
+      const ru = pipe >= 0 ? val.slice(0, pipe) : val;
+      const tooltip = pipe >= 0 ? val.slice(pipe + 1) : en;
+      const re = new RegExp(`(^|[^A-Za-z0-9])(${buildSlangPat(en)})(?=[^A-Za-z0-9]|$)`, 'gi');
+      SLANG_DATA.set(en, { re, ru, tooltip });
+    } catch {}
+  }
+};
+
+// =tooltip=
+(() => {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;z-index:2147483647;background:#ff1e1e;color:#fff2f2;font-size:13.5px;padding:4px 10px;border-radius:6px;pointer-events:none;white-space:normal;line-height:1.4;max-width:320px;opacity:0;transition:opacity .15s;box-shadow:0 4px 16px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);font-family:system-ui,-apple-system,sans-serif';
+  div.id = 'tr-tip';
+  const attach = () => { try { document.body.appendChild(div); } catch {} };
+  document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', attach) : attach();
+  let cur = null;
+  document.addEventListener('mouseover', e => {
+    const el = e.composedPath().find(n => n?.getAttribute?.('data-tr-tip') != null);
+    if (!el) { if (cur) { div.style.opacity = '0'; cur = null; } return; }
+    cur = el; div.textContent = el.getAttribute('data-tr-tip'); div.style.opacity = '1';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!cur) return;
+    const x = Math.max(4, Math.min(e.clientX + 14, innerWidth - div.offsetWidth - 4));
+    const above = e.clientY - div.offsetHeight - 10;
+    const below = e.clientY + 16;
+    div.style.left = x + 'px';
+    div.style.top = (above > 4 ? above : Math.min(below, innerHeight - div.offsetHeight - 4)) + 'px';
+  });
+  document.addEventListener('mouseout', e => {
+    if (!cur || (e.relatedTarget && cur.contains(e.relatedTarget))) return;
+    div.style.opacity = '0'; cur = null;
+  });
+})();
+
+// =slang-prep=
+const slangPrep = text => {
+  if (!CONFIG.SLANG_ENABLED || !text) return { send: text, ph: null };
+  let send = text, ph = null, idx = 0;
+  for (const [, data] of SLANG_DATA) {
+    send = send.replace(data.re, (m, pre) => {
+      ph || (ph = []);
+      const token = `__SLG${idx++}__`;
+      ph.push({ token, ru: data.ru, tooltip: data.tooltip });
+      return pre + token;
+    });
+  }
+  return { send, ph };
+};
+
+const buildRichNodes = (text, slangPh, unitMeta) => {
+  const tokenMap = new Map();
+  if (slangPh) for (const item of slangPh) tokenMap.set(item.token, { type: 'slang', text: item.ru, tooltip: item.tooltip });
+  for (const [k, v] of Units.buildNodeMap(unitMeta)) tokenMap.set(k, v);
+  if (!tokenMap.size) return null;
+  const parts = text.split(RICH_TOKEN_RE);
+  const nodes = [];
+  for (const part of parts) {
+    if (!part) continue;
+    const info = tokenMap.get(part);
+    if (!info) { nodes.push(document.createTextNode(part)); continue; }
+    if (info.type === 'quote') { nodes.push(document.createTextNode(info.text)); continue; }
+    const sp = document.createElement('span');
+    sp.textContent = info.text;
+    sp.className = 'notranslate';
+    sp.setAttribute('translate', 'no');
+    sp.setAttribute('data-tr-tip', info.tooltip);
+    sp.style.cssText = info.type === 'slang'
+      ? 'color:rgba(255,180,180,0.9);font-style:italic;border-bottom:1px dashed rgba(255,180,180,0.5);cursor:help;pointer-events:auto;position:relative;z-index:1'
+      : 'color:rgba(110,255,160,0.95);font-style:normal;border-bottom:1px dashed rgba(110,255,160,0.55);cursor:help;pointer-events:auto;position:relative;z-index:1';
+    nodes.push(sp);
+  }
+  return nodes.length ? nodes : null;
+};
+
+// =skip=
+const SKIP_SEL = [
+  'meta,link,script,noscript,style,code,pre,textarea,time,kbd,svg,g,ruby,rt,rp,math,d-math,samp',
+  'iframe,canvas,video,audio,img,input,select,option,head',
+  '[contenteditable="true"],[translate=no],.notranslate',
+  '.social-share,.share-nav,[data-toolbar=share],.o-share',
+  '.prism-code,.enlighter-code,.rc-CodeBlock,[role=code],table.highlight',
+  'hypothesis-highlight,.hypothesis-highlight',
+  '.material-icons,material-icon,span[class^=material-symbols-],.google-symbols,i.fa,i[class^=fa-]',
+  '.visuallyhidden'
+].join(',');
+
+const TRANSLATE_ATTRS = ['title', 'alt', 'placeholder', 'aria-label'];
+const DATA_O_SEL  = TRANSLATE_ATTRS.map(a => `[data-o-${a}]`).join(',');
+const ATTR_SCAN_SEL = TRANSLATE_ATTRS.map(a => `[${a}]`).join(',');
+
+const skipEl = el => {
+  if (!el || el.nodeType !== 1) return true;
+  if (el.id === 'tr-host' || el.id === 'tr-tip') return true;
+  if (el.isContentEditable || el.hidden) return true;
+  try { return el.matches(SKIP_SEL); } catch { return false; }
+};
+
+// =ignore=
+// Alt+click на элементе создаёт обобщённый селектор по классам (напр. a.author),
+// который применяется ко всем элементам страницы сразу и сохраняется для сайта.
+// Динамически добавляемые элементы проверяются через matches() без атрибутов.
+const Ignore = {
+  paths: new Set(),
+  ts: 0,
+  k: 'ignore:' + normalizeHost(location.hostname),
+  _combined: null,   // объединённый селектор для быстрой проверки через matches()
+  _matchCache: new WeakMap(),
+
+  // Паттерн для фильтрации утилитарных классов Tailwind / Bootstrap
+  _UTIL_CLS: /^(?:[a-z]{1,2}|d|p[ytblrx]?|m[ytblrx]?|w|h|flex|grid|col|row|gap|text|bg|border|font|leading|tracking|overflow|z|items|justify|rounded|shadow|opacity|cursor|pointer|select|sr-only|inline|block|hidden|relative|absolute|fixed|float|clearfix|container|wrapper)-/,
+
+  _rebuildCombined() {
+    this._combined = this.paths.size ? [...this.paths].join(',') : null;
+  },
+
+  async init() {
+    try {
+      const raw = await GM_getValue(this.k, null);
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      const arr = Array.isArray(p) ? p : (p?.paths || []);
+      this.ts = Array.isArray(p) ? 0 : (p?.ts || 0);
+      if (Date.now() - this.ts > CONFIG.IGNORE_TTL_MS) { await this._save(true); return; }
+      arr.forEach(path => this.paths.add(path));
+      this._rebuildCombined();
+      if (this.paths.size) {
+        for (const path of this.paths) {
+          try { document.querySelectorAll(path).forEach(el => el.setAttribute('data-suat-ignore', '1')); } catch {}
+        }
+      }
+    } catch {}
+  },
+
+  async _save(reset = false) {
+    if (reset) { this.paths.clear(); this.ts = Date.now(); this._rebuildCombined(); }
+    try { await GM_setValue(this.k, JSON.stringify({ paths: [...this.paths], ts: this.ts })); } catch {}
+  },
+
+  // Строит обобщённый селектор: ID → семантические классы → CSS-путь
+  genericSelector(el) {
+    if (el.id) return '#' + CSS.escape(el.id);
+    const cls = [...el.classList].filter(c =>
+      c.length >= 3 && !this._UTIL_CLS.test(c) && !/^\d/.test(c)
+    );
+    if (cls.length >= 1 && cls.length <= 4)
+      return el.tagName.toLowerCase() + '.' + cls.slice(0, 3).map(c => CSS.escape(c)).join('.');
+    return this.cssPath(el);
+  },
+
+  async add(el) {
+    const sel = this.genericSelector(el);
+    if (!sel) return;
+    // Пометить все текущие элементы на странице, совпадающие с селектором
+    try { document.querySelectorAll(sel).forEach(e => e.setAttribute('data-suat-ignore', '1')); } catch {}
+    el.setAttribute('data-suat-ignore', '1');
+    if (!this.paths.size) this.ts = Date.now();
+    this.paths.add(sel);
+    this._matchCache = new WeakMap();
+    this._rebuildCombined();
+    await this._save();
+  },
+
+  async reset() {
+    document.querySelectorAll('[data-suat-ignore]').forEach(el => el.removeAttribute('data-suat-ignore'));
+    this._matchCache = new WeakMap();
+    await this._save(true);
+    console.info('[SUAT] ignore list cleared for', location.hostname);
+  },
+
+  matches(el) {
+    if (!el?.getAttribute) return false;
+    if (el.hasAttribute('data-suat-ignore')) return true;
+    const cached = this._matchCache.get(el);
+    if (cached !== undefined) return cached;
+    let result = el.closest('[data-suat-ignore]') != null;
+    if (!result && this._combined) {
+      try { result = el.matches(this._combined) || !!el.closest(this._combined); } catch {}
+    }
+    this._matchCache.set(el, result);
+    return result;
+  },
+
+  cssPath(el) {
+    const parts = [];
+    let e = el;
+    while (e && e.nodeType === 1 && e !== document.body) {
+      let sel = e.tagName.toLowerCase();
+      if (e.id) { sel += '#' + CSS.escape(e.id); parts.unshift(sel); break; }
+      const sibs = [...(e.parentElement?.children || [])].filter(c => c.tagName === e.tagName);
+      if (sibs.length > 1) sel += `:nth-of-type(${sibs.indexOf(e) + 1})`;
+      parts.unshift(sel);
+      e = e.parentElement;
+    }
+    return parts.join(' > ') || null;
+  }
+};
+
+// =idb-cache=
+const IDB = {
+  db: null,
+  STORE: 'tr',
+  DB_NAME: 'suat-v' + CONFIG.CACHE_VERSION,
+  async open() {
+    if (this.db) return this.db;
+    return new Promise((res, rej) => {
+      const req = indexedDB.open(this.DB_NAME, 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore(this.STORE);
+      req.onsuccess = e => { this.db = e.target.result; res(this.db); };
+      req.onerror = () => rej(req.error);
+    });
+  },
+  _tx(mode, fn) {
+    return this.open().then(db => new Promise((res, rej) => {
+      const tx = db.transaction(this.STORE, mode);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      fn(tx.objectStore(this.STORE));
+    }));
+  },
+  async loadAll() {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const out = {};
+      const req = db.transaction(this.STORE, 'readonly').objectStore(this.STORE).openCursor();
+      req.onsuccess = e => { const c = e.target.result; if (c) { out[c.key] = c.value; c.continue(); } else res(out); };
+      req.onerror = () => rej(req.error);
+    });
+  },
+  async set(key, value) { try { await this._tx('readwrite', s => s.put(value, key)); } catch {} },
+  async del(key)        { try { await this._tx('readwrite', s => s.delete(key)); } catch {} },
+};
+
+// =broadcast-cache=
+let BC = null;
+const bcInit = () => {
+  try {
+    BC = new BroadcastChannel(CONFIG.BC_CHANNEL);
+    BC.onmessage = e => {
+      const d = e.data;
+      if (!d || d.vr !== CONFIG.CACHE_VERSION) return;
+      if (typeof d.k !== 'string' || typeof d.v !== 'string') return;
+      if (d.k.length > 4096 || d.v.length > 100000) return;
+      Cache.setRaw(d.k, d.v);
+    };
+  } catch {}
+};
+
+// =google-auth=
+const GoogleAuth = {
+  a: null, t: 0, p: null,
+  GKEY: 'gauth_key',
+  async fetchKey() {
+    return new Promise(r => GM_xmlhttpRequest({
+      method: 'GET',
+      url: 'https://translate.googleapis.com/_/translate_http/_/js/k=translate_http.tr.en_US.YusFYy3P_ro.O/am=AAg/d=1/exm=el_conf/ed=1/rs=AN8SPfq1Hb8iJRleQqQc8zhdzXmF9E56eQ/m=el_main',
+      timeout: 8000,
+      onload: x => {
+        try { r(x.responseText.match(/x-goog-api-key['"]\s*:\s*['"]([^'"]+)/i)?.[1] || null); }
+        catch { r(null); }
+      },
+      onerror: () => r(null), ontimeout: () => r(null)
+    }));
+  },
+  async get() {
+    if (this.a && Date.now() - this.t < CONFIG.GOOGLE_AUTH_TTL_MS) return this.a;
+    if (this.p) return this.p;
+    this.p = (async () => {
+      try {
+        const raw = await GM_getValue(this.GKEY, null);
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (p?.key && Date.now() - p.ts < CONFIG.GOOGLE_AUTH_TTL_MS) {
+            this.a = p.key; this.t = p.ts; return p.key;
+          }
+        }
+      } catch {}
+      const key = await this.fetchKey();
+      if (key) {
+        this.a = key; this.t = Date.now();
+        try { await GM_setValue(this.GKEY, JSON.stringify({ key, ts: this.t })); } catch {}
+      }
+      return key;
+    })();
+    try { return await this.p; } finally { this.p = null; }
+  }
+};
+
+// =cache=
+const Cache = {
+  m: new Map(), fail: new Map(),
+  fk: 'tf:' + location.hostname,
+  _idbBatch: new Map(),
+  _idbTmr: null,
+  makeKey: (t, l) => JSON.stringify([l, t]),
+  trim() {
+    while (this.m.size > CONFIG.MAX_CACHE_SIZE) {
+      const key = this.m.keys().next().value;
+      this.m.delete(key);
+      this._idbBatch.set(key, null);
+    }
+    if (!this._idbTmr) this._idbTmr = setTimeout(() => this._flushIDB(), 2000);
+  },
+  trimFail() {
+    const now = Date.now();
+    for (const [k, exp] of this.fail) if (!exp || exp <= now) this.fail.delete(k);
+  },
+  setRaw(key, value) {
+    if (!key || typeof value !== 'string') return;
+    this.m.delete(key); this.m.set(key, value); this.trim();
+    // Persist to IDB for cross-reload survival
+    this._idbBatch.set(key, value);
+    if (!this._idbTmr) this._idbTmr = setTimeout(() => this._flushIDB(), 2000);
+  },
+  async init() {
+    try {
+      const entries = await IDB.loadAll();
+      for (const [k, v] of Object.entries(entries))
+        if (typeof v === 'string') this.m.set(k, v);
+    } catch {
+      // Миграция из GM_setValue-кэша
+      try {
+        const raw = await GM_getValue('tc:' + location.hostname, null);
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (p?.data) {
+            for (const [k, v] of Object.entries(p.data))
+              if (typeof v === 'string') { this.m.set(k, v); IDB.set(k, v); }
+            await GM_setValue('tc:' + location.hostname, null);
+          }
+        }
+      } catch {}
+    }
+    try {
+      const raw = await GM_getValue(this.fk, null);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p?.vr === CONFIG.CACHE_VERSION && p?.data)
+          Object.entries(p.data).forEach(([k, v]) => Number.isFinite(v) && this.fail.set(k, v));
+      }
+    } catch {}
+    this.trim(); this.trimFail();
+  },
+  get(t, l) {
+    const key = this.makeKey(t, l), v = this.m.get(key);
+    if (v !== undefined) { this.m.delete(key); this.m.set(key, v); }
+    return v;
+  },
+  set(o, tr, l) {
+    if (!o || !tr) return;
+    const key = this.makeKey(o, l);
+    this.fail.delete(key); this.m.delete(key); this.m.set(key, tr); this.trim();
+    this._idbBatch.set(key, tr);
+    if (!IDB.db) IDB.open().catch(() => {});
+    if (!this._idbTmr) this._idbTmr = setTimeout(() => this._flushIDB(), 2000);
+    try { BC?.postMessage({ k: key, v: tr, ts: Date.now(), vr: CONFIG.CACHE_VERSION }); } catch {}
+  },
+  async _flushIDB() {
+    this._idbTmr = null;
+    if (!this._idbBatch.size) return;
+    const batch = this._idbBatch;
+    this._idbBatch = new Map();
+    try {
+      const db = await IDB.open();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(IDB.STORE, 'readwrite');
+        tx.oncomplete = res;
+        tx.onerror = () => rej(tx.error);
+        const store = tx.objectStore(IDB.STORE);
+        for (const [k, v] of batch) {
+          if (v === null) store.delete(k);
+          else store.put(v, k);
+        }
+      });
+    } catch {}
+  },
+  _syncFlushIDB() {
+    if (!this._idbBatch.size || !IDB.db) return;
+    const batch = this._idbBatch;
+    this._idbBatch = new Map();
+    try {
+      const tx = IDB.db.transaction(IDB.STORE, 'readwrite');
+      const store = tx.objectStore(IDB.STORE);
+      for (const [k, v] of batch) {
+        if (v === null) store.delete(k);
+        else store.put(v, k);
+      }
+    } catch {}
+  },
+  markFail(o, l) {
+    if (!o) return;
+    this.fail.set(this.makeKey(o, l), Date.now() + CONFIG.FAIL_MARK_TTL_MS);
+    this._saveFail();
+  },
+  isFailed(o, l) {
+    const key = this.makeKey(o, l), exp = this.fail.get(key);
+    if (!exp) return false;
+    if (exp <= Date.now()) { this.fail.delete(key); return false; }
+    return true;
+  },
+  _failTmr: null,
+  _saveFail() {
+    clearTimeout(this._failTmr);
+    this._failTmr = setTimeout(async () => {
+      this.trimFail();
+      try { await GM_setValue(this.fk, JSON.stringify({ vr: CONFIG.CACHE_VERSION, data: Object.fromEntries(this.fail) })); } catch {}
+    }, 5000);
+  }
+};
+
+// =api=
+const API = {
+  tok: null, tt: 0, tp: null,
+  gFail: 0, gBlockUntil: 0,
+  msFail: 0, msBlockUntil: 0,
+  tFail: 0, tBlockUntil: 0,
+  _tKey: null,
+
+  gOpen()  { return Date.now() < this.gBlockUntil; },
+  gOk()    { this.gFail = 0; },
+  gBad()   { if (++this.gFail >= CONFIG.GOOGLE_BREAK_FAILS) this.gBlockUntil = Date.now() + CONFIG.GOOGLE_BREAK_MS; },
+  msOpen() { return Date.now() < this.msBlockUntil; },
+  msOk()   { this.msFail = 0; },
+  msBad()  { if (++this.msFail >= CONFIG.MS_BREAK_FAILS) this.msBlockUntil = Date.now() + CONFIG.MS_BREAK_MS; },
+  tcOpen() { return Date.now() < this.tBlockUntil; },
+  tcOk()   { this.tFail = 0; },
+  tcBad()  { if (++this.tFail >= CONFIG.TENCENT_BREAK_FAILS) this.tBlockUntil = Date.now() + CONFIG.TENCENT_BREAK_MS; },
+
+  tencentKey() {
+    if (!this._tKey) this._tKey = 'browser-chrome-120.0-Windows_10-' + crypto.randomUUID() + '-' + Date.now();
+    return this._tKey;
+  },
+
+  async msAuth(force = false) {
+    if (!force && this.tok && Date.now() - this.tt < 48e4 && this.tok.trim()) return this.tok;
+    if (!force && this.tp) return this.tp;
+    this.tp = new Promise((res, rej) => GM_xmlhttpRequest({
+      method: 'GET', url: 'https://edge.microsoft.com/translate/auth', timeout: 5000,
+      onload: r => {
+        const token = r.responseText?.trim();
+        if (r.status === 200 && token && token.length > 10) {
+          this.tok = token; this.tt = Date.now(); res(this.tok);
+        } else { rej(makeHttpError(r.status || 401)); }
+      },
+      onerror: () => rej(new Error('ms auth')), ontimeout: () => rej(new Error('ms auth'))
+    }));
+    try { return await this.tp; } finally { this.tp = null; }
+  },
+
+  async msChunk(chunk, to, forceAuth = false) {
+    const t = await this.msAuth(forceAuth), tg = to === 'zh' ? 'zh-Hans' : to;
+    return new Promise((resolve, reject) => GM_xmlhttpRequest({
+      method: 'POST',
+      url: `https://api-edge.cognitive.microsofttranslator.com/translate?to=${tg}&api-version=3.0`,
+      headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+      data: JSON.stringify(chunk.map(Text => ({ Text }))),
+      timeout: CONFIG.MS_TIMEOUT_MS,
+      onload: x => {
+        if (x.status === 200) {
+          try { resolve(JSON.parse(x.responseText).map(y => y?.translations?.[0]?.text || null)); }
+          catch { resolve(chunk.map(() => null)); }
+          return;
+        }
+        reject(makeHttpError(x.status));
+      },
+      onerror: () => reject(new Error('ms')), ontimeout: () => reject(new Error('ms timeout'))
+    }));
+  },
+
+  async ms(texts, to) {
+    const CONCURRENCY = 3;
+    const chunks = chunkTexts(texts, { maxChars: 4000, maxItems: 100 });
+    const results = new Array(texts.length).fill(null);
+    let next = 0;
+    let stop = false;
+    const worker = async () => {
+      while (!stop && next < chunks.length) {
+        const ci = next++;
+        const { items: chunk, offset } = chunks[ci];
+        try {
+          const res = await retry(() => this.msChunk(chunk, to), e => e?.status !== 429, 2, 700);
+          for (let j = 0; j < res.length; j++) results[offset + j] = res[j];
+        } catch (e) {
+          if (e?.status === 401 || e?.status === 403) {
+            this.tok = null; this.tt = 0;
+            try {
+              const res = await this.msChunk(chunk, to, true);
+              this.msOk();
+              for (let j = 0; j < res.length; j++) results[offset + j] = res[j];
+              continue;
+            } catch {}
+          }
+          if (e?.status === 429) stop = true;
+          for (let j = 0; j < chunk.length; j++) results[offset + j] = null;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
+    return results;
+  },
+
+  async g2(texts, to) {
+    const a = await GoogleAuth.get();
+    if (!a) throw new Error('Google auth failed');
+    const CONCURRENCY = 3;
+    const chunks = chunkTexts(texts, { maxChars: 4000, maxItems: 50 });
+    const results = new Array(texts.length).fill(null);
+    let next = 0;
+    let stop = false;
+    const worker = async () => {
+      while (!stop && next < chunks.length) {
+        const ci = next++;
+        const { items: c, offset } = chunks[ci];
+        try {
+          const res = await retry(() => new Promise((resolve, reject) => GM_xmlhttpRequest({
+            method: 'POST',
+            url: 'https://translate-pa.googleapis.com/v1/translateHtml',
+            headers: { 'Content-Type': 'application/json+protobuf', 'X-Goog-Api-Key': a },
+            data: JSON.stringify([[c, 'auto', to], 'te']),
+            timeout: 15000,
+            onload: x => {
+              if (x.status === 429) return reject(makeHttpError(429));
+              try { resolve(JSON.parse(x.responseText)[0].map(v => (v || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())); }
+              catch { resolve(c.map(() => null)); }
+            },
+            onerror: () => reject(new Error('g2')), ontimeout: () => reject(new Error('g2 timeout'))
+          })), e => e?.status !== 429, 2, 700);
+          for (let j = 0; j < res.length; j++) results[offset + j] = res[j];
+        } catch (e) {
+          if (e?.status === 429) stop = true;
+          for (let j = 0; j < c.length; j++) results[offset + j] = null;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
+    return results;
+  },
+
+  async legOne(text, to) {
+    return new Promise((resolve, reject) => GM_xmlhttpRequest({
+      method: 'GET',
+      url: `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${to}&dt=t&q=${encodeURIComponent(text)}`,
+      timeout: 9000,
+      onload: x => {
+        if (x.status === 429) return reject(makeHttpError(429));
+        try { let o = ''; JSON.parse(x.responseText)[0].forEach(y => y[0] && (o += y[0])); resolve(o || null); }
+        catch { resolve(null); }
+      },
+      onerror: () => reject(new Error('legacy')), ontimeout: () => reject(new Error('legacy timeout'))
+    }));
+  },
+
+  async leg(texts, to) {
+    const out = new Array(texts.length).fill(null);
+    let next = 0;
+    const worker = async () => {
+      while (next < texts.length) {
+        const i = next++;
+        try { out[i] = await retry(() => this.legOne(texts[i], to), e => e?.status !== 429, 2, 500); }
+        catch { out[i] = null; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONFIG.LEGACY_CONCURRENCY, texts.length) }, worker));
+    return out;
+  },
+
+  async tencentChunk(chunk, to) {
+    const tg = to === 'zh' ? 'zh' : to;
+    return new Promise((resolve, reject) => GM_xmlhttpRequest({
+      method: 'POST',
+      url: 'https://transmart.qq.com/api/imt',
+      headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify({
+        header: { fn: 'auto_translation', session: '', client_key: this.tencentKey(), user: '' },
+        type: 'plain',
+        model_category: 'normal',
+        text_domain: 'general',
+        source: { lang: 'auto', text_list: chunk },
+        target: { lang: tg },
+      }),
+      timeout: CONFIG.TENCENT_TIMEOUT_MS,
+      onload: x => {
+        if (x.status !== 200) return reject(makeHttpError(x.status));
+        try {
+          const data = JSON.parse(x.responseText);
+          const out = data?.auto_translation;
+          if (Array.isArray(out)) { resolve(out.map(v => v || null)); return; }
+          resolve(chunk.map(() => null));
+        } catch { resolve(chunk.map(() => null)); }
+      },
+      onerror: () => reject(new Error('tencent')), ontimeout: () => reject(new Error('tencent timeout'))
+    }));
+  },
+
+  async tencent(texts, to) {
+    const CONCURRENCY = 3;
+    const chunks = chunkTexts(texts, { maxChars: 4000, maxItems: 50 });
+    const results = new Array(texts.length).fill(null);
+    let next = 0;
+    let stop = false;
+    const worker = async () => {
+      while (!stop && next < chunks.length) {
+        const ci = next++;
+        const { items: chunk, offset } = chunks[ci];
+        try {
+          const res = await retry(() => this.tencentChunk(chunk, to), e => e?.status !== 429, 2, 700);
+          for (let j = 0; j < res.length; j++) results[offset + j] = res[j];
+        } catch (e) {
+          if (e?.status === 429) stop = true;
+          for (let j = 0; j < chunk.length; j++) results[offset + j] = null;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, worker));
+    return results;
+  },
+
+  // =translate-pipeline=
+  async translate(texts, to) {
+    const out = new Array(texts.length).fill(null);
+    const todo = [], idx = [];
+    texts.forEach((t, i) => {
+      const n = norm(t);
+      if (Cache.isFailed(n, to)) return;
+      const c = Cache.get(n, to);
+      if (c !== undefined) out[i] = c;
+      else { todo.push(n); idx.push(i); }
+    });
+    if (!todo.length) return out;
+
+    let rem = todo.map((t, i) => ({ t, i }));
+    const failCount = new Map();
+    const eng = CONFIG.ENGINE;
+
+    const accept = (src, tr) => {
+      if (!tr || !tr.trim()) return false;
+      if (tr === src && !containsCJK(src) && !containsForeignScript(src)) return false;
+      if (looksUntranslated(src, tr)) return false;
+      return true;
+    };
+    const apply = (arr, src) => {
+      for (let j = 0; j < src.length; j++) {
+        const tr = arr[j];
+        if (accept(src[j].t, tr)) { failCount.delete(src[j].t); Cache.set(src[j].t, tr, to); out[idx[src[j].i]] = tr; }
+      }
+    };
+    const filterRem = (arr, src) => src.filter((x, j) => {
+      const ok = accept(x.t, arr[j]);
+      if (ok) { failCount.delete(x.t); return false; }
+      failCount.set(x.t, (failCount.get(x.t) || 0) + 1);
+      return true;
+    });
+    const finishFails = list => { for (const x of list) if ((failCount.get(x.t) || 0) >= 3) Cache.markFail(x.t, to); };
+
+    const t0 = Date.now();
+
+    if (eng === 'google' || eng === 'auto') {
+      if (!this.gOpen()) {
+        try {
+          const g = await withTimeout(this.g2(rem.map(x => x.t), to), CONFIG.GOOGLE_TIMEOUT_MS);
+          this.gOk(); AdaptiveBatch.update(Date.now() - t0);
+          if (!g.every(v => !v)) { apply(g, rem); rem = filterRem(g, rem); }
+        } catch { this.gBad(); rem.forEach(x => failCount.set(x.t, (failCount.get(x.t) || 0) + 1)); }
+      }
+      if (eng === 'google') { finishFails(rem); return out; }
+    }
+
+    if ((eng === 'microsoft' || eng === 'auto') && rem.length && !this.msOpen()) {
+      try {
+        const m = await this.ms(rem.map(x => x.t), to);
+        if (m.every(v => !v)) { this.msBad(); } else { this.msOk(); }
+        AdaptiveBatch.update(Date.now() - t0);
+        if (!m.every(v => !v)) { apply(m, rem); rem = filterRem(m, rem); }
+      } catch { this.msBad(); rem.forEach(x => failCount.set(x.t, (failCount.get(x.t) || 0) + 1)); }
+      if (eng === 'microsoft') { finishFails(rem); return out; }
+    }
+
+    if ((eng === 'tencent' || eng === 'auto') && rem.length && !this.tcOpen()) {
+      try {
+        const tc = await this.tencent(rem.map(x => x.t), to);
+        if (tc.every(v => !v)) { this.tcBad(); } else { this.tcOk(); }
+        AdaptiveBatch.update(Date.now() - t0);
+        if (!tc.every(v => !v)) { apply(tc, rem); rem = filterRem(tc, rem); }
+      } catch { this.tcBad(); rem.forEach(x => failCount.set(x.t, (failCount.get(x.t) || 0) + 1)); }
+      if (eng === 'tencent') { finishFails(rem); return out; }
+    }
+
+    if (rem.length) {
+      try {
+        const l = await this.leg(rem.map(x => x.t), to);
+        AdaptiveBatch.update(Date.now() - t0);
+        apply(l, rem); rem = filterRem(l, rem);
+      } catch { rem.forEach(x => failCount.set(x.t, (failCount.get(x.t) || 0) + 1)); }
+    }
+
+    finishFails(rem);
+    return out;
+  },
+
+  async translateVisible(texts, to) {
+    const out = new Array(texts.length).fill(null);
+    const todo = [], idx = [];
+    texts.forEach((t, i) => {
+      const n = norm(t);
+      if (Cache.isFailed(n, to)) return;
+      const c = Cache.get(n, to);
+      if (c !== undefined) out[i] = c;
+      else { todo.push(n); idx.push(i); }
+    });
+    if (!todo.length) return out;
+
+    const rem = todo.map((t, i) => ({ t, i }));
+    const accept = (src, tr) => {
+      if (!tr || !tr.trim()) return false;
+      if (tr === src && !containsCJK(src) && !containsForeignScript(src)) return false;
+      if (looksUntranslated(src, tr)) return false;
+      return true;
+    };
+
+    const isUsable = results =>
+      Array.isArray(results) && results.some((tr, i) => accept(rem[i].t, tr));
+    const asCandidate = (engine, request) =>
+      request.then(results => {
+        if (!isUsable(results)) throw new Error(`${engine}: no usable translations`);
+        return { engine, results };
+      });
+
+    const promises = [];
+    if (!this.gOpen()) {
+      promises.push(asCandidate('g', withTimeout(this.g2(rem.map(x => x.t), to), CONFIG.GOOGLE_TIMEOUT_MS)));
+    }
+    if (!this.msOpen()) {
+      promises.push(asCandidate('ms', this.ms(rem.map(x => x.t), to)));
+    }
+    if (!this.tcOpen()) {
+      promises.push(asCandidate('tc', this.tencent(rem.map(x => x.t), to)));
+    }
+    if (!promises.length) {
+      promises.push(asCandidate('leg', this.leg(rem.map(x => x.t), to)));
+    }
+
+    const result = await Promise.any(promises).catch(() => null);
+
+    if (result?.results) {
+      const ok = result.results.some(v => v);
+      if (ok) {
+        if (result.engine === 'g') this.gOk();
+        else if (result.engine === 'ms') this.msOk();
+        else if (result.engine === 'tc') this.tcOk();
+        for (let j = 0; j < rem.length; j++) {
+          const tr = result.results[j];
+          if (accept(rem[j].t, tr)) {
+            Cache.set(rem[j].t, tr, to);
+            out[idx[rem[j].i]] = tr;
+          }
+        }
+      }
+    }
+
+    const still = rem.filter(x => out[idx[x.i]] == null);
+    if (still.length && still.length <= 20) {
+      try {
+        const l = await this.leg(still.map(x => x.t), to);
+        for (let j = 0; j < still.length; j++) {
+          const tr = l[j];
+          if (accept(still[j].t, tr)) {
+            Cache.set(still[j].t, tr, to);
+            out[idx[still[j].i]] = tr;
+          }
+        }
+      } catch {}
+    }
+
+    return out;
+  }
+};
+
+// =ui=
+const Pos = {
+  _key: null,
+  _getDefault() {
+    return { right: 20, bottom: Math.round(innerHeight / 2 - 22) };
+  },
+  async get() {
+    try {
+      if (CONFIG.REMEMBER_BTN_POS) {
+        if (!this._key) this._key = 'btnPos:' + normalizeHost(location.hostname);
+        const raw = await GM_getValue(this._key, null);
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (Number.isFinite(p.right) && Number.isFinite(p.bottom)) return p;
+        }
+      }
+    } catch {}
+    return this._getDefault();
+  },
+  async save(p) {
+    try {
+      if (CONFIG.REMEMBER_BTN_POS) {
+        if (!this._key) this._key = 'btnPos:' + normalizeHost(location.hostname);
+        await GM_setValue(this._key, JSON.stringify(p));
+      } else {
+        await GM_setValue('btnPos', JSON.stringify(p));
+      }
+    } catch {}
+  }
+};
+
+const UI = {
+  btn: null, done: false,
+  _autoTimer: null,
+  _hideTimer: null,
+  _justAutoClicked: false,
+  _rect: null,
+  _proximityRAF: 0,
+
+  async init() {
+    const h = document.createElement('div');
+    h.id = 'tr-host';
+    h.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647';
+    document.body.appendChild(h);
+    const sh = h.attachShadow({ mode: 'open' });
+    sh.innerHTML = `<style>
+#b{position:fixed;width:35px;height:45px;border-radius:10px;
+  background:linear-gradient(160deg,#2a2a35 0%,#1e1e28 100%);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  z-index:2147483647;touch-action:none;opacity:0;pointer-events:none;
+  transition:opacity .35s cubic-bezier(.4,0,.2,1),box-shadow .3s ease,
+    transform .15s ease,background .3s ease;
+  border:1px solid rgba(255,255,255,.06);
+  box-shadow:0 2px 8px rgba(0,0,0,.4)}
+#b.visible{opacity:1;pointer-events:auto}
+#b:hover{transform:scale(1.06);background:linear-gradient(160deg,#32323d,#252530);
+  border-color:rgba(255,255,255,.1)}
+#b:active{transform:scale(.95)}
+#b.on{background:linear-gradient(160deg,#0c3d2e,#0a2e22);
+  border-color:rgba(52,211,153,.25);
+  box-shadow:0 0 20px rgba(52,211,153,.25),0 2px 8px rgba(0,0,0,.4)}
+#b.on:hover{box-shadow:0 0 28px rgba(52,211,153,.35),0 4px 12px rgba(0,0,0,.4)}
+#b.on svg{color:#34d399}
+#b.load svg{color:#60a5fa}
+#b.load{animation:suat-pulse 1.2s ease-in-out infinite}
+#b.auto-progress{box-shadow:0 0 22px rgba(52,211,153,.4),0 2px 8px rgba(0,0,0,.4)}
+#b.auto-progress::before{content:'';position:absolute;inset:-3px;border-radius:13px;
+  border:2px solid rgba(52,211,153,.5);border-right-color:transparent;
+  animation:suat-ring .4s linear}
+svg{width:18px;height:18px;color:#8b8b9e;pointer-events:none;transition:color .2s ease}
+#b:hover svg{color:#c8c8d8}
+@keyframes suat-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes suat-ring{to{transform:rotate(360deg)}}
+</style>
+<div id="b" role="button" aria-label="Перевести (Alt+A)"
+  title="Перевести (Alt+A) | Наведи — авто-клик | Alt+клик — игнорировать | Ctrl+Alt+0 — сброс">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+  stroke-linecap="round" stroke-linejoin="round">
+<path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/>
+</svg></div>`;
+    this.btn = sh.getElementById('b');
+
+    const p = await Pos.get();
+    this.btn.style.right = p.right + 'px';
+    this.btn.style.bottom = p.bottom + 'px';
+
+    requestAnimationFrame(() => this._updateRect());
+
+    this._setupProximity();
+    this._setupAutoClick();
+    this._setupDrag();
+    this._setupKeyboard();
+  },
+
+  _updateRect() {
+    try { this._rect = this.btn.getBoundingClientRect(); } catch {}
+  },
+
+  _setupProximity() {
+    let lastCheck = 0;
+    document.addEventListener('mousemove', e => {
+      const now = performance.now();
+      if (now - lastCheck < 50) return;
+      lastCheck = now;
+
+      if (!this._rect) this._updateRect();
+      const r = this._rect;
+      if (!r) return;
+
+      const dist = Math.hypot(
+        e.clientX - (r.left + r.width / 2),
+        e.clientY - (r.top + r.height / 2)
+      );
+
+      if (dist < 200) {
+        clearTimeout(this._hideTimer);
+        this._hideTimer = null;
+        this.btn.classList.add('visible');
+      } else if (!this._hideTimer && this.btn.classList.contains('visible')) {
+        this._hideTimer = setTimeout(() => {
+          this.btn.classList.remove('visible');
+          this._hideTimer = null;
+        }, 400);
+      }
+    }, { passive: true });
+
+    window.addEventListener('resize', () => this._updateRect(), { passive: true });
+  },
+
+  _setupAutoClick() {
+    if (!CONFIG.AUTO_CLICK_MS) return;
+    this.btn.addEventListener('pointerenter', e => {
+      if (e.pointerType === 'touch') return;
+      if (this.btn.classList.contains('load')) return;
+      this.btn.classList.add('auto-progress');
+      this._autoTimer = setTimeout(() => {
+        this._autoTimer = null;
+        this.btn.classList.remove('auto-progress');
+        this._justAutoClicked = true;
+        this._activate();
+        setTimeout(() => { this._justAutoClicked = false; }, 300);
+      }, CONFIG.AUTO_CLICK_MS);
+    });
+    this.btn.addEventListener('pointerleave', () => {
+      clearTimeout(this._autoTimer);
+      this._autoTimer = null;
+      this.btn.classList.remove('auto-progress');
+    });
+  },
+
+  _setupDrag() {
+    let dragging = 0, moved = 0, sx = 0, sy = 0, sr = 0, sb = 0, raf = 0, lx = 0, ly = 0;
+
+    this.btn.onpointerdown = e => {
+      clearTimeout(this._autoTimer);
+      this._autoTimer = null;
+      this.btn.classList.remove('auto-progress');
+      dragging = 1; moved = 0;
+      sx = lx = e.clientX; sy = ly = e.clientY;
+      const r = this.btn.getBoundingClientRect();
+      sr = innerWidth - r.right;
+      sb = innerHeight - r.bottom;
+      this.btn.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    };
+
+    this.btn.onpointermove = e => {
+      if (!dragging) return;
+      lx = e.clientX; ly = e.clientY;
+      if (!raf) raf = requestAnimationFrame(() => {
+        raf = 0;
+        const dx = lx - sx, dy = ly - sy;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = 1;
+        if (moved) {
+          this.btn.style.right = Math.max(4, Math.min(sr - dx, innerWidth - 44)) + 'px';
+          this.btn.style.bottom = Math.max(4, Math.min(sb - dy, innerHeight - 54)) + 'px';
+        }
+      });
+      e.preventDefault();
+    };
+
+    this.btn.onpointerup = () => {
+      if (!dragging) return;
+      dragging = 0;
+      if (moved) {
+        const newRight = parseInt(this.btn.style.right);
+        const newBottom = parseInt(this.btn.style.bottom);
+        Pos.save({ right: newRight, bottom: newBottom });
+        this._rect = {
+          left: innerWidth - newRight - 35,
+          right: innerWidth - newRight,
+          top: innerHeight - newBottom - 45,
+          bottom: innerHeight - newBottom,
+          width: 35,
+          height: 45
+        };
+      } else if (!this._justAutoClicked) {
+        this._activate();
+      }
+    };
+  },
+
+  _setupKeyboard() {
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey && e.altKey && !e.metaKey && !e.shiftKey && e.code === 'Digit0') {
+        e.preventDefault();
+        Ignore.reset().then(() => {
+          if (!Tr.act) return;
+          Tr.seen = new WeakSet();
+          Tr.seenTexts = new WeakMap();
+          Tr.muHashes = new WeakMap();
+          Tr.watchEl(document.body);
+          if (!Tr.proc && (Tr.qHigh.size || Tr.qLow.size)) Tr.run();
+        });
+        return;
+      }
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.code === CONFIG.HOTKEY) { e.preventDefault(); this._activate(); }
+    }, true);
+  },
+
+  _activate() { this.done ? Tr.restore() : Tr.start(); },
+
+  load(v) {
+    this.btn?.classList.toggle('load', v);
+    this.btn?.setAttribute('aria-label',
+      v ? 'Загрузка перевода…' : (this.done ? 'Отключить перевод (Alt+A)' : 'Перевести (Alt+A)'));
+  },
+  set(v) {
+    this.done = v;
+    this.btn?.classList.toggle('on', v);
+    this.btn?.setAttribute('aria-label',
+      v ? 'Отключить перевод (Alt+A)' : 'Перевести (Alt+A)');
+  }
+};
+
+// =translator=
+const Tr = {
+  obs: null, mo: null,
+  act: false, proc: false, restoring: false,
+  seen: new WeakSet(),
+  qHigh: new Set(), qLow: new Set(),
+  reps: [], savedT: new WeakSet(), own: new WeakSet(),
+  repOps: 0,
+  _clickHandler: null,
+  seenTexts: new WeakMap(),
+  muHashes: new WeakMap(),
+  _obsCount: 0,
+  _obsDeferred: [],
+
+  _obsAdd(el) {
+    if (this._obsCount < CONFIG.IO_OBSERVE_LIMIT) {
+      try { this.obs.observe(el); this._obsCount++; } catch {}
+    } else if (this._obsDeferred.length < CONFIG.IO_OBSERVE_LIMIT * 2) {
+      this._obsDeferred.push(el);
+    }
+  },
+
+  _obsRemove(el) {
+    try { this.obs.unobserve(el); this._obsCount = Math.max(0, this._obsCount - 1); } catch {}
+    while (this._obsDeferred.length && this._obsCount < CONFIG.IO_OBSERVE_LIMIT) {
+      const next = this._obsDeferred.shift();
+      if (next?.isConnected && !skipEl(next) && !Ignore.matches(next)) {
+        try { this.obs.observe(next); this._obsCount++; } catch {}
+      }
+    }
+  },
+
+  _obsReset() { this._obsCount = 0; this._obsDeferred = []; },
+
+  pruneReps() {
+    if (!this.reps.length) return;
+    this.reps = this.reps.filter(r => {
+      if (r.type === 't') { const n = r.node.deref(); return n?.isConnected; }
+      if (r.type === 'f') { const p = r.parent.deref(); return p?.isConnected; }
+      return false;
+    });
+  },
+  pushRep(rep) {
+    this.reps.push(rep);
+    if (++this.repOps % CONFIG.REP_PRUNE_EVERY === 0) this.pruneReps();
+    if (this.reps.length > CONFIG.MAX_REPS) this.reps.splice(0, this.reps.length - CONFIG.MAX_REPS);
+  },
+
+  watchEl(el) {
+    if (!el || this.seen.has(el)) return;
+    if (el.nodeType === 11) {
+      this.seen.add(el);
+      [...(el.children || [])].forEach(c => this.watchEl(c));
+      return;
+    }
+    if (el.nodeType !== 1 || el.id === 'tr-host') return;
+    if (skipEl(el) || Ignore.matches(el)) return;
+    this.seen.add(el);
+
+    let hasTxt = false;
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3 && n.textContent.trim()) { hasTxt = true; break; }
+    }
+
+    if (hasTxt) {
+      const h = hashStr(el.textContent.slice(0, 300));
+      if (this.seenTexts.get(el) === h) return;
+      this.seenTexts.set(el, h);
+      this._obsAdd(el);
+    } else {
+      for (const c of el.children) this.watchEl(c);
+    }
+
+    // Рекурсивный обход Shadow DOM для Reddit и других сайтов с web components
+    if (el.shadowRoot) {
+      const walkShadow = (root, depth = 0) => {
+        if (!root || depth > 5) return; // Защита от бесконечной рекурсии
+        try {
+          [...(root.children || [])].forEach(child => {
+            this.watchEl(child);
+            if (child.shadowRoot) walkShadow(child.shadowRoot, depth + 1);
+          });
+        } catch {}
+      };
+      walkShadow(el.shadowRoot);
+    }
+  },
+
+  init() {
+    this.obs = new IntersectionObserver(es => {
+      if (!this.act || this.restoring) return;
+      let changed = false;
+      for (const x of es) {
+        if (!x.isIntersecting) continue;
+        if (x.intersectionRatio >= 0.1) { this.qHigh.add(x.target); this.qLow.delete(x.target); }
+        else if (!this.qHigh.has(x.target)) this.qLow.add(x.target);
+        changed = true;
+      }
+      if (changed && !this.proc) this.run();
+    }, { rootMargin: CONFIG.INTERSECTION_MARGIN, threshold: [0, 0.1] });
+  },
+
+  mstart() {
+    if (this.mo) return;
+    let pending = [], tmr = 0;
+    this.mo = new MutationObserver(ms => {
+      if (!this.act || this.restoring) return;
+      for (const m of ms) {
+        if (m.type === 'childList') {
+          m.addedNodes?.forEach(n => {
+            if (n.nodeType !== 1 || n.id === 'tr-host') return;
+            const h = hashStr((n.textContent || '').slice(0, 200));
+            if (this.muHashes.get(n) === h) return;
+            this.muHashes.set(n, h);
+            pending.push(n);
+          });
+        } else if (m.type === 'characterData') {
+          const p = m.target?.parentElement;
+          if (!p || p.id === 'tr-host') return;
+          const h = hashStr((p.textContent || '').slice(0, 200));
+          if (this.muHashes.get(p) === h) return;
+          this.muHashes.set(p, h);
+          pending.push(p);
+        }
+      }
+      // Защита от бесконечного роста очереди на страницах с активными анимациями
+      if (pending.length > CONFIG.MUTATION_BATCH_LIMIT * 5)
+        pending.splice(0, pending.length - CONFIG.MUTATION_BATCH_LIMIT * 2);
+      // Рекурсивный чанкинг: обрабатываем ВСЕ pending элементы, а не только 2 пачки
+      // Это предотвращает потерю элементов на длинных лентах Reddit при быстром скролле
+      clearTimeout(tmr);
+      const processChunk = () => {
+        if (!this.act || this.restoring || !pending.length) return;
+        const limit = CONFIG.MUTATION_BATCH_LIMIT;
+        const arr = pending.splice(0, limit);
+        for (const n of arr) {
+          if (!n?.isConnected || !this.act || this.restoring) continue;
+          this._obsRemove(n);
+          this.seen.delete(n);
+          this.watchEl(n);
+        }
+        // Если остались элементы — планируем следующую пачку через 40мс
+        if (pending.length > 0 && this.act && !this.restoring) {
+          tmr = setTimeout(processChunk, 40);
+        }
+      };
+      // Уменьшена задержка debounce с 80мс до 40мс для ускорения реакции на новые элементы
+      tmr = setTimeout(processChunk, 40);
+    });
+    this.mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+  },
+
+  async run() {
+    if (this.proc || !this.act || this.restoring) return;
+    if (!this.qHigh.size && !this.qLow.size) return;
+    this.proc = true;
+    // Watchdog: предотвращает зависание флага proc при ошибках или долгих операциях
+    const watchdog = setTimeout(() => {
+      console.warn('[SUAT] run() watchdog triggered, resetting proc');
+      this.proc = false;
+    }, 30000);
+    try {
+      const els = [...this.qHigh, ...this.qLow];
+      this.qHigh.clear(); this.qLow.clear();
+      const infos = [];
+      const seenNodes = new Set();
+
+      for (const el of els) {
+        if (!this.act || this.restoring) break;
+        if (!el?.isConnected || skipEl(el) || Ignore.matches(el)) continue;
+
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+          acceptNode: n => {
+            if (this.own.has(n)) return NodeFilter.FILTER_REJECT;
+            if (!n.textContent?.trim()) return NodeFilter.FILTER_REJECT;
+            const p = n.parentElement;
+            if (!p || skipEl(p) || Ignore.matches(p)) return NodeFilter.FILTER_REJECT;
+            if (!need(n.textContent)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+        let n;
+        while ((n = walker.nextNode())) {
+          if (seenNodes.has(n)) continue;
+          seenNodes.add(n);
+          infos.push({ n, t: n.textContent, _n: norm(n.textContent) });
+        }
+
+        if (CONFIG.TRANSLATE_ATTRS) {
+          const scanEl = e => {
+            if (!e?.getAttribute) return;
+            for (const a of TRANSLATE_ATTRS) {
+              const v = e.getAttribute(a);
+              if (v && need(v) && !e.hasAttribute('data-o-' + a))
+                infos.push({ a: 1, e, at: a, t: v, _n: norm(v) });
+            }
+          };
+          scanEl(el);
+          try { el.querySelectorAll(ATTR_SCAN_SEL).forEach(scanEl); } catch {}
+        }
+
+        this._obsRemove(el);
+      }
+
+      if (navigator.scheduling?.isInputPending?.()) await yieldToMain();
+      if (infos.length && this.act && !this.restoring) await this.chunk(infos);
+    } catch (e) {
+      console.error('[SUAT] run error', e);
+    } finally {
+      clearTimeout(watchdog);
+      this.proc = false;
+      if ((this.qHigh.size || this.qLow.size) && this.act && !this.restoring)
+        setTimeout(() => this.run(), CONFIG.CHUNK_DELAY);
+    }
+  },
+
+  // =apply-result=
+  applyResult(inf, pack) {
+    if (inf.a) {
+      const e = inf.e;
+      if (!e?.isConnected) return;
+      let out = fullHtmlDecode(pack.tr);
+      const restored = Units.restoreText(out, pack.unitMeta);
+      out = restored.text;
+      if (pack.unitMeta?.hasUnits && !restored.full) out = Units.fallbackConvert(out, pack.src);
+      out = Units.cleanup(out);
+      if (!out) return;
+      if (!e.hasAttribute('data-o-' + inf.at)) e.setAttribute('data-o-' + inf.at, e.getAttribute(inf.at) || '');
+      e.setAttribute(inf.at, out);
+    } else {
+      const n = inf.n;
+      if (!n?.isConnected || skipEl(n.parentElement) || Ignore.matches(n.parentElement)) return;
+      const built = this.buildTextResult(pack);
+      if (!built.nodes && !built.text) return;
+      if (built.nodes?.length) {
+        this.replaceWithNodes(n, built.nodes.map(node => node.cloneNode(true)));
+      } else {
+        if (!this.savedT.has(n)) {
+          this.savedT.add(n);
+          this.pushRep({ type: 't', node: new WeakRef(n), text: n.textContent });
+        }
+        this.own.add(n);
+        const origLead = inf.t.match(/^\s*/)[0];
+        const origTrail = inf.t.match(/\s*$/)[0];
+        n.textContent = origLead + built.text + origTrail;
+      }
+    }
+  },
+
+  buildTextResult(pack) {
+    if (pack.rendered) return pack.rendered;
+    let out = fullHtmlDecode(pack.tr);
+    const restored = Units.restoreTokens(out, pack.unitMeta);
+    out = restored.text;
+
+    const nodes = buildRichNodes(out, pack.ph, pack.unitMeta);
+    if (nodes?.length && (pack.ph || pack.unitMeta?.hasUnits || pack.unitMeta?.hasQuotes))
+      return (pack.rendered = { nodes, text: null });
+
+    if (pack.unitMeta?.hasUnits || pack.unitMeta?.hasQuotes) {
+      const sr = Units.restoreText(fullHtmlDecode(pack.tr), pack.unitMeta);
+      out = sr.text;
+      if (pack.unitMeta?.hasUnits && !sr.full) out = Units.fallbackConvert(out, pack.src);
+    }
+    out = Units.cleanup(out);
+    return (pack.rendered = { nodes: null, text: out || null });
+  },
+
+  replaceWithNodes(textNode, newNodes) {
+    const parent = textNode?.parentNode;
+    if (!parent) return false;
+    const next = textNode.nextSibling;
+    newNodes.forEach(n => this.own.add(n));
+    const frag = document.createDocumentFragment();
+    newNodes.forEach(n => frag.appendChild(n));
+    parent.insertBefore(frag, next);
+    try { parent.removeChild(textNode); } catch {}
+    this.pushRep({
+      type: 'f',
+      parent: new WeakRef(parent),
+      next: next ? new WeakRef(next) : null,
+      inserted: newNodes.map(n => new WeakRef(n)),
+      orig: textNode.textContent
+    });
+    return true;
+  },
+
+  _rollbackOne(r) {
+    if (r.type === 't') {
+      const n = r.node.deref();
+      if (n?.isConnected) n.textContent = r.text;
+    } else if (r.type === 'f') {
+      const parent = r.parent.deref();
+      if (!parent?.isConnected) return;
+      r.inserted?.forEach(wr => { try { const n = wr.deref(); n?.parentNode?.removeChild(n); } catch {} });
+      const next = r.next?.deref();
+      parent.insertBefore(document.createTextNode(r.orig), next?.isConnected ? next : null);
+    }
+  },
+
+  rollbackFrom(index) {
+    const slice = this.reps.splice(index);
+    for (let i = slice.length - 1; i >= 0; i--) { try { this._rollbackOne(slice[i]); } catch {} }
+  },
+
+  // =restore-element=
+  restoreElement(el) {
+    const keep = [], rollback = [];
+    for (const r of this.reps) {
+      let inside = false;
+      if (r.type === 't') { const n = r.node.deref(); inside = n ? el.contains(n) : false; }
+      else if (r.type === 'f') { const p = r.parent.deref(); inside = p ? el.contains(p) || el === p : false; }
+      (inside ? rollback : keep).push(r);
+    }
+    this.reps = keep;
+    for (let i = rollback.length - 1; i >= 0; i--) { try { this._rollbackOne(rollback[i]); } catch {} }
+
+    if (CONFIG.TRANSLATE_ATTRS) {
+      try {
+        [el, ...el.querySelectorAll(DATA_O_SEL)].forEach(e => {
+          for (const a of TRANSLATE_ATTRS) {
+            const o = e.getAttribute('data-o-' + a);
+            if (o !== null) { e.setAttribute(a, o); e.removeAttribute('data-o-' + a); }
+          }
+        });
+      } catch {}
+    }
+    this._obsRemove(el);
+  },
+
+  async chunk(infos) {
+    if (!this.act || this.restoring) return;
+
+    // Разделяем на видимые (qHigh) и prefetch (qLow), с дедупликацией
+    const visibleSet = new Set();
+    const visible = [], preload = [];
+    for (const inf of infos) {
+      const el = inf.n?.parentElement || inf.e;
+      if (el && this.qHigh.has(el)) {
+        visible.push(inf);
+        visibleSet.add(inf._n);
+      } else {
+        preload.push(inf);
+      }
+    }
+    const preloadFiltered = preload.filter(inf => !visibleSet.has(inf._n));
+
+    const promises = [];
+    if (visible.length) {
+      promises.push(this._translateBatch(visible, true));
+    }
+    if (preloadFiltered.length) {
+      // Небольшая задержка перед prefetch, чтобы видимые ушли первыми
+      promises.push(
+        new Promise(r => setTimeout(r, 30)).then(() =>
+          this._translateBatch(preloadFiltered, false)
+        )
+      );
+    }
+    await Promise.allSettled(promises);
+  },
+
+  async _translateBatch(infos, isPriority) {
+    if (!infos.length) return;
+    const u = [], m = new Map();
+    for (const inf of infos) {
+      const o = inf._n;
+      if (!o) continue;
+      if (!m.has(o)) {
+        let send = o, ph = null, unitMeta;
+        if (!inf.a) {
+          const prep = slangPrep(o); send = prep.send; ph = prep.ph;
+          unitMeta = Units.protect(send); send = unitMeta.text;
+        } else {
+          unitMeta = Units.protect(o); send = unitMeta.text;
+        }
+        m.set(o, { list: [], send, ph, unitMeta, rendered: null, tr: null, src: o });
+        u.push(o);
+      }
+      m.get(o).list.push(inf);
+    }
+
+    const batchSize = isPriority
+      ? Math.min(CONFIG.PRIORITY_BATCH_SIZE, u.length)
+      : Math.min(CONFIG.PREFETCH_BATCH_SIZE, AdaptiveBatch.size);
+
+    for (let i = 0; i < u.length; i += batchSize) {
+      if (!this.act || this.restoring) return;
+      if (!isPriority) await yieldBetweenBatches();
+      if (!this.act || this.restoring) return;
+
+      const repStart = this.reps.length;
+      const slice = u.slice(i, i + batchSize);
+      let res;
+      try {
+        res = isPriority
+          ? await API.translateVisible(slice.map(o => m.get(o).send), CONFIG.TARGET_LANG)
+          : await API.translate(slice.map(o => m.get(o).send), CONFIG.TARGET_LANG);
+      } catch (e) {
+        console.error('[SUAT] translate error', e); continue;
+      }
+      if (!this.act || this.restoring) { this.rollbackFrom(repStart); return; }
+
+      for (let j = 0; j < slice.length; j++) {
+        if (!this.act || this.restoring) { this.rollbackFrom(repStart); return; }
+        const pack = m.get(slice[j]);
+        if (!pack) continue;
+        const tr = res[j];
+        if (!tr) continue;
+        pack.tr = tr; pack.rendered = null;
+        for (const inf of pack.list) {
+          if (!this.act || this.restoring) { this.rollbackFrom(repStart); return; }
+          this.applyResult(inf, pack);
+        }
+        // Yield после каждого элемента для incremental apply (видимые показываются по мере получения)
+        if (isPriority && j % 3 === 0 && navigator.scheduling?.isInputPending?.()) await yieldToMain();
+      }
+    }
+  },
+
+  // =prefetch-scroll=
+  _prefetchTimer: null,
+
+  setupScrollPrefetch() {
+    let ticking = false;
+    let lastScanY = 0;
+    const SCAN_STEP = 1500;
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        if (!this.act || this.restoring) return;
+
+        const scrollY = window.scrollY;
+        if (Math.abs(scrollY - lastScanY) < SCAN_STEP) { ticking = false; return; }
+        lastScanY = scrollY;
+
+        const viewH = window.innerHeight;
+        const viewportTop = -500;
+        const viewportBottom = viewH + 3000;
+
+        const candidates = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+          acceptNode: n => {
+            const p = n.parentElement;
+            if (!p || skipEl(p) || Ignore.matches(p)) return NodeFilter.FILTER_REJECT;
+            if (this.own.has(n)) return NodeFilter.FILTER_REJECT;
+            if (!need(n.textContent)) return NodeFilter.FILTER_REJECT;
+            const rect = p.getBoundingClientRect();
+            return (rect.bottom > viewportTop && rect.top < viewportBottom)
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          }
+        });
+
+        let n;
+        while ((n = walker.nextNode())) {
+          const o = norm(n.textContent);
+          const cached = Cache.get(o, CONFIG.TARGET_LANG);
+          if (cached !== undefined) {
+            this.applyResult({ n, t: n.textContent, _n: o }, { tr: cached, unitMeta: null, src: o });
+            this.own.add(n);
+            continue;
+          }
+          const el = n.parentElement;
+          if (el) this.qLow.add(el);
+        }
+
+        if (this.qLow.size && !this.proc) this.run();
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+  },
+
+  _displayCachedInstantly() {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => {
+        const p = n.parentElement;
+        if (!p || skipEl(p) || Ignore.matches(p)) return NodeFilter.FILTER_REJECT;
+        if (!need(n.textContent)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    let n, count = 0;
+    while ((n = walker.nextNode())) {
+      if (this.own.has(n)) continue;
+      const o = norm(n.textContent);
+      const cached = Cache.get(o, CONFIG.TARGET_LANG);
+      if (cached !== undefined) {
+        const inf = { n: n, t: n.textContent, _n: o };
+        this.applyResult(inf, { tr: cached, unitMeta: null, src: o });
+        this.own.add(n);
+        count++;
+      }
+    }
+    if (count) console.log(`[SUAT] ${count} translations restored from cache instantly`);
+  },
+
+  // =alt-click-ignore=
+  // Alt+click строит обобщённый селектор (genericSelector) и применяет его
+  // ко всем элементам страницы сразу — один клик игнорирует весь тип элементов.
+  initClickHandlers() {
+    if (this._clickHandler) return;
+    this._clickHandler = async e => {
+      if (!this.act || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const el = e.target?.closest?.('p,h1,h2,h3,h4,h5,h6,li,td,th,span,div,a,blockquote,article,section,figure,figcaption');
+      if (!el || el.id === 'tr-host' || Ignore.matches(el)) return;
+      e.preventDefault(); e.stopPropagation();
+
+      // Откатить переводы для всех элементов с тем же обобщённым селектором
+      const sel = Ignore.genericSelector(el);
+      if (sel) {
+        try {
+          document.querySelectorAll(sel).forEach(target => {
+            if (target !== el) this.restoreElement(target);
+          });
+        } catch {}
+      }
+      this.restoreElement(el);
+      await Ignore.add(el);
+
+      const prev = el.style.outline;
+      el.style.outline = '2px dashed #f55050';
+      setTimeout(() => { el.style.outline = prev; }, 700);
+    };
+    document.addEventListener('click', this._clickHandler, true);
+  },
+
+  async start() {
+    if (this.act) return;
+    // Сбрасываем proc явно — он мог зависнуть если restore() прервал run() на await
+    this.proc = false;
+    UI.load(true);
+    this.act = true; this.restoring = false;
+    this.seen = new WeakSet(); this.own = new WeakSet(); this.savedT = new WeakSet();
+    // seenTexts/muHashes сбрасываем тоже — иначе watchEl пропускает элементы
+    // при повторном запуске (хэши из предыдущего цикла остаются в WeakMap)
+    this.seenTexts = new WeakMap(); this.muHashes = new WeakMap();
+    this.qHigh.clear(); this.qLow.clear(); this.reps = []; this.repOps = 0;
+    this._obsReset();
+    this.watchEl(document.body);
+    this.mstart();
+    this.initClickHandlers();
+    this.setupScrollPrefetch();
+    await sleep(50);
+    // Проверяем act: restore() мог быть вызван пока мы спали
+    if (!this.act) return;
+
+    // Мгновенно показываем кэшированные переводы
+    this._displayCachedInstantly();
+
+    UI.set(true); UI.load(false);
+    if (!this.proc && (this.qHigh.size || this.qLow.size)) this.run();
+    if (CONFIG.REMEMBER_SITE_STATE) GM_setValue('site:' + normalizeHost(location.hostname), 'on');
+  },
+
+  restore() {
+    // proc сбрасываем немедленно — предотвращает зависание после повторных вкл/выкл (GitHub SPA)
+    this.restoring = true; this.act = false; this.proc = false;
+    try { this.obs?.disconnect(); this.mo?.disconnect(); } catch {}
+    this.mo = null;
+    this._obsReset();
+    if (this._clickHandler) { document.removeEventListener('click', this._clickHandler, true); this._clickHandler = null; }
+    const reps = this.reps; this.reps = [];
+    for (let i = reps.length - 1; i >= 0; i--) { try { this._rollbackOne(reps[i]); } catch {} }
+
+    if (CONFIG.TRANSLATE_ATTRS) {
+      try {
+        document.querySelectorAll(DATA_O_SEL).forEach(e => {
+          for (const a of TRANSLATE_ATTRS) {
+            const o = e.getAttribute('data-o-' + a);
+            if (o !== null) { e.setAttribute(a, o); e.removeAttribute('data-o-' + a); }
+          }
+        });
+      } catch {}
+    }
+
+    this.seen = new WeakSet(); this.own = new WeakSet(); this.savedT = new WeakSet();
+    this.qHigh.clear(); this.qLow.clear(); this.restoring = false;
+    UI.set(false);
+    if (CONFIG.REMEMBER_SITE_STATE) GM_setValue('site:' + normalizeHost(location.hostname), 'off');
+  }
+};
+
+// =boot=
+async function boot() {
+  await Cache.init();
+  bcInit();
+  window.addEventListener('beforeunload', () => Cache._syncFlushIDB());
+  await Ignore.init();
+  const h = location.hostname;
+  if (CONFIG.NEVER_ON_SITES.some(p => hostMatches(h, p))) return;
+  initSlang(h);
+  AdaptiveBatch.size = Math.min(100, Math.max(20,
+    +(await GM_getValue('batchSize', CONFIG.BATCH_SIZE)) || CONFIG.BATCH_SIZE
+  ));
+  await UI.init();
+  Tr.init();
+  Promise.allSettled([GoogleAuth.get(), API.msAuth()]).catch(() => {});
+
+  let start = false;
+  if (CONFIG.REMEMBER_SITE_STATE) {
+    const s = await GM_getValue('site:' + normalizeHost(h), null);
+    start = s === 'on' ? true : s === 'off' ? false : CONFIG.ALWAYS_ON_SITES.some(p => hostMatches(h, p));
+  } else {
+    start = CONFIG.ALWAYS_ON_SITES.some(p => hostMatches(h, p));
+  }
+  if (start) setTimeout(() => Tr.start(), 800);
+}
+document.readyState === 'loading' ? addEventListener('DOMContentLoaded', boot) : boot();
+
+})();
