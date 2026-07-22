@@ -1537,3 +1537,30 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - Автоматический fallback-объект `_QR` при отсутствии библиотеки — guard + console.warn надёжнее, чем молчаливый пустой объект.
 
 **Файлы:** `qr-panel.js`
+**Коммит:** `28f8d87` (аудит GPT-5: caption PNG, auto EC, surrogate pairs, library guard)
+
+---
+
+### QR Panel — аудит GPT-5 #2 (сессия 2026-07-21)
+
+**Источник:** `NEW 2 (1).txt` — второй аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **Auto EC при выключенном** — else-ветка в `_splitText` понижала EC даже когда `_autoEc === false`. Убрана: теперь при выключенном auto始终保持 выбранный EC, текст разбивается на страницы.
+
+2. **close() не сбрасывал drag/resize state** — `_dragging`, `_resizing`, `userSelect` не очищались при закрытии панели. Добавлен сброс.
+
+3. **Caption overflow** — `fillText` без ограничения ширины обрезал длинные подписи. Добавлен 4-й параметр `maxCaptionW = qrSize - modSize * 2`.
+
+4. **revokeObjectURL race** — SVG-ссылки отзывались синхронно после `click()`. Заменено на `setTimeout(() => URL.revokeObjectURL(url), 0)`.
+
+**Улучшения:**
+
+5. **SVG dedup** — `_renderQRToSVG(page, { modSize })` — единый SVG-рендер для export и batch export. Убрано дублирование (~50 строк) из `_download` и `_downloadAll`.
+
+**Пропущено (аргументы):**
+- **ZIP-экспорт** — требует новую библиотеку (JSZip), это feature addition, не баг-фикс. Браузерные ограничения на множественные скачивания реальны, но решение выходит за рамки аудита.
+- **Page metadata в QR** — продуктовое решение. Текущий подход (plain text) оптимален для сканирования телефонами.
+
+**Файлы:** `qr-panel.js`

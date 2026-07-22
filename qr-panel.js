@@ -294,15 +294,10 @@ const QRPanel = (() => {
 
     const rawBytes = new TextEncoder().encode(text);
 
-    // Auto-downgrade EC: start from user's chosen level, not from H
+    // Auto-downgrade EC: only when enabled; otherwise keep user's chosen level
     let ecLevel = _ec;
     if (_autoEc) {
       ecLevel = _QR.getAutoEcFrom(text, _ec);
-    } else {
-      // Even without auto-ec, check if current level can hold it
-      if (rawBytes.length > _QR.getMaxDataBytes(ecLevel)) {
-        ecLevel = _QR.getAutoEcFrom(text, _ec);
-      }
     }
 
     const maxBytes = _QR.getMaxDataBytes(ecLevel);
@@ -524,10 +519,55 @@ const QRPanel = (() => {
       ctx.fillStyle = _fg;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(captionText, qrSize / 2, qrSize + Math.floor(modSize * 0.8));
+      const maxCaptionW = qrSize - modSize * 2;
+      ctx.fillText(captionText, qrSize / 2, qrSize + Math.floor(modSize * 0.8), maxCaptionW);
     }
 
     return canvas;
+  }
+
+  // Common SVG renderer for export and batch export
+  function _renderQRToSVG(page, { modSize = _moduleSize } = {}) {
+    const qr = _getEncodedQR(page);
+    if (!qr) return null;
+
+    const quiet = _padding ? 4 : 0;
+    const totalSize = (qr.size + quiet * 2) * modSize;
+    const captionText = _caption.trim();
+    const fontSize = Math.round(16 * modSize / 4);
+    const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
+    const svgH = totalSize + captionHeight;
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${svgH}" width="${totalSize}" height="${svgH}">`;
+    svg += `<rect width="${totalSize}" height="${svgH}" fill="${_bg}"/>`;
+
+    for (let r = 0; r < qr.size; r++) {
+      for (let c = 0; c < qr.size; c++) {
+        if (!qr.matrix[r][c]) continue;
+        const x = (c + quiet) * modSize;
+        const y = (r + quiet) * modSize;
+        const style = qr.reserved[r][c] ? 'classic' : _style;
+        if (style === 'dotted') {
+          svg += `<circle cx="${x + modSize / 2}" cy="${y + modSize / 2}" r="${modSize / 2}" fill="${_fg}"/>`;
+        } else if (style === 'rounded') {
+          const rad = modSize * 0.3;
+          svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" rx="${rad}" fill="${_fg}"/>`;
+        } else if (style === 'cross') {
+          const cx = x + modSize / 2, cy = y + modSize / 2;
+          const arm = modSize * 0.35;
+          const thickness = modSize * 0.2;
+          svg += `<path d="M${cx},${cy - arm}V${cy + arm}M${cx - arm},${cy}H${cx + arm}" stroke="${_fg}" stroke-width="${thickness}" stroke-linecap="round"/>`;
+        } else {
+          svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" fill="${_fg}"/>`;
+        }
+      }
+    }
+
+    if (captionText) {
+      svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
+    }
+
+    return svg + '</svg>';
   }
 
   function _renderPreview() {
@@ -1578,48 +1618,15 @@ const QRPanel = (() => {
       link.href = canvas.toDataURL('image/png');
       link.click();
     } else if (format === 'svg') {
-      const qr = _getEncodedQR(page);
-      if (!qr) { _showToast('Нет QR-кода для экспорта'); return; }
-      const modSize = _moduleSize;
-      const quiet = _padding ? 4 : 0;
-      const totalSize = (qr.size + quiet * 2) * modSize;
-      const captionText = _caption.trim();
-      const fontSize = Math.round(16 * modSize / 4);
-      const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
-      const svgH = totalSize + captionHeight;
-      let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${svgH}" width="${totalSize}" height="${svgH}">`;
-      svg += `<rect width="${totalSize}" height="${svgH}" fill="${_bg}"/>`;
-      for (let r = 0; r < qr.size; r++) {
-        for (let c = 0; c < qr.size; c++) {
-          if (!qr.matrix[r][c]) continue;
-          const x = (c + quiet) * modSize;
-          const y = (r + quiet) * modSize;
-          const style = qr.reserved[r][c] ? 'classic' : _style;
-          if (style === 'dotted') {
-            svg += `<circle cx="${x + modSize / 2}" cy="${y + modSize / 2}" r="${modSize / 2}" fill="${_fg}"/>`;
-          } else if (style === 'rounded') {
-            const rad = modSize * 0.3;
-            svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" rx="${rad}" fill="${_fg}"/>`;
-          } else if (style === 'cross') {
-            const cx = x + modSize / 2, cy = y + modSize / 2;
-            const arm = modSize * 0.35;
-            const thickness = modSize * 0.2;
-            svg += `<path d="M${cx},${cy - arm}V${cy + arm}M${cx - arm},${cy}H${cx + arm}" stroke="${_fg}" stroke-width="${thickness}" stroke-linecap="round"/>`;
-          } else {
-            svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" fill="${_fg}"/>`;
-          }
-        }
-      }
-      if (captionText) {
-        svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
-      }
-      svg += '</svg>';
-      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const svgStr = _renderQRToSVG(page);
+      if (!svgStr) { _showToast('Нет QR-кода для экспорта'); return; }
+      const blob = new Blob([svgStr], { type: 'image/svg+xml' });
       const link = document.createElement('a');
       link.download = 'qr-code.svg';
-      link.href = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
+      link.href = url;
       link.click();
-      URL.revokeObjectURL(link.href);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     }
   }
 
@@ -1629,11 +1636,8 @@ const QRPanel = (() => {
     let downloaded = 0;
     const total = _pages.length;
     const modSize = _moduleSize;
-    const quiet = _padding ? 4 : 0;
     for (let i = 0; i < total; i++) {
       const page = _pages[i];
-      const qr = _getEncodedQR(page);
-      if (!qr) continue;
       if (format === 'png') {
         const canvas = _renderQRToCanvas(page, { modSize, includeCaption: true });
         if (!canvas) continue;
@@ -1642,44 +1646,15 @@ const QRPanel = (() => {
         link.href = canvas.toDataURL('image/png');
         link.click();
       } else if (format === 'svg') {
-        const totalSize = (qr.size + quiet * 2) * modSize;
-        const fontSize = Math.round(16 * modSize / 4);
-        const captionText = _caption.trim();
-        const captionHeight = captionText ? fontSize + Math.floor(modSize * 1.3) : 0;
-        const svgH = totalSize + captionHeight;
-        let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSize} ${svgH}" width="${totalSize}" height="${svgH}">`;
-        svg += `<rect width="${totalSize}" height="${svgH}" fill="${_bg}"/>`;
-        for (let r = 0; r < qr.size; r++) {
-          for (let c = 0; c < qr.size; c++) {
-            if (!qr.matrix[r][c]) continue;
-            const x = (c + quiet) * modSize;
-            const y = (r + quiet) * modSize;
-            const style = qr.reserved[r][c] ? 'classic' : _style;
-            if (style === 'dotted') {
-              svg += `<circle cx="${x + modSize / 2}" cy="${y + modSize / 2}" r="${modSize / 2}" fill="${_fg}"/>`;
-            } else if (style === 'rounded') {
-              const rad = modSize * 0.3;
-              svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" rx="${rad}" fill="${_fg}"/>`;
-            } else if (style === 'cross') {
-              const cx = x + modSize / 2, cy = y + modSize / 2;
-              const arm = modSize * 0.35;
-              const thickness = modSize * 0.2;
-              svg += `<path d="M${cx},${cy - arm}V${cy + arm}M${cx - arm},${cy}H${cx + arm}" stroke="${_fg}" stroke-width="${thickness}" stroke-linecap="round"/>`;
-            } else {
-              svg += `<rect x="${x}" y="${y}" width="${modSize}" height="${modSize}" fill="${_fg}"/>`;
-            }
-          }
-        }
-        if (captionText) {
-          svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
-        }
-        svg += '</svg>';
-        const blob = new Blob([svg], { type: 'image/svg+xml' });
+        const svgStr = _renderQRToSVG(page, { modSize });
+        if (!svgStr) continue;
+        const blob = new Blob([svgStr], { type: 'image/svg+xml' });
         const link = document.createElement('a');
         link.download = `qr-page-${i + 1}-of-${total}.svg`;
-        link.href = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
+        link.href = url;
         link.click();
-        URL.revokeObjectURL(link.href);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
       }
       downloaded++;
     }
@@ -1723,6 +1698,9 @@ const QRPanel = (() => {
     ++_generationId; // invalidate any pending async generation
     if (_panel) _panel.style.display = 'none';
     _isOpen = false;
+    _dragging = false;
+    _resizing = false;
+    document.body.style.userSelect = '';
     _closeColorPicker();
     clearTimeout(_updateTimer);
     _updateTimer = null;
