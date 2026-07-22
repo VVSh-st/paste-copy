@@ -292,7 +292,8 @@ const QRPanel = (() => {
   async function _splitText(text) {
     if (!text) return { pages: [], effectiveEc: _ec };
 
-    const rawBytes = new TextEncoder().encode(text);
+    const encoder = new TextEncoder();
+    const rawBytes = encoder.encode(text);
 
     // Auto-downgrade EC: only when enabled; otherwise keep user's chosen level
     let ecLevel = _ec;
@@ -300,9 +301,23 @@ const QRPanel = (() => {
       ecLevel = _QR.getAutoEcFrom(text, _ec);
     }
 
+    // Verify the full text actually encodes at the chosen EC level
     const maxBytes = _QR.getMaxDataBytes(ecLevel);
-    if (rawBytes.length <= maxBytes) {
+    if (rawBytes.length <= maxBytes && _QR.encode(text, ecLevel)) {
       return { pages: [{ text, bytes: rawBytes, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: ecLevel };
+    }
+
+    // If auto-ec, try lower EC levels before splitting
+    if (_autoEc) {
+      const order = ['H', 'Q', 'M', 'L'];
+      const start = order.indexOf(ecLevel);
+      for (let i = start + 1; i < order.length; i++) {
+        const cap = _QR.getMaxDataBytes(order[i]);
+        if (rawBytes.length <= cap && _QR.encode(text, order[i])) {
+          ecLevel = order[i];
+          return { pages: [{ text, bytes: rawBytes, compressed: false, page: 0, total: 1, plain: true }], effectiveEc: ecLevel };
+        }
+      }
     }
 
     // Split into multiple pages using Array.from for safe surrogate pair handling
@@ -311,19 +326,22 @@ const QRPanel = (() => {
     let remaining = chars;
     while (remaining.length > 0) {
       // Binary search for the largest prefix that fits in maxBytes
-      let lo = 1, hi = remaining.length, best = 1;
+      let lo = 1, hi = remaining.length, best = 0;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
         const chunk = remaining.slice(0, mid).join('');
-        if (new TextEncoder().encode(chunk).length <= maxBytes) {
+        if (encoder.encode(chunk).length <= maxBytes) {
           best = mid;
           lo = mid + 1;
         } else {
           hi = mid - 1;
         }
       }
+      if (best === 0) {
+        throw new Error('Не удалось уместить фрагмент текста в QR-код');
+      }
       const chunk = remaining.slice(0, best).join('');
-      const chunkBytes = new TextEncoder().encode(chunk);
+      const chunkBytes = encoder.encode(chunk);
       pages.push({ text: chunk, bytes: chunkBytes, compressed: false, page: pages.length, total: 0, plain: true });
       remaining = remaining.slice(best);
     }
@@ -564,7 +582,10 @@ const QRPanel = (() => {
     }
 
     if (captionText) {
-      svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${_fg}">${_escapeXml(captionText)}</text>`;
+      // Limit caption width: ~0.6em per char, leave 1 module padding each side
+      const maxChars = Math.floor((totalSize - modSize * 2) / (fontSize * 0.6));
+      const safeCaption = captionText.length > maxChars ? captionText.slice(0, maxChars - 1) + '\u2026' : captionText;
+      svg += `<text x="${totalSize / 2}" y="${totalSize + Math.floor(modSize * 0.8) + fontSize}" text-anchor="middle" font-family="Segoe UI Variable, Segoe UI, system-ui, sans-serif" font-weight="bold" font-size="${fontSize}" fill="${_fg}">${_escapeXml(safeCaption)}</text>`;
     }
 
     return svg + '</svg>';

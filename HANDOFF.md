@@ -1564,3 +1564,21 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - **Page metadata в QR** — продуктовое решение. Текущий подход (plain text) оптимален для сканирования телефонами.
 
 **Файлы:** `qr-panel.js`
+**Коммит:** `a32966f` (аудит GPT-5 #2: SVG dedup, auto EC, close state, caption overflow, revoke race)
+
+---
+
+### QR Panel — аудит GPT-5 #3 (сессия 2026-07-21)
+
+**Источник:** `NEW 2 (2).txt` — третий аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **`_splitText` без реальной проверки encode** — бинарный поиск считал только байты (`TextEncoder().encode().length <= maxBytes`), но не проверял что `_QR.encode(chunk, ecLevel)` реально работает. Если формула ёмкости `getMaxDataBytes` переоценивала — страница не кодировалась. Фикс: upfront-валидация `_QR.encode(text, ecLevel)` перед решением "помещается". Плюс fallback на более низкий EC если auto-ec включён и full-text encode не проходит. Плюс `best = 0` → throw вместо silent single-char pages.
+
+2. **SVG caption overflow** — `_renderQRToSVG` не ограничивал ширину подписи (canvas уже имел `maxCaptionW`). Добавлено ограничение: `maxChars = floor((totalSize - modSize * 2) / (fontSize * 0.6))`, обрезка с `…`.
+
+**Пропущено (аргументы):**
+- **`_lastTa` cache skip** — edge case, воспроизвести без знания всех вызовов `open()` невозможно. Категория "вопрос", не "важно".
+
+**Файлы:** `qr-panel.js`
