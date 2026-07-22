@@ -1069,9 +1069,9 @@ const KeyboardTrainer = (() => {
     var pw = _settingsPopup.offsetWidth || 240;
     var ph = _settingsPopup.offsetHeight || 200;
     var left = anchorX + 10;
-    var top = anchorY + 10;
+    var top = anchorY - ph - 10;
     if (left + pw > window.innerWidth) left = window.innerWidth - pw - 10;
-    if (top + ph > window.innerHeight) top = window.innerHeight - ph - 10;
+    if (top < 0) top = 10;
     _settingsPopup.style.left = left + 'px';
     _settingsPopup.style.top = top + 'px';
 
