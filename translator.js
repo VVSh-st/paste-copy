@@ -82,10 +82,13 @@ const Translator = (() => {
       });
   }
 
-  const withTimeout = (p, ms) => {
+  const withTimeout = (p, ms, abortCtrl) => {
     let timer;
     const timeout = new Promise((_, rej) => {
-      timer = setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })), ms);
+      timer = setTimeout(() => {
+        if (abortCtrl) abortCtrl.abort(Object.assign(new Error('timeout'), { code: 'TIMEOUT' }));
+        rej(Object.assign(new Error('timeout'), { code: 'TIMEOUT' }));
+      }, ms);
     });
     return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
   };
@@ -228,7 +231,13 @@ const Translator = (() => {
         if (Array.isArray(arr)) {
           const now = Date.now();
           cache = new Map(arr
-            .filter(([, v]) => v && typeof v === 'object' && v.ts && now - v.ts <= CACHE_TTL)
+            .filter(([k, v]) =>
+              typeof k === 'string' &&
+              v && typeof v === 'object' &&
+              typeof v.text === 'string' &&
+              typeof v.ts === 'number' &&
+              now - v.ts <= CACHE_TTL
+            )
             .slice(-MAX_CACHE));
         }
       }
@@ -281,10 +290,16 @@ const Translator = (() => {
         _stats.cacheMisses++;
         return undefined;
       }
+      if (!v.text || typeof v.text !== 'string') {
+        cache.delete(key);
+        scheduleCacheSave();
+        _stats.cacheMisses++;
+        return undefined;
+      }
       cache.delete(key);
       cache.set(key, v);
       _stats.cacheHits++;
-      return v.text ?? v;
+      return v.text;
     }
     _stats.cacheMisses++;
     return undefined;
@@ -357,6 +372,7 @@ const Translator = (() => {
         if (!s || typeof s !== 'object') return;
         if (LANG_BY_CODE[s?.targetLang]) settings.targetLang = s.targetLang;
         if (ENGINES.has(s?.engine)) settings.engine = s.engine;
+        if (typeof s?.autoTarget === 'boolean') settings.autoTarget = s.autoTarget;
       }
     } catch {}
   }
@@ -818,24 +834,25 @@ const Translator = (() => {
     const gReady = Date.now() >= gBlockUntil;
     const mReady = Date.now() >= mBlockUntil;
     const tReady = Date.now() >= tBlockUntil;
+    const localCtrl = new AbortController();
 
     if (gReady) {
       promises.push(
-        withTimeout(translateGoogle([text], target), GOOGLE_TIMEOUT)
+        withTimeout(translateGoogle([text], target, localCtrl.signal), GOOGLE_TIMEOUT, localCtrl)
           .then(r => ({ engine: 'g', result: r?.[0] }))
           .catch(() => ({ engine: 'g', result: null }))
       );
     }
     if (mReady) {
       promises.push(
-        withTimeout(translateMs([text], target), MS_TIMEOUT)
+        withTimeout(translateMs([text], target, localCtrl.signal), MS_TIMEOUT, localCtrl)
           .then(r => ({ engine: 'ms', result: r?.[0] }))
           .catch(() => ({ engine: 'ms', result: null }))
       );
     }
     if (tReady) {
       promises.push(
-        withTimeout(translateTencent([text], target), 12000)
+        withTimeout(translateTencent([text], target, localCtrl.signal), 12000, localCtrl)
           .then(r => ({ engine: 'tc', result: r?.[0] }))
           .catch(() => ({ engine: 'tc', result: null }))
       );
@@ -847,7 +864,14 @@ const Translator = (() => {
       } catch { return text; }
     }
 
-    const res = await Promise.any(promises).catch(() => null);
+    const usablePromises = promises.map(p =>
+      p.then(res => {
+        if (res?.result && accept(res.result)) return res;
+        throw new Error('empty translation');
+      })
+    );
+
+    const res = await Promise.any(usablePromises).catch(() => null);
     if (res?.result && accept(res.result)) {
       if (res.engine === 'g') gFail = 0;
       else if (res.engine === 'ms') mFail = 0;
