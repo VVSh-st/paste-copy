@@ -64,7 +64,7 @@ const Translator = (() => {
     const ctrl = new AbortController();
     const external = options.signal;
     let timer;
-    const abort = () => ctrl.abort();
+    const abort = () => ctrl.abort(external.reason);
     if (external) {
       if (external.aborted) ctrl.abort();
       else external.addEventListener('abort', abort, { once: true });
@@ -326,6 +326,11 @@ const Translator = (() => {
     try {
       const storage = getStorage();
       const raw = storage?.getItem(HISTORY_KEY);
+      if (raw && raw.length > 512 * 1024) {
+        storage?.removeItem(HISTORY_KEY);
+        history = [];
+        return;
+      }
       if (raw) history = JSON.parse(raw);
       if (!Array.isArray(history)) history = [];
       history = history.filter(item =>
@@ -430,6 +435,7 @@ const Translator = (() => {
         googleKeyTs = Date.now();
         return googleKey;
       } catch (e) {
+        if (e?.name === 'AbortError') throw e;
         googleKeyError = e?.message || 'google key network error';
         googleKey = GOOGLE_FALLBACK_KEY;
         googleKeyTs = Date.now();
