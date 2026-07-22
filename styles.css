@@ -7778,21 +7778,21 @@ body.help-open {
 .tf-recent-header {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 10px 4px;
+  gap: 4px;
+  padding: 5px 8px 4px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .tf-recent-pill {
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--accent, #4f8ef7);
   background: rgba(79,142,247,0.1);
-  padding: 2px 8px;
+  padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
-  min-width: 8ch;
+  min-width: 0;
   text-align: center;
 }
 .tf-recent-pill:hover {
