@@ -426,9 +426,13 @@ const Translator = (() => {
           return googleKey;
         }
         googleKeyError = 'google key not found in response';
-        return GOOGLE_FALLBACK_KEY;
+        googleKey = GOOGLE_FALLBACK_KEY;
+        googleKeyTs = Date.now();
+        return googleKey;
       } catch (e) {
         googleKeyError = e?.message || 'google key network error';
+        googleKey = GOOGLE_FALLBACK_KEY;
+        googleKeyTs = Date.now();
       }
       return GOOGLE_FALLBACK_KEY;
     })();
@@ -680,6 +684,7 @@ const Translator = (() => {
     const out = new Array(texts.length).fill(null);
     let next = 0;
     let stop = false;
+    let rateLimited = false;
     const worker = async () => {
       while (!stop && next < texts.length) {
         if (signal?.aborted) break;
@@ -687,12 +692,17 @@ const Translator = (() => {
         try {
           out[i] = await retry(() => translateLegacyOne(texts[i], to, signal), e => e?.status !== 429 && e?.name !== 'AbortError', 2, 500);
         } catch (e) {
-          if (e?.status === 429) stop = true;
+          if (e?.status === 429) { stop = true; rateLimited = true; }
           out[i] = null;
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, texts.length) }, worker));
+    if (rateLimited) {
+      const lastErr = new Error('rate limit');
+      lastErr.status = 429;
+      throw lastErr;
+    }
     return out;
   }
 
@@ -1052,8 +1062,10 @@ const Translator = (() => {
       return text;
     }
     const restored = restoreTemplates(result, tokens);
-    const from = detectLangHint(text)?.code || 'auto';
-    addHistory(text, restored, from, target);
+    if (restored !== text) {
+      const from = detectLangHint(text)?.code || 'auto';
+      addHistory(text, restored, from, target);
+    }
     return restored;
   }
 
@@ -1086,7 +1098,7 @@ const Translator = (() => {
 
     resolveTargetLang,
 
-    get history() { return history; },
+    get history() { return history.map(item => ({ ...item })); },
 
     init() {
       if (_inited) return;
