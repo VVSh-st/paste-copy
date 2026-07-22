@@ -1596,3 +1596,312 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 5. **Удалён CSS** `.qr-slider-row`, `.qr-slider`, `.qr-slider-val`
 
 **Файлы:** `qr-panel.js`, `styles.css`
+
+---
+
+### Translator — аудит GPT-5 (сессия 2026-07-22)
+
+**Источник:** `NEW 2.txt` — аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **loadCache() — нет валидации `text` и `ts`** — фильтр `(v && typeof v === 'object' && v.ts)` пропускал повреждённые записи без строкового `text`. `cacheGet()` возвращал объект вместо строки. Фикс: фильтр `typeof v.text === 'string' && typeof v.ts === 'number'`.
+
+2. **cacheGet() — нет защиты от битых записей** — `return v.text ?? v` мог вернуть весь объект если `v.text` отсутствует. Фикс: проверка `typeof v.text !== 'string'` → delete + miss.
+
+3. **autoTarget не загружается из localStorage** — `loadSettings()` загружала только `targetLang` и `engine`, `autoTarget` терялось при F5. Фикс: `if (typeof s?.autoTarget === 'boolean') settings.autoTarget = s.autoTarget`.
+
+4. **Promise.any() гонка в translateOneVisible()** — `Promise.any()` возвращал первый fulfilled promise, даже если `result: null`. Быстрый отказ одного движка преждевременно завершал ожидание. Фикс: `usablePromises` с `.then()` который reject'ит пустые результаты.
+
+5. **withTimeout() не отменял fetch** — таймаут отклонял промис, но `fetch()` внутри продолжал висеть. Фикс: `withTimeout` принимает `AbortController`, abort при таймауте. `translateOneVisible()` создаёт локальный AbortController.
+
+6. **crypto.randomUUID() fallback** — пропущено (проект на современных браузерах).
+
+**Коммит:** `81ddac9`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #2 (сессия 2026-07-22)
+
+**Источник:** `NEW 3.txt` — второй аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **Общий AbortController убивал все движки** — предыдущий фикс создал общий `localCtrl` для Google/MS/Tencent. Таймаут Google вызывал `localCtrl.abort()`, отменяя MS и Tencent тоже. Фикс: отдельный `AbortController` на каждый движок через `pushEngine()` хелпер.
+
+2. **Abort оставшихся после успеха** — `translateOneVisible()` возвращала результат, но параллельные запросы продолжали висеть до таймаута. Фикс: `controllers.forEach(c => c.abort())` после принятого результата.
+
+3. **Tencent не использовал `translateOneVisible()`** — при `engine === 'tencent'` код шёл через `translateOneRaw()` (медленнее). Фикс: добавлен `'tencent'` в условие.
+
+4. **Последовательный MS+Tencent в batch `translate()`** — в режиме `auto` Google ждал до таймаута, потом MS до таймаута, потом Tencent. Фикс: MS и Tencent запускаются параллельно через `Promise.allSettled` для остатка после Google.
+
+**Пропущено (аргументы):** все пункты применены.
+
+**Коммит:** `890790a`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #3 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (1).txt` — третий аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **Критический: index mismatch в параллельном batch** — MS и Tencent запускались на одном `rem`, но `apply/filterRem` модифицировали `rem` между итерациями. Tencent-результаты применялись к уже укороченному `rem` → индексы `arr[j]` и `rem[j]` не соответствовали. Фикс: snapshot `rem` до запуска, apply через `out[outIndex]` по оригинальным индексам, rebuild `rem` в конце.
+
+2. **Потеря error tracking в параллельном batch** — `Promise.allSettled()` пропускал rejected результаты, `mFail/tFail/mBlockUntil/tBlockUntil` не обновлялись. Следующий вызов снова пробовал нерабочий движок. Фикс: `.catch()` в candidates + обработка ошибок с retryAfter/block logic.
+
+3. **Abort перед legacy fallback** — `translateOneVisible()` не отменяла контроллеры при переходе на legacy. Фикс: `controllers.forEach(c => c.abort())` перед legacy.
+
+4. **Google head start 1200ms** — в `auto` режиме MS+Tencent запускались только после полного завершения Google (до 8s). Фикс: `Promise.race([gPromise, sleep(1200)])` — если Google не вернулся за 1200ms, MS+Tencent стартуют параллельно. Google результат применяется когда вернётся.
+
+**Пропущено (аргументы):** все пункты применены.
+
+**Коммит:** `bd979ed`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #4 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (2).txt` — четвёртый аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **`auto` пропускал MS/Tencent при заблокированном Google** — `if (engine === 'auto' && Date.now() >= gBlockUntil)` пропускал весь auto-блок, `else if (engine === 'google')` не совпадал, `else` содержал только explicit engine проверки. MS/Tencent никогда не запускались. Фикс: `auto` — отдельная ветка, MS/Tencent запускаются всегда если `rem.length`.
+
+2. **Head start всё равно ждал Google** — после MS/Tencent `await gPromise` блокировал возврат. Фикс: Google ждётся только если `rem.length > 0` после MS/Tencent.
+
+3. **MS/Tencent только в `else` ветке** — если Google быстро вернул частичный результат, MS/Tencent не запускались для остатка. Фикс: MS/Tencent запускаются после Google (вне `if/else`).
+
+4. **Дублирование apply-логики** — один и тот же цикл `for` написан 3+ раз. Фикс: `applyIfEmpty()`, `refreshRem()`, `runMsTencent()` хелперы.
+
+5. **Inflight dedup для `translateOneVisible()`** — при быстрых повторных вызовах каждый запускал новый набор движков. Фикс: `_inflightOne` Map, повторный вызов возвращает тот же promise.
+
+**Пропущено (аргументы):** все пункты применены.
+
+**Коммит:** `427b118`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #5 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (3).txt` — пятый аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **Error tracking в `_doTranslateOneVisible()`** — `.catch(() => ({ engine, result: null }))` скрывал ошибки движков, `gFail/mFail/tFail` не обновлялись. Нерабочий движок пробовался снова и снова. Фикс: `.catch(error => ({ engine, result: null, error }))` + обработка ошибок после `Promise.any`.
+
+2. **Unhandled rejection при заброшенном gPromise** — если MS/Tencent покрыли всё, `gPromise` продолжал работать. При reject — unhandled rejection. Фикс: `.catch()` на gPromise сразу после создания.
+
+3. **gFail сбрасывался на пустом результате** — `gFail = 0` выполнялся даже когда Google вернул все null. Фикс: `gFail = 0` только при наличии принятых переводов.
+
+4. **Пустые candidates в `runMsTencent()`** — при заблокированных MS и Tencent функция всё равно строила массив и проходила async путь. Фикс: early return.
+
+**Пропущено (аргументы):** все пункты применены.
+
+**Коммит:** `d16f0fa`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #6 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (4).txt` — шестой аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **Пустой результат не считался ошибкой** — в `_doTranslateOneVisible()` fail-счётчики обновлялись только при `r.error`. Если движок штатно вернул null/пустую строку без exception — fail не рос, движок пробовался снова. Фикс: `failedResult = r.error || !r.result || !accept(r.result)`.
+
+2. **Google не отменялся при полном покрытии** — медленный Google использовал общий `signal`, нельзя было отменить отдельно. При покрытии MS/Tencent Google продолжал висеть до таймаута. Фикс: отдельный `AbortController` для Google, abort при `!rem.length` после MS/Tencent.
+
+3. **Quick Google empty result — gFail не рос** — быстрый Google ответ с null/пустыми значениями не увеличивал `gFail`, `gBlockUntil` никогда не выставлялся. Фикс: `else { gFail++; if (gFail >= 3) gBlockUntil = ... }`.
+
+**Пропущено (аргументы):** все пункты применены.
+
+**Коммит:** `aab309b`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #7 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (5).txt` — седьмой аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **Fallback Google key не кэшировался** — при неудачном извлечении динамического ключа каждый вызов `fetchGoogleKey()` снова скачивал Google JS. Фикс: fallback записывается в `googleKey`/`googleKeyTs`.
+
+2. **`translateLegacy` проглатывал 429** — workers ставили `stop = true`, но функция возвращала массив с null. Вызывающий код сбрасывал `lFail = 0`, не выставлял `lBlockUntil`. Фикс: `throw` с `status: 429` после завершения workers.
+
+3. **`translateProtected` добавлял no-op в историю** — перевод на тот же язык попадал в историю. Фикс: `if (restored !== text)` перед `addHistory`.
+
+4. **`history` getter отдавал прямую ссылку** — внешний код мог мутировать внутренний массив. Фикс: `.map(item => ({ ...item }))`.
+
+**Пропущено (аргументы):**
+- `_activeController` отменяет предыдущий translate — осознанный дизайн (один batch за раз)
+- BroadcastChannel валидация — канал доверен (same origin)
+
+**Коммит:** `e3584a3`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #8 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (6).txt` — восьмой аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **`clearCache` — прямой доступ к `localStorage`** — использовал `localStorage.removeItem` вместо `getStorage()`. Фикс: `getStorage()?.removeItem(CACHE_KEY)`.
+
+2. **`addHistory` — нет guard от пустого/совпадающего текста** — no-op переводы попадали в историю. Фикс: `if (!original || !translated || original === translated) return`.
+
+3. **Legacy 429 терял `retryAfterMs`** — наш предыдущий фикс создавал `new Error('rate limit')` без `retryAfterMs`. Фикс: сохранять оригинальную ошибку и пробрасывать её.
+
+4. **Legacy caller не проверял `retryAfterMs`** — `lBlockUntil` выставлялся только по `lFail >= 3`, игнорируя `Retry-After` заголовок. Фикс: `if (e?.retryAfterMs) lBlockUntil = Date.now() + e.retryAfterMs`.
+
+**Пропущено (аргументы):** все пункты применены.
+
+**Коммит:** `110d65e`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #9 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (7).txt` — девятый аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **`translateTencent` — сетевые ошибки проглатывались** — `catch` блокировал только ошибки с `status`, network/timeout/CORS ошибки без `status` молча игнорировались. Tencent продолжал пробоваться снова. Фикс: все ошибки пробрасываются (кроме AbortError).
+
+2. **Legacy fallback без кэширования** — в `_doTranslateOneVisible()` при отсутствии движков legacy результат не кэшировался. Повторный запрос шёл в сеть. Фикс: `cacheSet(n, target, l[0])`.
+
+3. **Неиспользуемый `templateSeq`** — переменная объявлена, но нигде не используется. Удалена.
+
+**Пропущено (аргументы):**
+- Google API key на backend — требует серверную инфраструктуру, feature addition
+- `crypto.randomUUID` fallback — уже решено: только современные браузеры
+- `_activeController` — осознанный дизайн (один batch за раз)
+
+**Коммит:** `03292f6`
+
+**Файлы:** `translator.js`
+
+---
+
+### Translator — аудит GPT-5 #10 (сессия 2026-07-22)
+
+**Источник:** `NEW 3 (8).txt` — десятый аудит GPT-5 Codex
+
+**Исправленные баги:**
+
+1. **`fetchWithTimeout` терял причину abort** — внешний abort (с `code`/`reason`) превращался в `ctrl.abort()` без причины. Фикс: `ctrl.abort(external.reason)`.
+
+2. **`fetchGoogleKey` ловил AbortError как fallback** — при отмене через `_activeController.abort()` catch превращал отмену в успешный fallback key. Фикс: `if (e?.name === 'AbortError') throw e`.
+
+3. **`loadHistory` — нет limit размера** — огромное значение из localStorage могло вызвать подвисание/исключение. Фикс: `raw.length > 512 * 1024` → removeItem + empty.
+
+**Пропущено (аргументы):**
+- Language validation — `normalizeTargetLang` уже обрабатывает
+- `runMsTencent` when all blocked — аудит подтверждает корректность
+- Legacy cache format — косметика
+- Tencent workers abort — оптимизация, не баг
+
+**Коммит:** `a47167f`
+
+**Файлы:** `translator.js`
+
+---
+
+### Mini-chat — текст пропадает (сессия 2026-07-22)
+
+**Источник:** `NEW 3.txt` — задание на мини-чат
+
+**Проблема:** текст в мини-чате пропадает через какое-то время. Вкладка есть, заголовок есть, текста нет. TTL 240 часов не помогает.
+
+**Корневая причина:** в `send()` после каждого ответа LLM `_history.splice()` обрезал историю до `chatDepth * 2` (12 сообщений), а `finally` блок сохранял обрезанную версию в `localStorage`. При повторном открытии загружалась только обрезанная часть.
+
+**Исправленные баги:**
+
+1. **`_history.splice()` уничтожал историю** — обрезка перенесена в API-запрос (`apiHistory` копия), а полная история сохраняется в localStorage. LLM видит последние `chatDepth * 2` сообщений, но пользователь видит всё.
+
+2. **`close()` не сохранял сессию** — просто скрывал панель без `_saveCurrentSession()`. Фикс: вызов `_saveCurrentSession()` перед скрытием.
+
+3. **`_saveSessions()` молча проглатывал ошибки quota** — добавлен `console.warn`.
+
+**Пропущено (аргументы):**
+- `_blockChats` (BroTags) truncation — in-memory, не влияет на персистентность
+- `chatDepth` для BroTags — осознанное ограничение контекста
+
+**Коммит:** `b31e981`
+
+**Файлы:** `llm-features.js`
+
+---
+
+### Mini-chat — заголовок сессии на всю ширину (сессия 2026-07-22)
+
+**Проблема:** заголовок сессии (название чата) обрезался `max-width: 80px`. `.notepad-title-label` ("LLM Чат") занимал всё пространство благодаря `flex: 1`.
+
+**Фикс:**
+- `.llm-chat-session-title`: `max-width: 80px` → `flex: 1` (занимает доступное пространство)
+- `.llm-chat-bar .notepad-title-label`: добавлен `flex: none` (не растягивается)
+
+**Коммит:** `519d86a`
+
+**Файлы:** `styles.css`
+
+---
+
+### Keyboard trainer — настройки выпадают вверх (сессия 2026-07-22)
+
+**Проблема:** popup настроек клавиатуры позиционировался ниже якоря (`anchorY + 10`), уходил за нижний край экрана.
+
+**Фикс:** `anchorY + 10` → `anchorY - ph - 10` (выше якоря). Fallback: `if (top < 0) top = 10`.
+
+**Коммит:** `12c0546`
+
+**Файлы:** `keyboard-trainer.js`
+
+---
+
+### TextFormat — таблетки последних пунктов в шапке меню (сессия 2026-07-22)
+
+**Источник:** `доработка.txt` — задание пользователя
+
+**Функционал:**
+- В шапке меню TextFormat — до 5 таблеток с номерами последних использованных пунктов
+- Клик по таблетке = **выбор** пункта (как клик по строке меню) + закрытие меню
+- Хранение в `localStorage` (`text-format-recent`), макс. 5 записей
+- Таблетки выглядят как `.tf-var` (синий фон, моноширинный шрифт)
+
+**Реализация:**
+1. `STORAGE_RECENT = 'text-format-recent'`, `MAX_RECENT = 5`
+2. `_loadRecent()` / `_saveRecent()` / `_recordRecent(id)` — CRUD для последних пунктов
+3. `_recordRecent(id)` вызывается из `execute()` — записывает использованный пункт
+4. В `showMenu()` — header с таблетками перед списком пунктов
+5. Клик по таблетке: `_lastItem = item.id` + `_recordRecent()` + `updateButtonIcon()` + `hideMenu()`
+6. CSS: `.tf-recent-header` (flex, gap 4px), `.tf-recent-pill` (10px, padding 1px 5px)
+
+**Баг (off-by-one):** `ITEM_INDEX_BY_ID` уже содержит 1-based индексы (`idx + 1`), а в таблетке прибавлялся ещё `+ 1`. Фикс: убран лишний `+ 1`.
+
+**Коммиты:**
+- `5d4a06f` — основная реализация
+- `9ac9b0d` — уменьшены таблетки (font 10px, padding 1px 5px)
+- `e767a81` — таблетка выбирает пункт без execute
+- `2488e0c` — off-by-one фикс
+
+**Файлы:** `text-format.js`, `styles.css`
