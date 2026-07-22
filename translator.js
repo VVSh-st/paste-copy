@@ -147,7 +147,6 @@ const Translator = (() => {
   // ── Template protection ────────────────────────────────────
   // {{...}}, $VAR, !теги — не переводим
   const TMPL_RE = /(\{\{[^}\n]{1,200}\}\}|\$[A-Z_][A-Z0-9_]*\b|\$\{[^}\n]{1,200}\}|\[\[[^\]\n]{1,200}\]\]|%[A-Z_][A-Z0-9_]*%|\{\d+\}|![а-яёА-ЯЁ]+\b)/g;
-  let templateSeq = 0;
 
   function protectTemplates(text) {
     const tokens = [];
@@ -648,7 +647,9 @@ const Translator = (() => {
             }
           }
         } catch (e) {
-          if (e?.status) { stop = true; throw e; }
+          if (e?.name === 'AbortError' || signal?.aborted) throw e;
+          stop = true;
+          throw e;
         }
       }
     };
@@ -980,7 +981,8 @@ const Translator = (() => {
       if (!promises.length) {
         try {
           const l = await translateLegacy([text], target);
-          return l?.[0] || text;
+          if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
+          return text;
         } catch { return text; }
       }
 
