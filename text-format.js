@@ -335,7 +335,7 @@ window.TextFormat = (() => {
         const pill = document.createElement('button');
         pill.type = 'button';
         pill.className = 'tf-recent-pill';
-        pill.textContent = String(ITEM_INDEX_BY_ID.get(item.id) + 1).padStart(2, '0');
+        pill.textContent = String(ITEM_INDEX_BY_ID.get(item.id)).padStart(2, '0');
         pill.title = item.name;
         pill.addEventListener('click', e => {
           e.stopPropagation();
