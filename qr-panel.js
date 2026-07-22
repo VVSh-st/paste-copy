@@ -722,7 +722,7 @@ const QRPanel = (() => {
     const savedPos = _readJSON('qr-panel-pos', null);
     const savedSize = _readJSON('qr-panel-size', null);
     const w = Number.isFinite(savedSize?.w) ? Math.max(PANEL_MIN_W, Math.min(500, savedSize.w)) : PANEL_DEFAULT_W;
-    const h = Number.isFinite(savedSize?.h) ? Math.max(PANEL_MIN_H, Math.min(700, savedSize.h)) : PANEL_DEFAULT_H;
+    const h = Number.isFinite(savedSize?.h) ? Math.max(PANEL_MIN_H, Math.min(window.innerHeight * 0.9, savedSize.h)) : PANEL_DEFAULT_H;
     p.style.width = w + 'px';
     p.style.height = h + 'px';
     if (Number.isFinite(savedPos?.left) && Number.isFinite(savedPos?.top)) {
@@ -1484,7 +1484,7 @@ const QRPanel = (() => {
   function _onResizeMove(e) {
     if (!_resizing) return;
     const w = Math.max(PANEL_MIN_W, Math.min(500, _resizeOffset.w + e.clientX - _resizeOffset.x));
-    const h = Math.max(PANEL_MIN_H, Math.min(700, _resizeOffset.h + e.clientY - _resizeOffset.y));
+    const h = Math.max(PANEL_MIN_H, Math.min(window.innerHeight * 0.9, _resizeOffset.h + e.clientY - _resizeOffset.y));
     _panel.style.width = w + 'px';
     _panel.style.height = h + 'px';
   }

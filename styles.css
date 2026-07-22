@@ -7207,7 +7207,7 @@ body.help-open {
   min-width: 300px;
   min-height: 400px;
   max-width: 500px;
-  max-height: 700px;
+  max-height: 90vh;
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   color: var(--text0, #eee);
   user-select: none;
@@ -7288,15 +7288,17 @@ body.help-open {
   background: var(--bg1, #16161e);
   border-radius: 8px;
   padding: 12px;
-  flex: 1;
-  min-height: 0;
+  min-height: 80px;
   overflow: hidden;
+  max-width: 100%;
+  max-height: 100%;
 }
 .qr-canvas {
   image-rendering: pixelated;
-  width: 100%;
+  max-width: 100%;
   max-height: 100%;
   border-radius: 4px;
+  object-fit: contain;
 }
 .qr-nav {
   display: flex;

@@ -1582,3 +1582,26 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - **`_lastTa` cache skip** — edge case, воспроизвести без знания всех вызовов `open()` невозможно. Категория "вопрос", не "важно".
 
 **Файлы:** `qr-panel.js`
+**Коммит:** `5cbafaa` (аудит GPT-5 #3: encode validation, SVG caption overflow)
+
+---
+
+### QR Panel — баг: размер модуля не влияет на визуал (сессия 2026-07-21)
+
+**Проблема:** слайдер "Размер модуля" обновлял внутренние пиксели canvas, но CSS `width: 100%` на `.qr-canvas` масштабировал обратно — визуально ничего не менялось.
+
+**Корневая причина:** CSS-цепочка:
+1. `.qr-canvas { width: 100% }` — canvas всегда растягивался на всю ширину wrapper
+2. `.qr-canvas-wrap { flex: 1 }` — wrapper всегда заполнял доступное пространство в panel
+3. `.qr-panel { max-height: 700px }` — panel обрезал крупный QR
+
+При увеличении `modSize` canvas внутренне рос, но CSS масштабировал обратно до той же визуальной ширины.
+
+**Исправление:**
+1. `.qr-canvas` — `width: 100%` → `max-width: 100%; max-height: 100%; object-fit: contain` — canvas рендерится в натуральном размере, уменьшается только если wrapper мал
+2. `.qr-canvas-wrap` — `flex: 1` убран, добавлены `min-height: 80px; max-width: 100%; max-height: 100%` — wrapper подстраивается под canvas
+3. `.qr-panel` — `max-height: 700px` → `max-height: 90vh` — panel растёт вместе с QR
+4. `_onResizeMove` — `Math.min(700, ...)` → `Math.min(window.innerHeight * 0.9, ...)`
+5. `_buildPanel` saved size — `Math.min(700, ...)` → `Math.min(window.innerHeight * 0.9, ...)`
+
+**Файлы:** `qr-panel.js`, `styles.css`
