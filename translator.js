@@ -745,8 +745,104 @@ const Translator = (() => {
       return !accept(arr[j], x);
     });
 
-    // Google
-    if (engine === 'google' || engine === 'auto') {
+    // Google (auto: head start 1200ms, then parallel with MS/Tencent)
+    if (engine === 'auto' && Date.now() >= gBlockUntil) {
+      const gSrc = rem;
+      const gTexts = gSrc.map(x => x.t);
+      const gPromise = translateGoogle(gTexts, toLang, signal);
+      const gQuick = await Promise.race([
+        gPromise.then(r => ({ done: true, r })).catch(e => ({ done: true, error: e })),
+        sleep(1200).then(() => ({ done: false }))
+      ]);
+
+      if (gQuick.done) {
+        if (gQuick.error) {
+          if (gQuick.error?.name === 'AbortError' || signal.aborted) throw gQuick.error;
+          gFail++;
+          _stats.failed++;
+          if (gQuick.error?.retryAfterMs) gBlockUntil = Date.now() + gQuick.error.retryAfterMs;
+          else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
+        } else {
+          gFail = 0;
+          if (!gQuick.r.every(v => !v)) {
+            for (let j = 0; j < gSrc.length; j++) {
+              const tr = gQuick.r[j];
+              const outIndex = idx[gSrc[j].i];
+              if (out[outIndex] == null && accept(tr, gSrc[j])) {
+                cacheSet(gSrc[j].key, toLang, tr);
+                out[outIndex] = tr;
+              }
+            }
+          }
+        }
+        rem = gSrc.filter(x => out[idx[x.i]] == null);
+      } else {
+        // Google slow — start MS/Tencent now, Google continues in background
+        const src = rem;
+        const textsForEngines = src.map(x => x.t);
+        const candidates = [];
+        if (Date.now() >= mBlockUntil) candidates.push(
+          translateMs(textsForEngines, toLang, signal)
+            .then(result => ({ engine: 'ms', result }))
+            .catch(error => ({ engine: 'ms', error }))
+        );
+        if (Date.now() >= tBlockUntil) candidates.push(
+          translateTencent(textsForEngines, toLang, signal)
+            .then(result => ({ engine: 'tc', result }))
+            .catch(error => ({ engine: 'tc', error }))
+        );
+        for (const s of await Promise.all(candidates)) {
+          if (s.error) {
+            if (s.error?.name === 'AbortError' || signal.aborted) throw s.error;
+            _stats.failed++;
+            if (s.engine === 'ms') {
+              mFail++;
+              if (s.error?.retryAfterMs) mBlockUntil = Date.now() + s.error.retryAfterMs;
+              else if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
+            }
+            if (s.engine === 'tc') {
+              tFail++;
+              if (tFail >= 3) tBlockUntil = Date.now() + 3 * 60 * 1000;
+            }
+            continue;
+          }
+          if (s.engine === 'ms') mFail = 0;
+          else if (s.engine === 'tc') tFail = 0;
+          if (!s.result.every(v => !v)) {
+            for (let j = 0; j < src.length; j++) {
+              const tr = s.result[j];
+              const outIndex = idx[src[j].i];
+              if (out[outIndex] == null && accept(tr, src[j])) {
+                cacheSet(src[j].key, toLang, tr);
+                out[outIndex] = tr;
+              }
+            }
+          }
+        }
+        // Apply Google results when it finally finishes
+        try {
+          const gResult = await gPromise;
+          gFail = 0;
+          if (!gResult.every(v => !v)) {
+            for (let j = 0; j < gSrc.length; j++) {
+              const tr = gResult[j];
+              const outIndex = idx[gSrc[j].i];
+              if (out[outIndex] == null && accept(tr, gSrc[j])) {
+                cacheSet(gSrc[j].key, toLang, tr);
+                out[outIndex] = tr;
+              }
+            }
+          }
+        } catch (e) {
+          if (e?.name === 'AbortError' || signal.aborted) throw e;
+          gFail++;
+          _stats.failed++;
+          if (e?.retryAfterMs) gBlockUntil = Date.now() + e.retryAfterMs;
+          else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
+        }
+        rem = gSrc.filter(x => out[idx[x.i]] == null);
+      }
+    } else if (engine === 'google') {
       if (Date.now() >= gBlockUntil) {
         try {
           const g = await translateGoogle(rem.map(x => x.t), toLang, signal);
@@ -760,27 +856,7 @@ const Translator = (() => {
           else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
         }
       }
-      if (engine === 'google') return out.map((v, i) => v == null ? texts[i] : v);
-    }
-
-    // Microsoft + Tencent in parallel for remaining
-    if ((engine === 'auto') && rem.length) {
-      const mAvailable = Date.now() >= mBlockUntil;
-      const tAvailable = Date.now() >= tBlockUntil;
-      if (mAvailable || tAvailable) {
-        const candidates = [];
-        if (mAvailable) candidates.push(translateMs(rem.map(x => x.t), toLang, signal).then(r => ({ engine: 'ms', result: r })));
-        if (tAvailable) candidates.push(translateTencent(rem.map(x => x.t), toLang, signal).then(r => ({ engine: 'tc', result: r })));
-        const settled = await Promise.allSettled(candidates);
-        for (const s of settled) {
-          if (s.status !== 'fulfilled') continue;
-          const { engine: eng, result: arr } = s.value;
-          if (eng === 'ms') mFail = 0;
-          else if (eng === 'tc') tFail = 0;
-          if (!arr.every(v => !v)) { apply(arr, rem); rem = filterRem(arr, rem); }
-          if (!rem.length) break;
-        }
-      }
+      return out.map((v, i) => v == null ? texts[i] : v);
     } else {
       // Explicit engine: sequential as before
       if ((engine === 'microsoft') && rem.length && Date.now() >= mBlockUntil) {
@@ -812,8 +888,6 @@ const Translator = (() => {
         return out.map((v, i) => v == null ? texts[i] : v);
       }
     }
-
-    // Legacy fallback
     if ((engine === 'legacy' || engine === 'auto') && rem.length && (engine === 'legacy' || Date.now() >= lBlockUntil)) {
       try {
         const l = await translateLegacy(rem.map(x => x.t), toLang, signal);
@@ -893,6 +967,7 @@ const Translator = (() => {
     }
 
     // Fallback: legacy для непереведённых
+    controllers.forEach(c => c.abort(Object.assign(new Error('fallback'), { code: 'FALLBACK' })));
     try {
       const l = await translateLegacy([text], target);
       if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
