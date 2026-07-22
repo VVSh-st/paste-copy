@@ -348,6 +348,7 @@ const Translator = (() => {
   }
 
   function addHistory(original, translated, fromLang, toLang) {
+    if (!original || !translated || original === translated) return;
     const origSlice = original.slice(0, 500);
     history = history.filter(item =>
       !(item.original === origSlice && item.to === toLang)
@@ -684,7 +685,7 @@ const Translator = (() => {
     const out = new Array(texts.length).fill(null);
     let next = 0;
     let stop = false;
-    let rateLimited = false;
+    let rateLimitError = null;
     const worker = async () => {
       while (!stop && next < texts.length) {
         if (signal?.aborted) break;
@@ -692,17 +693,13 @@ const Translator = (() => {
         try {
           out[i] = await retry(() => translateLegacyOne(texts[i], to, signal), e => e?.status !== 429 && e?.name !== 'AbortError', 2, 500);
         } catch (e) {
-          if (e?.status === 429) { stop = true; rateLimited = true; }
+          if (e?.status === 429) { stop = true; rateLimitError = e; }
           out[i] = null;
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, texts.length) }, worker));
-    if (rateLimited) {
-      const lastErr = new Error('rate limit');
-      lastErr.status = 429;
-      throw lastErr;
-    }
+    if (rateLimitError) throw rateLimitError;
     return out;
   }
 
@@ -923,7 +920,8 @@ const Translator = (() => {
       } catch (e) {
         if (e?.name === 'AbortError' || signal.aborted) throw e;
         lFail++;
-        if (lFail >= 3) lBlockUntil = Date.now() + 3 * 60 * 1000;
+        if (e?.retryAfterMs) lBlockUntil = Date.now() + e.retryAfterMs;
+        else if (lFail >= 3) lBlockUntil = Date.now() + 3 * 60 * 1000;
         _stats.failed++;
       }
     }
@@ -1143,7 +1141,7 @@ const Translator = (() => {
       clearTimeout(_cacheSaveTimer);
       _cacheSaveTimer = null;
       _cacheDirty = false;
-      try { localStorage.removeItem(CACHE_KEY); } catch {}
+      try { getStorage()?.removeItem(CACHE_KEY); } catch {}
     },
     clearHistory() { history = []; saveHistory(); },
 
