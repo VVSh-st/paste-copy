@@ -37,6 +37,7 @@ const Translator = (() => {
   const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
   let _bcChannel = null;
   let _activeController = null;
+  let _inflightOne = new Map();
   let _stats = { cacheHits: 0, cacheMisses: 0, googleRequests: 0, msRequests: 0, tencentRequests: 0, legacyRequests: 0, totalChars: 0, failed: 0 };
 
   // ── Languages ──────────────────────────────────────────────
@@ -745,94 +746,95 @@ const Translator = (() => {
       return !accept(arr[j], x);
     });
 
-    // Google (auto: head start 1200ms, then parallel with MS/Tencent)
-    if (engine === 'auto' && Date.now() >= gBlockUntil) {
-      const gSrc = rem;
-      const gTexts = gSrc.map(x => x.t);
-      const gPromise = translateGoogle(gTexts, toLang, signal);
-      const gQuick = await Promise.race([
-        gPromise.then(r => ({ done: true, r })).catch(e => ({ done: true, error: e })),
-        sleep(1200).then(() => ({ done: false }))
-      ]);
+    const applyIfEmpty = (arr, src) => {
+      for (let j = 0; j < src.length; j++) {
+        const tr = arr[j];
+        const outIndex = idx[src[j].i];
+        if (out[outIndex] == null && accept(tr, src[j])) {
+          cacheSet(src[j].key, toLang, tr);
+          out[outIndex] = tr;
+        }
+      }
+    };
+    const refreshRem = src => src.filter(x => out[idx[x.i]] == null);
 
-      if (gQuick.done) {
-        if (gQuick.error) {
-          if (gQuick.error?.name === 'AbortError' || signal.aborted) throw gQuick.error;
-          gFail++;
+    const runMsTencent = async (src) => {
+      const textsForEngines = src.map(x => x.t);
+      const candidates = [];
+      if (Date.now() >= mBlockUntil) candidates.push(
+        translateMs(textsForEngines, toLang, signal)
+          .then(result => ({ engine: 'ms', result }))
+          .catch(error => ({ engine: 'ms', error }))
+      );
+      if (Date.now() >= tBlockUntil) candidates.push(
+        translateTencent(textsForEngines, toLang, signal)
+          .then(result => ({ engine: 'tc', result }))
+          .catch(error => ({ engine: 'tc', error }))
+      );
+      for (const s of await Promise.all(candidates)) {
+        if (s.error) {
+          if (s.error?.name === 'AbortError' || signal.aborted) throw s.error;
           _stats.failed++;
-          if (gQuick.error?.retryAfterMs) gBlockUntil = Date.now() + gQuick.error.retryAfterMs;
-          else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
-        } else {
-          gFail = 0;
-          if (!gQuick.r.every(v => !v)) {
-            for (let j = 0; j < gSrc.length; j++) {
-              const tr = gQuick.r[j];
-              const outIndex = idx[gSrc[j].i];
-              if (out[outIndex] == null && accept(tr, gSrc[j])) {
-                cacheSet(gSrc[j].key, toLang, tr);
-                out[outIndex] = tr;
-              }
-            }
+          if (s.engine === 'ms') {
+            mFail++;
+            if (s.error?.retryAfterMs) mBlockUntil = Date.now() + s.error.retryAfterMs;
+            else if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
           }
+          if (s.engine === 'tc') {
+            tFail++;
+            if (tFail >= 3) tBlockUntil = Date.now() + 3 * 60 * 1000;
+          }
+          continue;
         }
-        rem = gSrc.filter(x => out[idx[x.i]] == null);
-      } else {
-        // Google slow — start MS/Tencent now, Google continues in background
-        const src = rem;
-        const textsForEngines = src.map(x => x.t);
-        const candidates = [];
-        if (Date.now() >= mBlockUntil) candidates.push(
-          translateMs(textsForEngines, toLang, signal)
-            .then(result => ({ engine: 'ms', result }))
-            .catch(error => ({ engine: 'ms', error }))
-        );
-        if (Date.now() >= tBlockUntil) candidates.push(
-          translateTencent(textsForEngines, toLang, signal)
-            .then(result => ({ engine: 'tc', result }))
-            .catch(error => ({ engine: 'tc', error }))
-        );
-        for (const s of await Promise.all(candidates)) {
-          if (s.error) {
-            if (s.error?.name === 'AbortError' || signal.aborted) throw s.error;
+        if (s.engine === 'ms') mFail = 0;
+        else if (s.engine === 'tc') tFail = 0;
+        if (!s.result.every(v => !v)) applyIfEmpty(s.result, src);
+      }
+    };
+
+    // ── Auto mode ──
+    if (engine === 'auto') {
+      let gPromise = null;
+      let gSrc = null;
+
+      // Google head start
+      if (rem.length && Date.now() >= gBlockUntil) {
+        gSrc = rem;
+        gPromise = translateGoogle(gSrc.map(x => x.t), toLang, signal);
+        const gQuick = await Promise.race([
+          gPromise.then(r => ({ done: true, r })).catch(e => ({ done: true, error: e })),
+          sleep(1200).then(() => ({ done: false }))
+        ]);
+
+        if (gQuick.done) {
+          if (gQuick.error) {
+            if (gQuick.error?.name === 'AbortError' || signal.aborted) throw gQuick.error;
+            gFail++;
             _stats.failed++;
-            if (s.engine === 'ms') {
-              mFail++;
-              if (s.error?.retryAfterMs) mBlockUntil = Date.now() + s.error.retryAfterMs;
-              else if (mFail >= 3) mBlockUntil = Date.now() + 3 * 60 * 1000;
-            }
-            if (s.engine === 'tc') {
-              tFail++;
-              if (tFail >= 3) tBlockUntil = Date.now() + 3 * 60 * 1000;
-            }
-            continue;
+            if (gQuick.error?.retryAfterMs) gBlockUntil = Date.now() + gQuick.error.retryAfterMs;
+            else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
+          } else {
+            gFail = 0;
+            if (!gQuick.r.every(v => !v)) applyIfEmpty(gQuick.r, gSrc);
           }
-          if (s.engine === 'ms') mFail = 0;
-          else if (s.engine === 'tc') tFail = 0;
-          if (!s.result.every(v => !v)) {
-            for (let j = 0; j < src.length; j++) {
-              const tr = s.result[j];
-              const outIndex = idx[src[j].i];
-              if (out[outIndex] == null && accept(tr, src[j])) {
-                cacheSet(src[j].key, toLang, tr);
-                out[outIndex] = tr;
-              }
-            }
-          }
+          rem = refreshRem(gSrc);
+          gPromise = null; // already consumed
         }
-        // Apply Google results when it finally finishes
+        // else: Google slow, gPromise still pending — MS/Tencent will run below
+      }
+
+      // MS/Tencent parallel for remaining (always, regardless of Google status)
+      if (rem.length) {
+        await runMsTencent(rem);
+        rem = refreshRem(gSrc || rem);
+      }
+
+      // Wait for Google if it's still running and there are remaining items
+      if (gPromise && rem.length) {
         try {
           const gResult = await gPromise;
           gFail = 0;
-          if (!gResult.every(v => !v)) {
-            for (let j = 0; j < gSrc.length; j++) {
-              const tr = gResult[j];
-              const outIndex = idx[gSrc[j].i];
-              if (out[outIndex] == null && accept(tr, gSrc[j])) {
-                cacheSet(gSrc[j].key, toLang, tr);
-                out[outIndex] = tr;
-              }
-            }
-          }
+          if (!gResult.every(v => !v)) applyIfEmpty(gResult, gSrc);
         } catch (e) {
           if (e?.name === 'AbortError' || signal.aborted) throw e;
           gFail++;
@@ -840,8 +842,10 @@ const Translator = (() => {
           if (e?.retryAfterMs) gBlockUntil = Date.now() + e.retryAfterMs;
           else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
         }
-        rem = gSrc.filter(x => out[idx[x.i]] == null);
+        rem = refreshRem(gSrc);
       }
+
+    // ── Explicit engine ──
     } else if (engine === 'google') {
       if (Date.now() >= gBlockUntil) {
         try {
@@ -858,7 +862,6 @@ const Translator = (() => {
       }
       return out.map((v, i) => v == null ? texts[i] : v);
     } else {
-      // Explicit engine: sequential as before
       if ((engine === 'microsoft') && rem.length && Date.now() >= mBlockUntil) {
         try {
           const m = await translateMs(rem.map(x => x.t), toLang, signal);
@@ -873,7 +876,6 @@ const Translator = (() => {
         }
         return out.map((v, i) => v == null ? texts[i] : v);
       }
-
       if ((engine === 'tencent') && rem.length && Date.now() >= tBlockUntil) {
         try {
           const tc = await translateTencent(rem.map(x => x.t), toLang, signal);
@@ -917,63 +919,76 @@ const Translator = (() => {
     const cached = cacheGet(n, target);
     if (cached !== undefined) return cached;
 
-    const accept = (tr) => {
-      if (!tr || !tr.trim()) return false;
-      if (norm(tr) === n && needsTranslation(n, target)) return false;
-      return true;
-    };
+    const key = cacheKey(n, target);
+    if (_inflightOne.has(key)) return _inflightOne.get(key);
 
-    const promises = [];
-    const gReady = Date.now() >= gBlockUntil;
-    const mReady = Date.now() >= mBlockUntil;
-    const tReady = Date.now() >= tBlockUntil;
-    const controllers = [];
+    const promise = _doTranslateOneVisible(text, n, target, key);
+    _inflightOne.set(key, promise);
+    return promise;
+  }
 
-    function pushEngine(fn, ms, engine) {
-      const ctrl = new AbortController();
-      controllers.push(ctrl);
-      promises.push(
-        withTimeout(fn(ctrl.signal), ms, ctrl)
-          .then(r => ({ engine, result: r?.[0] }))
-          .catch(() => ({ engine, result: null }))
+  async function _doTranslateOneVisible(text, n, target, key) {
+    try {
+      const accept = (tr) => {
+        if (!tr || !tr.trim()) return false;
+        if (norm(tr) === n && needsTranslation(n, target)) return false;
+        return true;
+      };
+
+      const promises = [];
+      const gReady = Date.now() >= gBlockUntil;
+      const mReady = Date.now() >= mBlockUntil;
+      const tReady = Date.now() >= tBlockUntil;
+      const controllers = [];
+
+      function pushEngine(fn, ms, engine) {
+        const ctrl = new AbortController();
+        controllers.push(ctrl);
+        promises.push(
+          withTimeout(fn(ctrl.signal), ms, ctrl)
+            .then(r => ({ engine, result: r?.[0] }))
+            .catch(() => ({ engine, result: null }))
+        );
+      }
+
+      if (gReady) pushEngine(signal => translateGoogle([text], target, signal), GOOGLE_TIMEOUT, 'g');
+      if (mReady) pushEngine(signal => translateMs([text], target, signal), MS_TIMEOUT, 'ms');
+      if (tReady) pushEngine(signal => translateTencent([text], target, signal), 12000, 'tc');
+      if (!promises.length) {
+        try {
+          const l = await translateLegacy([text], target);
+          return l?.[0] || text;
+        } catch { return text; }
+      }
+
+      const usablePromises = promises.map(p =>
+        p.then(res => {
+          if (res?.result && accept(res.result)) return res;
+          throw new Error('empty translation');
+        })
       );
-    }
 
-    if (gReady) pushEngine(signal => translateGoogle([text], target, signal), GOOGLE_TIMEOUT, 'g');
-    if (mReady) pushEngine(signal => translateMs([text], target, signal), MS_TIMEOUT, 'ms');
-    if (tReady) pushEngine(signal => translateTencent([text], target, signal), 12000, 'tc');
-    if (!promises.length) {
+      const res = await Promise.any(usablePromises).catch(() => null);
+      if (res?.result && accept(res.result)) {
+        controllers.forEach(c => c.abort(Object.assign(new Error('done'), { code: 'DONE' })));
+        if (res.engine === 'g') gFail = 0;
+        else if (res.engine === 'ms') mFail = 0;
+        else if (res.engine === 'tc') tFail = 0;
+        cacheSet(n, target, res.result);
+        return res.result;
+      }
+
+      // Fallback: legacy для непереведённых
+      controllers.forEach(c => c.abort(Object.assign(new Error('fallback'), { code: 'FALLBACK' })));
       try {
         const l = await translateLegacy([text], target);
-        return l?.[0] || text;
-      } catch { return text; }
+        if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
+      } catch {}
+
+      return text;
+    } finally {
+      _inflightOne.delete(key);
     }
-
-    const usablePromises = promises.map(p =>
-      p.then(res => {
-        if (res?.result && accept(res.result)) return res;
-        throw new Error('empty translation');
-      })
-    );
-
-    const res = await Promise.any(usablePromises).catch(() => null);
-    if (res?.result && accept(res.result)) {
-      controllers.forEach(c => c.abort(Object.assign(new Error('done'), { code: 'DONE' })));
-      if (res.engine === 'g') gFail = 0;
-      else if (res.engine === 'ms') mFail = 0;
-      else if (res.engine === 'tc') tFail = 0;
-      cacheSet(n, target, res.result);
-      return res.result;
-    }
-
-    // Fallback: legacy для непереведённых
-    controllers.forEach(c => c.abort(Object.assign(new Error('fallback'), { code: 'FALLBACK' })));
-    try {
-      const l = await translateLegacy([text], target);
-      if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
-    } catch {}
-
-    return text;
   }
 
   async function translateOne(text, toLang) {
