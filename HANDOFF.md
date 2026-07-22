@@ -260,6 +260,7 @@
 | `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode); **Аудит:** segment transition `background-color` → `opacity`; `will-change: transform` на `.ember-core` |
 | `qr-panel.js` | Замена кастомного QR-генератора (~460 строк) на `qrcode-generator.js` (Kazuhiko Arase, MIT). typeNumber=0 (auto v1-40), UTF-8, EC авто-понижение. Ёмкость: 60→2953 байт. `_computeReserved()` для function/data модулей. Стили видны при moduleSize≥2. Убрана цитата H. Stark. moduleSize 1-12px. |
 | `styles.css` | `capturePulse` infinite → 1; `prefers-reduced-motion` для capturePulse; `.timer-input-error` + `@keyframes timerInputShake`; **QR Panel:** `.qr-canvas-wrap` flex:1, `.qr-canvas` width:100% + image-rendering:pixelated, удалён `.qr-tech-limit` |
+| `Shut Up and Translate 3 5.txt` | **SUAT 3.6:** `chunkTexts(maxChars=4000)` — character-based chunking для g2/ms/tencent (было 50/100 items); `asCandidate()` в `translateVisible()` — `Promise.any()` ждёт первый usable engine (было: пустой результат = success); `setupScrollPrefetch` — viewport-relative координаты (`rect.bottom > -500 && rect.top < viewH+3000` вместо смешанных doc/viewport) |
 
 ## Как работает
 
@@ -1905,3 +1906,137 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 - `2488e0c` — off-by-one фикс
 
 **Файлы:** `text-format.js`, `styles.css`
+
+---
+
+## 6. Mini-chat: send() — гарантированное сохранение + inputHistory
+
+**Проблема:** При отправке сообщения в мини-чат (`send()`) пользовательское сообщение пушится в `_history`, но `_saveCurrentSession()` вызывается только в `finally` после async LLM-запроса. Если между push и finally `_history` перезаписывается (вызовом `_open()`, `ensureSession()`), история теряется, а заголовок остаётся — он был задан напрямую на `_sessions[_sessionIdx]` до await. Также `_inputHistory` (↑/↓) не сохранялся в localStorage.
+
+**Фикс:**
+1. Флаг `_sending` — блокирует перезапись `_history` в `_open()` и `ensureSession()` пока идёт `send()`
+2. `_saveCurrentSession()` вызывается сразу после push пользователя (до async), гарантируя сохранение
+3. `_inputHistory` теперь сохраняется в localStorage как часть данных сессии и восстанавливается при загрузке
+
+**Коммит:** `2447b39`
+
+**Файлы:** `llm-features.js` (MiniChat: флаг `_sending`, `_open()`, `ensureSession()`, `send()`, `_saveSessions()`, `_loadSessions()`)
+
+---
+
+## 7. Audit: translator.js — 4 улучшения
+
+**Источник:** Аудит от GPT-5 (файл `NEW 33 (1).txt`). Проверено по коду, отфильтровано.
+
+**Применённые пункты:**
+
+1. **`protectTemplates` — детерминированный namespace.** Было: `Date.now() + Math.random()` каждый вызов → кэш никогда не попадает для шаблонов. Стало: счётчик `_tplNs` с проверкой коллизий → один и тот же текст даёт одинаковый protected-ключ.
+
+2. **`_doTranslateOneVisible` — фильтрация по `settings.engine`.** Было: при `engine: 'microsoft'` запускались Google + Tencent + MS. Стало: `pushEngine` вызывается только для `sel === 'auto'` или совпадающего движка.
+
+3. **`gFail` двойной подсчёт.** Было: при быстрой ошибке Google `gFail++` в `catch` + `gFail++` в `else` = 2 за один сбой. Стало: `catch` возвращает `{_err: true}`, `else` проверяет маркер и не считает повторно.
+
+4. **BroadcastChannel — валидация + MAX_CACHE.** Было: входящие `cache-set` без проверки типов/размера. Стало: проверка `typeof`, `length > MAX_CACHE_TEXT_LEN`, `Number.isFinite(ts)`, обрезка до `MAX_CACHE`.
+
+**Коммит:** `6ec10f8`
+
+**Файлы:** `translator.js`
+
+---
+
+## 8. Audit round 2: translator.js — 5 улучшений
+
+**Источник:** Второй аудит (файл `NEW 33 (2).txt`).
+
+**Применённые пункты:**
+
+1. **Дедупликация в `translate()`.** Было: одинаковые строки в батче дублируют сетевые запросы. Стало: `pendingByKey` Map группирует по `norm(t)`, уникальные ключи отправляются один раз, результат применяется ко всем индексам через `src[j].indices`.
+
+2. **`awaitWithSignal` + Google key fetch.** Было: `fetchGoogleKey()` без `signal` — отмена контроллера не отменяла ожидание ключа (до 8с). Стало: `awaitWithSignal(fetchGoogleKey(), signal)` — каждый потребитель отменяем независимо.
+
+3. **`protectTemplates` — локальный `ns = 0`.** Было: глобальный `_tplNs` → одинаковый текст получает разный prefix. Стало: `let ns = 0` локально → одинаковый текст → одинаковый prefix → кэш попадает.
+
+4. **Legacy fallback уважает выбор движка.** Было: при заблокированном выбранном движке падал на `translateLegacy`. Стало: `if (sel !== 'auto' && sel !== 'legacy') return text;` — при выбранном Google/MS/Tencent возврат исходного текста.
+
+5. **BroadcastChannel key length.** Добавлена проверка `d.key.length > MAX_CACHE_TEXT_LEN + 16`.
+
+**Коммит:** `5e67f04`
+
+**Файлы:** `translator.js`
+
+---
+
+## 9. Audit round 3: translator.js — 3 улучшения
+
+**Источник:** Третий аудит (файл `NEW 33 (3).txt`).
+
+**Применённые пункты:**
+
+1. **`awaitWithSignal` — cleanup в `finally`.** Было: `{ once: true }` не удалял обработчик при раннем разрешении promise. Стало: `signal.removeEventListener('abort', onAbort)` в `finally` — нет утечки замыканий.
+
+2. **Legacy fallback только в `auto`.** Было: второй legacy fallback (после `Promise.any`) безусловный — при `sel: 'google'` и ошибке Google текст уходил в legacy. Стало: `if (sel === 'auto')` — при выбранном движке возврат исходного текста.
+
+3. **Дедупликация по `raw`, кэш по `norm`.** Было: дедуп по `norm(t)` — `Hello world` и `Hello\n\nworld` объединялись. Стало: вложенный Map `norm → raw → entry` — разные raw с одинаковым norm отправляются отдельно.
+
+**Коммит:** `602eb60`
+
+**Файлы:** `translator.js`
+
+---
+
+## 10. Character-based chunking (вдохновлено UTST)
+
+**Источник:** Сравнение с `Text Selection Translator.txt` (UTST).
+
+**Анализ UTST:** Простой userscript с одним движком (Google free API `gtx`). Не имеет кэша, дедупа, шаблонов, rate-limit handling. Наш `translator.js` значительно продвинутее.
+
+**Применённое улучшение:** Character-based chunking вместо фиксированных 50/100 элементов.
+
+- Было: Google/Tencent — 50 элементов, MS — 100 элементов на чанк
+- Стало: `chunkTexts()` — максимум 4000 символов на чанк
+- Преимущество: предотвращает oversized payloads при длинных текстах
+
+**Коммит:** `14c11fd`
+
+**Файлы:** `translator.js`
+
+---
+
+## 11. Audit round 5: chunkTexts — offset, maxItems, TEXT_TOO_LONG
+
+**Источник:** Пятый аудит (файл `NEW 33 (5).txt`).
+
+**Применённые пункты:**
+
+1. **Offset в возврате `chunkTexts`.** Было: возвращает массив массивов, адаптеры пересчитывают offset суммированием O(n²). Стало: возвращает `{ items, offset }` — offset known immediately.
+
+2. **`maxItems` параметр.** Было: только `maxChars`. Стало: `chunkTexts(texts, { maxChars, maxItems })` — Google: 50, MS: 100, Tencent: 50.
+
+3. **`TEXT_TOO_LONG` для длинных строк.** Было: строка > `maxChars` молча попадала в чанк. Стало: `throw RangeError` с `code: 'TEXT_TOO_LONG'`.
+
+**Коммит:** `f626857`
+
+**Файлы:** `translator.js`
+
+---
+
+### Shut Up and Translate 3.6 — аудит (задание 6)
+
+**Файл:** `Shut Up and Translate 3 5.txt` (userscript)
+
+**Исправления:**
+
+1. **Character-based chunking** — `chunkTexts(maxChars=4000)` заменяет фиксированные батчи по 50/100 элементов в `g2()`, `ms()`, `tencent()`. Раньше один элемент в 10к символов ломал API или зависал по таймауту.
+
+2. **Promise.any() fix** — `translateVisible()` использовал `.catch(() => ({ results: null }))` что превращало ошибку в успешный результат. `Promise.any()` завершался по первому завершению, даже если перевод пустой. Исправлено через `asCandidate()` — пустой результат отклоняется, `Promise.any()` ждёт первый реально работающий движок.
+
+3. **setupScrollPrefetch координаты** — `rect.top` (viewport-relative) сравнивался с `scrollY - 500` (document-relative). После прокрутки prefetch ломался. Исправлено на viewport-relative: `rect.bottom > -500 && rect.top < viewH + 3000`.
+
+**Пропущено (из аудита):**
+- Retry-After header — полезно, но требует проброски через все engine handlers
+- Abort active requests — сложный рефактор, результат игнорируется через `this.act` check
+- Cache TTL — низкий приоритет, кэш и так ограничен `MAX_CACHE_SIZE`
+
+**Коммит:** `a5ec434`
+
+**Файлы:** `Shut Up and Translate 3 5.txt`
