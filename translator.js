@@ -799,19 +799,26 @@ const Translator = (() => {
     if (engine === 'auto') {
       let gPromise = null;
       let gSrc = null;
+      let gCtrl = null;
 
       // Google head start
       if (rem.length && Date.now() >= gBlockUntil) {
         gSrc = rem;
-        gPromise = translateGoogle(gSrc.map(x => x.t), toLang, signal)
+        gCtrl = new AbortController();
+        const gSignal = gCtrl.signal;
+        const onParentAbort = () => gCtrl.abort();
+        if (signal.aborted) gCtrl.abort();
+        else signal.addEventListener('abort', onParentAbort, { once: true });
+        gPromise = translateGoogle(gSrc.map(x => x.t), toLang, gSignal)
           .catch(e => {
-            if (e?.name === 'AbortError' || signal.aborted) return null;
+            if (e?.name === 'AbortError' || gSignal.aborted || signal.aborted) return null;
             gFail++;
             _stats.failed++;
             if (e?.retryAfterMs) gBlockUntil = Date.now() + e.retryAfterMs;
             else if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
             return null;
-          });
+          })
+          .finally(() => signal.removeEventListener('abort', onParentAbort));
         const gQuick = await Promise.race([
           gPromise.then(r => ({ done: true, r })),
           sleep(1200).then(() => ({ done: false }))
@@ -821,6 +828,9 @@ const Translator = (() => {
           if (gQuick.r && gQuick.r.length && !gQuick.r.every(v => !v)) {
             applyIfEmpty(gQuick.r, gSrc);
             gFail = 0;
+          } else {
+            gFail++;
+            if (gFail >= 3) gBlockUntil = Date.now() + 5 * 60 * 1000;
           }
           rem = refreshRem(gSrc);
           gPromise = null; // already consumed
@@ -832,6 +842,12 @@ const Translator = (() => {
       if (rem.length) {
         await runMsTencent(rem);
         rem = refreshRem(gSrc || rem);
+      }
+
+      // Abort Google if everything is covered
+      if (gCtrl && gPromise && !rem.length) {
+        gCtrl.abort(Object.assign(new Error('covered'), { code: 'COVERED' }));
+        gPromise = null;
       }
 
       // Wait for Google if it's still running and there are remaining items
@@ -980,7 +996,8 @@ const Translator = (() => {
       // Track errors from all engines
       const allResults = await Promise.all(promises);
       for (const r of allResults) {
-        if (!r.error) continue;
+        const failedResult = r.error || !r.result || !accept(r.result);
+        if (!failedResult) continue;
         _stats.failed++;
         if (r.engine === 'g') {
           gFail++;
