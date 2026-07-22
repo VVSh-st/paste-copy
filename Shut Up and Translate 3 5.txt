@@ -2,7 +2,7 @@
 // @name         Shut Up and Translate - Заткнись и переведи
 // @name:ru      Заткнись и переведи - Shut Up and Translate
 // @namespace    https://docs.scriptcat.org/
-// @version      3.6
+// @version      3.7
 // @description  Shut Up and Translate - RU translation. Google→MS→Tencent→legacy fallback. CJK. Slang tooltips. Unit conversion. BroadcastChannel cache. Alt+A.
 // @description:ru Shut Up and Translate - перевод на русский. Google→MS→Tencent→запасной. CJK. Подсказки сленга. Конвертация единиц. Кэш BroadcastChannel. Alt+A.
 // @icon         data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129'/%3E%3C/svg%3E
@@ -104,6 +104,7 @@ const retry = async (fn, canRetry, m = 2, d = 700) => {
   }
 };
 const makeHttpError = status => { const e = new Error('http ' + status); e.status = status; return e; };
+const retryAfterMs = h => { const m = String(h || '').match(/^retry-after:\s*(\d+)/im); return m ? Number(m[1]) * 1000 : 0; };
 
 // djb2 — быстрый строковый хэш для дедупликации мутаций
 const hashStr = s => {
@@ -184,7 +185,28 @@ const containsForeignScript = s => /[\u0600-\u06FF\u0750-\u077F\u0590-\u05FF\u09
 const isLikelyUnitTypo = s => /\bibs\b/i.test(s);
 
 const TOKEN_RE = /__SLG\d+__/g;
-const RICH_TOKEN_RE = /(__SLG\d+__|UZXQ\d+U|QZXT\d+Q)/g;
+const RICH_TOKEN_RE = /(__SLG\d+__|UZXQ\d+U|QZXT\d+Q|ZXTMPL\d+Q)/g;
+
+const TEMPLATE_RE = /(\{\{[^}\n]{1,200}\}\}|\$\{[^}\n]{1,200}\}|\$[A-Z_][A-Z0-9_]*\b|\[\[[^\]\n]{1,200}\]\]|%[A-Z_][A-Z0-9_]*%|\{\d+\})/g;
+const Templates = {
+  protect(text) {
+    const map = []; let i = 0;
+    const out = text.replace(TEMPLATE_RE, original => {
+      const token = `ZXTMPL${i++}Q`;
+      map.push({ token, original });
+      return token;
+    });
+    return { text: out, map };
+  },
+  restore(text, map) {
+    let out = text;
+    for (const { token, original } of map || []) {
+      if (out.includes(token)) { out = out.split(token).join(original); continue; }
+      out = out.replace(new RegExp(token.split('').join('\\s*'), 'g'), original);
+    }
+    return out;
+  }
+};
 
 // =need=
 const need = t => {
@@ -1016,13 +1038,13 @@ const API = {
 
   gOpen()  { return Date.now() < this.gBlockUntil; },
   gOk()    { this.gFail = 0; },
-  gBad()   { if (++this.gFail >= CONFIG.GOOGLE_BREAK_FAILS) this.gBlockUntil = Date.now() + CONFIG.GOOGLE_BREAK_MS; },
+  gBad(e)   { if (e?.retryAfterMs) { this.gBlockUntil = Date.now() + e.retryAfterMs; return; } if (++this.gFail >= CONFIG.GOOGLE_BREAK_FAILS) this.gBlockUntil = Date.now() + CONFIG.GOOGLE_BREAK_MS; },
   msOpen() { return Date.now() < this.msBlockUntil; },
   msOk()   { this.msFail = 0; },
-  msBad()  { if (++this.msFail >= CONFIG.MS_BREAK_FAILS) this.msBlockUntil = Date.now() + CONFIG.MS_BREAK_MS; },
+  msBad(e)  { if (e?.retryAfterMs) { this.msBlockUntil = Date.now() + e.retryAfterMs; return; } if (++this.msFail >= CONFIG.MS_BREAK_FAILS) this.msBlockUntil = Date.now() + CONFIG.MS_BREAK_MS; },
   tcOpen() { return Date.now() < this.tBlockUntil; },
   tcOk()   { this.tFail = 0; },
-  tcBad()  { if (++this.tFail >= CONFIG.TENCENT_BREAK_FAILS) this.tBlockUntil = Date.now() + CONFIG.TENCENT_BREAK_MS; },
+  tcBad(e)  { if (e?.retryAfterMs) { this.tBlockUntil = Date.now() + e.retryAfterMs; return; } if (++this.tFail >= CONFIG.TENCENT_BREAK_FAILS) this.tBlockUntil = Date.now() + CONFIG.TENCENT_BREAK_MS; },
 
   tencentKey() {
     if (!this._tKey) this._tKey = 'browser-chrome-120.0-Windows_10-' + crypto.randomUUID() + '-' + Date.now();
@@ -1059,7 +1081,7 @@ const API = {
           catch { resolve(chunk.map(() => null)); }
           return;
         }
-        reject(makeHttpError(x.status));
+        { const e = makeHttpError(x.status); if (x.status === 429) e.retryAfterMs = retryAfterMs(x.responseHeaders); reject(e); }
       },
       onerror: () => reject(new Error('ms')), ontimeout: () => reject(new Error('ms timeout'))
     }));
@@ -1088,7 +1110,7 @@ const API = {
               continue;
             } catch {}
           }
-          if (e?.status === 429) stop = true;
+          if (e?.status === 429) { this.msBad(e); stop = true; }
           for (let j = 0; j < chunk.length; j++) results[offset + j] = null;
         }
       }
@@ -1117,7 +1139,7 @@ const API = {
             data: JSON.stringify([[c, 'auto', to], 'te']),
             timeout: 15000,
             onload: x => {
-              if (x.status === 429) return reject(makeHttpError(429));
+              if (x.status === 429) { const e = makeHttpError(429); e.retryAfterMs = retryAfterMs(x.responseHeaders); return reject(e); }
               try { resolve(JSON.parse(x.responseText)[0].map(v => (v || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())); }
               catch { resolve(c.map(() => null)); }
             },
@@ -1125,7 +1147,7 @@ const API = {
           })), e => e?.status !== 429, 2, 700);
           for (let j = 0; j < res.length; j++) results[offset + j] = res[j];
         } catch (e) {
-          if (e?.status === 429) stop = true;
+          if (e?.status === 429) { this.gBad(e); stop = true; }
           for (let j = 0; j < c.length; j++) results[offset + j] = null;
         }
       }
@@ -1178,7 +1200,7 @@ const API = {
       }),
       timeout: CONFIG.TENCENT_TIMEOUT_MS,
       onload: x => {
-        if (x.status !== 200) return reject(makeHttpError(x.status));
+        if (x.status !== 200) { const e = makeHttpError(x.status); if (x.status === 429) e.retryAfterMs = retryAfterMs(x.responseHeaders); return reject(e); }
         try {
           const data = JSON.parse(x.responseText);
           const out = data?.auto_translation;
@@ -1204,7 +1226,7 @@ const API = {
           const res = await retry(() => this.tencentChunk(chunk, to), e => e?.status !== 429, 2, 700);
           for (let j = 0; j < res.length; j++) results[offset + j] = res[j];
         } catch (e) {
-          if (e?.status === 429) stop = true;
+          if (e?.status === 429) { this.tcBad(e); stop = true; }
           for (let j = 0; j < chunk.length; j++) results[offset + j] = null;
         }
       }
@@ -1831,6 +1853,7 @@ const Tr = {
       const e = inf.e;
       if (!e?.isConnected) return;
       let out = fullHtmlDecode(pack.tr);
+      out = Templates.restore(out, pack.templateMeta?.map);
       const restored = Units.restoreText(out, pack.unitMeta);
       out = restored.text;
       if (pack.unitMeta?.hasUnits && !restored.full) out = Units.fallbackConvert(out, pack.src);
@@ -1861,6 +1884,7 @@ const Tr = {
   buildTextResult(pack) {
     if (pack.rendered) return pack.rendered;
     let out = fullHtmlDecode(pack.tr);
+    out = Templates.restore(out, pack.templateMeta?.map);
     const restored = Units.restoreTokens(out, pack.unitMeta);
     out = restored.text;
 
@@ -1978,14 +2002,15 @@ const Tr = {
       const o = inf._n;
       if (!o) continue;
       if (!m.has(o)) {
-        let send = o, ph = null, unitMeta;
+        let send = o, ph = null, unitMeta, templateMeta;
+        templateMeta = Templates.protect(o);
         if (!inf.a) {
-          const prep = slangPrep(o); send = prep.send; ph = prep.ph;
+          const prep = slangPrep(templateMeta.text); send = prep.send; ph = prep.ph;
           unitMeta = Units.protect(send); send = unitMeta.text;
         } else {
-          unitMeta = Units.protect(o); send = unitMeta.text;
+          unitMeta = Units.protect(templateMeta.text); send = unitMeta.text;
         }
-        m.set(o, { list: [], send, ph, unitMeta, rendered: null, tr: null, src: o });
+        m.set(o, { list: [], send, ph, unitMeta, templateMeta, rendered: null, tr: null, src: o });
         u.push(o);
       }
       m.get(o).list.push(inf);
