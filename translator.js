@@ -99,21 +99,31 @@ const Translator = (() => {
   }
 
   const CHUNK_MAX_CHARS = 4000;
-  function chunkTexts(texts) {
+  function chunkTexts(texts, { maxChars = CHUNK_MAX_CHARS, maxItems = Infinity } = {}) {
     const chunks = [];
-    let current = [];
-    let currentLen = 0;
-    for (const t of texts) {
-      const tLen = String(t).length;
-      if (current.length && currentLen + tLen > CHUNK_MAX_CHARS) {
-        chunks.push(current);
-        current = [];
-        currentLen = 0;
+    let items = [];
+    let chars = 0;
+    let offset = 0;
+
+    const push = () => {
+      if (!items.length) return;
+      chunks.push({ items, offset });
+      offset += items.length;
+      items = [];
+      chars = 0;
+    };
+
+    for (const text of texts) {
+      const length = String(text).length;
+      if (length > maxChars) {
+        throw Object.assign(new RangeError(`Text is too long: ${length} > ${maxChars}`), { code: 'TEXT_TOO_LONG' });
       }
-      current.push(t);
-      currentLen += tLen;
+      if (items.length && (items.length >= maxItems || chars + length > maxChars)) push();
+      items.push(text);
+      chars += length;
     }
-    if (current.length) chunks.push(current);
+
+    push();
     return chunks;
   }
 
@@ -486,7 +496,7 @@ const Translator = (() => {
     if (!key) throw new Error(`Google auth failed${googleKeyError ? ': ' + googleKeyError : ''}`);
     _stats.googleRequests++;
     const CONCURRENCY = 3;
-    const chunks = chunkTexts(texts);
+    const chunks = chunkTexts(texts, { maxChars: CHUNK_MAX_CHARS, maxItems: 50 });
     const results = new Array(texts.length).fill(null);
     let next = 0;
     let stop = false;
@@ -494,9 +504,7 @@ const Translator = (() => {
       while (!stop && next < chunks.length) {
         if (signal?.aborted) break;
         const ci = next++;
-        const chunk = chunks[ci];
-        let offset = 0;
-        for (let k = 0; k < ci; k++) offset += chunks[k].length;
+        const { items: chunk, offset } = chunks[ci];
         try {
           const r = await fetchWithTimeout(
             'https://translate-pa.googleapis.com/v1/translateHtml',
@@ -579,7 +587,7 @@ const Translator = (() => {
     _stats.msRequests++;
     const tg = MS_LANG_MAP[to] || to;
     const CONCURRENCY = 3;
-    const chunks = chunkTexts(texts);
+    const chunks = chunkTexts(texts, { maxChars: CHUNK_MAX_CHARS, maxItems: 100 });
     const results = new Array(texts.length).fill(null);
     let next = 0;
     let stop = false;
@@ -587,9 +595,7 @@ const Translator = (() => {
       while (!stop && next < chunks.length) {
         if (signal?.aborted) break;
         const ci = next++;
-        const chunk = chunks[ci];
-        let offset = 0;
-        for (let k = 0; k < ci; k++) offset += chunks[k].length;
+        const { items: chunk, offset } = chunks[ci];
         try {
           const r = await fetchWithTimeout(
             `https://api-edge.cognitive.microsofttranslator.com/translate?to=${encodeURIComponent(tg)}&api-version=3.0`,
@@ -645,7 +651,7 @@ const Translator = (() => {
     _stats.tencentRequests++;
     const tg = TENCENT_LANG_MAP[to] || to;
     const CONCURRENCY = 3;
-    const chunks = chunkTexts(texts);
+    const chunks = chunkTexts(texts, { maxChars: CHUNK_MAX_CHARS, maxItems: 50 });
     const results = new Array(texts.length).fill(null);
     let next = 0;
     let stop = false;
@@ -653,9 +659,7 @@ const Translator = (() => {
       while (!stop && next < chunks.length) {
         if (signal?.aborted) break;
         const ci = next++;
-        const chunk = chunks[ci];
-        let offset = 0;
-        for (let k = 0; k < ci; k++) offset += chunks[k].length;
+        const { items: chunk, offset } = chunks[ci];
         try {
           const r = await fetchWithTimeout(
             'https://transmart.qq.com/api/imt',
