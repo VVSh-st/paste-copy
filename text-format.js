@@ -7,6 +7,8 @@
 window.TextFormat = (() => {
   const STORAGE_KEY = 'text-format-last';
   const STORAGE_VARS = 'text-format-vars';
+  const STORAGE_RECENT = 'text-format-recent';
+  const MAX_RECENT = 5;
 
   const RU_COLLATOR = new Intl.Collator('ru');
 
@@ -128,6 +130,23 @@ window.TextFormat = (() => {
   function _saveLastItem(id) { try { localStorage.setItem(STORAGE_KEY, id); } catch {} }
   function _saveVars() { try { localStorage.setItem(STORAGE_VARS, JSON.stringify(_vars)); } catch {} }
 
+  // ── Последние пункты (быстрый выбор) ─────────────────────
+  let _recentIds = [];
+  function _loadRecent() {
+    try {
+      const raw = localStorage.getItem(STORAGE_RECENT);
+      const arr = raw ? JSON.parse(raw) : null;
+      _recentIds = Array.isArray(arr) ? arr.filter(id => ITEM_BY_ID.has(id)).slice(0, MAX_RECENT) : [];
+    } catch { _recentIds = []; }
+  }
+  function _saveRecent() { try { localStorage.setItem(STORAGE_RECENT, JSON.stringify(_recentIds)); } catch {} }
+  function _recordRecent(id) {
+    _recentIds = _recentIds.filter(x => x !== id);
+    _recentIds.unshift(id);
+    if (_recentIds.length > MAX_RECENT) _recentIds.length = MAX_RECENT;
+    _saveRecent();
+  }
+
   function _getVarIdx(item) {
     if (!item.vars?.length) return 0;
     const saved = Number(_vars[item.id]);
@@ -156,6 +175,7 @@ window.TextFormat = (() => {
       const result = item.fn(source, varVal);
       _lastItem = item.id;
       _saveLastItem(item.id);
+      _recordRecent(item.id);
       updateButtonIcon(btn);
       if (result === source) return;
       const scrollTop = textarea.scrollTop;
@@ -298,11 +318,38 @@ window.TextFormat = (() => {
   function showMenu(ta, x, y, btn) {
     hideMenu();
     _loadState();
+    _loadRecent();
     _menuBtn = btn || _btnEl;
     const popup = document.createElement('div');
     popup.className = 'tf-menu';
     popup.setAttribute('role', 'menu');
     _popup = popup;
+
+    // ── Быстрый выбор: таблетки последних пунктов ──────────
+    if (_recentIds.length) {
+      const header = document.createElement('div');
+      header.className = 'tf-recent-header';
+      _recentIds.forEach(id => {
+        const item = ITEM_BY_ID.get(id);
+        if (!item) return;
+        const pill = document.createElement('button');
+        pill.type = 'button';
+        pill.className = 'tf-recent-pill';
+        pill.textContent = String(ITEM_INDEX_BY_ID.get(item.id) + 1).padStart(2, '0');
+        pill.title = item.name;
+        pill.addEventListener('click', e => {
+          e.stopPropagation();
+          _lastItem = item.id;
+          _saveLastItem(item.id);
+          _recordRecent(item.id);
+          updateButtonIcon();
+          execute(item, ta, _menuBtn);
+          hideMenu();
+        });
+        header.appendChild(pill);
+      });
+      popup.appendChild(header);
+    }
 
     // Group items by tier (precomputed)
     const fragment = document.createDocumentFragment();

@@ -7774,6 +7774,35 @@ body.help-open {
 }
 .tf-menu::-webkit-scrollbar { display: none; }
 
+/* Quick select header */
+.tf-recent-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.tf-recent-pill {
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--accent, #4f8ef7);
+  background: rgba(79,142,247,0.1);
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  min-width: 8ch;
+  text-align: center;
+}
+.tf-recent-pill:hover {
+  background: rgba(79,142,247,0.2);
+  border-color: rgba(79,142,247,0.3);
+}
+.tf-recent-pill:active {
+  background: rgba(79,142,247,0.3);
+}
+
 /* Menu items */
 .tf-menu-item {
   display: flex;
