@@ -3693,7 +3693,7 @@ const AutoPoet = (() => {
       _updateNavButtons();
       _inputEl()?.focus();
     }
-    function close() { const p = _panel(); if (p) p.style.display = 'none'; }
+    function close() { _saveCurrentSession(); const p = _panel(); if (p) p.style.display = 'none'; }
 
     function _saveWinGeometry() {
       const p = _panel();
@@ -3710,7 +3710,9 @@ const AutoPoet = (() => {
         const data = { sessions: _sessions, sessionIdx: _sessionIdx, fontSize: _fontSize };
         if (_savedWin) data.win = _savedWin;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch {}
+      } catch (e) {
+        console.warn('[MiniChat] _saveSessions failed:', e?.message);
+      }
     }
 
     function _loadSessions() {
@@ -4232,8 +4234,10 @@ const AutoPoet = (() => {
 
       try {
         if (!LLMCore?.request) throw new Error('LLMCore is unavailable');
+        const depth = stateRef?.getLayout?.()?.llm?.bro?.chatDepth ?? 6;
+        const apiHistory = _history.length > depth * 2 ? _history.slice(-depth * 2) : _history;
         const result = await LLMCore.request({
-          messages:   [{ role: 'system', content: system }, ..._history],
+          messages:   [{ role: 'system', content: system }, ...apiHistory],
           stream:     true,
           onChunk:    chunk => appendChunk(chunk),
           signal:     _currentAbort.signal,
@@ -4244,11 +4248,6 @@ const AutoPoet = (() => {
         if (String(result ?? '').trim()) {
           window.PromptLoom?.record?.(result, 'llm', { via: 'mini-chat', prompt: userText.slice(0, 240) });
         }
-
-        _saveCurrentSession();
-
-        const depth = stateRef?.getLayout?.()?.llm?.bro?.chatDepth ?? 6;
-        if (_history.length > depth * 2) _history.splice(0, _history.length - depth * 2);
       } catch (e) {
         finalizeLastMessage('');
       if (e.name !== 'AbortError') {
