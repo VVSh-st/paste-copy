@@ -148,13 +148,13 @@ const Translator = (() => {
   // {{...}}, $VAR, !теги — не переводим
   const TMPL_RE = /(\{\{[^}\n]{1,200}\}\}|\$[A-Z_][A-Z0-9_]*\b|\$\{[^}\n]{1,200}\}|\[\[[^\]\n]{1,200}\]\]|%[A-Z_][A-Z0-9_]*%|\{\d+\}|![а-яёА-ЯЁ]+\b)/g;
 
-  let _tplNs = 0;
   function protectTemplates(text) {
     const tokens = [];
     let i = 0;
-    let ns = _tplNs;
+    let ns = 0;
+
     while (text.includes(`\u27E6TRPL${ns}_`)) ns++;
-    _tplNs = ns + 1;
+
     const prefix = `\u27E6TRPL${ns}_`;
     const protected_ = text.replace(TMPL_RE, m => {
       const token = `${prefix}${i++}\u27E7`;
@@ -450,8 +450,19 @@ const Translator = (() => {
     }
   }
 
+  function awaitWithSignal(promise, signal) {
+    if (!signal) return promise;
+    if (signal.aborted) return Promise.reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason || new DOMException('Aborted', 'AbortError')), { once: true });
+      }),
+    ]);
+  }
+
   async function translateGoogle(texts, to, signal) {
-    const key = await fetchGoogleKey();
+    const key = await awaitWithSignal(fetchGoogleKey(), signal);
     if (!key) throw new Error(`Google auth failed${googleKeyError ? ': ' + googleKeyError : ''}`);
     _stats.googleRequests++;
     const CONCURRENCY = 3;
@@ -722,7 +733,7 @@ const Translator = (() => {
     if (!toLang) toLang = resolveTargetLang(texts[0] || '');
     else toLang = normalizeTargetLang(toLang);
     const out = new Array(texts.length).fill(null);
-    const todo = [], idx = [];
+    const pendingByKey = new Map();
 
     texts.forEach((t, i) => {
       const n = norm(t);
@@ -732,14 +743,17 @@ const Translator = (() => {
         return;
       }
       const c = cacheGet(n, toLang);
-      if (c !== undefined) out[i] = c;
-      else { todo.push({ raw: t, key: n }); idx.push(i); }
+      if (c !== undefined) { out[i] = c; return; }
+      const existing = pendingByKey.get(n);
+      if (existing) existing.indices.push(i);
+      else pendingByKey.set(n, { raw: t, key: n, indices: [i] });
     });
 
+    const todo = [...pendingByKey.values()];
     if (!todo.length) return out;
 
     const engine = settings.engine;
-    let rem = todo.map((x, i) => ({ t: x.raw, key: x.key, i }));
+    let rem = todo.map((x, i) => ({ t: x.raw, key: x.key, i, indices: x.indices }));
 
     const accept = (tr, src) => {
       if (!tr || !tr.trim()) return false;
@@ -752,7 +766,7 @@ const Translator = (() => {
         const tr = arr[j];
         if (accept(tr, src[j])) {
           cacheSet(src[j].key, toLang, tr);
-          out[idx[src[j].i]] = tr;
+          for (const oi of src[j].indices) out[oi] = tr;
         }
       }
     };
@@ -764,14 +778,13 @@ const Translator = (() => {
     const applyIfEmpty = (arr, src) => {
       for (let j = 0; j < src.length; j++) {
         const tr = arr[j];
-        const outIndex = idx[src[j].i];
-        if (out[outIndex] == null && accept(tr, src[j])) {
+        if (out[src[j].indices[0]] == null && accept(tr, src[j])) {
           cacheSet(src[j].key, toLang, tr);
-          out[outIndex] = tr;
+          for (const oi of src[j].indices) if (out[oi] == null) out[oi] = tr;
         }
       }
     };
-    const refreshRem = src => src.filter(x => out[idx[x.i]] == null);
+    const refreshRem = src => src.filter(x => out[x.indices[0]] == null);
 
     const runMsTencent = async (src) => {
       const mReady = Date.now() >= mBlockUntil;
@@ -987,11 +1000,12 @@ const Translator = (() => {
       if (mReady && (sel === 'auto' || sel === 'microsoft')) pushEngine(signal => translateMs([text], target, signal), MS_TIMEOUT, 'ms');
       if (tReady && (sel === 'auto' || sel === 'tencent')) pushEngine(signal => translateTencent([text], target, signal), 12000, 'tc');
       if (!promises.length) {
+        if (sel !== 'auto' && sel !== 'legacy') return text;
         try {
           const l = await translateLegacy([text], target);
           if (l?.[0] && accept(l[0])) { cacheSet(n, target, l[0]); return l[0]; }
-          return text;
-        } catch { return text; }
+        } catch {}
+        return text;
       }
 
       const usablePromises = promises.map(p =>
@@ -1122,6 +1136,7 @@ const Translator = (() => {
             if (
               d?.type !== 'cache-set' ||
               typeof d.key !== 'string' ||
+              d.key.length > MAX_CACHE_TEXT_LEN + 16 ||
               typeof d.text !== 'string' ||
               d.text.length > MAX_CACHE_TEXT_LEN ||
               !Number.isFinite(d.ts)
