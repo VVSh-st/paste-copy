@@ -260,7 +260,7 @@
 | `ember-styles.css` | Layered breathing: `.ember-core` → `--breathCore`, `.ember-crust` → `--breathCrust`, `.ember-glow` → `--breathGlow`, `.ember-ash-overlay` → `--breathAsh`, `.ember-haze` → `--breathAsh`; Crack color-shift: `--crack-c1`, `--crack-glow-color`, `drop-shadow`; `.ember-ash.landed`; `.ember-micro-sparks` + `.micro-spark`; `color-scheme: dark` на `.ember-slot` и `.ember` (обход Auto Dark Mode); **Аудит:** segment transition `background-color` → `opacity`; `will-change: transform` на `.ember-core` |
 | `qr-panel.js` | Замена кастомного QR-генератора (~460 строк) на `qrcode-generator.js` (Kazuhiko Arase, MIT). typeNumber=0 (auto v1-40), UTF-8, EC авто-понижение. Ёмкость: 60→2953 байт. `_computeReserved()` для function/data модулей. Стили видны при moduleSize≥2. Убрана цитата H. Stark. moduleSize 1-12px. |
 | `styles.css` | `capturePulse` infinite → 1; `prefers-reduced-motion` для capturePulse; `.timer-input-error` + `@keyframes timerInputShake`; **QR Panel:** `.qr-canvas-wrap` flex:1, `.qr-canvas` width:100% + image-rendering:pixelated, удалён `.qr-tech-limit` |
-| `Shut Up and Translate 3 5.txt` | **SUAT 3.6:** `chunkTexts(maxChars=4000)` — character-based chunking для g2/ms/tencent (было 50/100 items); `asCandidate()` в `translateVisible()` — `Promise.any()` ждёт первый usable engine (было: пустой результат = success); `setupScrollPrefetch` — viewport-relative координаты (`rect.bottom > -500 && rect.top < viewH+3000` вместо смешанных doc/viewport) |
+| `Shut Up and Translate 3 5.txt` | **SUAT 3.6:** `chunkTexts(maxChars=4000)` — character-based chunking для g2/ms/tencent (было 50/100 items); `asCandidate()` в `translateVisible()` — `Promise.any()` ждёт первый usable engine (было: пустой результат = success); `setupScrollPrefetch` — viewport-relative координаты (`rect.bottom > -500 && rect.top < viewH+3000` вместо смешанных doc/viewport); **SUAT 3.7:** `Templates.protect/restore` — защита `{{VAR}}`, `$VAR`, `[[ref]]`, `%VAR%`, `{0}` от перевода; `retryAfterMs()` — парсинг `Retry-After` header для circuit breaker (вместо фиксированных 3-5 мин) |
 
 ## Как работает
 
@@ -2033,10 +2033,32 @@ Viewport clamping в JS (`positionPalette`) при необходимости п
 3. **setupScrollPrefetch координаты** — `rect.top` (viewport-relative) сравнивался с `scrollY - 500` (document-relative). После прокрутки prefetch ломался. Исправлено на viewport-relative: `rect.bottom > -500 && rect.top < viewH + 3000`.
 
 **Пропущено (из аудита):**
-- Retry-After header — полезно, но требует проброски через все engine handlers
 - Abort active requests — сложный рефактор, результат игнорируется через `this.act` check
 - Cache TTL — низкий приоритет, кэш и так ограничен `MAX_CACHE_SIZE`
 
 **Коммит:** `a5ec434`
+
+**Файлы:** `Shut Up and Translate 3 5.txt`
+
+---
+
+### Shut Up and Translate 3.7 — шаблоны + Retry-After
+
+**Файл:** `Shut Up and Translate 3 5.txt` (userscript)
+
+**1. Защита шаблонов:**
+- `Templates.protect(text)` — заменяет `{{SERVICE_NAME}}`, `${API_TOKEN}`, `$VAR`, `[[ref]]`, `%VAR%`, `{0}` на `ZXTMPL0Q`, `ZXTMPL1Q`...
+- `Templates.restore(text, map)` — возвращает оригиналы (с fuzzy-матчингом для исправленных пробелов)
+- Порядок protect: Templates → Slang → Units
+- Порядок restore: Templates → Units → Slang (через buildRichNodes)
+- `RICH_TOKEN_RE` обновлён: добавлен `ZXTMPL\d+Q`
+
+**2. Retry-After header:**
+- `retryAfterMs(headers)` — парсит `Retry-After: 30` из response headers
+- `g2()`, `msChunk()`, `tencentChunk()` — при 429 прикрепляют `retryAfterMs` к ошибке
+- `gBad(e)`, `msBad(e)`, `tcBad(e)` — используют `retryAfterMs` для `gBlockUntil` вместо фиксированных `GOOGLE_BREAK_MS`
+- Если `Retry-After` нет — fallback на фиксированное время (3-5 мин)
+
+**Коммит:** `fdeeaf7`
 
 **Файлы:** `Shut Up and Translate 3 5.txt`
