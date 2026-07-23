@@ -1474,7 +1474,7 @@ textarea.block-textarea:focus {
   border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
   display: flex; flex-direction: column;
   width: 580px; max-width: calc(100vw - 24px);
-  height: 420px; min-height: 200px; max-height: 80vh;
+  height: 650px; min-height: 200px; max-height: 80vh;
   animation: tplPanelIn 0.18s ease;
 }
 @keyframes tplPanelIn {
@@ -1492,14 +1492,15 @@ textarea.block-textarea:focus {
 }
 .tpl-list { display: flex; flex-direction: column; gap: 6px; }
 .tpl-resize-handle {
-  flex: 0 0 auto; height: 8px;
-  margin: -4px -18px -14px -18px;
+  flex: 0 0 auto; height: 10px;
   cursor: ns-resize; position: relative;
+  margin: 0 -18px;
 }
 .tpl-resize-handle::after {
-  content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  content: ''; position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
   width: 36px; height: 4px; border-radius: 2px;
   background: var(--border2); opacity: 0.6;
+  transition: opacity 0.15s ease, background 0.15s ease;
 }
 .tpl-resize-handle:hover::after,
 .tpl-floating.tpl-resizing .tpl-resize-handle::after {
@@ -1520,8 +1521,13 @@ textarea.block-textarea:focus {
   margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
   font-size: 11px; color: var(--text2); line-height: 1.6;
   display: none;
+  animation: tplPreviewIn 0.15s ease;
 }
-.snap-row:hover .snap-preview { display: block; }
+@keyframes tplPreviewIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.snap-info:hover .snap-preview { display: block; }
 .snap-preview-item { display: inline; }
 .snap-preview-item::after { content: ' · '; color: var(--text3); }
 .snap-preview-item:last-child::after { content: ''; }

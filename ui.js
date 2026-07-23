@@ -2138,7 +2138,7 @@ const Templates = (() => {
     });
   }
 
-  function open()  { if (modal) { modal.style.display = 'flex'; _applyTplHeight(modal.getBoundingClientRect().height || 420); } renderList(); }
+  function open()  { if (modal) { modal.style.display = 'flex'; _applyTplHeight(modal.getBoundingClientRect().height || 650); } renderList(); }
   function close() { if (modal) modal.style.display = 'none'; }
 
   /* ── Превью блоков шаблона ── */
