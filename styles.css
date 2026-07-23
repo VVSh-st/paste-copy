@@ -1527,7 +1527,7 @@ textarea.block-textarea:focus {
   transition: opacity 0.2s ease, max-height 0.25s ease;
   background: var(--bg1); border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  z-index: 2;
+  z-index: 2; pointer-events: none;
 }
 .snap-preview.visible { opacity: 1; max-height: 120px; }
 .snap-preview-item { display: inline; }

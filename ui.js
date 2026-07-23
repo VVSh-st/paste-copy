@@ -2293,8 +2293,6 @@ const Templates = (() => {
       };
       useBtn.addEventListener('mouseenter', () => previewDiv.classList.add('visible'));
       useBtn.addEventListener('mouseleave', () => previewDiv.classList.remove('visible'));
-      previewDiv.addEventListener('mouseenter', () => previewDiv.classList.add('visible'));
-      previewDiv.addEventListener('mouseleave', () => previewDiv.classList.remove('visible'));
       acts.appendChild(useBtn);
 
       /* ── Кнопка «шаблон по умолчанию» ── */
