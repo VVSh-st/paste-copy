@@ -2956,7 +2956,6 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       document.removeEventListener('mousedown', _closeCaptureDropdown);
     });
 
-    footer.appendChild(captureBtn);
     body.appendChild(captureDropdown);
     footer.appendChild(thesaurusBtn);
     body.appendChild(thesaurusDropdown);
@@ -3032,7 +3031,8 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     }
     if (typeof marked !== 'undefined') {
       try {
-        mdEl.innerHTML = marked.parse(text);
+        const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        mdEl.innerHTML = marked.parse(safe);
       } catch (_) {
         mdEl.textContent = text;
       }

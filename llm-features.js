@@ -745,7 +745,7 @@ window.LLMFeatures = (() => {
         <div class="checklist-picker-subtitle">Какую заменить?</div>
         ${todoBlock.subtabs.map((s, i) => `
           <button class="checklist-picker-item" data-idx="${i}">
-            <span class="checklist-picker-name">${s.name || 'Вкладка ' + (i + 1)}</span>
+            <span class="checklist-picker-name">${_esc(s.name || 'Вкладка ' + (i + 1))}</span>
             <span class="checklist-picker-count">${s.items.length} пунктов</span>
           </button>
         `).join('')}
@@ -1709,7 +1709,10 @@ window.LLMFeatures = (() => {
   }
 
   function _applyToScope(ta, selStart, selEnd, newText) {
-    ta.setRangeText(newText, selStart, selEnd, 'end');
+    ta.focus();
+    ta.selectionStart = selStart;
+    ta.selectionEnd = selEnd;
+    document.execCommand('insertText', false, newText);
     ta.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
@@ -2544,14 +2547,17 @@ window.LLMFeatures = (() => {
     }
 
     function _appendAtCursor(ta, text) {
-      const pos = ta.selectionStart;
-      ta.setRangeText(text, pos, pos, 'end');
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = ta.selectionStart;
+      document.execCommand('insertText', false, text);
       ta.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     function _replaceAll(ta, newText) {
-      ta.value = newText;
-      ta.selectionStart = ta.selectionEnd = newText.length;
+      ta.focus();
+      ta.selectionStart = 0;
+      ta.selectionEnd = ta.value.length;
+      document.execCommand('insertText', false, newText);
       ta.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
@@ -3537,7 +3543,9 @@ const AutoPoet = (() => {
 
     const textToInsert = insertText + (needSpace ? ' ' : '');
 
-    ta.setRangeText(textToInsert, ghost.anchorPos, ghost.anchorPos, 'end');
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = ghost.anchorPos;
+    document.execCommand('insertText', false, textToInsert);
     _markAcceptedText(ta, ghost.anchorPos, textToInsert, needSpace);
 
     // Принятый AutoPoet-вариант попадает в Prompt Loom как отдельный источник.

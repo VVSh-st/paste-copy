@@ -8,7 +8,7 @@
 
 /* ---- Shared escape utility ---- */
 function escHtmlUi(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /* ---- scheduleSave bridge (set by app.js after load) ---- */
@@ -2285,8 +2285,8 @@ const Templates = (() => {
         close();
         Toast.show(`«${tpl.name}» создана ✓`, 'success');
       };
-      useBtn.addEventListener('mouseenter', () => previewDiv.classList.add('visible'));
-      useBtn.addEventListener('mouseleave', () => previewDiv.classList.remove('visible'));
+      useBtn.addEventListener('mouseenter', () => { clearTimeout(previewDiv._hideTimer); previewDiv.classList.add('visible'); });
+      useBtn.addEventListener('mouseleave', () => { previewDiv._hideTimer = setTimeout(() => previewDiv.classList.remove('visible'), 120); });
       acts.appendChild(useBtn);
 
       /* ── Кнопка «шаблон по умолчанию» ── */

@@ -1524,11 +1524,12 @@ textarea.block-textarea:focus {
   padding: 8px 12px;
   font-size: 11px; color: var(--text1); line-height: 1.6;
   opacity: 0; max-height: 0; overflow: hidden;
-  transition: opacity 0.2s ease, max-height 0.25s ease;
+  transition: opacity 0.15s ease, max-height 0.2s ease;
   background: var(--bg2); border: 1px solid var(--border2);
   border-radius: var(--radius-sm);
-  z-index: 2; pointer-events: none;
+  z-index: 2;
   box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  pointer-events: none;
 }
 .snap-preview.visible { opacity: 1; max-height: 120px; }
 .snap-preview-item { display: inline; }
