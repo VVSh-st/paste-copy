@@ -277,7 +277,7 @@ window.TextFormat = (() => {
       _hideTooltip();
     });
 
-    updateButtonIcon();
+    updateButtonIcon(btn);
     return btn;
   }
 
