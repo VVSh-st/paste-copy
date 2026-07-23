@@ -1666,9 +1666,9 @@ const QRPanel = (() => {
       document.body.appendChild(toast);
     }
     toast.textContent = msg;
-    toast.style.display = 'block';
+    toast.classList.add('show');
     clearTimeout(toast._timer);
-    toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 2500);
+    toast._timer = setTimeout(() => { toast.classList.remove('show'); }, 2500);
   }
 
   /* ── public API ────────────────────────────────────────── */
