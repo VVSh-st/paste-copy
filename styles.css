@@ -1478,8 +1478,8 @@ textarea.block-textarea:focus {
   animation: tplPanelIn 0.18s ease;
 }
 @keyframes tplPanelIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .tpl-floating .modal-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -1520,14 +1520,10 @@ textarea.block-textarea:focus {
 .snap-preview {
   margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
   font-size: 11px; color: var(--text2); line-height: 1.6;
-  display: none;
-  animation: tplPreviewIn 0.15s ease;
+  opacity: 0; max-height: 0; overflow: hidden;
+  transition: opacity 0.2s ease, max-height 0.25s ease;
 }
-@keyframes tplPreviewIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.snap-info:hover .snap-preview { display: block; }
+.snap-preview.visible { opacity: 1; max-height: 120px; }
 .snap-preview-item { display: inline; }
 .snap-preview-item::after { content: ' · '; color: var(--text3); }
 .snap-preview-item:last-child::after { content: ''; }

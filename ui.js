@@ -2102,6 +2102,7 @@ const Templates = (() => {
   }
 
   const TPL_HEIGHT_KEY = 'tplPanelHeight';
+  const TPL_POS_KEY = 'tplPanelPos';
   const TPL_MIN_H = 200;
   function tplMaxH() { return Math.floor(window.innerHeight * 0.8); }
 
@@ -2135,6 +2136,56 @@ const Templates = (() => {
     });
     window.addEventListener('resize', () => {
       if (modal.style.display !== 'none') _applyTplHeight(modal.getBoundingClientRect().height);
+    });
+  }
+
+  function _initTplDrag() {
+    const header = modal?.querySelector('.modal-header');
+    if (!modal || !header) return;
+
+    /* Восстановление позиции */
+    try {
+      const raw = localStorage.getItem(TPL_POS_KEY);
+      if (raw) {
+        const pos = JSON.parse(raw);
+        if (pos.left != null && pos.top != null) {
+          modal.style.left = pos.left + 'px';
+          modal.style.top = pos.top + 'px';
+          modal.style.transform = 'none';
+        }
+      }
+    } catch {}
+
+    header.style.cursor = 'grab';
+    let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+
+    header.addEventListener('mousedown', e => {
+      if (e.target.closest('.modal-close')) return;
+      dragging = true;
+      const r = modal.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY;
+      origLeft = r.left; origTop = r.top;
+      modal.style.transform = 'none';
+      modal.style.left = origLeft + 'px';
+      modal.style.top = origTop + 'px';
+      header.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newLeft = Math.max(0, Math.min(window.innerWidth - modal.offsetWidth, origLeft + dx));
+      const newTop = Math.max(0, Math.min(window.innerHeight - 40, origTop + dy));
+      modal.style.left = newLeft + 'px';
+      modal.style.top = newTop + 'px';
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      header.style.cursor = 'grab';
+      const r = modal.getBoundingClientRect();
+      localStorage.setItem(TPL_POS_KEY, JSON.stringify({ left: Math.round(r.left), top: Math.round(r.top) }));
     });
   }
 
@@ -2241,6 +2292,8 @@ const Templates = (() => {
         close();
         Toast.show(`«${tpl.name}» создана ✓`, 'success');
       };
+      useBtn.addEventListener('mouseenter', () => previewDiv.classList.add('visible'));
+      useBtn.addEventListener('mouseleave', () => previewDiv.classList.remove('visible'));
       acts.appendChild(useBtn);
 
       /* ── Кнопка «шаблон по умолчанию» ── */
@@ -2479,6 +2532,7 @@ const Templates = (() => {
   if (fileInput) fileInput.onchange = e => { const f = e.target.files?.[0]; if (f) _importTemplates(f); fileInput.value = ''; };
 
   _initTplResize();
+  _initTplDrag();
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && modal && modal.style.display !== 'none') close();
