@@ -1512,16 +1512,21 @@ textarea.block-textarea:focus {
   background: var(--bg0); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 11px 15px;
   transition: border-color var(--trans), box-shadow var(--trans);
+  position: relative;
 }
 .snap-row:hover { border-color: var(--border2); box-shadow: var(--shadow-sm); }
 .snap-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
 .snap-name { font-weight: 600; font-size: 13px; color: var(--text0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .snap-date { font-size: 11px; color: var(--text2); }
 .snap-preview {
-  margin-top: 6px; padding: 8px 0;
+  position: absolute; left: 15px; right: 15px; top: 100%;
+  margin-top: 4px; padding: 8px 0;
   font-size: 11px; color: var(--text2); line-height: 1.6;
   opacity: 0; max-height: 0; overflow: hidden;
   transition: opacity 0.2s ease, max-height 0.25s ease;
+  background: var(--bg0); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px;
+  z-index: 2;
 }
 .snap-preview.visible { opacity: 1; max-height: 120px; }
 .snap-preview-item { display: inline; }
