@@ -40,9 +40,6 @@ const WordDict = (() => {
     hintYOffset: 0,
   };
 
-  const _staticWords   = new Map();
-  const _staticBigrams = new Map();
-
   // Накопленные пользовательские слова: word → суммарная частота за все сессии.
   // Пополняется только через _loadTempWordlist() и явно при build(),
   // но НЕ суммируется повторно при каждом build() — иначе частоты росли бы бесконечно.
@@ -87,7 +84,6 @@ const WordDict = (() => {
   function build() {
     wordFreq.clear();
     bigrams.clear();
-    _seedFromStatic();
 
     const state = (typeof State !== 'undefined' && State?.getAll) ? State : null;
     const activeId = state?.getActive?.()?.id;
@@ -105,7 +101,7 @@ const WordDict = (() => {
           words.forEach((w, i) => {
             wordFreq.set(w, (wordFreq.get(w) || 0) + mult);
 
-            if (!_staticWords.has(w) && w.length >= cfg.minLen)
+            if (w.length >= cfg.minLen)
               sessionCounts.set(w, (sessionCounts.get(w) || 0) + mult);
 
             if (i > 0) {
@@ -120,7 +116,7 @@ const WordDict = (() => {
     }
 
     for (const [w, freq] of _dynWords) {
-      if (!_staticWords.has(w) && !wordFreq.has(w))
+      if (!wordFreq.has(w))
         wordFreq.set(w, freq);
     }
 
@@ -139,8 +135,6 @@ const WordDict = (() => {
   }
 
   /* ---- подсказки по префиксу ---- */
-  const STATIC_BOOST = 10000;
-
   function suggest(prefix) {
     if (!cfg.enabled || !prefix || prefix.length < cfg.minLen) return [];
     const p = prefix.toLowerCase();
@@ -149,8 +143,7 @@ const WordDict = (() => {
 
     for (const w of bucket) {
       if (w.length > p.length && w.startsWith(p)) {
-        const base = wordFreq.get(w) || 0;
-        out.push({ w, effective: base + (_staticWords.has(w) ? STATIC_BOOST : 0) });
+        out.push({ w, effective: wordFreq.get(w) || 0 });
       }
     }
 
@@ -201,82 +194,11 @@ const WordDict = (() => {
     build();
   }
 
-  /* ---- заполнение wordFreq/bigrams из статических карт ---- */
-  function _seedFromStatic() {
-    for (const [w, freq] of _staticWords) {
-      if (typeof freq !== 'number' || !Number.isFinite(freq) || freq <= 0) continue;
-      wordFreq.set(w, (wordFreq.get(w) || 0) + freq);
-    }
-
-    for (const [prev, followers] of _staticBigrams) {
-      if (!bigrams.has(prev)) bigrams.set(prev, new Map());
-      const bm = bigrams.get(prev);
-      for (const [w, c] of followers) {
-        if (typeof c !== 'number' || !Number.isFinite(c) || c <= 0) continue;
-        bm.set(w, (bm.get(w) || 0) + c);
-      }
-    }
-  }
-
-  /* ---- загрузка wordlist.json (статический, высший приоритет) ---- */
-  async function loadWordlist(url = 'wordlist.json') {
-    let loaded = false;
-    if (location.protocol === 'file:') {
-      console.debug('[WordDict] file:// origin — wordlist.json fetch skipped (CORS)');
-      _loadTempWordlist();
-      await _pullFromGist();
-      build();
-      loaded = true;
-    } else {
-      try {
-        const r = await fetch(url);
-        if (!r.ok) {
-          console.debug(`[WordDict] wordlist.json not found (HTTP ${r.status})`);
-          return;
-        }
-
-        const data = await r.json();
-
-        if (Array.isArray(data.words)) {
-          for (const item of data.words) {
-            if (!Array.isArray(item) || item.length < 2) continue;
-            const w = String(item[0] || '').trim().toLowerCase();
-            const freq = Number(item[1]);
-            if (!w || !Number.isFinite(freq) || freq <= 0) continue;
-            _staticWords.set(w, (_staticWords.get(w) || 0) + freq);
-          }
-        }
-
-        if (data.bigrams && typeof data.bigrams === 'object') {
-          for (const [rawPrev, followers] of Object.entries(data.bigrams)) {
-            if (!followers || typeof followers !== 'object') continue;
-            const prev = String(rawPrev || '').trim().toLowerCase();
-            if (!prev) continue;
-            if (!_staticBigrams.has(prev)) _staticBigrams.set(prev, new Map());
-            const bm = _staticBigrams.get(prev);
-            for (const [rawW, rawC] of Object.entries(followers)) {
-              const w = String(rawW || '').trim().toLowerCase();
-              const c = Number(rawC);
-              if (!w || !Number.isFinite(c) || c <= 0) continue;
-              bm.set(w, (bm.get(w) || 0) + c);
-            }
-          }
-        }
-
-      } catch (e) {
-        if (e instanceof TypeError) {
-          console.debug('[WordDict] wordlist.json not available:', e.message);
-        } else {
-          console.warn('[WordDict] failed to load wordlist:', e);
-        }
-      } finally {
-        if (!loaded) {
-          _loadTempWordlist();
-          await _pullFromGist();
-          build();
-        }
-      }
-    }
+  /* ---- загрузка словаря: localStorage temp + Gist ---- */
+  async function loadWordlist() {
+    _loadTempWordlist();
+    await _pullFromGist();
+    build();
   }
 
   /* ---- временный словарь: персистентность через localStorage ---- */
@@ -290,7 +212,7 @@ const WordDict = (() => {
         if (!Array.isArray(item) || item.length < 2) continue;
         const w = String(item[0] || '').trim().toLowerCase();
         const freq = Number(item[1]);
-        if (!w || _staticWords.has(w)) continue;
+        if (!w) continue;
         if (!Number.isFinite(freq) || freq < 2) continue;
         _dynWords.set(w, Math.max(_dynWords.get(w) || 0, freq));
       }
@@ -310,7 +232,7 @@ const WordDict = (() => {
         if (!Array.isArray(item) || item.length < 2) continue;
         const w = String(item[0] || '').trim().toLowerCase();
         const freq = Number(item[1]);
-        if (!w || _staticWords.has(w)) continue;
+        if (!w) continue;
         if (!Number.isFinite(freq) || freq < 2) continue;
         _dynWords.set(w, Math.max(_dynWords.get(w) || 0, freq));
       }
@@ -346,7 +268,6 @@ const WordDict = (() => {
     const words = [..._dynWords.entries()]
       .filter(([w, freq]) =>
         _gistDirtyWords.has(w) &&
-        !_staticWords.has(w) &&
         w.length >= cfg.minLen &&
         typeof freq === 'number' && freq >= 2
       )
@@ -369,7 +290,6 @@ const WordDict = (() => {
   function _buildTempPayload() {
     const words = [..._dynWords.entries()]
       .filter(([w, freq]) =>
-        !_staticWords.has(w) &&
         w.length >= cfg.minLen &&
         typeof freq === 'number' &&
         freq >= 2
@@ -384,7 +304,7 @@ const WordDict = (() => {
         generatedAt:   new Date().toISOString(),
         source:        'user-session',
         words_count:   words.length,
-        note: 'Auto-generated by WordDict. Contains only words NOT present in wordlist.json.',
+        note: 'Auto-generated by WordDict.',
       },
       words,
     }, null, 2);
