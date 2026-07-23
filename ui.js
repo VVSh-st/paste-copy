@@ -2101,7 +2101,44 @@ const Templates = (() => {
     return [...BUILTIN, ..._loadUserTemplates()];
   }
 
-  function open()  { if (modal) modal.style.display = 'flex'; renderList(); }
+  const TPL_HEIGHT_KEY = 'tplPanelHeight';
+  const TPL_MIN_H = 200;
+  function tplMaxH() { return Math.floor(window.innerHeight * 0.8); }
+
+  function _applyTplHeight(h) {
+    if (!modal) return;
+    const clamped = Math.min(Math.max(h, TPL_MIN_H), tplMaxH());
+    modal.style.height = clamped + 'px';
+    return clamped;
+  }
+
+  function _initTplResize() {
+    const handle = document.getElementById('tpl-resize-handle');
+    if (!modal || !handle) return;
+    const saved = parseInt(localStorage.getItem(TPL_HEIGHT_KEY), 10);
+    if (!Number.isNaN(saved)) _applyTplHeight(saved);
+
+    let dragging = false, startY = 0, startH = 0;
+    handle.addEventListener('mousedown', e => {
+      dragging = true; startY = e.clientY;
+      startH = modal.getBoundingClientRect().height;
+      modal.classList.add('tpl-resizing'); e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      _applyTplHeight(startH + (e.clientY - startY));
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false; modal.classList.remove('tpl-resizing');
+      localStorage.setItem(TPL_HEIGHT_KEY, Math.round(modal.getBoundingClientRect().height));
+    });
+    window.addEventListener('resize', () => {
+      if (modal.style.display !== 'none') _applyTplHeight(modal.getBoundingClientRect().height);
+    });
+  }
+
+  function open()  { if (modal) { modal.style.display = 'flex'; _applyTplHeight(modal.getBoundingClientRect().height || 420); } renderList(); }
   function close() { if (modal) modal.style.display = 'none'; }
 
   /* ── Превью блоков шаблона ── */
@@ -2437,10 +2474,11 @@ const Templates = (() => {
 
   if (saveBtn)  saveBtn.onclick  = saveCurrentAsTemplate;
   if (closeBtn) closeBtn.onclick = close;
-  if (modal)    modal.addEventListener('click', e => { if (e.target === modal) close(); });
   if (exportBtn) exportBtn.onclick = _exportTemplates;
   if (importBtn) importBtn.onclick = () => fileInput?.click();
   if (fileInput) fileInput.onchange = e => { const f = e.target.files?.[0]; if (f) _importTemplates(f); fileInput.value = ''; };
+
+  _initTplResize();
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && modal && modal.style.display !== 'none') close();
