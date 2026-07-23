@@ -177,22 +177,17 @@ window.AiTransform = (() => {
       }
     }
     if (restore && _ta && _origText != null && _origText.length > 0) {
-      if (_useWholeText) {
-        try {
-          _ta._skipWordComplete = true;
-          _ta.value = _origText;
-          _ta.dispatchEvent(new Event('input', { bubbles: true }));
-        } finally {
-          _ta._skipWordComplete = false;
+      try {
+        _ta._skipWordComplete = true;
+        _ta.focus();
+        if (_useWholeText) {
+          _ta.setSelectionRange(0, _ta.value.length);
+        } else {
+          _ta.setSelectionRange(_origStart, _origEnd);
         }
-      } else {
-        try {
-          _ta._skipWordComplete = true;
-          _ta.setRangeText(_origText, _origStart, _origEnd, 'end');
-          _ta.dispatchEvent(new Event('input', { bubbles: true }));
-        } finally {
-          _ta._skipWordComplete = false;
-        }
+        document.execCommand('insertText', false, _origText);
+      } finally {
+        _ta._skipWordComplete = false;
       }
     }
     if (_popup) _popup.style.display = 'none';
@@ -439,12 +434,13 @@ window.AiTransform = (() => {
       }
       try {
         _ta._skipWordComplete = true;
+        _ta.focus();
         if (_useWholeText) {
-          _ta.value = _suggestedText;
+          _ta.setSelectionRange(0, _ta.value.length);
         } else {
-          _ta.setRangeText(_suggestedText, _origStart, _origEnd, 'select');
+          _ta.setSelectionRange(_origStart, _origEnd);
         }
-        _ta.dispatchEvent(new Event('input', { bubbles: true }));
+        document.execCommand('insertText', false, _suggestedText);
       } finally {
         _ta._skipWordComplete = false;
       }

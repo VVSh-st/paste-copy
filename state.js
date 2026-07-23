@@ -881,7 +881,7 @@ const State = (() => {
     return state;
   }
 
-  function blockSnapshot(blockId) {
+  function blockSnapshot(blockId, selStart, selEnd) {
     const tab = getActive();
     if (!tab) return;
     const block = findBlock(tab.blocks, blockId);
@@ -902,7 +902,7 @@ const State = (() => {
     if (!delta) return;
 
     bh.deltas = bh.deltas.slice(0, bh.idx);
-    bh.deltas.push({ changes: delta });
+    bh.deltas.push({ changes: delta, selStart, selEnd });
 
     if (bh.deltas.length > 30) {
       bh.base = current;
@@ -914,32 +914,36 @@ const State = (() => {
 
   function blockUndo(blockId) {
     const tab = getActive();
-    if (!tab) return;
+    if (!tab) return null;
     const block = findBlock(tab.blocks, blockId);
-    if (!block?.subtabs) return;
+    if (!block?.subtabs) return null;
     const bh = _bh(blockId);
-    if (bh.idx <= 0) return;
+    if (bh.idx <= 0) return null;
     bh.idx--;
     const state = bh.idx === 0 ? bh.base : _rebuildBlockHistory(bh, bh.idx - 1);
-    if (!state) return;
+    if (!state) return null;
     block.subtabs = state;
     _snapEmit();
     emitLive();
+    const delta = bh.deltas[bh.idx];
+    return delta?.selStart != null ? { start: delta.selStart, end: delta.selEnd } : null;
   }
 
   function blockRedo(blockId) {
     const tab = getActive();
-    if (!tab) return;
+    if (!tab) return null;
     const block = findBlock(tab.blocks, blockId);
-    if (!block?.subtabs) return;
+    if (!block?.subtabs) return null;
     const bh = _bh(blockId);
-    if (bh.idx >= bh.deltas.length) return;
+    if (bh.idx >= bh.deltas.length) return null;
     bh.idx++;
     const state = bh.idx === 0 ? bh.base : _rebuildBlockHistory(bh, bh.idx - 1);
-    if (!state) return;
+    if (!state) return null;
     block.subtabs = state;
     _snapEmit();
     emitLive();
+    const delta = bh.deltas[bh.idx - 1];
+    return delta?.selStart != null ? { start: delta.selStart, end: delta.selEnd } : null;
   }
 
   const canBlockUndo = blockId => {

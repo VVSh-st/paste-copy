@@ -1691,15 +1691,16 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         requestAnimationFrame(() => { ta.focus(); _syncBtns(); });
         return;
       }
-      State.blockUndo(b.id);
+      const cursorPos = State.blockUndo(b.id);
       State.snapshot();
       if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: -1 });
       requestAnimationFrame(() => {
         const val = b.subtabs[b.activeSubtab]?.value ?? '';
         if (ta.value !== val) {
-          const ss = ta.selectionStart, se = ta.selectionEnd;
           ta.value = val;
-          ta.setSelectionRange(Math.min(ss, val.length), Math.min(se, val.length));
+        }
+        if (cursorPos) {
+          ta.setSelectionRange(cursorPos.start, cursorPos.end);
         }
         if (b.mdPreview) {
           const mdEl = body.closest('.block')?.querySelector('.block-md-content');
@@ -1716,15 +1717,16 @@ title.addEventListener('focus',     () => _stopMarquee(title));
         requestAnimationFrame(() => { ta.focus(); _syncBtns(); });
         return;
       }
-      State.blockRedo(b.id);
+      const cursorPos = State.blockRedo(b.id);
       State.snapshot();
       if (typeof Ember !== 'undefined') Ember.triggerReaction('undoRedo', { dir: 1 });
       requestAnimationFrame(() => {
         const val = b.subtabs[b.activeSubtab]?.value ?? '';
         if (ta.value !== val) {
-          const ss = ta.selectionStart, se = ta.selectionEnd;
           ta.value = val;
-          ta.setSelectionRange(Math.min(ss, val.length), Math.min(se, val.length));
+        }
+        if (cursorPos) {
+          ta.setSelectionRange(cursorPos.start, cursorPos.end);
         }
         if (b.mdPreview) {
           const mdEl = body.closest('.block')?.querySelector('.block-md-content');
@@ -1934,7 +1936,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
 
       clearTimeout(_bsTimer);
 
-      _bsTimer = setTimeout(() => { State.blockSnapshot(b.id); _syncBtns(); }, 800);
+      _bsTimer = setTimeout(() => { State.blockSnapshot(b.id, ta.selectionStart, ta.selectionEnd); _syncBtns(); }, 800);
 
     };
 
@@ -2053,7 +2055,7 @@ title.addEventListener('focus',     () => _stopMarquee(title));
       // кнопка вернёт фокус обратно в ta после отката
       if (e.relatedTarget === undoBtn || e.relatedTarget === redoBtn) return;
       clearTimeout(_bsTimer);
-      State.blockSnapshot(b.id);
+      State.blockSnapshot(b.id, ta.selectionStart, ta.selectionEnd);
       _syncBtns();
       State.snapshot();
     });

@@ -312,8 +312,8 @@ window.LLMFeatures = (() => {
       e.preventDefault();
       e.stopPropagation();
       _thesaurusTa._skipWordComplete = true;
-      _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'end');
-      _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+      _thesaurusTa.setSelectionRange(_thesaurusStart, _thesaurusEnd);
+      document.execCommand('insertText', false, _thesaurusOrig);
       _thesaurusTa._skipWordComplete = false;
       _closeThesaurus();
     }
@@ -326,8 +326,8 @@ window.LLMFeatures = (() => {
     const replacement = _thesaurusLeadSpace + item.word + _thesaurusTrailSpace;
     _thesaurusTa._skipWordComplete = true;
     _thesaurusTa.focus();
-    _thesaurusTa.setRangeText(replacement, _thesaurusStart, _thesaurusEnd, 'select');
-    _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+    _thesaurusTa.setSelectionRange(_thesaurusStart, _thesaurusEnd);
+    document.execCommand('insertText', false, replacement);
     _thesaurusTa._skipWordComplete = false;
     const newEnd = _thesaurusStart + replacement.length;
     _thesaurusEnd = newEnd;
@@ -369,8 +369,8 @@ window.LLMFeatures = (() => {
         e.preventDefault();
         if (_thesaurusTa && _thesaurusOrig != null) {
           _thesaurusTa._skipWordComplete = true;
-          _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'end');
-          _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+          _thesaurusTa.setSelectionRange(_thesaurusStart, _thesaurusEnd);
+          document.execCommand('insertText', false, _thesaurusOrig);
           _thesaurusTa._skipWordComplete = false;
         }
         _closeThesaurus();
@@ -413,8 +413,8 @@ window.LLMFeatures = (() => {
         e.preventDefault();
         if (_thesaurusTa && _thesaurusOrig != null) {
           _thesaurusTa._skipWordComplete = true;
-          _thesaurusTa.setRangeText(_thesaurusOrig, _thesaurusStart, _thesaurusEnd, 'end');
-          _thesaurusTa.dispatchEvent(new Event('input', { bubbles: true }));
+          _thesaurusTa.setSelectionRange(_thesaurusStart, _thesaurusEnd);
+          document.execCommand('insertText', false, _thesaurusOrig);
           _thesaurusTa._skipWordComplete = false;
         }
         _closeThesaurus();
