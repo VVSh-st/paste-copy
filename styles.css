@@ -1519,13 +1519,14 @@ textarea.block-textarea:focus {
 .snap-name { font-weight: 600; font-size: 13px; color: var(--text0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .snap-date { font-size: 11px; color: var(--text2); }
 .snap-preview {
-  position: absolute; left: 15px; right: 15px; top: 100%;
-  margin-top: 4px; padding: 8px 0;
+  position: absolute; left: 15px; right: 15px; bottom: -4px;
+  transform: translateY(100%);
+  padding: 8px 12px;
   font-size: 11px; color: var(--text2); line-height: 1.6;
   opacity: 0; max-height: 0; overflow: hidden;
   transition: opacity 0.2s ease, max-height 0.25s ease;
-  background: var(--bg0); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 8px 12px;
+  background: var(--bg1); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   z-index: 2;
 }
 .snap-preview.visible { opacity: 1; max-height: 120px; }

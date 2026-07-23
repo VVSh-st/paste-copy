@@ -2278,7 +2278,6 @@ const Templates = (() => {
 
       info.appendChild(nameSpan);
       info.appendChild(dateSpan);
-      info.appendChild(previewDiv);
 
       const acts = document.createElement('div'); acts.className = 'snap-acts';
 
@@ -2376,6 +2375,7 @@ const Templates = (() => {
 
       row.appendChild(info);
       row.appendChild(acts);
+      row.appendChild(previewDiv);
       listEl.appendChild(row);
     });
   }
