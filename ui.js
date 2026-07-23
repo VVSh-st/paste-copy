@@ -2143,19 +2143,6 @@ const Templates = (() => {
     const header = modal?.querySelector('.modal-header');
     if (!modal || !header) return;
 
-    /* Восстановление позиции */
-    try {
-      const raw = localStorage.getItem(TPL_POS_KEY);
-      if (raw) {
-        const pos = JSON.parse(raw);
-        if (pos.left != null && pos.top != null) {
-          modal.style.left = pos.left + 'px';
-          modal.style.top = pos.top + 'px';
-          modal.style.transform = 'none';
-        }
-      }
-    } catch {}
-
     header.style.cursor = 'grab';
     let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
 
@@ -2354,26 +2341,32 @@ const Templates = (() => {
         };
         acts.appendChild(cloneBtn);
 
-        /* Удаление */
+        /* Удаление — двойной клик */
         const delBtn = document.createElement('button');
         delBtn.type = 'button';
         delBtn.className = 'btn-snap-del';
         delBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h10M6 5V3h4v2M12 5l-1 8H5L4 5"/></svg>`;
         delBtn.setAttribute('aria-label', 'Удалить шаблон');
-        delBtn.title = 'Удалить шаблон';
+        delBtn.title = 'Нажмите ещё раз для удаления';
+        let delPending = false, delTimer = null;
         delBtn.onclick = () => {
-          if (!confirm(`Удалить шаблон «${tpl.name}»? Это действие нельзя отменить.`)) return;
-
-          const saved = _loadUserTemplates().filter(t => t.id !== tpl.id);
-          if (!_saveUserTemplates(saved)) return;
-
-          if (State.getDefaultTemplateId() === tpl.id) {
-            State.setDefaultTemplateId(null);
-            _scheduleSave();
+          if (!delPending) {
+            delPending = true;
+            delBtn.classList.add('btn-snap-del-pending');
+            delTimer = setTimeout(() => { delPending = false; delBtn.classList.remove('btn-snap-del-pending'); }, 2500);
+          } else {
+            clearTimeout(delTimer);
+            delBtn.classList.remove('btn-snap-del-pending');
+            const saved = _loadUserTemplates().filter(t => t.id !== tpl.id);
+            if (!_saveUserTemplates(saved)) return;
+            if (State.getDefaultTemplateId() === tpl.id) {
+              State.setDefaultTemplateId(null);
+              _scheduleSave();
+            }
+            renderList();
+            renderDropdown();
+            Toast.show(`Шаблон «${tpl.name}» удалён`, 'success');
           }
-          renderList();
-          renderDropdown();
-          Toast.show(`Шаблон «${tpl.name}» удалён`, 'success');
         };
         acts.appendChild(delBtn);
       }

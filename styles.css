@@ -1469,7 +1469,7 @@ textarea.block-textarea:focus {
 
 /* ── Templates floating panel ────────────────────────────── */
 .tpl-floating {
-  position: fixed; top: 88px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
   z-index: var(--z-modal); background: var(--bg2); border: 1px solid var(--border2);
   border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
   display: flex; flex-direction: column;
@@ -1551,6 +1551,7 @@ textarea.block-textarea:focus {
 }
 .btn-snap-del svg { width: 13px; height: 13px; stroke: currentColor; fill: none; }
 .btn-snap-del:hover { color: var(--red); background: rgba(224,92,106,0.1); border-color: rgba(224,92,106,0.25); }
+.btn-snap-del.btn-snap-del-pending { color: var(--red); background: rgba(224,92,106,0.25); border-color: rgba(224,92,106,0.4); }
 .btn-snap-diff {
   background: transparent; border: 1px solid transparent; color: var(--text3);
   padding: 5px 8px; border-radius: var(--radius-sm); cursor: pointer;
