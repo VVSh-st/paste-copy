@@ -2189,8 +2189,15 @@ const Templates = (() => {
     });
   }
 
-  function open()  { if (modal) { modal.style.display = 'flex'; _applyTplHeight(modal.getBoundingClientRect().height || 650); } renderList(); }
-  function close() { if (modal) modal.style.display = 'none'; }
+  function open()  {
+    if (modal) { modal.style.display = 'flex'; _applyTplHeight(modal.getBoundingClientRect().height || 650); }
+    renderList();
+    document.addEventListener('mousedown', _onTplOutsideClick, true);
+  }
+  function close() {
+    if (modal) modal.style.display = 'none';
+    document.removeEventListener('mousedown', _onTplOutsideClick, true);
+  }
 
   /* ── Превью блоков шаблона ── */
   function _buildPreviewHtml(blocks) {
@@ -2533,6 +2540,25 @@ const Templates = (() => {
 
   _initTplResize();
   _initTplDrag();
+
+  /* ── Закрытие по клику вне ── */
+  function _onTplOutsideClick(e) {
+    if (modal && modal.style.display !== 'none' && !modal.contains(e.target)) close();
+  }
+
+  /* Блокировка скролла колонки за меню */
+  if (modal) {
+    modal.addEventListener('wheel', e => {
+      const list = listEl;
+      if (!list) return;
+      const atTop = list.scrollTop <= 0 && e.deltaY < 0;
+      const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1 && e.deltaY > 0;
+      if (atTop || atBottom) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, { passive: false });
+  }
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && modal && modal.style.display !== 'none') close();
