@@ -1831,11 +1831,11 @@ title.addEventListener('focus',     () => _stopMarquee(title));
     });
 
     const searchBtn   = makeToolBtn(svgIcon('search'), 'Поиск (Ctrl+F)', () => {
-      const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
-      if (sel) {
-        Search.open(sel);
+      if (Search.isOpen()) {
+        Search.close();
       } else {
-        Search.open();
+        const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd);
+        Search.open(sel || undefined);
       }
     });
     searchBtn.classList.add('block-search-btn');

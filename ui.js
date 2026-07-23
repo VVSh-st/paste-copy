@@ -1616,7 +1616,7 @@ const Search = (() => {
     }
   });
 
-  return { open, close };
+  return { open, close, isOpen };
 })();
 
 /* ============================================================

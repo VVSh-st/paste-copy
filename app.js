@@ -278,7 +278,7 @@
   onClick('btn-import', () => $id('file-input')?.click());
   const fileInput = $id('file-input');
   if (fileInput) fileInput.onchange = importFile;
-  onClick('btn-search', () => Search.open());
+  onClick('btn-search', () => { if (Search.isOpen()) Search.close(); else Search.open(); });
   onClick('btn-notepad', () => Notepad.create());
 
   /* ── Close all dropdowns helper ────────────────────────────────────────*/
