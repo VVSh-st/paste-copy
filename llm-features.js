@@ -3673,6 +3673,9 @@ const AutoPoet = (() => {
       if (!p) return;
       _loadSessions();
       if (!_sending) _history = [...(_sessions[_sessionIdx]?.history ?? [])];
+      if (_inputHistory.length === 0 && _sessions[_sessionIdx]?.inputHistory?.length) {
+        _inputHistory = [..._sessions[_sessionIdx].inputHistory];
+      }
       _applyFontSize();
       p.style.display = 'flex';
       p.classList.remove('llm-chat-collapsed');
@@ -3713,6 +3716,7 @@ const AutoPoet = (() => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } catch (e) {
         console.warn('[MiniChat] _saveSessions failed:', e?.message);
+        window.Toast?.show('Ошибка сохранения чата: ' + e.message, 'error');
       }
     }
 
@@ -3727,9 +3731,12 @@ const AutoPoet = (() => {
           if (Array.isArray(data.inputHistory)) _inputHistory = data.inputHistory;
           if (data.win) _savedWin = data.win;
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[MiniChat] _loadSessions parse error:', e?.message);
+        window.Toast?.show('Ошибка загрузки истории чата', 'error');
+      }
       if (_sessions.length === 0) {
-        _sessions.push({ id: Date.now().toString(36), history: [], title: 'Новый чат' });
+        _sessions.push({ id: Date.now().toString(36), history: [], title: 'Новый чат', inputHistory: [] });
         _sessionIdx = 0;
       }
       if (_sessionIdx >= _sessions.length) _sessionIdx = _sessions.length - 1;
@@ -3771,6 +3778,7 @@ const AutoPoet = (() => {
     function _saveCurrentSession() {
       if (_sessions[_sessionIdx]) {
         _sessions[_sessionIdx].history = [..._history];
+        _sessions[_sessionIdx].inputHistory = [..._inputHistory];
         if (_history.length > 0) {
           const firstUser = _history.find(m => m.role === 'user');
           if (firstUser) _sessions[_sessionIdx].title = firstUser.content.slice(0, 40) || 'Новый чат';
@@ -3785,7 +3793,7 @@ const AutoPoet = (() => {
       _saveCurrentSession();
       _sessionIdx = idx;
       _history = [...(_sessions[_sessionIdx]?.history ?? [])];
-      _inputHistory = [];
+      _inputHistory = [...(_sessions[_sessionIdx]?.inputHistory ?? [])];
       _historyIdx = -1;
       _draftInput = '';
       const el = _msgsEl();
@@ -3803,7 +3811,7 @@ const AutoPoet = (() => {
 
     function _newSession() {
       _saveCurrentSession();
-      _sessions.push({ id: Date.now().toString(36), history: [], title: 'Новый чат' });
+      _sessions.push({ id: Date.now().toString(36), history: [], title: 'Новый чат', inputHistory: [] });
       _sessionIdx = _sessions.length - 1;
       _history = [];
       _inputHistory = [];
@@ -3853,7 +3861,10 @@ const AutoPoet = (() => {
       if (el) el.innerHTML = '';
       const inputEl = _inputEl();
       if (inputEl) { inputEl.value = ''; _resizeInput(); }
-      if (_sessions[_sessionIdx]) _sessions[_sessionIdx].history = [];
+      if (_sessions[_sessionIdx]) {
+        _sessions[_sessionIdx].history = [];
+        _sessions[_sessionIdx].inputHistory = [];
+      }
       _updateScrollDownBtn();
       _saveSessions();
       window.Toast?.show('Чат очищен', 'info');
@@ -3861,7 +3872,7 @@ const AutoPoet = (() => {
 
     function clearAllSessions() {
       stop();
-      _sessions = [{ id: Date.now().toString(36), history: [], title: 'Новый чат' }];
+      _sessions = [{ id: Date.now().toString(36), history: [], title: 'Новый чат', inputHistory: [] }];
       _sessionIdx = 0;
       _history = [];
       _inputHistory = [];
@@ -4512,7 +4523,7 @@ const AutoPoet = (() => {
       _saveCurrentSession();
       _sessionIdx = idx;
       if (!_sending) _history = [...(_sessions[_sessionIdx]?.history ?? [])];
-      _inputHistory = [];
+      _inputHistory = [...(_sessions[_sessionIdx]?.inputHistory ?? [])];
       _historyIdx = -1;
       _draftInput = '';
       const el = _msgsEl();
