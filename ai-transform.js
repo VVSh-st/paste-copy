@@ -16,6 +16,7 @@ window.AiTransform = (() => {
   let _suggestedText = '';
   let _onClickOutside = null;
   let _onContextMenu = null;
+  let _onSelectCleanup = null;
   let _diffPanel = null;
   let _useWholeText = false;
   let _requestSeq = 0;
@@ -98,6 +99,9 @@ window.AiTransform = (() => {
         <button type="button" id="ai-transform-send" title="Выполнить (Enter)">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8l12-5-5 12-2-5z"/><path d="M14 3l-5 5"/></svg>
         </button>
+        <button type="button" id="ai-transform-close" title="Закрыть (Esc)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
       </div>
     `;
 
@@ -108,6 +112,7 @@ window.AiTransform = (() => {
 
     if (_onClickOutside) document.removeEventListener('click', _onClickOutside, true);
     const clickOutsideHandler = e => {
+      if (e.target?.closest?.('[data-ai-toggle]')) return;
       if (!popup.contains(e.target) && e.target !== _ta) {
         hidePopup(true);
       }
@@ -138,9 +143,29 @@ window.AiTransform = (() => {
       input?.focus();
     }, 50);
 
+    // Динамический плейсхолдер при смене выделения
+    const _onSelect = () => {
+      if (popupSeq !== _requestSeq || popup !== _popup || popup.style.display === 'none') return;
+      const hasSel = _ta && _ta.selectionStart !== _ta.selectionEnd;
+      if (input && !_isRunning) {
+        input.placeholder = hasSel ? 'Что сделать с выделенным?' : 'Запрос ко всему тексту...  ↑↓';
+      }
+    };
+    _ta?.addEventListener('select', _onSelect);
+    _ta?.addEventListener('input', _onSelect);
+    _onSelectCleanup = () => {
+      _ta?.removeEventListener('select', _onSelect);
+      _ta?.removeEventListener('input', _onSelect);
+    };
+
     popup.querySelector('#ai-transform-send')?.addEventListener('click', e => {
       e.stopPropagation();
       _runTransform(input?.value || '');
+    });
+
+    popup.querySelector('#ai-transform-close')?.addEventListener('click', e => {
+      e.stopPropagation();
+      hidePopup(false);
     });
 
     input?.addEventListener('keydown', e => {
@@ -192,6 +217,7 @@ window.AiTransform = (() => {
     }
     if (_popup) _popup.style.display = 'none';
     _removeDiffPanel();
+    if (_onSelectCleanup) { _onSelectCleanup(); _onSelectCleanup = null; }
     _ta = null;
     _suggestedText = '';
     _useWholeText = false;
@@ -211,6 +237,22 @@ window.AiTransform = (() => {
       return;
     }
     if (!_ta || !_LLMCore) return;
+
+    // Перехватываем текущее выделение прямо перед отправкой
+    const curStart = _ta.selectionStart;
+    const curEnd = _ta.selectionEnd;
+    if (curStart !== curEnd) {
+      _origText = _ta.value.slice(curStart, curEnd);
+      _origStart = curStart;
+      _origEnd = curEnd;
+      _useWholeText = false;
+    } else {
+      _origText = _ta.value;
+      _origStart = 0;
+      _origEnd = _ta.value.length;
+      _useWholeText = true;
+    }
+
     if (!_origText?.trim()) { window.Toast?.show('Нет текста для обработки', 'error'); return; }
 
     instruction = instruction.trim().slice(0, MAX_INSTRUCTION_LEN);
@@ -253,13 +295,20 @@ window.AiTransform = (() => {
         .replace(/\s*<\/text>$/i, '')
         .trim();
 
-      // Скрываем popup, показываем diff
-      if (_popup) _popup.style.display = 'none';
+      // Показываем diff-панель, popup остаётся открытым для нового запроса
       if (_onClickOutside) {
         document.removeEventListener('click', _onClickOutside, true);
         _onClickOutside = null;
       }
       _showDiffPanel(_origText, _suggestedText);
+
+      // Восстанавливаем input для нового запроса
+      if (input) {
+        input.disabled = false;
+        input.value = '';
+        input.placeholder = 'Новый запрос...  ↑↓';
+      }
+      if (sendBtn) sendBtn.style.display = '';
 
       // ПКМ вне diff-панели — закрыть предпросмотр без применения
       if (_onContextMenu) {
@@ -484,5 +533,6 @@ window.AiTransform = (() => {
     init,
     openForSelection,
     hidePopup,
+    isVisible: () => _popup && _popup.style.display !== 'none',
   };
 })();

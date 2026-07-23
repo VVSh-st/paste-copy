@@ -2,6 +2,58 @@
 
 ## Текущий статус
 
+### Аудит проекта + фиксы (сессия 2026-07-23)
+
+**Файлы:** `blocks.js`, `llm-features.js`, `ui.js`, `styles.css`, `ember-styles.css`, `text-expander.js`, `ai-transform.js`, `notepad.js`, `gist-sync.js`
+
+**Аудит:**
+- Запущено 6 параллельных субагентов для проверки 40+ модулей (~50K строк)
+- Сравнение с отчётом внешнего аудитора (12 проблем vs наши 28)
+- Результаты: `AUDIT-RESULT.md`, `AUDIT-RESULT_Auditor.md`, `FIX-PLAN.md`
+- Детали: `research/audit-findings/F1-F6*.md`
+
+**Исправления (XSS):**
+1. `blocks.js:3035` — HTML-экранирование перед `marked.parse()` в блочном MD-превью
+2. `llm-features.js:748` — `_esc()` для `${s.name}` в checklist picker
+3. `ui.js:10` — `escHtmlUi` теперь экранирует `"` и `'`
+
+**Исправления (Undo/Redo):**
+4. `llm-features.js` — `setRangeText` → `execCommand('insertText')` в 4 местах (`_appendAtCursor`, `_replaceAll`, `_applyToScope`, AutoPoet accept) для корректного Ctrl+Z
+
+**Исправления (UI):**
+5. `blocks.js:2959` — удалён дубль `footer.appendChild(captureBtn)`
+6. `styles.css` — `.snap-preview`: `pointer-events: none` (fix hover jitter на шаблонах)
+7. `ui.js` — убраны `mouseenter`/`mouseleave` обработчики с `previewDiv` (triggers only from button)
+
+**Тосты — обновлённый стиль:**
+8. `styles.css` — `.toast`: фон `rgba(30,42,58,0.92)` (светлее), success `#7ecf96` (приглушённый зелёный), error `#d48a8a` (приглушённый красный)
+9. `ember-styles.css` — `.qr-toast` обновлён под тот же стиль
+
+**SVG-спиннеры:**
+10. `blocks.js`, `notepad.js`, `llm-features.js`, `gist-sync.js` — `⏳` заменён на SVG-спиннер (кружок с `stroke-dasharray`)
+11. `styles.css` — общий `.translating` класс для анимации вращения
+
+**Текстовый экспандер:**
+12. `text-expander.js` — `pointerdown` + `click`: `e.preventDefault()` блокирует кражу фокуса, возврат фокуса в textarea после добавления
+13. `text-expander.js` — toast «Выделите текст для добавления в экспандер» при клике без выделения
+
+**AI-трансформация:**
+14. `ember-styles.css` — `.ai-transform-popup`: `width: 460px`
+15. `ai-transform.js` — запрос перехватывает текущее выделение прямо перед отправкой (а не при открытии popup)
+16. `ai-transform.js` — динамический плейсхолдер: «Что сделать с выделенным?» / «Запрос ко всему тексту...»
+17. `ai-transform.js` — popup остаётся открытым после успешного запроса, input восстанавливается
+18. `ai-transform.js` — кнопка «×» для закрытия popup
+19. `ai-transform.js` — `isVisible()` в публичном API
+20. `blocks.js` — кнопка «AI-трансформация» в тулбаре: toggle (открыть/закрыть)
+21. `ai-transform.js` — `clickOutsideHandler` пропускает клик по `[data-ai-toggle]`
+22. `ai-transform.js` — крестик и toggle: `hidePopup(false)` (без задержки `execCommand`)
+
+**Коммиты:**
+- `20274d1` — audit: XSS fix + undo/redo + duplicate captureBtn + preview hover jitter
+- `8cef6fa` — ui: replace hourglass emoji with SVG spinner on all loading buttons
+
+---
+
 ### Шаблоны — улучшения (сессия)
 
 **Файлы:** `ui.js`, `styles.css`, `index.html`, `intelligence-core.js`

@@ -77,7 +77,6 @@ window.TextLinter = (() => {
     { id: 'comma-kotory', re: /(?:^|[^\p{L}\p{N}_])котор(?:ый|ая|ое|ые|ого|ую|ыми|ых)(?:$|[^\p{L}\p{N}_])/giu, text: 'обычно перед «который» нужна запятая' },
     { id: 'comma-no', re: /(?:^|[^\p{L}\p{N}_])но\s+(?:это|если|когда|потом|затем|при|без|надо|нужно|можно|лучше)(?:$|[^\p{L}\p{N}_])/giu, text: 'проверь запятую перед «но»' },
     { id: 'long-sentence', re: /[^.!?…\n]{220,}[.!?…]?/gu, text: 'длинное предложение: возможно, стоит разбить' },
-    { id: 'many-commas', re: /(?:[^.!?…\n]*,[^.!?…\n]*){5,}/gu, text: 'много запятых в одном предложении: возможно, лучше разбить' },
     { id: 'double-word', re: /(?:^|[^\p{L}\p{N}_])([\p{L}\p{N}_]{3,})\s+\1(?:$|[^\p{L}\p{N}_])/giu, text: 'похоже на повтор слова' },
   ];
 
@@ -514,6 +513,22 @@ window.TextLinter = (() => {
         });
         break;
       }
+
+    // many-commas: split by sentence-ending punctuation, count commas per sentence
+    if (line.length > 40) {
+      const sentences = line.split(/[.!?\u2026]+/);
+      for (const sent of sentences) {
+        if ((sent.match(/,/g) || []).length >= 5) {
+          hints.push({
+            id: 'many-commas',
+            line: lineIndex + 1,
+            text: '\u043c\u043d\u043e\u0433\u043e \u0437\u0430\u043f\u044f\u0442\u044b\u0445 \u0432 \u043e\u0434\u043d\u043e\u043c \u043f\u0440\u0435\u0434\u043b\u043e\u0436\u0435\u043d\u0438\u0438: \u0432\u043e\u0437\u043c\u043e\u0436\u043d\u043e, \u043b\u0443\u0447\u0448\u0435 \u0440\u0430\u0437\u0431\u0438\u0442\u044c',
+            snippet: sent.slice(0, 120).trim(),
+          });
+          break;
+        }
+      }
+    }
     }
   }
 
@@ -788,7 +803,7 @@ window.TextLinter = (() => {
         (result.changed ? renderDiffSizeControls(diffScale) : '') +
         `<div class="text-lint-gear-wrap">` +
           `<button type="button" class="btn-sm text-lint-gear-btn" title="Настройки линтера" aria-label="Настройки линтера">⚙</button>` +
-          `<div class="text-lint-gear-dropdown">${gearItems}</div>` +
+          `<div class="text-lint-gear-dropdown ui-menu">${gearItems}</div>` +
         `</div>` +
         (result.changed ? `<button type="button" class="btn-sm" data-action="copy" title="Скопировать исправленный вариант" aria-label="Скопировать исправленный вариант">⧉</button>` : '') +
         (result.changed ? `<button type="button" class="btn-sm btn-sm-accent" data-action="accept">✓</button>` : '') +
@@ -866,6 +881,7 @@ window.TextLinter = (() => {
       gearBtn.addEventListener('click', e => {
         e.stopPropagation();
         const opening = !gearDrop.classList.contains('open');
+        if (opening) closeAllMenus?.(gearDrop);
         gearDrop.classList.toggle('open');
         if (opening) positionGearDrop();
       });

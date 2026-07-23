@@ -653,6 +653,7 @@
 /* ── AiTransform popup ─────────────────────────────────────────────── */
 .ai-transform-popup {
   position: fixed; z-index: 9500; display: none;
+  width: 460px;
   background: var(--bg1, #11111b); color: var(--text1, #cdd6f4);
   border: 1px solid var(--border, #45475a); border-radius: 8px;
   padding: 6px 8px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
@@ -683,6 +684,12 @@
 }
 .ai-transform-row button[title="Выполнить (Enter)"]:hover {
   background: var(--accent, #89b4fa); color: #fff;
+}
+.ai-transform-row button[title="Закрыть (Esc)"] {
+  color: var(--text2, #585b70);
+}
+.ai-transform-row button[title="Закрыть (Esc)"]:hover {
+  color: var(--text1, #cdd6f4); background: rgba(255, 255, 255, 0.06);
 }
 .ai-transform-row button[title="Принять"] {
   border-color: #a6e3a1; color: #a6e3a1;

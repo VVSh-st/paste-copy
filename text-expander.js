@@ -1672,6 +1672,7 @@ const TextExpander = (() => {
 
     btn.addEventListener('pointerdown', e => {
       if (e.button !== undefined && e.button !== 0) return;
+      e.preventDefault();
       longFired = false;
       cancelledByMove = false;
       startX = e.clientX;
@@ -1722,12 +1723,18 @@ const TextExpander = (() => {
         cancelledByMove = false;
         return;
       }
+      e.preventDefault();
       const ctx = btn._teLongPressCtx || {};
       const clickTa = ctx.ta;
       const clickBlockId = ctx.blockId;
       if (clickTa && clickTa.selectionStart !== clickTa.selectionEnd) {
         const selected = clickTa.value.slice(clickTa.selectionStart, clickTa.selectionEnd);
-        if (selected.length > 0) createFromSelection(selected, clickTa, clickBlockId);
+        if (selected.length > 0) {
+          createFromSelection(selected, clickTa, clickBlockId);
+          requestAnimationFrame(() => clickTa.focus());
+        }
+      } else if (typeof Toast !== 'undefined') {
+        Toast.show('Выделите текст для добавления в экспандер', 'info');
       }
     });
   }

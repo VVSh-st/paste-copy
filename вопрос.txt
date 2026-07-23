@@ -1,3 +1,0 @@
-Ответь, что это и где применяется в проекте:
-
-"E:\CODE\Paste_copy\quality-detectors.js"

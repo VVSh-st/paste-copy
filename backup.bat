@@ -14,4 +14,4 @@ if exist "%archive%" (
 ) else (
     echo Archive was not created
 )
-pause
+
