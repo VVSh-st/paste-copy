@@ -490,7 +490,7 @@ const Notepad = (() => {
       if (srcLang && srcLang.code === targetLang) return;
 
       translateBtn.classList.add('translating');
-      translateBtn.textContent = '⏳';
+      translateBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7" stroke-dasharray="12 32"/></svg>';
 
       const lines = textToTranslate.split('\n');
       const translatePromise = lines.length > 1

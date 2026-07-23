@@ -765,7 +765,8 @@ body {
   font-weight: 400 !important;
   transition: all var(--trans);
 }
-.translate-btn.translating {
+.translate-btn.translating,
+.translating {
   animation: tr-spin .8s linear infinite;
   pointer-events: none;
 }

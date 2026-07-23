@@ -4171,20 +4171,22 @@ const AutoPoet = (() => {
         const srcText = container.dataset.rawText || span.textContent;
         const targetLang = Translator.targetLang;
         const langName = Translator.LANG_BY_CODE[targetLang]?.name || targetLang;
-        btn.innerHTML = '⏳';
+        btn.classList.add('translating');
+        btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7" stroke-dasharray="12 32"/></svg>';
         btn.title = 'Перевод → ' + langName + '...';
         const lines = srcText.split('\n');
         const translatePromise = lines.length > 1
           ? (async () => { const r = []; for (const l of lines) r.push(await Translator.translateProtected(l, targetLang)); return r.join('\n'); })()
           : Translator.translateProtected(srcText, targetLang);
         translatePromise.then(result => {
-          if (!result || result === srcText) { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести → ' + langName; return; }
+          if (!result || result === srcText) { btn.classList.remove('translating'); btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести → ' + langName; return; }
           btn.dataset.original = srcText;
           btn.dataset.translated = '1';
           _renderChatMd(span, result);
+          btn.classList.remove('translating');
           btn.innerHTML = '↩';
           btn.title = 'Вернуть оригинал';
-        }).catch(() => { btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести → ' + langName; });
+        }).catch(() => { btn.classList.remove('translating'); btn.innerHTML = TRANSLATE_CHAT_SVG; btn.title = 'Перевести → ' + langName; });
       });
       container.appendChild(btn);
     }

@@ -1200,7 +1200,7 @@ async function _loadBackups(body) {
         const tsStr = new Date(ts).toLocaleString('ru');
         try { await LocalBackup.save(State.serialize()); } catch { /* ok */ }
         if (!confirm(`Восстановить копию от ${tsStr}?\nТекущее состояние будет сохранено автоматически.`)) return;
-        btn.disabled = true; btn.textContent = '⏳';
+        btn.disabled = true; btn.classList.add('translating'); btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7" stroke-dasharray="12 32"/></svg>';
         try {
           const data = await LocalBackup.restore(ts);
           if (!data) throw new Error('Копия не найдена');
@@ -1210,7 +1210,7 @@ async function _loadBackups(body) {
           closeDialog();
         } catch (err) {
           Toast.show('Ошибка восстановления: ' + err.message, 'error');
-          btn.disabled = false; btn.textContent = '↺';
+          btn.disabled = false; btn.classList.remove('translating'); btn.textContent = '↺';
         }
       });
     });
@@ -1592,7 +1592,7 @@ const runManualPush = async ({ immortal = false } = {}) => {
   const input = body.querySelector('#gs-manual-push-label');
   const btn = immortal ? body.querySelector('#gs-btn-manual-push-immortal') : body.querySelector('#gs-btn-manual-push-save');
   const label = (input?.value || '').trim() || 'Ручное сохранение';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  if (btn) { btn.disabled = true; btn.classList.add('translating'); btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7" stroke-dasharray="12 32"/></svg>'; }
   try {
     await push(label, { immortal });
     _lastPushAt = Date.now();
@@ -1602,7 +1602,7 @@ const runManualPush = async ({ immortal = false } = {}) => {
     if (isModalOpen()) renderModal();
   } catch (err) {
     Toast.show(`☁ Ошибка Push: ${err.message}`, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = immortal ? '☠' : 'Сохранить'; }
+    if (btn) { btn.disabled = false; btn.classList.remove('translating'); btn.textContent = immortal ? '☠' : 'Сохранить'; }
   }
 };
 
@@ -1623,7 +1623,7 @@ body.querySelector('#gs-btn-pull')?.addEventListener('click', async e => {
     `Pull загрузит последнюю версию Gist и может перезаписать текущие данные.\n` +
     `Перед загрузкой будет создан локальный аварийный снимок в IndexedDB.`
   )) return;
-  btn.disabled = true; btn.textContent = '⏳ Загрузка...';
+  btn.disabled = true; btn.classList.add('translating'); btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7" stroke-dasharray="12 32"/></svg> Загрузка...';
   try {
     if (_needsOverwriteProtection()) await createEmergencySnapshot('Перед Pull из Gist');
     const data = await pull();
@@ -1653,7 +1653,7 @@ body.querySelector('#gs-btn-pull')?.addEventListener('click', async e => {
       }
     }
     Toast.show(`☁ Ошибка Pull: ${err.message}`, 'error');
-    btn.disabled = false; btn.textContent = '⬇ Pull';
+    btn.disabled = false; btn.classList.remove('translating'); btn.textContent = '⬇ Pull';
   }
 });
 
@@ -1671,7 +1671,7 @@ body.querySelector('#gs-pat-form')?.addEventListener('submit', async e => {
   const btn   = body.querySelector('#gs-btn-pat-connect');
   const token = (input?.value || '').trim();
   if (!token) { Toast.show('Введите токен', 'error'); input?.focus(); return; }
-  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  if (btn) { btn.disabled = true; btn.classList.add('translating'); btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7" stroke-dasharray="12 32"/></svg>'; }
   try {
     const { login } = await connectPAT(token);
     if (input) input.value = '';
@@ -1680,7 +1680,7 @@ body.querySelector('#gs-pat-form')?.addEventListener('submit', async e => {
     if (isModalOpen()) renderModal();
   } catch (err)  {
     Toast.show(`☁ ${err.message}`, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '🔗 Подключить'; }
+    if (btn) { btn.disabled = false; btn.classList.remove('translating'); btn.textContent = '🔗 Подключить'; }
   }
 });
 
@@ -1857,7 +1857,7 @@ body.querySelectorAll('.gs-btn-restore').forEach(btn => {
     }
     if (!protectedOk) return;
     if (!confirm(`Восстановить версию от ${tsStr}?\nТекущие данные будут перезаписаны.`)) return;
-    btn.disabled = true; btn.textContent = '⏳';
+    btn.disabled = true; btn.classList.add('translating'); btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:14px;height:14px"><circle cx="10" cy="10" r="7" stroke-dasharray="12 32"/></svg>';
     try {
       await createEmergencySnapshot('Перед восстановлением версии из истории');
       await restoreVersion(btn.dataset.sha);
@@ -1865,7 +1865,7 @@ body.querySelectorAll('.gs-btn-restore').forEach(btn => {
       closeDialog();
      } catch (err) {
       Toast.show(`☁ Ошибка восстановления: ${err.message}`, 'error');
-      btn.disabled = false; btn.textContent = 'Восстановить';
+      btn.disabled = false; btn.classList.remove('translating'); btn.textContent = 'Восстановить';
     }
   });
 });
