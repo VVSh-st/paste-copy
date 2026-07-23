@@ -208,18 +208,20 @@ window.TextFormat = (() => {
   let _tooltipTimer = null;
 
   function updateButtonIcon(btn) {
-    const target = btn || _menuBtn || _btnEl;
-    if (!target) return;
+    const targets = btn ? [btn] : [...document.querySelectorAll('.tf-btn')];
+    if (!targets.length) return;
     const item = _lastItem ? ITEM_BY_ID.get(_lastItem) : null;
     const num = item ? ITEM_INDEX_BY_ID.get(item.id) : null;
-    const numEl = target.querySelector('.tf-btn-num');
-    if (numEl) numEl.textContent = num || 'F';
-    const varEl = target.querySelector('.tf-btn-var');
-    if (varEl) {
-      const raw = item?.vars ? _getVar(item) : '';
-      const value = raw.length > 3 ? raw.slice(0, 3) : raw;
-      varEl.textContent = value;
-      varEl.hidden = !value;
+    for (const target of targets) {
+      const numEl = target.querySelector('.tf-btn-num');
+      if (numEl) numEl.textContent = num || 'F';
+      const varEl = target.querySelector('.tf-btn-var');
+      if (varEl) {
+        const raw = item?.vars ? _getVar(item) : '';
+        const value = raw.length > 3 ? raw.slice(0, 3) : raw;
+        varEl.textContent = value;
+        varEl.hidden = !value;
+      }
     }
   }
 
