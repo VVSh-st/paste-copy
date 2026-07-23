@@ -1518,7 +1518,7 @@ textarea.block-textarea:focus {
 .snap-name { font-weight: 600; font-size: 13px; color: var(--text0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .snap-date { font-size: 11px; color: var(--text2); }
 .snap-preview {
-  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
+  margin-top: 6px; padding: 8px 0;
   font-size: 11px; color: var(--text2); line-height: 1.6;
   opacity: 0; max-height: 0; overflow: hidden;
   transition: opacity 0.2s ease, max-height 0.25s ease;
@@ -1531,7 +1531,7 @@ textarea.block-textarea:focus {
 .snap-acts { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 .btn-snap-restore {
   background: rgba(92,184,122,0.1); border: 1px solid rgba(92,184,122,0.22); color: var(--green);
-  padding: 6px 13px; border-radius: var(--radius-sm); cursor: pointer;
+  padding: 8px 13px; border-radius: var(--radius-sm); cursor: pointer;
   font-size: 12px; font-family: inherit;
   transition: background var(--trans), border-color var(--trans), transform var(--trans-fast);
 }
