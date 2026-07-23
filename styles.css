@@ -1452,6 +1452,20 @@ textarea.block-textarea:focus {
 .btn-sm-accent:hover { background: rgba(79,142,247,0.2); border-color: var(--accent); }
 
 .snap-save-row { display: flex; gap: 10px; align-items: center; }
+.snap-io-row { display: flex; gap: 8px; align-items: center; }
+.btn-snap-io {
+  background: transparent; border: 1px solid var(--border); color: var(--text2);
+  padding: 5px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 11px; font-family: inherit;
+  transition: color var(--trans), background var(--trans), border-color var(--trans);
+}
+.btn-snap-io:hover { color: var(--text0); background: var(--surface2); border-color: var(--border2); }
+.snap-counter { margin-left: auto; font-size: 11px; color: var(--text3); }
+.snap-rename-input {
+  background: var(--bg0); border: 1px solid var(--accent); color: var(--text0);
+  padding: 2px 6px; border-radius: 4px; font-size: 13px; font-weight: 600;
+  font-family: inherit; outline: none; width: 100%;
+}
 .modal-list { display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow-y: auto; }
 .snap-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -1461,8 +1475,17 @@ textarea.block-textarea:focus {
 }
 .snap-row:hover { border-color: var(--border2); box-shadow: var(--shadow-sm); }
 .snap-info { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-.snap-name { font-weight: 600; font-size: 13px; color: var(--text0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snap-name { font-weight: 600; font-size: 13px; color: var(--text0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 .snap-date { font-size: 11px; color: var(--text2); }
+.snap-preview {
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text2); line-height: 1.6;
+  display: none;
+}
+.snap-row:hover .snap-preview { display: block; }
+.snap-preview-item { display: inline; }
+.snap-preview-item::after { content: ' · '; color: var(--text3); }
+.snap-preview-item:last-child::after { content: ''; }
 .snap-empty { color: var(--text3); font-size: 13px; text-align: center; padding: 20px 0; }
 .snap-acts { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 .btn-snap-restore {

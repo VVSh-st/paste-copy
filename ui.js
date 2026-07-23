@@ -1916,6 +1916,14 @@ const Templates = (() => {
   const listEl    = document.getElementById('templates-list');
   const nameInput = document.getElementById('tpl-name-input');
   const dropMenu  = document.getElementById('tpl-menu');
+  const counterEl = document.getElementById('tpl-counter');
+  const exportBtn = document.getElementById('btn-tpl-export');
+  const importBtn = document.getElementById('btn-tpl-import');
+  const fileInput = document.getElementById('tpl-file-input');
+
+  const MAX_USER_TEMPLATES = 20;
+
+  const BLOCK_TYPE_LABELS = { text: 'текст', snippets: 'сниппеты', commands: 'команды', sticky: 'заметка', todo: 'чеклист', table: 'таблица' };
 
   /* ── Безопасный escHtml: использует глобальную, если есть, иначе fallback ── */
   const escHtmlUi = (typeof window !== 'undefined' && typeof window.escHtmlUi === 'function')
@@ -1936,8 +1944,23 @@ const Templates = (() => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID().slice(0, 8);
     }
-    // fallback: padEnd гарантирует ровно 8 символов
     return Math.random().toString(36).substring(2, 10).padEnd(8, '0');
+  }
+
+  /* ── Миграция: добавить createdAt/useCount к старым шаблонам ── */
+  function _migrateTemplate(tpl) {
+    if (tpl.createdAt == null) tpl.createdAt = 0;
+    if (tpl.useCount == null) tpl.useCount = 0;
+    return tpl;
+  }
+
+  function _formatDate(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yy = d.getFullYear();
+    return `${dd}.${mm}.${yy}`;
   }
 
   function makeTextBlock(title, icon, col, placeholder) {
@@ -2050,7 +2073,7 @@ const Templates = (() => {
   /* ── Безопасная обёртка над Storage ── */
   function _loadUserTemplates() {
     try {
-      return Storage.loadTemplates() || [];
+      return (Storage.loadTemplates() || []).map(_migrateTemplate);
     } catch (e) {
       console.error('[Templates] Storage.loadTemplates failed:', e);
       return [];
@@ -2068,6 +2091,12 @@ const Templates = (() => {
     }
   }
 
+  function _updateCounter() {
+    if (!counterEl) return;
+    const count = _loadUserTemplates().length;
+    counterEl.textContent = `${count}/${MAX_USER_TEMPLATES}`;
+  }
+
   function getAll() {
     return [...BUILTIN, ..._loadUserTemplates()];
   }
@@ -2075,10 +2104,22 @@ const Templates = (() => {
   function open()  { if (modal) modal.style.display = 'flex'; renderList(); }
   function close() { if (modal) modal.style.display = 'none'; }
 
+  /* ── Превью блоков шаблона ── */
+  function _buildPreviewHtml(blocks) {
+    if (!blocks?.length) return '';
+    return blocks.map(b => {
+      const icon = b.icon || '📄';
+      const title = escHtmlUi(b.title || '(без имени)');
+      const type = BLOCK_TYPE_LABELS[b.type] || b.type;
+      return `<span class="snap-preview-item">${icon} ${title} (${type})</span>`;
+    }).join('');
+  }
+
   function renderList() {
     if (!listEl) return;
     listEl.innerHTML = '';
     const all = getAll();
+    _updateCounter();
 
     if (!all.length) {
       listEl.innerHTML = '<div class="snap-empty">Нет шаблонов</div>';
@@ -2090,9 +2131,66 @@ const Templates = (() => {
       const info = document.createElement('div'); info.className = 'snap-info';
       const isBuiltin = tpl.id.startsWith('tpl-');
 
-      info.innerHTML =
-        `<span class="snap-name">${escHtmlUi(tpl.name)}</span>` +
-        `<span class="snap-date">${isBuiltin ? 'Встроенный' : 'Пользовательский'} · ${tpl.blocks?.length || 0} блоков</span>`;
+      /* ── Строка с именем ── */
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'snap-name';
+      nameSpan.textContent = tpl.name;
+
+      /* ── Переименование: dblclick ── */
+      if (!isBuiltin) {
+        nameSpan.style.cursor = 'text';
+        nameSpan.addEventListener('dblclick', () => {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'snap-rename-input';
+          input.value = tpl.name;
+          input.maxLength = 60;
+          nameSpan.replaceWith(input);
+          input.focus();
+          input.select();
+
+          const save = () => {
+            const newName = input.value.trim();
+            if (newName && newName !== tpl.name) {
+              const saved = _loadUserTemplates();
+              const t = saved.find(x => x.id === tpl.id);
+              if (t) { t.name = newName; _saveUserTemplates(saved); }
+              tpl.name = newName;
+              renderDropdown();
+              Toast.show(`Шаблон переименован в «${newName}»`, 'success');
+            }
+            renderList();
+          };
+          input.addEventListener('blur', save);
+          input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); save(); }
+            if (e.key === 'Escape') { e.preventDefault(); renderList(); }
+          });
+        });
+      }
+
+      /* ── Мета-строка: статистика ── */
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'snap-date';
+      const blockCount = tpl.blocks?.length || 0;
+      if (isBuiltin) {
+        dateSpan.textContent = `Встроенный · ${blockCount} блоков`;
+      } else {
+        const parts = [];
+        if (tpl.createdAt) parts.push(`Создан ${_formatDate(tpl.createdAt)}`);
+        if (tpl.useCount) parts.push(`использований: ${tpl.useCount}`);
+        parts.push(`${blockCount} блоков`);
+        dateSpan.textContent = parts.join(' · ');
+      }
+
+      /* ── Превью блоков (hover) ── */
+      const previewDiv = document.createElement('div');
+      previewDiv.className = 'snap-preview';
+      previewDiv.innerHTML = _buildPreviewHtml(tpl.blocks);
+
+      info.appendChild(nameSpan);
+      info.appendChild(dateSpan);
+      info.appendChild(previewDiv);
 
       const acts = document.createElement('div'); acts.className = 'snap-acts';
 
@@ -2131,8 +2229,36 @@ const Templates = (() => {
       };
       acts.appendChild(defBtn);
 
-      /* ── Кнопка удаления (только для пользовательских) ── */
+      /* ── Кнопки пользовательских: дублирование + удаление ── */
       if (!isBuiltin) {
+        /* Дублирование */
+        const cloneBtn = document.createElement('button');
+        cloneBtn.type = 'button';
+        cloneBtn.className = 'btn-snap-del';
+        cloneBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/></svg>';
+        cloneBtn.setAttribute('aria-label', 'Дублировать шаблон');
+        cloneBtn.title = 'Дублировать шаблон';
+        cloneBtn.onclick = () => {
+          const saved = _loadUserTemplates();
+          if (saved.length >= MAX_USER_TEMPLATES) {
+            Toast.show(`Достигнут лимит шаблонов (${MAX_USER_TEMPLATES})`, 'error');
+            return;
+          }
+          saved.push({
+            id: 'user-' + uid(),
+            name: tpl.name + ' (копия)',
+            blocks: JSON.parse(JSON.stringify(tpl.blocks)),
+            createdAt: Date.now(),
+            useCount: 0,
+          });
+          if (!_saveUserTemplates(saved)) return;
+          renderList();
+          renderDropdown();
+          Toast.show(`«${tpl.name}» дублирован ✓`, 'success');
+        };
+        acts.appendChild(cloneBtn);
+
+        /* Удаление */
         const delBtn = document.createElement('button');
         delBtn.type = 'button';
         delBtn.className = 'btn-snap-del';
@@ -2179,6 +2305,13 @@ const Templates = (() => {
     State.update(t => {
       if (t.id === tab.id) t.blocks = reId(cloned);
     });
+
+    /* Инкремент useCount для пользовательских шаблонов */
+    if (!tpl.id.startsWith('tpl-')) {
+      const saved = _loadUserTemplates();
+      const t = saved.find(x => x.id === tpl.id);
+      if (t) { t.useCount = (t.useCount || 0) + 1; _saveUserTemplates(saved); }
+    }
   }
 
   function saveCurrentAsTemplate() {
@@ -2190,10 +2323,17 @@ const Templates = (() => {
     if (!t) { Toast.show('Нет активной вкладки', 'error'); return; }
 
     const saved = _loadUserTemplates();
+    if (saved.length >= MAX_USER_TEMPLATES) {
+      Toast.show(`Достигнут лимит шаблонов (${MAX_USER_TEMPLATES})`, 'error');
+      return;
+    }
+
     saved.push({
       id: 'user-' + uid(),
       name,
       blocks: JSON.parse(JSON.stringify(t.blocks)),
+      createdAt: Date.now(),
+      useCount: 0,
     });
 
     if (!_saveUserTemplates(saved)) return;
@@ -2202,6 +2342,60 @@ const Templates = (() => {
     renderList();
     renderDropdown();
     Toast.show(`Шаблон «${name}» сохранён ✓`, 'success');
+  }
+
+  /* ── Экспорт ── */
+  function _exportTemplates() {
+    const userTpls = _loadUserTemplates();
+    if (!userTpls.length) { Toast.show('Нет пользовательских шаблонов для экспорта', 'info'); return; }
+    const json = JSON.stringify(userTpls, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `paste-copy-templates-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    Toast.show(`Экспортировано ${userTpls.length} шаблонов ✓`, 'success');
+  }
+
+  /* ── Импорт ── */
+  function _importTemplates(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!Array.isArray(data)) { Toast.show('Неверный формат файла', 'error'); return; }
+
+        const valid = data.filter(t => t && typeof t.name === 'string' && Array.isArray(t.blocks));
+        if (!valid.length) { Toast.show('Файл не содержит валидных шаблонов', 'error'); return; }
+
+        const existing = _loadUserTemplates();
+        const existingIds = new Set(existing.map(t => t.id));
+        let added = 0;
+
+        for (const tpl of valid) {
+          if (existing.length >= MAX_USER_TEMPLATES) break;
+          if (existingIds.has(tpl.id)) continue;
+          existing.push({
+            id: tpl.id,
+            name: tpl.name,
+            blocks: tpl.blocks,
+            createdAt: tpl.createdAt || Date.now(),
+            useCount: tpl.useCount || 0,
+          });
+          added++;
+        }
+
+        if (!_saveUserTemplates(existing)) return;
+        renderList();
+        renderDropdown();
+        Toast.show(`Импортировано ${added} шаблонов ✓`, 'success');
+      } catch {
+        Toast.show('Ошибка чтения JSON-файла', 'error');
+      }
+    };
+    reader.readAsText(file);
   }
 
   function renderDropdown() {
@@ -2244,6 +2438,9 @@ const Templates = (() => {
   if (saveBtn)  saveBtn.onclick  = saveCurrentAsTemplate;
   if (closeBtn) closeBtn.onclick = close;
   if (modal)    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  if (exportBtn) exportBtn.onclick = _exportTemplates;
+  if (importBtn) importBtn.onclick = () => fileInput?.click();
+  if (fileInput) fileInput.onchange = e => { const f = e.target.files?.[0]; if (f) _importTemplates(f); fileInput.value = ''; };
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && modal && modal.style.display !== 'none') close();

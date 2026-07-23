@@ -820,6 +820,18 @@
 
         </div>
 
+        <div class="snap-io-row">
+
+          <button type="button" id="btn-tpl-export" class="btn-snap-io" title="Экспорт пользовательских шаблонов в JSON">📥 Экспорт</button>
+
+          <button type="button" id="btn-tpl-import" class="btn-snap-io" title="Импорт шаблонов из JSON-файла">📤 Импорт</button>
+
+          <input type="file" id="tpl-file-input" accept=".json" style="display:none">
+
+          <span id="tpl-counter" class="snap-counter"></span>
+
+        </div>
+
         <div id="templates-list" class="modal-list" role="list" aria-label="Список шаблонов"></div>
 
       </div>
@@ -1882,6 +1894,7 @@
 
   <script src="word-count.js"></script>
 
+  <script src="qrcode-generator.js"></script>
   <script src="qr-panel.js"></script>
 
   <script src="keyboard-trainer.js"></script>

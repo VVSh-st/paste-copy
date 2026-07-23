@@ -1156,7 +1156,9 @@
         id: 'user-intel-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
         name,
         blocks,
-        source: 'intelligence'
+        source: 'intelligence',
+        createdAt: Date.now(),
+        useCount: 0,
       });
       storageApi.saveTemplates(saved);
       window.Templates?.renderDropdown?.();
