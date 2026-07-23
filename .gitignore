@@ -10,6 +10,9 @@ Backup/
 *.png
 *.gif
 .mimocode/
+.mcp.json
+HANDOFF.md
+AGENTS.md
 .playwright-mcp/
 Bigbrat_govorit/
 research/
