@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.svg" width="80" alt="paste\copy logo">
+</p>
+
 # paste\copy
 
 <!-- GIF / screenshot сюда -->
