@@ -1,0 +1,1038 @@
+// file_name: help.js
+
+(function () {
+  'use strict';
+
+  const HELP_BUTTON_ID = 'btn-help';
+  const HELP_OVERLAY_ID = 'help-overlay';
+  const HELP_SEARCH_ID = 'help-search-input';
+
+  let lastFocus = null;
+  let isReady = false;
+
+  const escapeHtml = value => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  function $(selector, root = document) {
+    return root.querySelector(selector);
+  }
+
+  function $all(selector, root = document) {
+    return Array.from(root.querySelectorAll(selector));
+  }
+
+  function toast(message, type = 'success') {
+    if (window.Toast?.show) {
+      window.Toast.show(message, type);
+      return;
+    }
+
+    const el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = message;
+    el.className = `toast show ${type}`;
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => el.classList.remove('show'), 1800);
+  }
+
+  function createHelpButton() {
+    if (document.getElementById(HELP_BUTTON_ID)) return;
+
+    const copyButton = document.getElementById('btn-copy');
+    const toolbar = document.getElementById('toolbar');
+    if (!copyButton || !toolbar) return;
+
+    const button = document.createElement('button');
+    button.id = HELP_BUTTON_ID;
+    button.type = 'button';
+    button.className = 'tb-btn tb-btn-icon-only help-toolbar-btn';
+    button.title = 'Справка и быстрый старт (F2)';
+    button.setAttribute('aria-label', 'Открыть справку');
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.setAttribute('aria-controls', HELP_OVERLAY_ID);
+    button.setAttribute('aria-expanded', 'false');
+    button.innerHTML = `
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="10" cy="10" r="7.25"></circle>
+        <path d="M7.9 7.8a2.25 2.25 0 0 1 4.25 1.05c0 1.65-1.98 1.98-1.98 3.27"></path>
+        <path d="M10 15h.01"></path>
+      </svg>
+    `;
+
+    copyButton.parentNode.insertBefore(button, copyButton);
+    button.addEventListener('click', openHelp);
+    button.addEventListener('mouseenter', () => { if (typeof Ember !== 'undefined') Ember.triggerReaction('helpHover'); });
+  }
+
+  function createHelpOverlay() {
+    if (document.getElementById(HELP_OVERLAY_ID)) return;
+
+    const overlay = document.createElement('section');
+    overlay.id = HELP_OVERLAY_ID;
+    overlay.className = 'help-overlay';
+    overlay.hidden = true;
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'help-title');
+    overlay.innerHTML = getHelpMarkup();
+
+    document.body.appendChild(overlay);
+  }
+
+  function getHelpMarkup() {
+    return `
+      <div class="help-shell" role="document">
+        <div class="help-sticky-head">
+          <header class="help-topbar">
+            <div class="help-title-wrap">
+              <span class="help-logo" aria-hidden="true">?</span>
+              <div>
+                <p class="help-eyebrow">paste\\copy · справка</p>
+                <h1 id="help-title">Промпт-редактор, который не требует инструкции</h1>
+              </div>
+            </div>
+            <div class="help-actions">
+              <button type="button" class="help-chip help-chip-hotkey" data-help-filter="hotkeys">F2</button>
+              <button type="button" class="help-close" data-help-close aria-label="Закрыть справку">✕</button>
+            </div>
+          </header>
+
+          <div class="help-controlbar">
+            <label class="help-search-wrap" for="${HELP_SEARCH_ID}">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.5"></circle>
+                <path d="M11.5 11.5l2.5 2.5"></path>
+              </svg>
+              <input id="${HELP_SEARCH_ID}" type="search" placeholder="Найти: блоки, БРО, перевод, якоря..." autocomplete="off" spellcheck="false">
+            </label>
+            <nav class="help-filterbar" aria-label="Фильтры справки">
+              <button type="button" class="active" data-help-filter="all">Всё</button>
+              <button type="button" data-help-filter="start">Старт</button>
+              <button type="button" data-help-filter="hotkeys">Хоткеи</button>
+              <button type="button" data-help-filter="blocks">Блоки</button>
+              <button type="button" data-help-filter="tools">Инструменты</button>
+              <button type="button" data-help-filter="bro">БРО</button>
+              <button type="button" data-help-filter="sync">Синхронизация</button>
+              <button type="button" data-help-filter="trouble">Проблемы</button>
+            </nav>
+          </div>
+        </div>
+
+        <div class="help-hero" data-help-card data-help-category="start" data-help-tags="старт быстро промпт превью копировать новичок">
+          <div class="help-hero-main">
+            <span class="help-pill">Быстрый старт</span>
+            <h2>Собирай промпт как LEGO: блоками, а не одной простынёй боли.</h2>
+            <p>Вкладка — отдельный сценарий. Блоки — куски промпта. Превью — итоговый текст для LLM. Чем яснее структура, тем меньше модель делает вид, что поняла.</p>
+          </div>
+          <ol class="help-steps" aria-label="Быстрый старт">
+            <li><b>1</b><span>Создай вкладку под задачу</span></li>
+            <li><b>2</b><span>Добавь блоки: контекст, задача, формат</span></li>
+            <li><b>3</b><span>Проверь превью и счётчики</span></li>
+            <li><b>4</b><span>Запусти аудит/сжатие, если нужно</span></li>
+            <li><b>5</b><span>Копируй результат и иди побеждать хаос</span></li>
+          </ol>
+        </div>
+
+        <main class="help-content" tabindex="-1">
+          <div class="help-grid help-grid-priority">
+            ${card('start', '🚀', 'Маршрут на 60 секунд', 'Самый короткий путь от «что это?» до рабочего промпта.', `
+              <ul class="help-list">
+                <li><b>Вкладка</b> = отдельный сценарий или проект.</li>
+                <li><b>Блок</b> = часть будущего промпта: роль, контекст, ограничения.</li>
+                <li><b>Превью</b> = итог, который копируется в LLM.</li>
+                <li><b>Шаблон</b> = заготовка, чтобы не начинать с пустого космоса.</li>
+              </ul>
+            `, 'start вкладка блок превью шаблон')}
+
+            ${card('hotkeys', '⌨️', 'Хоткеи', '', `
+              <div class="help-kbd-grid">
+                ${kbd('F2', 'Открыть / закрыть справку')}
+                ${kbd('Esc', 'Закрыть панели, меню, справку')}
+                ${kbd('Ctrl + S', 'Сохранить')}
+                ${kbd('Ctrl + Z', 'Отменить')}
+                ${kbd('Ctrl + Y', 'Повторить')}
+                ${kbd('Ctrl + F', 'Поиск и замена (по всем вкладкам)')}
+                ${kbd('F3', 'Следующее совпадение')}
+                ${kbd('Shift + F3', 'Предыдущее совпадение')}
+                ${kbd('Ctrl + T', 'Новая вкладка')}
+                ${kbd('Ctrl + W', 'Закрыть вкладку')}
+                ${kbd('Ctrl + D', 'Дублировать вкладку')}
+                ${kbd('Ctrl + Shift + C', 'Копировать превью')}
+                ${kbd('Ctrl + Shift + 1', 'Установить якорь')}
+                ${kbd('Ctrl + Shift + 2', 'Навигация по якорям')}
+                ${kbd('Ctrl + Shift + 3', 'Удалить все якоря')}
+                ${kbd('Ctrl + K', 'AI-трансформация выделенного текста')}
+                ${kbd('Alt + Shift + F', 'Меню форматирования текста')}
+                ${kbd('Alt + L', 'Мини-чат')}
+                ${kbd('Ctrl + Enter', 'Отправить в мини-чате')}
+                ${kbd('\\', 'Prompt Loom palette (сниппеты и команды)')}
+                ${kbd('/', 'Вызов функций (БРО-теги)')}
+                ${kbd(':', 'Эмодзи-пикер (набирай : + название)')}
+              </div>
+            `, 'hotkeys клавиши f2 esc ctrl alt')}
+
+            ${card('start', '✅', 'Чеклист перед копированием', 'Если всё отмечено — модель меньше фантазирует.', `
+              <label class="help-check"><input type="checkbox"> Есть роль или контекст?</label>
+              <label class="help-check"><input type="checkbox"> Задача сформулирована одним глаголом?</label>
+              <label class="help-check"><input type="checkbox"> Указан формат ответа?</label>
+              <label class="help-check"><input type="checkbox"> Ограничения не противоречат друг другу?</label>
+              <label class="help-check"><input type="checkbox"> Черновой мусор не уехал в превью?</label>
+              <p class="help-muted">Последний пункт важен: LLM читает даже то, что ты «ну это потом удалю».</p>
+            `, 'checklist чеклист копировать превью')}
+          </div>
+
+          <section class="help-section">
+            <div class="help-section-head">
+              <h2>Блоки</h2>
+              <p>Кирпичики твоего промпта.</p>
+            </div>
+            <div class="help-masonry">
+              ${card('blocks', '📝', 'Текстовый блок', 'Основа основ.', `
+                <ul class="help-list">
+                  <li>Обычная секция промпта с заголовком, иконкой и текстом.</li>
+                  <li>Клик по <b>#N</b> — включает/выключает блок из превью.</li>
+                  <li><b>Долгий клик</b> по <b>#N</b> — marker готовности (зелёная тень).</li>
+                  <li>Заголовок можно редактировать прямо на месте.</li>
+                  <li>Кнопки <b>↩ ↪</b> — отмена/повтор для этого блока.</li>
+                  <li>Markdown-превью: клик по <b>MD</b> включает рендер.</li>
+                </ul>
+              `, 'blocks блок текст text md preview done marker')}
+
+              ${card('blocks', '📌', 'Sticky Note', 'Цветная заметка, которая не лезет в превью.', `
+                <ul class="help-list">
+                  <li>5 цветов на выбор: синий, зелёный, жёлтый, розовый, серый.</li>
+                  <li>Авто-подстройка высоты под текст.</li>
+                  <li>Иконка ⊘ показывает: в превью не участвует.</li>
+                  <li>Идеально для заметок, напоминаний, «пока не трогать».</li>
+                </ul>
+              `, 'blocks sticky заметка sticky note цвет')}
+
+              ${card('blocks', '☑️', 'TODO Чеклист', 'Задачи с галочками прямо в промпте.', `
+                <ul class="help-list">
+                  <li>5 субвкладок для разных списков задач.</li>
+                  <li>Чекбоксы с анимацией — отмечай и радуйся.</li>
+                  <li><b>Enter</b> — новая задача, <b>Backspace</b> — удалить пустую.</li>
+                  <li><b>Ctrl+↑↓</b> — перетаскивание задач.</li>
+                  <li>Переключение вкладок <b>←→</b> без мышки.</li>
+                </ul>
+              `, 'blocks todo чеклист задачи checkbox')}
+
+              ${card('blocks', '📊', 'Таблица', 'Структурированные данные в сетке.', `
+                <ul class="help-list">
+                  <li>5 субвкладок для разных таблиц.</li>
+                  <li>Сетка от 1 до 15 колонок — настрой ширину.</li>
+                  <li><b>+</b> / <b>−</b> — добавить/удалить строку.</li>
+                  <li><b>&lt; &gt;</b> — выбор колонок и копирование между вкладками.</li>
+                  <li>Превью таблицы в формате Markdown.</li>
+                </ul>
+              `, 'blocks table таблица grid колонки')}
+
+              ${card('blocks', '🧩', 'Переменные', 'Одно имя — много мест.', `
+                <p>Создай переменную <code>{{product}}</code> и используй в разных блоках. Поменял значение — обновилось везде.</p>
+                <div class="help-example compact">
+                  <pre><code>Продукт: {{product}}
+Аудитория: {{audience}}
+Формат: таблица + выводы</code></pre>
+                  <button type="button" data-copy-example>Скопировать</button>
+                </div>
+              `, 'variables переменные product audience')}
+
+              ${card('blocks', '🧱', 'Сниппеты', 'Облачные сниппеты (из Loom) и локальные шаблоны.', `
+                <ul class="help-list">
+                  <li><b>Облачные</b> — синхронизируются между проектами.</li>
+                  <li><b>Локальные</b> — быстрые команды для текущего проекта.</li>
+                  <li><b>Группа</b> — порядок и структура внутри структуры. Да, матрёшка.</li>
+                </ul>
+              `, 'blocks сниппеты команда группа snippets commands')}
+
+              ${card('blocks', '✍️', 'Режим захвата', 'Быстрый ввод текста в заметку.', `
+                <ul class="help-list">
+                  <li>Активируй кнопку <b>✍</b> — текст пойдёт в Sticky-блок.</li>
+                  <li><b>Долгий клик</b> по кнопке — выбор режима: «В строчку» / «С пропуском».</li>
+                  <li>Свой стек отмены (↩ ↪) — не мешает глобальному.</li>
+                  <li>Sticky автоматически вставляется после исходного блока.</li>
+                </ul>
+              `, 'blocks capture захват быстрый ввод sticky')}
+
+              ${card('blocks', '👁️', 'Превью', 'Итоговый текст для LLM.', `
+                <ul class="help-list">
+                  <li>Собирает включённые блоки в один текст.</li>
+                  <li>Показывает символы, строки, размер и примерные токены.</li>
+                  <li>Кнопка <b>MD</b> циклит: Text → MD → MD* (с подсветкой кода).</li>
+                  <li>Клик по тексту превью — переход к блоку-источнику.</li>
+                  <li>Меню структуры — список блоков с навигацией.</li>
+                  <li>Кнопки аудита и сжатия — прямо в панели.</li>
+                </ul>
+              `, 'preview превью markdown токены копировать md hljs')}
+            </div>
+          </section>
+
+          <section class="help-section">
+            <div class="help-section-head">
+              <h2>Инструменты</h2>
+              <p>Всё, что делает редактирование быстрее.</p>
+            </div>
+            <div class="help-masonry">
+              ${card('tools', '🌐', 'Переводчик', 'Перевод прямо в блоке, без копипаста.', `
+                <ul class="help-list">
+                  <li>Кнопка <b>🌐</b> внизу каждого текстового блока.</li>
+                  <li>Клик — мгновенный перевод на выбранный язык.</li>
+                  <li>Перевод выделения на выбранный язык.</li>
+                  <li><b>Auto-режим</b> — автоматически определяет язык и переводит на противоположный.</li>
+                  <li>Длинное нажатие — выбор языка и движка (Google, Microsoft, Tencent).</li>
+                  <li>Повторный клик — <b>↩</b> откат к оригиналу.</li>
+                  <li>Не трогает переменные, теги и код — у них дипломатический иммунитет.</li>
+                  <li>Ember показывает ✨ при переводе.</li>
+                </ul>
+              `, 'tools translate переводчик язык google microsoft auto')}
+
+              ${card('tools', '🔍', 'Визуальный Diff', 'Сравнение версий с подсветкой изменений.', `
+                <ul class="help-list">
+                  <li>Открой <b>Снапшоты</b> и нажми <b>Diff</b> рядом с любой версией.</li>
+                  <li>Inline-дифф: зелёное — добавлено, красное — удалено.</li>
+                  <li>Навигация <b>▲ ▼</b> между изменениями.</li>
+                  <li>Масштаб шрифта <b>A− A+</b> для детального просмотра.</li>
+                  <li>Кнопка копирования изменений целиком.</li>
+                </ul>
+              `, 'tools diff сравнение версии снапшот snapshot')}
+
+              ${card('tools', '⚓', 'Якоря', 'Закладки на нужные места в тексте.', `
+                <ul class="help-list">
+                  <li><b>Ctrl+Shift+1</b> — поставить якорь на выделение или курсор.</li>
+                  <li><b>Ctrl+Shift+2</b> — перейти к следующему якорю.</li>
+                  <li>Длинное нажатие иконки перехода — список всех якорей.</li>
+                  <li><b>Ctrl+Shift+3</b> — удалить все якоря.</li>
+                  <li>Цветные полосы и подсветка — сразу видно, где якорь.</li>
+                  <li>Palette показывает превью текста и номер.</li>
+                </ul>
+              `, 'anchors якоря закладки bookmark navigation palette')}
+
+              ${card('tools', '🪮', 'Локальная причёска', 'Текстовый линтер без нейросетей.', `
+                <ul class="help-list">
+                  <li><b>Быстро причесать</b> — убирает пробелы, края строк, проблемы пунктуации.</li>
+                  <li><b>Diff и подсказки</b> — показывает, что изменится, до принятия.</li>
+                  <li><b>Очистка AI-текста</b> — невидимые символы, тире, многоточия, неразрывные пробелы.</li>
+                  <li>Защита сокращений: <code>т.д.</code>, <code>т.е.</code>, <code>т.к.</code> — линтер не ломает их.</li>
+                  <li>Код, URL, email, <code>{{переменные}}</code>, Markdown и команды — не трогает.</li>
+                  <li>Дробные числа <code>6,5</code> — без пробела, рубли не превращаются в салат.</li>
+                </ul>
+              `, 'tools text linter линтер причесать пробелы diff AI невидимые символы')}
+
+              ${card('tools', '🧠', 'LLM-инструменты', 'ИИ прямо в редакторе.', `
+                <ul class="help-list">
+                  <li><b>Мини-чат</b> — спросить LLM, не покидая рабочее место.</li>
+                  <li><b>Причесать текст</b> — долгий клик по ✨ на блоке:</li>
+                  <li>Быстро причесать, diff, грамматика, форматирование</li>
+                  <li>Позитивные инструкции, что пойдёт не так, резюме</li>
+                  <li>Сокращение и тон: расширить, формальный, неформальный</li>
+                  <li><b>Оценка промпта</b> — 5 критериев с анимированной шкалой.</li>
+                  <li><b>Сжать токены</b> — убрать лишнее без потери смысла.</li>
+                  <li><b>Заполнить {{llm:...}}</b> — авто-заполнение плейсхолдеров.</li>
+                </ul>
+              `, 'tools llm модель аудит сжатие чат автозаголовок intelligence grader')}
+
+              ${card('tools', '💡', 'Intelligence', 'Умные подсказки и анализ структуры.', `
+                <ul class="help-list">
+                  <li>Автоматические подсказки по улучшению промпта.</li>
+                  <li><b>Версии</b> — сохраняй и сравнивай разные варианты.</li>
+                  <li><b>Baseline</b> — отслеживание изменений от эталона.</li>
+                  <li><b>Диагностика</b> — анализ структуры и статистика.</li>
+                  <li><b>Похожие промпты</b> — поиск по базе знаний.</li>
+                  <li>Иконка в тулбаре — быстрый доступ к подсказкам.</li>
+                </ul>
+              `, 'tools intelligence умные подсказки версии baseline анализ')}
+
+              ${card('tools', '✨', 'Автодополнение', 'Подсказки при наборе текста.', `
+                <ul class="help-list">
+                  <li>Призрачная подсказка у каретки — как в IDE.</li>
+                  <li><b>Tab</b> — принять подсказку.</li>
+                  <li><b>Esc</b> — отклонить.</li>
+                  <li>Работает по префиксу, учитывает контекст.</li>
+                </ul>
+              `, 'tools autocompletion подсказки tab word complete')}
+
+              ${card('tools', '😊', 'Эмодзи-пикер', 'Быстрый ввод эмодзи через ":".', `
+                <ul class="help-list">
+                  <li>Набирай <b>:</b> + название — появится выпадающий список.</li>
+                  <li>Навигация: <b>↑ ↓</b>, принять: <b>Tab</b> или <b>Enter</b>.</li>
+                  <li><b>::</b> (двойное двоеточие) — приклеивается к предыдущему слову без пробела.</li>
+                  <li>Включается/выключается в настройках: LLM → Разное → Общее.</li>
+                </ul>
+              `, 'tools emoji эмодзи picker пикер : двоеточие')}
+
+              ${card('tools', '🔤', 'Форматирование текста', 'Быстрые операции с текстом.', `
+                <ul class="help-list">
+                  <li><b>Alt+Shift+F</b> — открыть меню форматирования.</li>
+                  <li>Регистр: верхний, нижний, заглавная буква.</li>
+                  <li>Сортировка строк, удаление дублей.</li>
+                  <li>Slugify, JSON-форматирование, нумерация строк.</li>
+                  <li>Транслитерация: кириллица ↔ латиница.</li>
+                  <li>Zalgo-текст для особых случаев.</li>
+                </ul>
+              `, 'tools text format форматирование регистр сортировка')}
+
+              ${card('tools', '🪮', 'Тамагочи-показометр', 'Ember — живой символ на каждой вкладке.', `
+                <ul class="help-list">
+                  <li>На каждой вкладке живёт свой Ember — маленький уголёк с характером.</li>
+                  <li>Показывает <b>время</b> и реагирует на твою активность.</li>
+                  <li>Чем больше вводишь — тем ярче горит. Перестал работать — остывает и дымится.</li>
+                  <li>Реакции на действия: искры при копировании, восторг при переводе, вздрагивание при удалении.</li>
+                  <li><b>Двойной клик</b> — Economy Mode: выключает частицы для экономии батареи.</li>
+                </ul>
+              `, 'tools ember тамагочи показометр огонёк economy время')}
+
+              ${card('tools', '⏱️', 'Таймер', 'Секундомер и обратный отсчёт.', `
+                <ul class="help-list">
+                  <li><b>Клик</b> — запустить секундомер (вверх).</li>
+                  <li><b>Долгий клик</b> — ввести минуты для обратного отсчёта.</li>
+                  <li><b>Клик</b> во время работы — пауза.</li>
+                  <li><b>Клик</b> на паузе — возобновление.</li>
+                  <li><b>ПКМ</b> — сбросить таймер.</li>
+                  <li>12-сегментная дуга — визуальная индикация прогресса.</li>
+                  <li>Последние 5 секунд — тёплое свечение.</li>
+                  <li>Звуковой сигнал по окончании.</li>
+                  <li>Состояние сохраняется между перезагрузками.</li>
+                </ul>
+              `, 'tools timer таймер секундомер обратный отсчёт пауза')}
+
+              ${card('tools', '📊', 'Счётчик слов', 'Статистика по тексту в реальном времени.', `
+                <ul class="help-list">
+                  <li>Слова, символы, предложения, абзацы, время чтения.</li>
+                  <li>Перетаскивай за заголовок, закрепляй кнопкой.</li>
+                  <li>Автоматически переключается на активный блок.</li>
+                  <li>Позиция сохраняется.</li>
+                </ul>
+              `, 'tools word count счётчик слов статистика')}
+
+              ${card('tools', '🔍', 'Поиск и замена', 'Полноценный поиск по всем вкладкам.', `
+                <ul class="help-list">
+                  <li><b>Ctrl+F</b> — открыть панель поиска.</li>
+                  <li>Регулярные выражения, регистр, целые слова.</li>
+                  <li>Поиск <b>по всем вкладкам</b>.</li>
+                  <li>Замена одной или всех вхождений.</li>
+                  <li><b>F3</b> / <b>Shift+F3</b> — навигация.</li>
+                </ul>
+              `, 'tools search поиск замена replace regex')}
+
+              ${card('tools', '🗒️', 'Блокнот', 'Плавающий блокнот с 10 вкладками.', `
+                <ul class="help-list">
+                  <li>10 вкладок, двойной клик для переименования.</li>
+                  <li>Markdown-превью с подсветкой кода.</li>
+                  <li>Перевод с выбором языка и движка.</li>
+                  <li>Отмена/повтор, копирование, сохранение в .txt.</li>
+                  <li>Перетаскивание и изменение размера.</li>
+                </ul>
+              `, 'tools notepad блокнот заметки markdown')}
+
+              ${card('tools', '🪡', 'Prompt Loom', 'История копирований и быстрый вставки.', `
+                <ul class="help-list">
+                  <li>Набирай <b>\\</b> в текстовом поле — откроется palette.</li>
+                  <li>Полная панель с поиском, фильтрами и карточками.</li>
+                  <li>Быстрая вставка: <b>1-9</b> по номеру, <b>Enter</b> — принять.</li>
+                  <li>Создание сниппетов и переменных из истории.</li>
+                  <li>Режимы: Обычный, Компактный, Ультра-лёгкий.</li>
+                </ul>
+              `, 'tools prompt loom история clipboard буфер обмена')}
+
+              ${card('tools', '⌨️', 'Клавиатурный тренажёр', 'Визуальная клавиатура с подсветкой.', `
+                <ul class="help-list">
+                  <li>Авто-определение раскладки RU/EN.</li>
+                  <li>Цветные зоны пальцев, подсветка нажатий.</li>
+                  <li>Режим экранной клавиатуры (ввод кликами).</li>
+                  <li>Фильтр проблемных клавиш.</li>
+                  <li>Перетаскивание, изменение размера, настройки.</li>
+                </ul>
+              `, 'tools keyboard trainer клавиатура раскладка')}
+
+              ${card('tools', '📖', 'Тезаурус', 'Синонимы и антонимы через LLM.', `
+                <ul class="help-list">
+                  <li>Выдели слово или поставь курсор — запусти тезаурус.</li>
+                  <li><b>Tab</b> / <b>→</b> — следующий синоним.</li>
+                  <li><b>Пробел</b> — принять текущий вариант.</li>
+                  <li><b>Esc</b> — отменить, вернуть оригинал.</li>
+                  <li>Режимы: синонимы, антонимы, перефразировка.</li>
+                </ul>
+              `, 'tools thesaurus тезаурус синонимы антонимы')}
+
+              ${card('tools', '✨', 'AI-трансформация', 'Трансформация текста через LLM.', `
+                <ul class="help-list">
+                  <li><b>Ctrl+K</b> — открыть панель трансформации.</li>
+                  <li>Работает с выделенным текстом или всем содержимым.</li>
+                  <li>Опиши, что сделать: сократить, расширить, перевести, изменить тон.</li>
+                  <li>Результат вставляется с возможностью отмены.</li>
+                </ul>
+              `, 'tools ai transform трансформация llm ctrl+k')}
+
+              ${card('tools', '🔧', 'Текстовый экспандер', 'Быстрые шаблоны по триггерам.', `
+                <ul class="help-list">
+                  <li>Набери <b>ё</b> + сокращение → раскроется в полный текст.</li>
+                  <li>Категории для организации: рабочие, личные, код.</li>
+                  <li>Вставка по <b>Tab</b> из выпадающего списка.</li>
+                  <li>Долгий клик по кнопке — добавить выделенный текст.</li>
+                  <li>Экспорт/импорт настроек.</li>
+                </ul>
+              `, 'tools text expander расширитель шаблоны сокращения ё')}
+
+              ${card('tools', '📱', 'QR-панель', 'Генерация QR-кодов из превью.', `
+                <ul class="help-list">
+                  <li>Кнопка <b>📱</b> в превью — открыть QR-панель.</li>
+                  <li>QR-код текущего превью для быстрой передачи.</li>
+                  <li><b>Просмотр</b> — навигация по страницам QR.</li>
+                  <li><b>Стиль</b> — настройка размера модуля и цветов.</li>
+                  <li><b>Экспорт</b> — сохранение как PNG.</li>
+                  <li><b>История</b> — ранее сгенерированные QR.</li>
+                  <li>Перетаскивание и изменение размера.</li>
+                </ul>
+              `, 'tools qr код панель mobile')}
+
+              ${card('tools', '🧠', 'Mind Map', 'Визуальный анализ текста через LLM.', `
+                <ul class="help-list">
+                  <li>Кнопка <b>🧠</b> в превью — открыть карту.</li>
+                  <li><b>W</b> — Облако слов по важности.</li>
+                  <li><b>G</b> — Граф связей между понятиями.</li>
+                  <li><b>T</b> — Дерево аргументов.</li>
+                  <li><b>C</b> — Тематические кластеры.</li>
+                  <li><b>M</b> — Иерархия тем.</li>
+                  <li><b>→</b> — Поток шагов.</li>
+                  <li>Зум, навигация, клик по слову — переход к тексту.</li>
+                </ul>
+              `, 'tools mind map карта анализ визуализация')}
+
+              ${card('tools', '📐', 'Блок-схема', 'Визуализация процессов и решений.', `
+                <ul class="help-list">
+                  <li>Кнопка <b>📐</b> в превью — открыть схему.</li>
+                  <li><b>F</b> — Блок-схема (процессы, решения).</li>
+                  <li><b>G</b> — Граф связей.</li>
+                  <li><b>+</b> — Добавить блок вручную.</li>
+                  <li><b>↗</b> — Соединить блоки.</li>
+                  <li><b>⊞</b> — Авто-раскладка.</li>
+                  <li>Размер шрифта, зум, перетаскивание.</li>
+                </ul>
+              `, 'tools flowchart блок-схема процесс диаграмма')}
+
+              ${card('tools', '🗂️', 'Шаблоны', 'Заготовки, чтобы не начинать с нуля.', `
+                <ul class="help-list">
+                  <li><b>6 встроенных:</b> Код-ревью, Перевод, Рефакторинг, Объяснение, Брейнсторм, Отладка.</li>
+                  <li>Создавай свои шаблоны — максимум <b>20</b> штук.</li>
+                  <li>Установи шаблон по умолчанию для новых вкладок.</li>
+                  <li><b>Двойной клик</b> по имени — переименование.</li>
+                  <li><b>Копия</b> — дублирует шаблон как «имя (копия)».</li>
+                  <li><b>Экспорт/импорт</b> — JSON-файл для переноса.</li>
+                  <li>Статистика: дата создания и количество использований.</li>
+                </ul>
+              `, 'tools шаблоны templates')}
+            </div>
+          </section>
+
+          <section class="help-section">
+            <div class="help-section-head">
+              <h2>БРО-теги</h2>
+              <p>Команды прямо в тексте. Почти магия, но с логами.</p>
+            </div>
+            <div class="help-masonry">
+              ${card('bro', '🗣️', 'Встроенные теги', '', `
+                <div class="help-example">
+                  <pre><code>!бро чем усилить этот промпт?
+!фикс исправь этот текст
+!вопрос каких данных не хватает?
+!план
+!сум
+!режим кратко
+!старт
+!эн
+!ру
+!история</code></pre>
+                  <button type="button" data-copy-example>Скопировать</button>
+                </div>
+                <p class="help-muted">При вводе <code>!</code> откроется быстрое меню. <code>!старт</code> становится контекстом для последующих тегов.</p>
+                <p class="help-muted"><code>!режим кратко</code> / <code>!режим подробно</code> —persistent-режим для всех последующих тегов. <code>!режим сброс</code> — отмена.</p>
+              `, 'bro бро тег теги встроенные !бро !фикс !вопрос !план !сум !режим')}
+
+              ${card('bro', '🏷️', 'Пользовательские теги', 'Свои команды — свои правила.', `
+                <ul class="help-list">
+                  <li><code>!мой-тег</code> — вставляет ответ в позицию курсора.</li>
+                  <li><code>!!мой-тег</code> — заменяет весь текст текущей вкладки.</li>
+                  <li>Системные промпты в <b>Хранилище</b> — библиотека готовых инструкций.</li>
+                  <li>Можно комбинировать: <code>... контекст. !бро что улучшить?</code></li>
+                </ul>
+              `, 'bro пользовательские теги !!мой-тег хранилище')}
+
+              ${card('bro', '🌐', 'Перевод через БРО', 'Быстрый перевод одной строкой.', `
+                <div class="help-example compact">
+                  <pre><code>!эн перевод на английский
+!ру перевод на русский</code></pre>
+                  <button type="button" data-copy-example>Скопировать</button>
+                </div>
+                <p class="help-muted">Переводит весь текст вкладки через LLM. Используй текущий профиль для лучшего результата.</p>
+              `, 'bro перевод !эн !ру translate')}
+
+              ${card('bro', '🤖', 'Плейсхолдеры {{llm:...}}', 'Авто-заполнение через LLM.', `
+                <ul class="help-list">
+                  <li>Напиши <code>{{llm:инструкция}}</code> в текстовом блоке.</li>
+                  <li>Нажми кнопку заполнения — LLM сгенерирует значение.</li>
+                  <li>Плейсхолдер заменяется на результат.</li>
+                  <li>Можно заполнить все сразу или по одному.</li>
+                </ul>
+                <div class="help-example compact">
+                  <pre><code>Профессия: {{llm:специалист из IT}}
+Язык: {{llm:python или javascript}}</code></pre>
+                  <button type="button" data-copy-example>Скопировать</button>
+                </div>
+              `, 'bro llm плейсхолдер placeholder автоматизация')}
+            </div>
+          </section>
+
+          <section class="help-section">
+            <div class="help-section-head">
+              <h2>Синхронизация и бэкапы</h2>
+              <p>Твои данные переживут даже закрытие вкладки.</p>
+            </div>
+            <div class="help-masonry">
+              ${card('sync', '☁️', 'Gist Sync', 'Синхронизация через GitHub Gist.', `
+                <ul class="help-list">
+                  <li>Полная синхронизация состояния через GitHub.</li>
+                  <li>История версий — можно откатиться к любой точке.</li>
+                  <li>Автосинхронизация по расписанию.</li>
+                </ul>
+              `, 'sync gist github синхронизация')}
+
+              ${card('sync', '💾', 'Локальные бэкапы', 'IndexedDB — надёжнее куки.', `
+                <ul class="help-list">
+                  <li>Автосохранение после каждого пуша в Gist.</li>
+                  <li>Максимум 30 бэкапов — старые удаляются.</li>
+                  <li><b>☠</b> — пометить бэкап как бессмертный (не удаляется).</li>
+                  <li>Восстановление с безопасным снапшотом перед откатом.</li>
+                  <li>Экспорт бэкапа в JSON-файл.</li>
+                </ul>
+              `, 'sync backup бэкап indexeddb локальный')}
+
+              ${card('sync', '🧠', 'Memory Sync', 'Синхронизация метаданных без полного текста.', `
+                <ul class="help-list">
+                  <li>Отправляет только хэши, роли, счётчики и структуру.</li>
+                  <li>Полный текст не покидает браузер — паранойя тут фича.</li>
+                  <li>Auto push/pull — настрой под свой темп.</li>
+                </ul>
+              `, 'sync memory метаданные приватность')}
+
+              ${card('sync', '📦', 'Экспорт / Импорт', 'JSON — универсальный язык.', `
+                <ul class="help-list">
+                  <li>Экспорт всего состояния в JSON-файл.</li>
+                  <li>Импорт из JSON — восстановление за секунду.</li>
+                  <li>Перенос рабочего места между браузерами.</li>
+                </ul>
+              `, 'sync export import json экспорт импорт')}
+            </div>
+          </section>
+
+          <section class="help-section">
+            <div class="help-section-head">
+              <h2>Типовые сценарии</h2>
+              <p>Бери как рецепт. Можно без чувства вины.</p>
+            </div>
+            <div class="help-scenarios">
+              ${scenario('Собрать промпт для задачи', ['Новая вкладка', 'Блок «Контекст»', 'Блок «Задача»', 'Блок «Формат ответа»', 'Аудит промпта', 'Копировать превью'])}
+              ${scenario('Улучшить старый промпт', ['Вставь текст в блок', 'Запусти «Аудит промпта»', 'Исправь слабые места', 'Сделай снапшот до/после', 'Сожми токены при необходимости'])}
+              ${scenario('Проверить ТЗ', ['Вставь ТЗ', 'Добавь !вопрос каких данных не хватает?', 'Нажми Enter', 'Смотри ответ и не спорь с очевидным'])}
+              ${scenario('Перевести текст', ['Вставь текст в блок', 'Нажми 🌐 или добавь !эн / !ру', 'Проверь термины — модели любят творчество', 'Откати, если не нравится — повторный клик ↩'])}
+            </div>
+          </section>
+
+          <section class="help-section">
+            <div class="help-section-head">
+              <h2>Примеры для копирования</h2>
+              <p>Мини-заготовки, чтобы не смотреть в пустой блок как в бездну.</p>
+            </div>
+            <div class="help-grid">
+              ${exampleCard('Каркас сильного промпта', `Роль: Ты опытный [специалист].
+Контекст: [кратко опиши ситуацию].
+Задача: [что нужно сделать].
+Ограничения: [тон, объём, запреты].
+Формат ответа: [список / таблица / JSON / план].
+Проверь: укажи риски и вопросы, если данных не хватает.`)}
+              ${exampleCard('Аудит задачи', `Проанализируй задачу ниже.
+Найди:
+1. Неясные места
+2. Противоречия
+3. Недостающие данные
+4. Риски реализации
+5. 5 уточняющих вопросов
+
+Текст задачи:
+[вставить сюда]`)}
+              ${exampleCard('Сжатие без потери смысла', `Сожми текст ниже на 30–40%.
+Сохрани требования, ограничения, примеры и важные термины.
+Убери повторы, воду и декоративные фразы.
+
+Текст:
+[вставить сюда]`)}
+            </div>
+          </section>
+
+          <section class="help-section">
+            <div class="help-section-head">
+              <h2>Если что-то пошло не так</h2>
+              <p>Без паники. Паника — плохой UX.</p>
+            </div>
+            <div class="help-masonry">
+              ${card('trouble', '📋', 'Не копируется', '', `
+                <p>Проверь настройку <b>Clipboard API</b>. Если браузер капризничает, отключи её и копируй обычным способом. Иногда безопасность браузера думает, что она тут главная.</p>
+              `, 'trouble clipboard копирование')}
+              ${card('trouble', '🤐', 'LLM молчит', '', `
+                <p>Проверь активный профиль, endpoint, API key, модель и timeout. Если модель локальная и тяжёлая — увеличь таймаут. Возможно, она не задумалась, а просто ещё грузится.</p>
+              `, 'trouble llm endpoint api timeout модель')}
+              ${card('trouble', '👻', 'Превью странное', '', `
+                <p>Проверь включение заголовков, разделитель и Markdown-режим. Если текст выглядит как древний свиток — вероятно, разделитель слишком героический.</p>
+              `, 'trouble preview markdown separator')}
+              ${card('trouble', '🧯', 'Слишком много токенов', '', `
+                <p>Запусти <b>Сжать токены</b>, отключи лишние блоки, вынеси повторяемое в переменные и убери «на всякий случай». LLM не обязана читать весь холодильник, чтобы приготовить омлет.</p>
+              `, 'trouble tokens сжатие')}
+            </div>
+          </section>
+
+          <section class="help-section help-advanced" data-help-card data-help-category="tools" data-help-tags="advanced продвинуто настройки системные промпты автопоэт intelligence smart suggestions memory sync gist privacy">
+            <details>
+              <summary>Продвинутые фишки — открывать, когда базовый хаос уже приручён</summary>
+              <div class="help-details-grid">
+                <p><b>Системные промпты:</b> можно менять инструкции встроенных LLM-функций. Не удаляй обязательные переменные вроде <code>{instruction}</code>.</p>
+                <p><b>AutoPoet:</b> автодополнение от LLM. Удобно, но включай осознанно, чтобы текст не начал жить свою лучшую жизнь.</p>
+                <p><b>Intelligence:</b> тихие подсказки, диагностика структуры, похожие промпты, версии и baseline. Не чатится без спроса — просто подмигивает, когда видит хаос.</p>
+                <p><b>Word Complete:</b> призрачные подсказки при наборе. Принимай по Tab, отклоняй по Esc. Научится на твоём стиле.</p>
+                <p><b>Prompt Loom:</b> итеративное развитие промптов. LLM предлагает варианты улучшения — ты выбираешь лучший.</p>
+              </div>
+            </details>
+          </section>
+
+          <div class="help-empty" hidden>
+            <b>Ничего не найдено.</b>
+            <span>Попробуй «блоки», «БРО», «перевод», «якоря» или нажми фильтр «Всё».</span>
+          </div>
+        </main>
+      </div>
+    `;
+  }
+
+  function card(category, icon, title, subtitle, body, tags = '') {
+    return `
+      <article class="help-card help-card-${escapeHtml(category)}" data-help-card data-help-category="${escapeHtml(category)}" data-help-tags="${escapeHtml(tags)} ${escapeHtml(title)} ${escapeHtml(subtitle || '')}">
+        <div class="help-card-head">
+          <span class="help-card-icon" aria-hidden="true">${escapeHtml(icon)}</span>
+          <div>
+            <h3>${escapeHtml(title)}</h3>
+            ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}
+          </div>
+        </div>
+        <div class="help-card-body">${body}</div>
+      </article>
+    `;
+  }
+
+  function kbd(keys, label) {
+    const parts = keys.split('+').map(part => `<kbd>${escapeHtml(part.trim())}</kbd>`).join('<span class="help-kbd-plus">+</span>');
+    return `<div class="help-kbd-row"><span class="help-kbd-combo">${parts}</span><span>${escapeHtml(label)}</span></div>`;
+  }
+
+  function scenario(title, steps) {
+    return `
+      <article class="help-scenario" data-help-card data-help-category="start" data-help-tags="сценарий ${escapeHtml(title)} ${escapeHtml(steps.join(' '))}">
+        <h3>${escapeHtml(title)}</h3>
+        <ol>${steps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+      </article>
+    `;
+  }
+
+  function exampleCard(title, text) {
+    return `
+      <article class="help-card help-card-example" data-help-card data-help-category="start" data-help-tags="пример копировать ${escapeHtml(title)} ${escapeHtml(text)}">
+        <div class="help-card-head">
+          <span class="help-card-icon" aria-hidden="true">🧪</span>
+          <div><h3>${escapeHtml(title)}</h3><p>Можно скопировать и адаптировать.</p></div>
+        </div>
+        <div class="help-example">
+          <pre><code>${escapeHtml(text)}</code></pre>
+          <button type="button" data-copy-example>Скопировать</button>
+        </div>
+      </article>
+    `;
+  }
+
+  function bindEvents() {
+    const overlay = document.getElementById(HELP_OVERLAY_ID);
+    if (!overlay || overlay.dataset.bound === '1') return;
+    overlay.dataset.bound = '1';
+
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) closeHelp();
+      if (event.target.closest('[data-help-close]')) closeHelp();
+
+      const filterButton = event.target.closest('[data-help-filter]');
+      if (filterButton) {
+        const filter = filterButton.dataset.helpFilter || 'all';
+        setFilter(filter);
+      }
+
+      const copyButton = event.target.closest('[data-copy-example]');
+      if (copyButton) copyExample(copyButton);
+    });
+
+    const search = document.getElementById(HELP_SEARCH_ID);
+    if (search) {
+      search.addEventListener('input', () => applyVisibility());
+      search.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && search.value) {
+          event.stopPropagation();
+          search.value = '';
+          applyVisibility();
+        }
+      });
+    }
+
+    if (!document.documentElement.dataset.helpHotkeysBound) {
+      document.addEventListener('keydown', handleGlobalKeydown, true);
+      document.documentElement.dataset.helpHotkeysBound = '1';
+    }
+  }
+
+  function handleGlobalKeydown(event) {
+    const overlay = document.getElementById(HELP_OVERLAY_ID);
+    const opened = overlay && !overlay.hidden;
+
+    if (event.key === 'F2') {
+      const tag = event.target?.tagName;
+      if (event.target?.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      event.preventDefault();
+      event.stopPropagation();
+      opened ? closeHelp() : openHelp();
+      return;
+    }
+
+    if (!opened) return;
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeHelp();
+      return;
+    }
+
+    if (event.key === 'Tab') trapFocus(event, overlay);
+  }
+
+  function trapFocus(event, overlay) {
+    const focusable = $all('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])', overlay)
+      .filter(el => !el.disabled && el.offsetParent !== null);
+
+    if (!focusable.length) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function openHelp() {
+    ensureReady();
+
+    const overlay = document.getElementById(HELP_OVERLAY_ID);
+    const button = document.getElementById(HELP_BUTTON_ID);
+    if (!overlay || !overlay.hidden) return;
+
+    lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    overlay.hidden = false;
+    document.body.classList.add('help-open');
+    button?.classList.add('active-btn');
+    button?.setAttribute('aria-expanded', 'true');
+
+    const focusTarget = document.getElementById(HELP_SEARCH_ID) || $('.help-content', overlay) || overlay;
+    focusTarget.focus?.({ preventScroll: true });
+
+    requestAnimationFrame(() => {
+      focusTarget.focus?.({ preventScroll: true });
+    });
+  }
+
+  function closeHelp() {
+    const overlay = document.getElementById(HELP_OVERLAY_ID);
+    const button = document.getElementById(HELP_BUTTON_ID);
+    if (!overlay || overlay.hidden) return;
+
+    overlay.hidden = true;
+    document.body.classList.remove('help-open');
+    button?.classList.remove('active-btn');
+    button?.setAttribute('aria-expanded', 'false');
+
+    const focusTarget = lastFocus && document.contains(lastFocus) ? lastFocus : button;
+    if (focusTarget && typeof focusTarget.focus === 'function') {
+      setTimeout(() => focusTarget.focus({ preventScroll: true }), 0);
+    }
+  }
+
+  function setFilter(filter) {
+    const overlay = document.getElementById(HELP_OVERLAY_ID);
+    if (!overlay) return;
+
+    $all('[data-help-filter]', overlay).forEach(button => {
+      const active = button.dataset.helpFilter === filter;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+
+    overlay.dataset.activeFilter = filter;
+    applyVisibility();
+  }
+
+  function applyVisibility() {
+    const overlay = document.getElementById(HELP_OVERLAY_ID);
+    if (!overlay) return;
+
+    const filter = overlay.dataset.activeFilter || 'all';
+    const query = (document.getElementById(HELP_SEARCH_ID)?.value || '').trim().toLowerCase();
+    let visibleCount = 0;
+
+    $all('[data-help-card]', overlay).forEach(cardEl => {
+      const category = cardEl.dataset.helpCategory || '';
+      const haystack = (cardEl.dataset.helpSearchText ||
+        (cardEl.dataset.helpSearchText = `${cardEl.dataset.helpTags || ''} ${cardEl.textContent || ''}`.toLowerCase()));
+      const byFilter = filter === 'all' || category === filter;
+      const byQuery = !query || haystack.includes(query);
+      const visible = byFilter && byQuery;
+
+      cardEl.hidden = !visible;
+      if (visible) visibleCount += 1;
+    });
+
+    $all('.help-section', overlay).forEach(section => {
+      if (section.matches('[data-help-card]')) return;
+      const cards = $all('[data-help-card]', section);
+      section.hidden = cards.length > 0 && cards.every(cardEl => cardEl.hidden);
+    });
+
+    const empty = $('.help-empty', overlay);
+    if (empty) empty.hidden = visibleCount > 0;
+  }
+
+  function markCopied(button) {
+    if (!button._copyOriginalText) {
+      button._copyOriginalText = button.textContent;
+    }
+    button.textContent = 'Скопировано ✓';
+    button.classList.add('copied');
+    clearTimeout(button._copyTimer);
+    button._copyTimer = setTimeout(() => {
+      button.textContent = button._copyOriginalText;
+      button.classList.remove('copied');
+      button._copyOriginalText = null;
+    }, 1100);
+  }
+
+  async function copyExample(button) {
+    if (button.disabled) return;
+    button.disabled = true;
+
+    try {
+      const code = button.parentElement?.querySelector('code')?.textContent || '';
+      if (!code.trim()) return;
+
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText && window._clipboardApiEnabled !== false) {
+          await navigator.clipboard.writeText(code);
+          copied = true;
+        }
+      } catch (e) {
+        console.warn('HelpCenter clipboard API failed:', e);
+      }
+
+      if (!copied) {
+        try {
+          copied = fallbackCopy(code);
+        } catch (e) {
+          console.warn('HelpCenter fallback copy failed:', e);
+        }
+      }
+
+      if (copied) {
+        markCopied(button);
+        toast('Пример скопирован ✓', 'success');
+      } else {
+        toast('Не удалось скопировать пример', 'error');
+      }
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function fallbackCopy(text) {
+    const textarea = document.createElement('textarea');
+    try {
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      return document.execCommand('copy') === true;
+    } finally {
+      textarea.remove();
+    }
+  }
+
+  function ensureReady() {
+    const hasButton = Boolean(document.getElementById(HELP_BUTTON_ID));
+    const hasOverlay = Boolean(document.getElementById(HELP_OVERLAY_ID));
+    if (isReady && hasButton && hasOverlay) return;
+
+    createHelpButton();
+    createHelpOverlay();
+    bindEvents();
+    setFilter('all');
+    isReady = Boolean(document.getElementById(HELP_BUTTON_ID) && document.getElementById(HELP_OVERLAY_ID));
+  }
+
+  function watchForLateToolbar() {
+    if (document.getElementById(HELP_BUTTON_ID)) return;
+
+    const observer = new MutationObserver(() => {
+      createHelpButton();
+      if (document.getElementById(HELP_BUTTON_ID)) {
+        observer.disconnect();
+        isReady = Boolean(document.getElementById(HELP_OVERLAY_ID));
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function init() {
+    createHelpButton();
+    createHelpOverlay();
+    bindEvents();
+    setFilter('all');
+    isReady = Boolean(document.getElementById(HELP_BUTTON_ID) && document.getElementById(HELP_OVERLAY_ID));
+    if (!isReady) watchForLateToolbar();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+
+  window.HelpCenter = {
+    open: openHelp,
+    close: closeHelp,
+    toggle() {
+      const overlay = document.getElementById(HELP_OVERLAY_ID);
+      overlay && !overlay.hidden ? closeHelp() : openHelp();
+    },
+  };
+})();

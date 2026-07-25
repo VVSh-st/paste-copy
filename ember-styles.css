@@ -1,0 +1,705 @@
+/* ===== EMBER ===== */
+.ember-slot {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 0 0;
+  position: relative;
+  color-scheme: dark;
+}
+
+.ember::after {
+  content: '';
+  position: absolute;
+  left: 50%; bottom: -4px;
+  width: 20px; height: 6px;
+  background: radial-gradient(ellipse, rgba(255, 130, 45, var(--shadowAlpha, 0.45)), rgba(200, 70, 15, 0.18) 52%, transparent 76%);
+  transform: translateX(-50%) scale(var(--shadowScale, 1));
+  filter: blur(3px);
+  z-index: 0;
+  transition: transform 0.3s ease;
+}
+
+.ember {
+  --heat: 1;
+  --glow: 1;
+  --intensity: 1;
+  --hover: 0;
+  --shiftX: 0px;
+  --shiftY: 0px;
+  --breathScale: 1;
+  --rotation: 0deg;
+  color-scheme: dark;
+  --tiltX: 0deg;
+  --tiltY: 0deg;
+  --scaleX: 1;
+  --scaleY: 1;
+  --brightness: 1;
+  --glowOpacity: 1;
+  --glowBlur: 5px;
+  --glowScale: 1;
+  --ringOpacity: 1;
+  --spawnCore: 1;
+  --spawnGlow: 1;
+  --spawnRing: 1;
+  --cursorLeanX: 0;
+  --cursorLeanY: 0;
+  --cursorSquish: 0;
+  --cursorScale: 1;
+  --cursorTiltX: 0;
+  --cursorTiltY: 0;
+  --coreHue: 35;
+  --coreLight: 50%;
+  --ashCoverage: 0;
+  --ringExpand: 0px;
+  --ringExpandX: 0px;
+  --ringPulse: 1;
+  --glowSkewX: 0deg;
+  --glowSkewY: 0deg;
+  --glowX: 0px;
+  --glowY: 0px;
+  --crustX: 0px;
+  --crustY: 0px;
+  --crustRot: 0deg;
+  --crustScale: 1;
+  --ashShiftX: 0px;
+  --ashShiftY: 0px;
+  --ashRot: 0deg;
+  --depthZ: 0px;
+  --glowDepth: 0px;
+  --ringDepth: 0px;
+  --lightX: 0%;
+  --lightY: 0%;
+  --shadowAlpha: 0.45;
+  --hazeShiftX: 0px;
+
+  position: relative;
+  width: 38px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 320px;
+  transform-style: preserve-3d;
+  cursor: default;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  z-index: 2;
+  overflow: visible;
+}
+
+.ember-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  transform:
+    translate(calc(-50% + var(--ringParallaxX, 0px)), calc(-50% + var(--ringParallaxY, 0px)))
+    translateZ(var(--ringDepth, 0px))
+    rotateX(calc(var(--tiltX) * 0.35))
+    rotateY(calc(var(--tiltY) * 0.35))
+    rotate(var(--ringRot, 0deg))
+    scale(var(--ringPulse, 1));
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35));
+  opacity: calc(0.14 + var(--ringOpacity) * 0.82 * var(--spawnRing));
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.segment {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4.5px;
+  height: 1.8px;
+  margin-top: -0.9px;
+  margin-left: -2.25px;
+  border-radius: 2px;
+  background: rgba(80, 40, 20, 0.4);
+  transform:
+    rotate(calc(var(--i, 0) * 30deg + var(--seg-tilt, 0deg)))
+    translateZ(calc(var(--ringDepth, 0px) * 0.6))
+    translateX(calc(var(--ringExpandX, 0px) * 0.3))
+    translateY(calc(-14px - var(--seg-push, 0px) - var(--ringExpand, 0px)))
+    scaleX(var(--seg-scaleX, 1))
+    scaleY(var(--seg-scaleY, 1));
+  opacity: calc(0.3 + var(--seg-flash, 0) * 0.7 - var(--seg-dim, 0) * 0.3);
+  filter:
+    brightness(calc(1 + var(--seg-brightness, 0)))
+    drop-shadow(0 0 calc(var(--seg-flash, 0) * 4px) rgba(255, 140, 50, calc(var(--seg-flash, 0) * 0.8)));
+  transition:
+    background-color 0.3s ease;
+  transition-delay: calc(var(--reveal-delay, 0) * 1ms);
+}
+
+.segment.active {
+  background: linear-gradient(90deg, rgba(255, 160, 60, 0.9), rgba(255, 120, 30, 0.95));
+  opacity: calc(1 + var(--seg-flash, 0) * 0.5 - var(--seg-dim, 0) * 0.5);
+  filter:
+    brightness(calc(1.3 + var(--seg-brightness, 0) * 0.8))
+    drop-shadow(0 0 calc(2px + var(--seg-flash, 0) * 5px) rgba(255, 110, 35, calc(0.75 + var(--seg-flash, 0) * 0.25)));
+}
+
+.ember-core {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  contain: layout;
+  border-radius: 48% 52% 45% 55% / 50% 46% 54% 50%;
+  background:
+    radial-gradient(circle at calc(50% + var(--lightX, 0%)) calc(38% + var(--lightY, 0%)),
+      rgba(255, 245, 190, 0.28) 0%,
+      rgba(255, 210, 120, 0.14) 12%,
+      transparent 28%),
+    radial-gradient(circle at 50% 45%, hsl(var(--coreHue, 35), 60%, var(--coreLight, 50%)) 0%, #190a04 60%, #0c0402 100%);
+  transform:
+    translate(var(--shiftX), var(--shiftY))
+    translateZ(var(--depthZ, 0px))
+    translate(var(--eggX, 0px), var(--eggY, 0px))
+    translate(calc(var(--cursorLeanX, 0) * 1px), calc(var(--cursorLeanY, 0) * 1px))
+    scale(
+      calc((var(--breathCore, var(--breathScale)) - var(--cursorSquish, 0) * 0.3 - var(--eggSquish, 0) * 0.3) * var(--scaleX) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1)),
+      calc((var(--breathCore, var(--breathScale)) + var(--cursorSquish, 0) * 0.15 + var(--eggSquish, 0) * 0.15) * var(--scaleY) * var(--spawnCore) * var(--cursorScale, 1) * var(--eggScale, 1))
+    )
+    rotateZ(calc(var(--rotation) * 0.4))
+    rotateX(calc(var(--cursorTiltX, 0) * 0.9deg + var(--eggTiltX, 0deg) + var(--tiltX) * 0.55))
+    rotateY(calc(var(--cursorTiltY, 0) * 0.9deg + var(--eggTiltY, 0deg) + var(--tiltY) * 0.7));
+  transform-style: preserve-3d;
+  filter: brightness(var(--brightness));
+  opacity: var(--spawnCore);
+  box-shadow:
+    inset 0 1px 3px rgba(255, 220, 150, 0.12),
+    inset -2px -3px 6px rgba(0, 0, 0, 0.55),
+    inset 3px 0 7px rgba(255, 130, 40, 0.12),
+    0 2px 4px rgba(40, 12, 4, 0.35),
+    0 0 4px rgba(100, 35, 0, 0.6),
+    0 0 10px rgba(255, 140, 50, 0.25);
+  animation: emberDeform 4s ease-in-out infinite;
+  animation-delay: var(--deformPhase, 0s);
+}
+
+.heat-zone {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(circle at var(--cx, 50%) var(--cy, 50%),
+      rgba(255, 170, 70, calc(var(--heat, 0.5) * var(--zoneHeat, 0.6) * 0.7)) 0%,
+      rgba(200, 80, 20, calc(var(--heat, 0.5) * var(--zoneHeat, 0.6) * 0.3)) 40%,
+      transparent 65%);
+}
+
+.zone1 {
+  background:
+    radial-gradient(circle at var(--cx, 38%) var(--cy, 42%),
+      rgba(255, 235, 160, calc(var(--heat) * var(--zoneHeat, 1))) 0%,
+      rgba(255, 170, 70, calc(var(--heat) * var(--zoneHeat, 1) * 0.6)) 35%,
+      transparent 60%),
+    radial-gradient(circle at 64% 56%,
+      rgba(255, 190, 95, calc(var(--heat) * var(--zoneHeat, 1) * 0.8)) 0%,
+      rgba(230, 110, 35, calc(var(--heat) * var(--zoneHeat, 1) * 0.4)) 38%,
+      transparent 62%);
+}
+
+.zone2 {
+  background:
+    radial-gradient(circle at var(--cx, 52%) var(--cy, 66%),
+      rgba(255, 150, 55, calc(var(--heat) * var(--zoneHeat, 1) * 0.85)) 0%,
+      rgba(210, 80, 25, calc(var(--heat) * var(--zoneHeat, 1) * 0.45)) 40%,
+      transparent 66%),
+    radial-gradient(circle at 30% 60%,
+      rgba(255, 130, 45, calc(var(--heat) * var(--zoneHeat, 1) * 0.6)) 0%,
+      transparent 50%);
+}
+
+.zone3 {
+  background:
+    radial-gradient(ellipse at 50% 55%,
+      rgba(180, 55, 18, calc(var(--heat) * var(--zoneHeat, 1) * 0.4)) 0%,
+      rgba(100, 25, 5, calc(var(--heat) * var(--zoneHeat, 1) * 0.18)) 45%,
+      transparent 78%);
+}
+
+/* угольная корка */
+.ember-crust {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  transform:
+    translateZ(calc(1px + (var(--breathCrust, 1) - 1) * 2.5px))
+    translate(var(--crustX, 0px), var(--crustY, 0px))
+    rotate(var(--crustRot, 0deg))
+    scale(calc(var(--crustScale, 1) * var(--breathCrust, 1)));
+  opacity: 0.92;
+  background:
+    radial-gradient(circle at 24% 28%, rgba(15, 6, 2, 0.95) 0%, transparent 30%),
+    radial-gradient(circle at 72% 34%, rgba(12, 5, 2, 0.9) 0%, transparent 26%),
+    radial-gradient(circle at 55% 78%, rgba(15, 6, 2, 0.95) 0%, transparent 32%),
+    radial-gradient(circle at 82% 70%, rgba(8, 4, 1, 0.85) 0%, transparent 22%),
+    radial-gradient(circle at 18% 64%, rgba(10, 4, 1, 0.8) 0%, transparent 24%);
+}
+
+/* трещины с прорывающимся жаром */
+.ember-cracks {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.ember-crack-layer {
+  --crack-c1: rgba(255,180,60,0.9);
+  --crack-glow-color: rgba(255,220,150,0.8);
+  --crack-opacity: 0.5;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--crack-opacity, 0.5);
+  mix-blend-mode: screen;
+  filter: blur(0.3px);
+  transition: opacity 0.12s ease;
+}
+
+.ember-crack-layer.ignited {
+  filter: blur(0.3px) drop-shadow(0 0 3px var(--crack-glow-color, rgba(255, 220, 150, 0.8)));
+}
+
+/* зола, нарастающая со временем */
+.ember-ash-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: calc(var(--ashCoverage, 0) * var(--breathAsh, 1));
+  transform:
+    translate(calc(var(--ashShiftX, 0px) * var(--breathAsh, 1)), calc(var(--ashShiftY, 0px) * var(--breathAsh, 1)))
+    rotate(var(--ashRot, 0deg))
+    translateZ(calc(2px - (var(--breathAsh, 1) - 1) * 3px));
+  background:
+    radial-gradient(circle at 30% 35%, rgba(150, 150, 160, 0.7) 0%, transparent 40%),
+    radial-gradient(circle at 65% 55%, rgba(135, 135, 145, 0.6) 0%, transparent 35%),
+    radial-gradient(circle at 50% 70%, rgba(145, 145, 155, 0.5) 0%, transparent 45%);
+  mix-blend-mode: overlay;
+  transition: opacity 0.5s ease;
+}
+
+.ember-heatwave {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: calc(var(--heat, 1) * 0.2);
+  background: radial-gradient(
+    ellipse at var(--waveOffset, 50%) 40%,
+    rgba(255, 200, 80, 0.5) 0%,
+    transparent 50%
+  );
+  filter: blur(1.5px);
+  mask: radial-gradient(ellipse, white 30%, transparent 70%);
+  -webkit-mask: radial-gradient(ellipse, white 30%, transparent 70%);
+}
+
+.ember-hotspot {
+  position: absolute;
+  width: 2px; height: 2px;
+  border-radius: 50%;
+  background: rgba(255, 230, 170, 1);
+  box-shadow: 0 0 4px rgba(255, 170, 70, .9);
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.attn-hotspot {
+  width: 6px;
+  height: 6px;
+  background: rgba(255, 200, 100, 0.9);
+  box-shadow: 0 0 8px rgba(255, 140, 40, 0.8), 0 0 16px rgba(255, 100, 20, 0.4);
+  transition: left 0.8s ease-out, top 0.8s ease-out;
+}
+
+@keyframes emberDeform {
+  0%, 100% { border-radius: 60% 40% 55% 45% / 38% 62% 42% 58%; }
+  25% { border-radius: 35% 65% 42% 58% / 60% 40% 55% 45%; }
+  50% { border-radius: 55% 45% 30% 70% / 50% 55% 45% 50%; }
+  75% { border-radius: 42% 58% 60% 40% / 45% 55% 48% 52%; }
+}
+
+.ember-glow {
+  position: absolute;
+  inset: -12px;
+  border-radius: 46% 54% 48% 52% / 50% 48% 52% 50%;
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 190, 100, 1) 0%,
+    rgba(255, 140, 50, 0.7) 25%,
+    rgba(230, 80, 20, 0.35) 50%,
+    rgba(150, 40, 10, 0.12) 70%,
+    transparent 90%
+  );
+  filter: blur(calc(var(--glowBlur) + 2px)) saturate(1.08);
+  opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow));
+  transform:
+    translate(calc(var(--glowX, 0px) * 0.5), calc(var(--glowY, 0px) * 0.5))
+    translateZ(calc(var(--glowDepth, 0px) + (var(--breathGlow, 1) - 1) * 4px))
+    scale(calc((var(--glowScale) + 0.05) * var(--breathGlow, 1)))
+    skewX(var(--glowSkewX, 0deg))
+    skewY(var(--glowSkewY, 0deg))
+    rotateX(calc(var(--tiltX) * 0.45))
+    rotateY(calc(var(--tiltY) * 0.45));
+  z-index: -1;
+  pointer-events: none;
+  animation: glowFlicker 3s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+/* марево/дым над угольком */
+.ember-haze {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  width: 10px;
+  height: 22px;
+  transform:
+    translateX(calc(-50% + var(--hazeShiftX, 0px)))
+    translateZ(calc(-8px + (var(--breathAsh, 1) - 1) * 3px))
+    rotateX(calc(var(--tiltX) * -0.15))
+    rotateY(calc(var(--tiltY) * -0.15))
+    scaleX(var(--breathAsh, 1));
+  background: linear-gradient(to top,
+    rgba(255, 180, 90, 0.15),
+    rgba(255, 150, 60, 0.08) 40%,
+    transparent 100%
+  );
+  filter: blur(3px);
+  opacity: calc((var(--intensity, 1) * 0.55 + var(--glow, 1) * 0.08) * var(--breathAsh, 1));
+  mask: linear-gradient(to top, white 0%, transparent 100%);
+  -webkit-mask: linear-gradient(to top, white 0%, transparent 100%);
+  animation: hazeOpacity 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hazeOpacity {
+  0%, 100% { opacity: calc(var(--intensity, 1) * 0.6); }
+  25% { opacity: calc(var(--intensity, 1) * 0.5); }
+  50% { opacity: calc(var(--intensity, 1) * 0.45); }
+  75% { opacity: calc(var(--intensity, 1) * 0.55); }
+}
+
+@keyframes glowFlicker {
+  0%, 100% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 0.96);
+  }
+  25% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 0.88);
+  }
+  50% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 1.04);
+  }
+  75% {
+    opacity: calc(var(--glow) * var(--glowOpacity) * var(--spawnGlow) * 1.00);
+  }
+}
+
+.ember:focus-visible {
+  outline: 1px dashed rgba(255, 150, 70, 0.5);
+  outline-offset: 3px;
+}
+
+/* ===== Частицы ===== */
+.ember-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 10;
+  /* Следуем за позицией ядра угля — landed-частицы
+     остаются «на поверхности» при любом движении.
+     GPU-composited: нулевая нагрузка на CPU. */
+  transform: translate(var(--shiftX, 0px), var(--shiftY, 0px))
+             translateZ(var(--depthZ, 0px));
+}
+
+.ember-ash {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 40% 60% 50% 50%;
+  background: rgba(140, 130, 125, 0.72);
+  box-shadow: none;
+  filter: blur(0.2px);
+  opacity: 0;
+}
+
+.ember-ash.dark {
+  background: rgba(62, 40, 24, 0.82);
+  box-shadow: none;
+}
+
+.ember-ash.bright {
+  background: rgba(220, 180, 120, 0.88);
+  box-shadow: 0 0 3px rgba(255, 170, 80, 0.35);
+}
+
+.ember-ash.landed {
+  background: rgba(35, 22, 14, 0.88);
+  box-shadow:
+    0 0 1px rgba(80, 50, 30, 0.4),
+    inset 0 -0.5px 1px rgba(0, 0, 0, 0.5);
+  filter: blur(0.4px);
+}
+
+.ember-spark {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,240,180,1) 0%, rgba(255,160,50,1) 60%, transparent 100%);
+  box-shadow:
+    0 0 4px rgba(255, 200, 100, 1),
+    0 0 10px rgba(255, 130, 40, 0.9),
+    0 0 20px rgba(255, 80, 20, 0.5);
+  filter: saturate(1.1);
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ember-spark.active-particle {
+    will-change: transform, opacity;
+  }
+}
+
+.ember.low-fps .ember-spark.active-particle {
+  will-change: auto;
+}
+
+.ember.reduced-motion-runtime .ember-spark.active-particle {
+  will-change: auto;
+}
+
+.ember-spark-shoot {
+  background: linear-gradient(to top, rgba(255, 200, 100, 1), rgba(255, 255, 220, 1));
+  box-shadow:
+    0 0 4px rgba(255, 220, 130, 1),
+    0 0 10px rgba(255, 180, 60, 0.9),
+    0 0 20px rgba(255, 140, 40, 0.6);
+}
+
+.ember-spark-anomaly {
+  background: radial-gradient(circle, rgba(255,250,210,1) 0%, rgba(255,175,70,1) 42%, rgba(255,110,30,0.9) 72%, transparent 100%);
+  box-shadow:
+    0 0 3px rgba(255, 235, 180, 1),
+    0 0 8px rgba(255, 160, 60, 0.9),
+    0 0 14px rgba(255, 90, 20, 0.42);
+  filter: saturate(1.2) brightness(1.08);
+}
+
+.ember-spark-anomaly-dust {
+  background: radial-gradient(circle, rgba(255,230,170,0.95) 0%, rgba(255,145,55,0.85) 58%, transparent 100%);
+  box-shadow:
+    0 0 2px rgba(255, 210, 120, 0.8),
+    0 0 6px rgba(255, 120, 35, 0.35);
+  filter: saturate(1.05) brightness(1.02);
+}
+
+.spark-point {
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 180, 1) 0%, rgba(255, 180, 70, 1) 60%, transparent 100%);
+  box-shadow: 0 0 4px rgba(255, 220, 120, 1), 0 0 10px rgba(255, 160, 50, 0.8);
+}
+
+.spark-elongated {
+  border-radius: 40% 40% 50% 50% / 20% 20% 80% 80%;
+  background: linear-gradient(to top, rgba(255, 140, 40, 1), rgba(255, 220, 130, 1) 50%, rgba(255, 255, 200, 1));
+  box-shadow: 0 0 5px rgba(255, 180, 70, 1), 0 0 12px rgba(255, 130, 30, 0.7);
+}
+
+.spark-broken {
+  border-radius: 30% 60% 40% 70% / 50% 30% 60% 40%;
+  background: linear-gradient(135deg, rgba(255, 200, 100, 1), rgba(255, 150, 50, 0.8));
+  box-shadow: 0 0 4px rgba(255, 190, 90, 1), 0 0 8px rgba(255, 140, 40, 0.6);
+}
+
+.spark-double {
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 40%, rgba(255, 240, 180, 1) 0%, transparent 50%),
+              radial-gradient(circle at 65% 60%, rgba(255, 200, 100, 1) 0%, transparent 50%);
+  box-shadow: 0 0 3px rgba(255, 210, 110, 1), 0 0 7px rgba(255, 170, 60, 0.7);
+}
+
+.ember-landing-glow {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(180, 50, 10, 0.9);
+  box-shadow: 0 0 4px rgba(200, 60, 15, 0.7);
+  transform: translate(-50%, -50%);
+  animation: landingFade 250ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes landingFade {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+}
+
+/* ===== Дрожание воздуха ===== */
+.ember-shimmer {
+  animation: shimmerPulse 3s ease-in-out;
+}
+
+.ember.low-fps.ember-shimmer {
+  animation: none;
+}
+
+@keyframes shimmerPulse {
+  0%, 100% { filter: none; }
+  30% { filter: brightness(1.04) saturate(1.04); }
+  60% { filter: brightness(1.07) saturate(1.06); }
+  80% { filter: brightness(1.03) saturate(1.03); }
+}
+
+/* ===== Глазок-блик ===== */
+.ember-glint {
+  position: absolute;
+  width: 5px;
+  height: 2px;
+  left: calc(var(--glintX, 58%) + var(--glintCursorX, 0%));
+  top: calc(var(--glintY, 32%) + var(--glintCursorY, 0%));
+  border-radius: 999px;
+  background: rgba(255, 245, 190, 0.95);
+  box-shadow: 0 0 6px rgba(255, 210, 120, .9);
+  opacity: var(--glintOpacity, 0);
+  transform:
+    translate(-50%, -50%)
+    rotate(calc(var(--glintRot, -18deg) + var(--cursorTiltY, 0) * 0.3deg))
+    scale(var(--glintScale, 1));
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  .ember-core,
+  .ember-glow,
+  .ember-haze,
+  .ember-shimmer {
+    animation: none !important;
+  }
+  .ember-ash,
+  .ember-spark,
+  .ember-ash-overlay,
+  .ember-crack-layer,
+  .segment {
+    transition: none !important;
+  }
+}
+
+/* ===== Тестовый режим (ПКМ) ===== */
+.ember-test-label {
+  position: absolute;
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  font-family: var(--mono);
+  color: rgba(255, 180, 100, 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+  text-shadow: 0 0 4px rgba(0,0,0,0.8);
+  transition: opacity 0.3s ease;
+}
+
+/* ===== Tooltip ===== */
+.ember-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 18, 10, 0.95);
+  color: rgba(255, 180, 100, 0.95);
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 30;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  border: 1px solid rgba(255, 140, 50, 0.25);
+  line-height: 1.6;
+  min-width: 0;
+  width: fit-content;
+}
+
+.ember-eco-toast {
+  position: absolute; bottom: -28px; left: 50%; transform: translateX(-50%);
+  background: rgba(30,30,30,0.92); color: #f5c542;
+  font-size: 11px; padding: 3px 10px; border-radius: 10px;
+  white-space: nowrap; pointer-events: none; opacity: 0;
+  transition: opacity 0.25s ease;
+  z-index: 10;
+}
+.ember-eco-toast.show { opacity: 1; }
+
+/* ── AiTransform popup ─────────────────────────────────────────────── */
+.ai-transform-popup {
+  position: fixed; z-index: 9500; display: none;
+  width: 460px;
+  background: var(--bg1, #11111b); color: var(--text1, #cdd6f4);
+  border: 1px solid var(--border, #45475a); border-radius: 8px;
+  padding: 6px 8px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  font-size: 13px;
+}
+.ai-transform-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.ai-transform-row input {
+  flex: 1; min-width: 180px; padding: 4px 8px;
+  background: var(--bg0, #181825); color: var(--text1, #cdd6f4);
+  border: 1px solid var(--border, #45475a); border-radius: 6px;
+  font-size: 12px; outline: none;
+}
+.ai-transform-row input:focus { border-color: var(--accent, #89b4fa); }
+.ai-transform-row input:disabled { opacity: .5; }
+.ai-transform-row button {
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 1px solid var(--border, #45475a);
+  background: var(--bg1, #11111b); color: var(--text1, #cdd6f4);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all .15s; padding: 0;
+}
+.ai-transform-row button:hover { background: var(--bg2, #1e1e2e); }
+.ai-transform-row button svg { width: 13px; height: 13px; }
+.ai-transform-row button[title="Выполнить (Enter)"] {
+  border-color: var(--accent, #89b4fa); color: var(--accent, #89b4fa);
+}
+.ai-transform-row button[title="Выполнить (Enter)"]:hover {
+  background: var(--accent, #89b4fa); color: #fff;
+}
+.ai-transform-row button[title="Закрыть (Esc)"] {
+  color: var(--text2, #585b70);
+}
+.ai-transform-row button[title="Закрыть (Esc)"]:hover {
+  color: var(--text1, #cdd6f4); background: rgba(255, 255, 255, 0.06);
+}
+.ai-transform-row button[title="Принять"] {
+  border-color: #a6e3a1; color: #a6e3a1;
+}
+.ai-transform-row button[title="Принять"]:hover {
+  background: #a6e3a1; color: #1e1e2e;
+}
+.ai-transform-row button[title="Отменить (Esc)"] {
+  border-color: #f38ba8; color: #f38ba8;
+}
+.ai-transform-row button[title="Отменить (Esc)"]:hover {
+  background: #f38ba8; color: #1e1e2e;
+}
